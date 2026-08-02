@@ -1517,14 +1517,19 @@ The replacement has five planes:
    (§12.2).
 4. **Control:** pause/pace/stop on a separate few-word atomic surface (§12.6).
 5. **Task topology:** one loop, one task per rostered device except the
-   GUI, all run-scoped: `run!` spawns one task per non-GUI roster entry
-   after device `init!`, and §12.9 joins them all at every stop (§12.11).
+   calling-task device, all run-scoped: `run!` spawns one task per other
+   roster entry after device `init!`, and §12.9 joins them all at every stop (§12.11).
    `attach!` never spawns — it registers, in a stopped-sim state only
-   (§12.3), and the task appears at the next `run!`. **The GUI is pinned;
-   the loop is the movable piece.** CImGui ties rendering to the calling (main) task,
-   so the GUI is the one rostered device *without* a spawned task: with
-   `gui = true` the loop moves to a spawned task for the duration of the
-   run and the calling task renders; otherwise the loop runs on the
+   (§12.3), and the task appears at the next `run!`. **The calling-task
+   device is pinned; the loop is the movable piece.** Calling-task
+   affinity is a device trait (`needs_calling_task`, default `false`,
+   §12.4) with at most one holder per roster (§12.3's admission checks);
+   the shipped GUI declares it — CImGui ties rendering to the calling
+   (main) task. The topology is derived from the frozen roster alone,
+   never from `run!`'s keywords: with a calling-task device rostered the
+   loop moves to a spawned task for the duration of the run and the
+   calling task runs that device's loop body — inline, inside the same
+   §12.4 wrapper as any spawned device's — otherwise the loop runs on the
    calling task — the batch register, what §15.4's synchronous rethrow
    presupposes, and what lets parallel batch sweeps thread `run!` inline
    with no nested task fan-out. Either way `run!` blocks its caller until
@@ -1729,9 +1734,10 @@ trace header captures the result; totality is enforced pre-write at
 
 **The roster is frozen per run: attach and detach are stopped-sim
 operations.** `attach!`/`detach!` are legal in the `built`, `initialized`
-and `stopped` states (§12.11) and an error while `running` — pause
-included: pause is a control-plane state *inside* a run (§12.6), and a
-surface that could move while paused would move mid-run. The roster —
+and `stopped` states (§12.11) and an error while `running`
+(`ServiceLifecycle`, Appendix C — the same kind that gates the §16
+services) — pause included: pause is a control-plane state *inside* a run
+(§12.6), and a surface that could move while paused would move mid-run. The roster —
 entries, claims, attachment order — is therefore a plain immutable value
 the loop reads once at `run!`, and the partition of the root face set into
 per-writer surfaces plus the interactive remainder is a static,
@@ -1748,6 +1754,24 @@ a simulation runs, its configuration — build, roster, claims, surfaces — is
 immutable, and §12.10's doctrine extends to its final form — the running
 periphery stages writes and issues control commands, *and nothing else
 changes*.
+
+**Device identity, ids and roster admission.** Identity is the device
+instance: the same object (`===`) may occupy at most one roster entry,
+while two instances of the same type (two joysticks) are two devices. The
+stable device id the trace, heartbeat and diagnostics speak is assigned
+at `attach!` — monotonic per `Simulation`, never reused — and lives
+exactly as long as the entry: across runs (roster persistence, §12.11),
+until `detach!`. Admission is a three-part check at the attach point, in
+order: **identity** — an already-rostered instance is rejected
+(`AlreadyAttached`, naming the entry and its binding), because rebinding
+has an explicit spelling — `detach!` then `attach!`, both legal at any
+stopped-sim point — and either a silent no-op or a silent rebind would
+discard a binding the caller handed over; **affinity** — at most one
+rostered device may declare `needs_calling_task` (§12.1's topology makes
+the calling task a single-slot resource; `CallerTaskConflict`, naming
+both devices); **claims** — face exclusivity (`ClaimConflict`), which by
+running after the identity check always names two *distinct* devices,
+never a device colliding with its own earlier attachment.
 
 **Device death does not detach.** A mid-run crash, voluntary exit or unplug
 (§12.4, §12.9) ends the device's *task*: the cell stops filling, the §12.7
@@ -1960,7 +1984,7 @@ the paradigm one, using every capability — with exactly two genuine peculiarit
 neither taxonomic: main-thread affinity (a launch concern) and read-modify-write
 widgets (§12.5).
 
-**The authoring contract: four functions, one optional.** A device is a plain
+**The authoring contract: four functions, one optional, one trait.** A device is a plain
 user type; the framework asks for
 
 ```julia
@@ -1968,6 +1992,9 @@ init!(dev)          # per-run resource acquisition — calling task, before spaw
 loop(dev, handle)   # the task body: owns its own wait structure
 shutdown!(dev)      # per-run resource release — guaranteed on every exit path
 unblock!(dev)       # optional hook, default no-op: make a blocked loop return (§12.9)
+needs_calling_task(dev)   # optional trait, default false: run the loop body on the
+                          # calling task (§12.1's topology; the shipped GUI's CImGui
+                          # constraint). At most one holder per roster (§12.3).
 ```
 
 and owns everything around them — the wrapper is the §12.9 protocol made
@@ -1984,6 +2011,10 @@ finally
     mark_dead!(...)                          # heartbeat only — claims stay, §12.3
 end
 ```
+
+A `needs_calling_task` device runs the identical wrapper *inline* on the
+calling task — the invocation site, not the contract, is its only
+difference (§12.1's topology, §12.9's join exclusion).
 
 **The author owns the loop body; the framework owns the bracket.** The fork
 is decided by FlightCore's own history: its eight device hooks were never
@@ -2318,10 +2349,15 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 5. **Join with a timeout:** a device task exceeding it is reported *by name*
    (§12.7 heartbeat) and abandoned with a warning (`DeviceJoinTimeout`,
    Appendix C) rather than hanging `run!`.
-   The GUI, having no spawned task (§12.1), is outside the join: its render
-   loop is the calling task's own occupation of `run!`, exits by the same
-   `running(handle)` predicate as any device loop, and `run!` returns after
-   the joins.
+   The calling-task device — the GUI — having no spawned task (§12.1), is
+   outside the join: its loop body is the calling task's own occupation of
+   `run!`, exits by the same `running(handle)` predicate as any device
+   loop, and `run!` returns after the joins. One honest asymmetry: the
+   abandonment protocol cannot cover it — nothing can abandon the task
+   `run!` stands on — so a calling-task device that blocks past shutdown
+   hangs `run!`. The trait's one authoring obligation is therefore a loop
+   body that never blocks between `running` checks; the shipped GUI's
+   render loop polls once per frame and never blocks.
 6. **Device-initiated paths:** voluntary exit — the loop body returns
    (window ✕, peer EOT; no `should_close` hook exists, §12.4); with
    `should_abort` set the wrapper's exit path also requests a sim stop,
@@ -2418,8 +2454,9 @@ completed is an error in §15.2's kind set naming `init!` — distinct from
 `UninitializedSlots`, which fires *inside* `init!` (§16.6). (`replay!` is
 the one alternative entry: it runs boundary zero from a trace header,
 §12.12.) The loop runs on
-the calling task unless a GUI claims it (`gui = true` moves the loop to a
-spawned task, §12.1); deviceless, `run!` is fully synchronous — the batch
+the calling task unless a calling-task device — the GUI — is rostered
+(§12.1's roster-derived topology); deviceless, `run!` is fully
+synchronous — the batch
 register (§12.1: a batch run is the same loop with empty staging), and what
 §15.4's synchronous rethrow presupposes.
 
@@ -2474,7 +2511,13 @@ and persistence means *roster* persistence: binding, claims and device id
 survive; tasks and OS resources do not (§12.1's per-run topology, §12.9's
 teardown). Each `run!` re-initializes every rostered device and spawns its
 task; `attach!` while stopped only registers — the task appears at the next
-`run!`. Run policy is re-bindable per cycle: `t_end` and `stop_on` are `Simulation`
+`run!`. Task topology follows the roster each time (§12.1): a GUI
+attached last run is still rostered, so the next `run!` renders it again —
+loop on a spawned task — whether or not `gui = true` is repeated. The
+flag is pure attach sugar, idempotent against the persistent roster: it
+attaches the standard GUI device only if none is rostered (Appendix B),
+and never detaches — a GUI session ends by `detach!` while stopped.
+Run policy is re-bindable per cycle: `t_end` and `stop_on` are `Simulation`
 defaults that `run!` may override for the run it starts (§15.5), so a second
 run — or a `step!` register between two runs — can stop on a different clock
 or a different face set without a rebuild. `errored` is terminal (row 59):
@@ -3870,7 +3913,8 @@ What is lost is quarantined: the state stores may hold mid-boundary values (a
 half-written `m`, integration intermediates). They are retained on the
 errored `Simulation` for post-mortem inspection, but an errored sim is
 terminally stopped, not resumable — the reproduction tool is trace replay,
-not resurrection. The published record (snapshot chain, log, trace) ends at
+not resurrection, and the stopped-sim services enforce it by refusing an
+errored simulation outright (`ServiceLifecycle`, §16). The published record (snapshot chain, log, trace) ends at
 the last consistent boundary; nothing downstream of the sim ever sees half a
 boundary.
 
@@ -3942,6 +3986,30 @@ as Stratum-C clients. Everything they share reduces to one artifact: the
 §16.1–§16.4 settle its representation, composition and application;
 §16.5–§16.6 the boundary-zero sequence and slot totality; §16.7–§16.9 the
 trim service in full; §16.10 linearization and `capture`.
+
+**Lifecycle preconditions.** Every service requires a non-running
+simulation — pause included, by the roster freeze's own doctrine (§12.3,
+§12.6): while a run exists the loop owns the stores between drains, and a
+service reading or writing them would race it. Within the stopped-sim
+states, legality follows each service's inputs: `capture` requires
+`initialized` or `stopped` (it reads committed, boundary-consistent
+stores); `init!` and `trim!` are additionally legal from `built` — their
+inputs are authored conditions (`trim!`'s scratch world is built from
+`override(baseline, condition(guess))`, §16.8, never from the sim's
+stores); `linearize` inherits `capture`'s precondition when its operating
+point defaults to `capture(sim)`, and `init!`'s legality with an explicit
+`about` (§16.10). **`errored` is terminal for all four** (row 59): the
+errored sim's stores may hold mid-boundary values (§15.6), and a captured
+condition is indistinguishable from a healthy one once produced —
+`capture(errored) → init!` would be resurrection with extra steps, and
+`linearize` about a half-written point the warn-but-assign failure mode
+§16.8 exists to kill. Post-mortem inspection of an errored sim's stores,
+log and trace stays available as a diagnostic read; it may not become a
+condition value. A violation is `ServiceLifecycle` (Appendix C — the
+operation, the current status, the legal statuses), the same kind
+`attach!`/`detach!` raise while `running` (§12.3): one register for "this
+operation is illegal in the current lifecycle state," distinct from
+`MissingInit`, which names a missing prior step.
 
 ### 16.1 Conditions are path-addressed overlays on the declared defaults
 
@@ -4225,8 +4293,12 @@ parity is exact, not approximate. Piece by piece:
   are the published initial conditions of their outgoing transitions.)
 - **`t₀` is an init-service argument** (default `0.0`), never a condition
   entry — time is not a store of any component, and the harmonic grid
-  anchors at whatever `t₀` boundary zero runs at. Conditions are time-free;
-  `capture` returns condition and time separately for resume-at-time.
+  anchors at whatever `t₀` boundary zero runs at. Both init-service entry
+  points carry it: `init!(sim, condition; t0)` and `trim!`'s commit
+  (`trim!(sim, problem; baseline, t0, backend)`, §16.8), same default.
+  Conditions are time-free;
+  `capture` returns condition and time separately for resume-at-time —
+  the returned `t` passed back as `t0`.
 - **Trim is untouched by all of this.** Optimizer iterations are raw
   write → sweep → read cycles on the activation — no boundaries, no events,
   no `g`; only the committed solution executes boundary zero. A guard firing
@@ -4336,7 +4408,7 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
 
 ### 16.8 The trim service: solver seam, scratch stores, commit and report
 
-**The backend seam.** `trim!(sim, problem; baseline, backend =
+**The backend seam.** `trim!(sim, problem; baseline, t0 = 0.0, backend =
 LevenbergMarquardt())`. The default is an in-house dense
 Levenberg–Marquardt: for decision dimensions ~10 with exact Jacobians, the
 core (damping loop, small linear solve, convergence test) is ~100 lines —
@@ -4368,6 +4440,18 @@ problem's write-set via the compiled plan; an LM evaluation is one
 Dual-seeded sweep yielding `r` (value parts) and `J` (partials) together.
 No convergence → no commit → the sim is bit-for-bit untouched, including
 "never initialized" — today's warn-but-assign is structurally impossible.
+
+**The commit, in full.** The committed solution is applied as an `init!`
+in every respect: `override(baseline, solution)` through boundary zero —
+§16.6 pre-write slot totality, §16.5's sequence, guards at commit — with
+the harmonic grid anchored at `trim!`'s own `t0` argument (default `0.0`,
+the same default as `init!`'s: one rule for both init-service entry
+points), and the recording registers cleared exactly as §12.11 states for
+`init!` — trace, log, and any batches still in staging cells. A fresh
+recording starting at its own anchor is the batch register's natural
+shape; fly-then-retrim keeps continuity explicitly — `capture` returns
+`(condition, t)` separately for exactly this (§16.1), so the resumed
+spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
 
 **The report, not an exception.** `trim!` returns a structured
 `TrimReport`: converged flag, solution NamedTuple (guess-shaped —
@@ -5116,7 +5200,7 @@ Still to be settled:
   left unexported — with *unexported* the preferred disposition for
   extension-only surface (the §12.4 binding interface `faces`/`map_input`/
   `selectors`/`map_output`, the device contract `init!`/`loop`/`shutdown!`/
-  `unblock!`), which authors extend by qualified name, `Base.show`-style,
+  `unblock!`/`needs_calling_task`), which authors extend by qualified name, `Base.show`-style,
   rather than call every day; and the **§14.7 executor compile-cost re-measurement** on
   the real vehicle skeleton — early, before the executor's shape hardens.
   Residuals: the `q_sf` home (§17.4 — aircraft design,
@@ -5313,15 +5397,21 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   `map_output(nt, b)` is the output half (§16.4 selectors validated and
   compiled to one gather, §12.2); `TableBinding` is the shipped
   data-driven binding (§12.4). A stopped-sim operation — legal in `built`,
-  `initialized` and `stopped`, an error while `running` (§12.3's roster
-  freeze); registers only, the task appears at the next `run!`.
+  `initialized` and `stopped`, an error while `running`
+  (`ServiceLifecycle`, §12.3's roster freeze); admission checks identity
+  (`AlreadyAttached` — one roster entry per instance, rebinding =
+  `detach!` + `attach!`), calling-task affinity (`CallerTaskConflict` —
+  at most one holder) and claims (`ClaimConflict`), §12.3; registers
+  only, the task appears at the next `run!`.
 - `detach!(sim, device)` — removes the roster entry and releases the
   device's claims; stopped-sim only, like `attach!`. A loop body's
   voluntary exit or crash mid-run does *not* detach: the task dies, the
   claims persist to run end (§12.3, §12.4, §12.9).
 - The device contract — `init!(dev)` / `loop(dev, handle)` /
-  `shutdown!(dev)` / optional `unblock!(dev)`: per-run `init!` on the
-  calling task, the author-owned task body inside the framework's
+  `shutdown!(dev)` / optional `unblock!(dev)` / optional trait
+  `needs_calling_task(dev) = false` (§12.1's topology: at most one per
+  roster, its loop body runs inline on the calling task): per-run `init!`
+  on the calling task, the author-owned task body inside the framework's
   try/catch/finally wrapper, voluntary exit = return (§12.4, §12.9).
 - The device handle — one kind, capabilities not taxonomy: `running`,
   `latest`, `wait_next_snapshot` (§12.8), `stage!`, `binding`, `gather`,
@@ -5347,9 +5437,11 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - `init!(sim, condition; t0 = 0.0)` — slot totality checked pre-write
   (§16.6), then boundary zero: project → sweep → events → due `g` updates →
   header + first snapshot (§16.5).
-- `trim!(sim, problem; baseline, backend) → TrimReport` — nonlinear least
-  squares on the residual vector with exact Dual Jacobians; commit =
-  `init!` with `override(baseline, solution)`; non-convergence reports, never
+- `trim!(sim, problem; baseline, t0 = 0.0, backend) → TrimReport` —
+  nonlinear least squares on the residual vector with exact Dual
+  Jacobians; commit = `init!` with `override(baseline, solution)` —
+  boundary zero anchored at `t0`, recordings cleared (§12.11); resume-at-
+  time = `capture`'s returned `t` as `t0`; non-convergence reports, never
   throws (§16.7, §16.8).
 - `capture(sim) → (condition, t)` — full-store gather including root slots;
   warm restart = capture → tweak → apply (§16.1, §16.10).
@@ -5363,8 +5455,11 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - `run!(sim; gui = false, pace = 1, margin = <default>, t_end = <ctor value>,
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
   (§11.7); the GUI an ordinary rostered device rendered on the calling task
-  (§12.4, §12.5), and `gui = true` is sugar for attaching the standard GUI
-  device — it moves the loop to a spawned task for the run (§12.1); sugar
+  (§12.4, §12.5); `gui = true` is idempotent attach sugar — it ensures the
+  standard GUI device is rostered, attaching it only if absent, and never
+  detaches; placement follows the roster, not the flag: a rostered GUI
+  moves the loop to a spawned task, on this run and every later one until
+  `detach!` (§12.1, §12.11); sugar
   never activates by default. `run!` blocks until the run ends; deviceless
   it is fully synchronous on the calling task; `init!` required first
   (§12.11). `margin` is the single pacing
@@ -5480,8 +5575,11 @@ Severities, in the vocabulary §15 fixes:
 | kind | payload | owner | severity |
 |---|---|---|---|
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | §12.11 | service |
+| `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | §12.3, §16 | service |
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | §15.5 | service |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | §12.3 | service |
+| `AlreadyAttached` | the device id of the existing roster entry, its binding | §12.3 | service |
+| `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | §12.1, §12.3 | service |
 | `ClaimConflict` | face name, claiming device id, incumbent device id | §12.3 | service |
 | `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (§16.4's source rule) | §12.2, §16.4 | service |
 | `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | §16.2, §16.3 | service (batch) |
