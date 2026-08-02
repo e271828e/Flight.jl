@@ -945,9 +945,15 @@ is Julia's most reliable symptom of type instability, so a zero baseline makes
 `@allocated == 0` a CI-testable invariant that catches inference regressions at the
 offending commit.
 
-- **Continuous hot path** (per-stage evaluation): exactly zero, CI-enforced.
-- **Periodic ticks**: zero by idiom (workspace + snapshot pattern); documented
-  tolerance for the rare exception.
+- **Continuous hot path** (per-stage evaluation), plus everything else that
+  runs unconditionally per frame or boundary — guards (evaluated every
+  boundary, firing or not) and `project` (both §9.1 schedule positions):
+  exactly zero, CI-enforced at the §14.7 phase-body seam (`phase_bodies`).
+- **Periodic ticks and event handlers** (episodic execution — a tick when
+  due, a handler only on firing): zero by idiom (workspace + snapshot
+  pattern; immutable-value returns); documented tolerance for the rare
+  exception, scoped per body by the seam's granularity so it never loosens
+  the continuous assertions.
 - **Logging**: amortized-zero — snapshots are records stored *inline* in a
   `Vector`, `sizehint!` for the expected duration making regrowth a non-event.
   The inline-storage claim is about the snapshot record's *fields*, not about
@@ -2318,6 +2324,16 @@ comments in FlightCore's sim.jl document the once-per-run version of exactly thi
 race). Conditions carry no facts, only "look again"; the facts (counter, running)
 live in state each waiter tests privately.
 
+**Counter home and publication order.** The boundary index is carried *in* the
+snapshot (with `t`), so any holder of one — the log, an error's replay pointer
+(§15.4), a post-run inspector — indexes it without consulting the loop; the
+loop additionally mirrors it in the state the wait predicate tests. The order
+of the two publications is normative: the release-store of `latest` (§12.2)
+happens **before** the counter increment under the lock, so `counter >
+last_seen` implies `latest` holds at least that boundary — a waiter can never
+wake onto a stale snapshot. The converse — observing a *newer* snapshot than
+the increment that woke you — is expected and correct: newest-wins.
+
 **Semantics: newest-wins, no queues.** A slow consumer skips frames and always
 receives the current world. This mirrors the inbound side: coalescing to the
 newest batch (in) and to the newest snapshot (out) are the same ZOH decision; no
@@ -3257,6 +3273,8 @@ organized as three strata:
   absolute divisors — everything except binding `Δt_base`, which is
   deployment.
 - **Stratum B — schedule.** The single evaluation-feeds-structure step:
+  workspace allocation at the probing scalar (sound this early: the allocator
+  reads only the instance and the scalar, row 77 — no layout dependence),
   stage-1 probes at `Float64` on `init_x`/`init_m`/`init_z` values (well-founded — the
   no-feedthrough stage takes no inputs), port classification (stage-1 /
   auto-published / stage-2 remainder), feedthrough graph from wires carrying
@@ -3305,7 +3323,13 @@ remains the completeness backstop.
 **Probe argument sourcing.** `x`/`m`/`z` come from `init_*` declarations
 (declared by value); `y_x`/`y_z` from the stage-1 probes; wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
-topological order. Exactly one kind of terminal has no producer: **root
+topological order. The bundle law's two remaining fields (§5.2): `t` is
+probe-scoped `0.0` — deployment binds no clock and `t₀` post-dates even
+deployment (§16.5), so like `Δt` below it is a fabricated, probe-scoped
+value; `ws` comes from invoking the component's `workspace` allocator at the
+probing scalar, which reads only the instance and the scalar (row 77),
+deriving nothing from layouts, so it runs before the Stratum B probes that
+need it. Exactly one kind of terminal has no producer: **root
 slots**. The build synthesizes their values via `probe_value(::Type)`:
 framework methods for `Real` (`zero(T)`), `Bool` (`false`), enums (first
 instance), ultimate fallback the zero-argument constructor `T()` — which is
@@ -3350,9 +3374,10 @@ enforcement is the pre-write `UninitializedSlots` check at `init!`/commit
 An **activation at `T`** re-runs Stratum C with a different scalar: table cells
 re-typed by the leaf walk over the declared types (§13.2 — tier-dependent on
 producer-fed cells, over the consumer declaration on root slots), table and
-state buffers re-laid-out, workspace allocators re-invoked at `T` (a
-continuous component's scratch carries the activation's scalar, §9.3), probe
-chain re-run. Structure and schedule are `T`-independent by construction.
+state buffers re-laid-out, workspace allocators re-invoked at `T` (re-invoked,
+not introduced — the first invocation precedes the Stratum B probes,
+§14.1/§14.3; a continuous component's scratch carries the activation's
+scalar, §9.3), probe chain re-run. Structure and schedule are `T`-independent by construction.
 
 **Each activation probes exactly the function set it can execute.** A `Dual`
 activation (linearization, gradient trim) evaluates the model at a frozen
@@ -3583,6 +3608,30 @@ utilities — range indexing, long `ntuple` closures, naive recursion — are
 inference traps at schedule length (a 400-entry heterogeneous tuple can send
 generic `getindex` inference into combinatorial collapse), so the compiled
 tuple's type has exactly one consumer: the unrolled walk.
+
+**The phase bodies are the §9.5 measurement seam.** `phase_bodies(sim)`
+returns the compiled bodies of the nominal activation as named callables
+bound over the simulation's own buffers: the four blocks (`rhs` — the `f`
+block — `sweep_hx`, `sweep_hxu`, and `ticks`, which takes the tick index its
+entries gate on), plus the per-event guards and handlers and the
+per-component `project` callables, keyed by the model's own roster. One
+promise, in the diagnostic register (§15.5): **these are the bodies the loop
+runs** — not re-derivations, which is what makes the measurement honest, and
+why each callable carries the real in-loop argument types by construction
+(the thing a hand-built standalone test cannot reproduce, and the reason
+per-component tests cannot discharge the invariant: they never call the
+executor whose contribution the claim quantifies over). CI is
+warm-then-assert over the roster — one call compiles, then
+`@ballocated(body()) == 0` — at per-body granularity, so a documented §9.5
+tolerance loosens exactly one assertion; this is the successor of the
+migration suite's `@ballocated f_ode!`/`f_step!`/`f_periodic!` idiom and the
+seam the §19 FlightCore comparison measures through. Publication is not a
+phase body — §9.5's carve-out made structural: what the accessor exposes is
+exactly what the invariant claims is zero. Invoking bodies in isolation
+mutates the simulation's buffers outside any frame sequence (a tick entry
+advances discrete state with no clock advance), leaving them valid but
+off-trajectory; a session that wants to continue meaningfully re-runs
+`init!`.
 
 Rejected (row 86): vector-of-abstract entries (dynamic dispatch boxes
 returns; union splitting rescues only toy scale and cannot close an open
@@ -5198,7 +5247,9 @@ Still to be settled:
   contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
   comparison criteria against FlightCore's demonstrated strengths (zero-alloc
-  stepping, flexibility, interactive operation); the §15.7 component library's
+  stepping — measured through §14.7's `phase_bodies` seam, apples-to-apples
+  with today's `@ballocated f_ode!` suites — flexibility, interactive
+  operation); the §15.7 component library's
   starting inventory; the **conventional exported aircraft surface** for
   generic periphery consumers (§12.2's integration register): pose and
   velocity faces with wrapper types — `VelocityData`, field meaning defined at
@@ -5507,6 +5558,14 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - `latest(sim) → snapshot` — the current published snapshot, the same
   immutable value device handles read (§12.2); the assertion/inspection
   accessor of the harness and REPL registers (§12.11).
+- `phase_bodies(sim) → named callables` — the compiled phase bodies of the
+  nominal activation, bound over the simulation's own buffers: the four
+  blocks (`rhs`, `sweep_hx`, `sweep_hxu`, `ticks` — the last takes the tick
+  index) plus per-event guards/handlers and per-component `project`, keyed
+  by the model's roster. The §9.5 allocation seam: warm, then
+  `@ballocated(body()) == 0` per body; diagnostic register, the one promise
+  being identity with what the loop runs; isolated invocation leaves buffers
+  valid but off-trajectory — re-run `init!` to continue (§14.7).
 - Control plane — pause/un-pause, pace and `margin` changes, stop on a
   separate atomic surface, never staged (§12.6; pacing sits outside the
   semantics, so both are safe to change live).
