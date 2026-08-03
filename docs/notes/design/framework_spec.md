@@ -66,9 +66,10 @@ The framework simulates **hybrid causal systems**, composed of:
 Both tiers share one declaration (guard function + handler); only the detection policy
 differs:
 
-- **Tier 1 (default, cheap):** guards are checked for sign changes at step boundaries
+- **Tier 1 (default, cheap):** guards are checked for not-holding → holding edges
+  against their baselines (§11.6) at step boundaries
   only. No root-finding, no step rejection; the handler fires at the end of the step in
-  which the crossing occurred. Cost: one guard evaluation per event per step. Fully
+  which the edge was observed. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
 - **Tier 2 (opt-in, per event):** localization of the crossing instant by root-finding,
   for events where timing precision genuinely matters (mechanics in §11.4). Runs
@@ -179,8 +180,12 @@ Ports exchange **immutable values** — typically isbits structs (floats, `SVect
 enums, nested immutables). The framework owns a **signal table**: one concretely-typed
 **cell** per output port in the flattened model. A producer's output-stage function returns
 a named tuple of fresh values; the framework writes each into its cell; consumers read
-cells. (*Cell* is the table entry throughout this document; *slot* is reserved for the
-root input slots of §12.3.)
+cells. (Vocabulary, binding throughout this document: bare *cell* is the table
+entry, and only that — the `z`/`m` state registers are *stores*, §9.3, not cells;
+*staging cell* is a distinct compound term, the per-device inbound register of
+§12.3, which unlike a table cell is mutated frame by frame and sits outside the
+table's publish-once discipline; *slot* is reserved for the root input slots of
+§12.3.)
 
 Consequences:
 
@@ -345,13 +350,13 @@ predicate; an unknown key ⇒ did-you-mean against `{x, m}` — the same
 directions (§14.5).
 
 The views themselves are unchanged in meaning: own state (`x`, `m` from the
-flat buffer and mode cells; `z` from its cell), own published signals (`y`,
+flat buffer and mode stores; `z` from its store), own published signals (`y`,
 gathered from own table cells — `local_types` cells included alongside declared
 ports, locals existing precisely for this own-later-consumption read, §13.2),
 inputs (`u`, gathered from foreign cells
 through the wiring's name binding), the clock (`t`, and `Δt` — see §11.5), and
 scratch (`ws`, §9.3). The signal table holds only *produced* signals, never
-transported ones: each datum has exactly one home — buffer for `x`, cells for
+transported ones: each datum has exactly one home — buffer for `x`, stores for
 `z`/`m`, table for signals — and no store mirrors another. Every bundle field
 earns its place as a view genuinely readable, and no further "simplification"
 exists that does not introduce a copy: eliminating `u` would mean republishing
@@ -725,7 +730,7 @@ repeated reads within a sweep re-materialize or reuse the loads is codegen freed
 in the literal sense: the executor is spelled rebuild-per-call, and hoisting is the
 code generator's CSE, whose legality condition is exactly the
 buffer-unchanged-within-a-sweep rule (§14.7). The complementary rule (§5.2): **one home per datum** —
-buffer for `x`, cells for `z`/`m`, table for produced signals — and no store ever
+buffer for `x`, stores for `z`/`m`, table for produced signals — and no store ever
 mirrors another; in particular there are no state cells in the table beyond
 contract-driven auto-published ports, which are interface, not transport.
 
@@ -819,14 +824,15 @@ live example pattern).
 
 ### 9.3 Discrete state, modes, and workspace
 
-- **Storage:** `z` and `m` live in **typed cells** (same discipline as signal cells),
+- **Storage:** `z` and `m` live in **typed stores** (the same immutable-value
+  discipline as the table's cells, in a separate home — §4.1's vocabulary),
   overwritten by the framework when an update/handler returns a new value. They never
   touch the integrator buffer; no arithmetic is ever done on them.
 - **Type freedom:** `z` may be *any immutable value* (frozen-reference rule; isbits not
   required). Enums, integers, nested structs, RNG state (four `UInt64`s of `Xoshiro` —
   required to live in `z` for deterministic replay).
-- **Snapshots are free:** copying a cell copies a reference to immutable data —
-  checkpoint/replay of the entire discrete side is "copy the cell values."
+- **Snapshots are free:** copying a store copies a reference to immutable data —
+  checkpoint/replay of the entire discrete side is "copy the store values."
 - **Workspace** (for heavy algorithms, e.g. an n≈20 Kalman filter):
   component-declared mutable scratch, instantiated by the framework and arriving
   as the `ws` bundle field (§5.2) in every bundle-receiving function of the
@@ -1120,7 +1126,9 @@ step boundaries.** Mid-step contents carry no meaning.
 
 ### 11.4 Tier-2 localization mechanics
 
-Trigger: a Tier-2 guard changed sign across an accepted step $[t_n, t_{n+1}]$.
+Trigger: a Tier-2 guard's condition was not-holding at $t_n$'s quiescence (its
+baseline, §11.6) and is holding at $t_{n+1}$ — the directional edge of §2.1, never a
+bare sign change: a holding → not-holding transition neither fires nor localizes.
 
 - **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
   $\theta = (t - t_n)/h \in [0, 1]$, from $(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$;
@@ -1133,8 +1141,8 @@ Trigger: a Tier-2 guard changed sign across an accepted step $[t_n, t_{n+1}]$.
   state means writing $\hat{x}(\theta)$ into the state buffer and running the sweep — the same
   rule as the RHS. One sweep per probe.
 - **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
-  acceptable fallback). The observed sign change *is* an unconditional convergence
-  certificate. Newton/AD localization is rejected: guards are guaranteed C⁰, not C¹
+  acceptable fallback). The observed not-holding/holding bracket *is* an unconditional
+  convergence certificate. Newton/AD localization is rejected: guards are guaranteed C⁰, not C¹
   (clamps, table knots, saturated stretches where σ′ = 0), Newton discards the
   bracket for merely local guarantees, and its superlinear convergence saves a
   handful of microsecond probes per rare event. AD earns its keep in Jacobians, not
@@ -1147,7 +1155,8 @@ Trigger: a Tier-2 guard changed sign across an accepted step $[t_n, t_{n+1}]$.
   together at that boundary, declaration order within the iteration, §11.6);
   later crossings re-localize on the remainder.
 - **Shared blind spot, documented:** an even number of crossings within one step
-  defeats sign-change detection in both tiers; the mitigation is step size, not
+  returns the condition to not-holding at the boundary, so no edge is observed —
+  defeating detection in both tiers; the mitigation is step size, not
   machinery.
 
 **Budget exhaustion degrades; it does not throw.** When a step spends its event
@@ -1238,7 +1247,7 @@ different subsets of the schedule.
 **Simultaneous ticks are already well-defined** by settled machinery: all due
 components run their output stages in topological order within the sweep, then all due
 `g` updates run after it, in any order — each `g` reads the table and writes only its
-own `z` cell. The FCS cascade's intra-tick ordering is a sweep property, not an
+own `z` store. The FCS cascade's intra-tick ordering is a sweep property, not an
 update-order property.
 
 **Assemblies: virtual for execution, rate scopes for declaration.** There are no
@@ -2159,7 +2168,7 @@ and exactly: *is this port transitively driven by a root input slot, and which o
 Every input port has exactly one source (§8), so the resolution is total:
 
 - **root-driven → live widget**: peeks and stages the resolved slot through the
-  GUI's own cell;
+  GUI's own staging cell;
 - **component-driven → read-only rendering**: displays the driven value from the
   snapshot, visually distinct, with the source as provenance ("driven by
   `avionics/throttle_cmd`" — the canonical slash form of §13.6).
@@ -2648,6 +2657,40 @@ becoming load-bearing. Redundancy between declarations and function bodies is
 accepted deliberately, under one non-negotiable condition: **every inconsistency
 fails loudly**, at build time where possible, at first execution otherwise.
 
+**Namespace and extension.** The declarations and stage functions are
+**extended, not called**: authoring a component means adding methods to
+framework-owned generic functions, and Julia only does that through an explicit
+per-name `import` (or a qualified `Flight.f(…) = …` definition, the
+`Base.show` idiom §19 records for the extension-only periphery surface). A
+component module therefore opens with
+
+```julia
+import Flight: init_x, init_m, init_z, workspace, input_types, output_types,
+    local_types, events, h_x, h_xu, h_z, h_zu, f, g, project, connections,
+    exports, rates
+```
+
+because `using Flight` alone is a silent trap: `f(eng::Engine, …) = …` after a
+bare `using` defines a new, unrelated `MyModule.f` — no error, no warning (the
+short names are deliberately unexported, precisely because `f`, `g`, `events`,
+`project` are the most collision-prone identifiers in numerical Julia, so
+there is no clash for the language to detect) — and the build then sees a
+component with no `f` method and reports a *modeling* diagnostic
+(`StoreWithoutUpdate`; `KindUnreadable` when the whole inventory was shadowed)
+for a one-line namespace mistake, pointed away from the wrong line — the §13.4
+error-locality inversion arriving through the namespace. Two mitigations,
+both normative: the import list above is authoring surface, stated wherever a
+component file is first shown; and the two diagnostics run a **shadowing
+check** — if the component's parent module defines a same-named function
+distinct from the framework's, the message says so and names the missing
+import ("`MyEngine`'s module defines its own `f`, distinct from `Flight.f` —
+add `import Flight: f`"; a two-line `isdefined`/`!==` test on names the build
+already looks up). A convenience macro expanding to the import list remains
+addable-a-posteriori sugar per this section's macro doctrine; a re-export
+submodule is *not* an alternative — `using Flight.Declarations` would carry
+the identical silent-shadowing semantics, per-name `import` being the only
+extension register the language provides.
+
 **The schema-authority principle.** Declarations *define* the model's structure;
 evaluation *checks* conformance against them — never the reverse. The build probes
 user functions with real values (no reliance on compiler inference), compares
@@ -2784,7 +2827,8 @@ The inventory, and where each schema fact gets its authority:
   declaration to take a type from, and only a *tight* bound determines one — a
   face surfacing as a root slot must resolve to a concrete declaration (staging
   cells, the trace header and `probe_value` all need it; abstract-at-root is a
-  build error). Under fan-out the slot type is the unique concrete declaration
+  build error, and `AbstractAtRoot` names the remedy with the face: wire a
+  concrete producer — in a test rig, a stub child, §15.7). Under fan-out the slot type is the unique concrete declaration
   among its consumers — two different concrete declarations remain an error —
   and abstract co-consumers are checked against it.
 - **`output_types(::C)`**: a concrete `NamedTuple` of *nominal* types, both
@@ -3300,7 +3344,15 @@ value, the violated constraint).
 
 `build(world) → Build` is a standalone entry point; `Simulation(world; ...)`
 (§17.4's spelling) is the convenience that calls it and adds
-deployment binding, buffers and the stopped-sim services. The `Build` is the
+deployment binding, buffers and the stopped-sim services. The constructor is
+two entry points, not one: `Simulation(build::Build; ...)` accepts the
+artifact directly, and `Simulation(world; ...)` is *defined as*
+`Simulation(build(world); ...)` — the build CI checked, an acceptance test
+targeted or a face-provenance table was printed from is the one deployed,
+never an assumed-equal reconstruction (computed `exports` bodies are ordinary
+user code re-evaluated on every build, so equality between two builds of the
+same world is an assumption the factorization removes). Deployment binding
+still happens only at `Simulation` construction, whichever entry point runs. The `Build` is the
 inspectable contract of the instantiation §13.8 gestures at — wire list, face
 table, schedule, root slots as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
@@ -3954,7 +4006,8 @@ model-detected channel specified here meets it at §12.9 and nowhere else.
 
 Why a `StepError` cannot break §12.9: **the boundary is all-or-nothing outside
 the sim task**. Sweeps write into table buffers, integration intermediates
-live in workspace, and the only externally visible act is snapshot publication
+live in framework-owned integrator buffers (never any component's `workspace`
+in §9.3's sense), and the only externally visible act is snapshot publication
 at the very end of the sequence. A boundary that throws has published nothing;
 the last *published* snapshot — a complete, consistent boundary by
 construction — is still the newest thing any device, logger or waiter has
@@ -4033,7 +4086,17 @@ commitments, a library and an idiom follow:
   `faces(rig, "child")` verbatim (§13.8) — so any component can be built
   and simulated in isolation: every input becomes a root slot fed by
   ordinary conditions and devices, and every output is observable in the
-  snapshot table. `design_world`'s little sibling (§16.9): where
+  snapshot table. One qualification, from §13.2's root-slot rule: an
+  *abstract* input entry (`terrain = AbstractTerrainField`, §7) cannot
+  surface as a root slot — abstract-at-root is a build error — so the rig
+  satisfies it *inside* the rig: a concrete stub child (a
+  `SampleTerrainField` provider) wired to the face, and the concrete
+  remainder exported via `faces(rig, "strut"; except = ("terrain",))`.
+  Zero new machinery — wiring and `except` already exist — and it is the
+  substitutability contract doing its job: an abstract entry declares that
+  a substitute must be chosen, and the rig choosing its test double
+  explicitly, as ordinary inspectable code, is precisely the isolation the
+  rig exists to provide. `design_world`'s little sibling (§16.9): where
   `design_world(ac)` mounts an aircraft in a minimal world for trim and
   linearization, the rig mounts one component behind a root contract for
   unit tests and open-loop probing. Deliberately ordinary machinery end to
@@ -4215,7 +4278,7 @@ target's `init_x`/`init_m`/`init_z`, value type convertible to the declared
 leaf type, slot faces reach root slots, no duplicate
 `(path, store, field)`. The `Build` supplies two lookup families: **schema**
 (the evaluated declarations: may you write this field, at what leaf type —
-the authority) and **layout** (`x` backing ranges, `m`/`z` cell indices, slot
+the authority) and **layout** (`x` backing ranges, `m`/`z` store indices, slot
 indices from the activation; face chains from Stratum A — the destination).
 
 A valid list compiles to a plan: per leaf, a `Getter{P}` lens (the position
@@ -4229,7 +4292,7 @@ zero partials, §16.10) — a one-time boundary decision that leaves §14.5's
 nominal exact-match doctrine for table cells untouched. Converters run here
 and in `capture`'s gather (§16.10) — the write paths — never on state views
 (§9.1). Overlay
-partiality for `m`/`z` cells is baked the same way: the writer holds
+partiality for `m`/`z` stores is baked the same way: the writer holds
 `merge(init_m_defaults, overlay)` with the base resolved at compile time
 (§16.1's fork).
 
@@ -4425,7 +4488,7 @@ but it hard-codes exactly two layers and moves a composition decision out
 of the condition algebra, the one place every other composition decision
 lives.
 
-### 16.7 The trim problem: NamedTuple decisions, declared reads, residual vectors
+### 16.7 The trim problem: NamedTuple decisions, declared reads, named residuals
 
 What the aircraft author ships, piece by piece against today's `c172.jl`:
 
@@ -4447,7 +4510,9 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   a trim evaluation needing one is a signal the component should export it.
   The compiled reader (§16.4's gather twin) fills a stack-only NamedTuple
   per evaluation.
-- **The user supplies a residual *vector*, not a scalar cost.** The
+- **The user supplies a residual *system*, not a scalar cost** — authored as a
+  NamedTuple of named equations, packed to the solver's vector by field order
+  (the decisions rule, symmetric on both ends of the seam). The
   FlightCore formulation's core — analytic elimination (`θ_constraint`
   substituting the pitch constraint, filter and actuator equilibria imposed
   by construction, the minimal 7-variable search) — is correct and survives
@@ -4475,6 +4540,46 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   on-ground static equilibrium (strut compressions and attitude against
   gear forces) as simply another problem value over the same service.
 
+**The field set, normative** — §16.9's lift is field-by-field, so this list
+is closed: `guess`, `lower`, `upper` (same-shaped all-`Float64` NamedTuples),
+`condition` (the condition-valued function over decisions), `reads` (the
+declared read set), `residuals` (the residual function), and `tolerances` —
+an all-`Float64` NamedTuple, same-shaped as the residual function's return,
+carried *in the problem* because a relocated problem must carry its own
+convergence test (`at` passes it through untouched). The residual signature:
+
+```julia
+residuals(reads::NamedTuple, d::NamedTuple) → NamedTuple
+```
+
+The rule: **what the solver varies is passed; what is fixed per problem is
+closed over.** The gathered reads and the decision NamedTuple arrive as
+arguments — `d` is the one value that *cannot* be closed over — while
+`TrimParameters` stays behind the closure, exactly as `condition` already
+holds it (the framework never sees it). The returned NamedTuple's names are
+the equation names the report and the failure messages use; the service packs
+residuals and tolerances by field order. Shapes are checked at setup: the
+guess evaluation the service performs anyway observes the residual key set,
+and a `tolerances` mismatch — or any field-shape disagreement — is
+`TrimProblemInvalid` (Appendix C). Worked, the C172 cruise case reduced to
+its three-equation core (the real problem is the same shape with the full
+7-variable search; the θ-constraint elimination survives inside
+`trim_condition`):
+
+```julia
+cruise = TrimProblem(
+    guess      = (throttle = 0.6, elevator = -0.05, α = 0.06),
+    lower      = (throttle = 0.0, elevator = -1.0,  α = -0.1),
+    upper      = (throttle = 1.0, elevator =  1.0,  α =  0.3),
+    condition  = d -> trim_condition(ac, params, d),    #params closed over (§16.2)
+    reads      = reads(v̇_b = get_deriv("vehicle/dynamics", :v_eb_b),
+                       ω̇_b = get_deriv("vehicle/dynamics", :ω_eb_b)),
+    residuals  = (r, d) -> (axial_force  = r.v̇_b[1],
+                            normal_force = r.v̇_b[3],
+                            pitch_moment = r.ω̇_b[2]),
+    tolerances = (axial_force = 1e-3, normal_force = 1e-3, pitch_moment = 1e-4))
+```
+
 ### 16.8 The trim service: solver seam, scratch stores, commit and report
 
 **The backend seam.** `trim!(sim, problem; baseline, t0 = 0.0, backend =
@@ -4495,7 +4600,7 @@ in the report ("converged with `elevator` at its upper bound" — the classic
 CG-limit diagnostic, today inferable only from mysterious residuals).
 
 **Scratch stores, stated without type luck.** Every `trim!` invocation
-instantiates a fresh working store set — `x` backing, `m`/`z` cells, slot
+instantiates a fresh working store set — `x` backing, `m`/`z` stores, slot
 and signal tables, derivative buffer — from the activation's *layout*: the
 layout is the reusable compiled artifact, the buffers are per-invocation
 and die with the call (stopped-sim allocation, §9.5). The `Dual` backend's
@@ -4529,7 +4634,8 @@ counts, saturated-bounds list. Non-convergence never throws — it is an
 expected *outcome* (envelope-sweep data: hitting the infeasible edge is
 information), per §15's exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
-Appendix C — guess/bounds shape disagreement, an unknown `reads` selector:
+Appendix C — guess/bounds shape disagreement, an unknown `reads` selector, a
+`tolerances`/residual key-set mismatch observed at the setup guess evaluation:
 the offending field with the shapes or names in hand, batched, mirroring
 linearization's `SurfaceResolution`).
 
@@ -4572,7 +4678,7 @@ at(prefix::String, p::TrimProblem) = TrimProblem(
     p.guess, p.lower, p.upper,                 #path-free: pass through
     d -> at(prefix, p.condition(d)),           #post-compose: wrap each returned tree
     at(prefix, p.reads),                       #reads are inert selector data: same Scoped node
-    p.residuals)                               #path-free: pass through
+    p.residuals, p.tolerances)                 #path-free: pass through
 ```
 
 Resolution then needs nothing new: the flattening accumulator of §16.3
@@ -5272,9 +5378,11 @@ Still to be settled:
   question. The audit is a full-surface sweep (per user, 2026-08-01): every
   API method name is either specific enough to export or gets renamed or
   left unexported — with *unexported* the preferred disposition for
-  extension-only surface (the §12.4 binding interface `faces`/`map_input`/
-  `selectors`/`map_output`, the device contract `init!`/`loop`/`shutdown!`/
-  `unblock!`/`needs_calling_task`), which authors extend by qualified name, `Base.show`-style,
+  extension-only surface: the declaration and stage family of §13.1's import
+  list — the larger half of the question, on every component file's first
+  line, settled there — plus the §12.4 binding interface `faces`/`map_input`/
+  `selectors`/`map_output` and the device contract `init!`/`loop`/`shutdown!`/
+  `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
   rather than call every day; and the **§14.7 executor compile-cost re-measurement** on
   the real vehicle skeleton — early, before the executor's shape hardens.
   Residuals: the `q_sf` home (§17.4 — aircraft design,
@@ -5324,7 +5432,7 @@ For component authors:
   know from state alone; stage 2 adds what needs inputs; your dynamics
   read your own published results instead of recomputing them.
 - **One home per datum** (§5.2, §4.3). The signal table holds *produced*
-  signals only, never transported ones: buffer for `x`, cells for `z`/`m`,
+  signals only, never transported ones: buffer for `x`, stores for `z`/`m`,
   table for signals — no store mirrors another.
 - **Boundary sampling** (§11.5/§11.6; worked example §17.5). "Sampling at
   `t_k`" means post-integration, post-projection, stage-1-fresh state: a
@@ -5451,7 +5559,9 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 
 - `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
   stop_on = (), trace = true, log = true, log_every = 1, debug = false)` —
-  wraps the build; `h` is required (a domain rate is not a
+  wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
+  the `Build` overload takes the same deployment keywords and deploys an
+  inspected artifact directly, §14.2); `h` is required (a domain rate is not a
   framework default) and `RK4` is the default stepper (§11.2); `n` binds
   `Δt_base = n·h` (§11.5); `t_end = Inf` is the honest interactive default, and
   a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
@@ -5512,8 +5622,10 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   (§16.6), then boundary zero: project → sweep → events → due `g` updates →
   header + first snapshot (§16.5).
 - `trim!(sim, problem; baseline, t0 = 0.0, backend) → TrimReport` —
-  nonlinear least squares on the residual vector with exact Dual
-  Jacobians; commit = `init!` with `override(baseline, solution)` —
+  nonlinear least squares on the packed residuals with exact Dual
+  Jacobians, against the problem's own `tolerances`
+  (`residuals(reads, d) → NamedTuple`, packed by field order — §16.7's
+  closed seven-field problem); commit = `init!` with `override(baseline, solution)` —
   boundary zero anchored at `t0`, recordings cleared (§12.11); resume-at-
   time = `capture`'s returned `t` as `t0`; non-convergence reports, never
   throws (§16.7, §16.8).
@@ -5618,13 +5730,13 @@ Severities, in the vocabulary §15 fixes:
 | `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / export entry) | §8, §13.8 | build (batch) |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | §8, §13.2, §13.4 w4 | build (batch) |
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | §8, §15.3 | build (batch) |
-| `AbstractAtRoot` | face name, consuming leaf path, the abstract entry | §13.2 | build (batch) |
+| `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, §15.7) | §13.2 | build (batch) |
 | `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations | §13.2 | build (batch) |
 | `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | §9.1, §13.2 | build (batch) |
-| `StoreWithoutUpdate` | component path, store (`x`/`z`), the missing function (`f`/`g`) | §13.2 | build (batch) |
+| `StoreWithoutUpdate` | component path, store (`x`/`z`), the missing function (`f`/`g`); shadowing note when the parent module defines its own `f`/`g` (§13.1) | §13.2 | build (batch) |
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | §13.2 | build (batch) |
 | `PrimitiveAtRoot` | root path, component type | §13.2 | build (batch) |
-| `KindUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields | §13.5 | build (batch) |
+| `KindUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions (§13.1) | §13.5 | build (batch) |
 | `KindMixed` | component path, the `connections` declaration and the offending leaf declarations | §13.5 | build (batch) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | §13.5 | build (batch) |
 | `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | §5.2, §13.2, §13.5 | build (batch) |
