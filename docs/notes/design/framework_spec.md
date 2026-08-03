@@ -127,7 +127,7 @@ A classical hybrid automaton:
 - **flow** $\dot{x} = f(x, m, u, t)$,
 - **two output stages** (see §5.2),
 - **events**: guards + handlers (update `m`, may reset own `x`); both read the fresh
-  boundary signal table (§5.2),
+  boundary signal table (§5.3),
 - optional **projection**.
 
 Any facet may be empty. In particular, a component with *no* continuous state — only
@@ -305,7 +305,7 @@ edges and (b) intra-component feedthrough relations; if acyclic, a topological s
 yields a **static evaluation schedule**, computed once at build time. The hot loop runs
 a flat list of `(component, stage)` entries — zero runtime graph logic.
 
-### 5.2 Two-stage outputs and structural feedthrough
+### 5.2 Two-stage outputs: signatures, bundles and the hand-off laws
 
 Every component provides exactly **two output stages**, and feedthrough is declared
 **structurally, by function signature** — there are no dependency annotations anywhere
@@ -397,6 +397,8 @@ earns its place as a view genuinely readable, and no further "simplification"
 exists that does not introduce a copy: eliminating `u` would mean republishing
 foreign cells under local names; eliminating `x` would mean identity transport
 through the table, rejected for exactly that reason (§7.4, step 4).
+
+### 5.3 Structural feedthrough: stage roles, schedule and step boundaries
 
 **The letters**: `f` is the continuous flow, `g` the discrete
 update, `h_*` the output stages — the hybrid-systems flow/jump pair
@@ -499,7 +501,7 @@ choice when the factoring earns reuse (one Newton–Euler solver shared across v
 variants; swappable kinematic descriptors against a common integrator shape). Purity
 rules forbid the third classic resolution, mutable caching, by design.
 
-### 5.3 Artificial loops and the escape hatch
+### 5.4 Artificial loops and the escape hatch
 
 A component that bundles a no-feedthrough output with a feedthrough output in one
 atomic evaluation unit can be **port-level acyclic yet unschedulable** (Simulink's
@@ -515,7 +517,7 @@ input consumed only by `f` (never by `h_xu`) still creates a scheduling edge if 
 component has stage-2 outputs; in practice such components are integrator-shaped and
 have none, and the remedy, if ever needed, is the same split.
 
-### 5.4 Algebraic loop policy: reject at build time
+### 5.5 Algebraic loop policy: reject at build time
 
 A genuine cycle in the instantaneous dependency graph is a **build error** with a
 diagnostic naming the full path in the canonical slash form of §11.6
@@ -537,7 +539,7 @@ Rejected alternatives:
   point) remain the component author's business: local, owned, bounded. Rejecting
   framework-level loops does not forbid such models.
 
-### 5.5 Diagnostics: feedthrough tracing
+### 5.6 Diagnostics: feedthrough tracing
 
 Tracing is **diagnostic only, never load-bearing**: scheduling correctness comes
 exclusively from the structural two-stage split; tracing improves error messages and
@@ -561,7 +563,7 @@ synthesized through §12.3's `probe_value` under tracer tags. The tracer's
 product is a per-member dependence set rather than a value, so no ordering has
 to be valid for the labels to come out right. The loop is **real** iff every hop
 of the structural cycle survives in the traced per-member maps; **artificial**
-(§5.3) iff some hop dies — the component whose stage-2 function does not in fact
+(§5.4) iff some hop dies — the component whose stage-2 function does not in fact
 route that input to that output. No Stratum C machinery is touched: no
 activation, no layouts, no table. This is row 12's *local* variant — the
 schedule-free per-member trace at the probe point, which is what the cycle
@@ -851,7 +853,7 @@ are generic over `T <: Real`. One design property, four consumers:
 1. exact Jacobians for **linearization** (ForwardDiff duals through the whole model,
    replacing finite differences),
 2. derivatives for **trim** solvers,
-3. the **feedthrough tracer** (§5.5),
+3. the **feedthrough tracer** (§5.6),
 4. a trivially checkable **CI invariant**: one evaluation sweep with `T = Dual` fails
    loudly (`MethodError`/`InexactError` at the offending line) on any Float64-pinning.
 
@@ -969,7 +971,7 @@ here because each step replaced a mechanism with something smaller:
 1. **N output groups → exactly two.** General output groups (each declaring its input
    subset) handled a cross-coupling case that never materialized in the domain; strict
    two-stage eliminates all dependency declarations, at the price of an occasional
-   component split (§5.3).
+   component split (§5.4).
 2. **Derivative binding → own-output access.** An earlier revision had a declaration
    feature binding `ẋ` fields to output ports (`ẋ_bindings(::C) = (ω = :ω̇,)`). Passing
    the fresh signal table to `f`/`g` subsumes it: the "binding" is a one-line function
@@ -1056,7 +1058,7 @@ offending commit.
 
 ### 8.1 Loop ownership: the framework owns the simulation loop
 
-The simulation loop — the §5.2 boundary sequence, tick dispatch, event handling,
+The simulation loop — the §5.3 boundary sequence, tick dispatch, event handling,
 logging, input staging, pacing — is **framework code, unconditionally**. The step-
 boundary contract is this design's central invariant; expressing it as an ordered
 `CallbackSet` inside a third-party solver would put the framework's semantics back
@@ -1122,7 +1124,7 @@ load-bearing for the whole axis):
 ### 8.3 Signal-table consistency is a boundary property
 
 During a step, RK stages evaluate the sweep at internal stage states — the signal
-table is transiently **integrator scratch**. The boundary sweep in the §5.2 sequence
+table is transiently **integrator scratch**. The boundary sweep in the §5.3 sequence
 is what restores consistency at each accepted boundary. The rule, binding for the periphery (§9):
 **external readers (GUI, logging, network output) observe the signal table only at
 step boundaries.** Mid-step contents carry no meaning.
@@ -1255,7 +1257,7 @@ update-order property.
 
 **Assemblies: virtual for execution, rate scopes for declaration.** There are no
 atomic assemblies, and no opt-in variant. Execution atomicity coarsens the schedulable
-unit, which is exactly how artificial algebraic loops are manufactured — §5.3 at
+unit, which is exactly how artificial algebraic loops are manufactured — §5.4 at
 assembly scale, a hazard Simulink documents for its Atomic Subsystems — while the
 thing it protects, non-interleaved execution, protects nothing here: the signal table
 makes interleaving semantically invisible (consumers read cells whose freshness is
@@ -1305,7 +1307,7 @@ absolute rate — it does not exist until composition.
 
 ### 8.6 Event iteration at boundaries: to quiescence, once per event
 
-Resolves the question deferred in §5.2. At each boundary, the event phase **iterates**:
+Resolves the question deferred in §5.3. At each boundary, the event phase **iterates**:
 rounds of *(re-run the boundary sweep → evaluate guards → fire newly-fired events in
 declaration order, each with its per-event re-decode)* until a round fires nothing,
 under the rule that **each declared event fires at most once per boundary**.
@@ -1327,7 +1329,7 @@ transitioning component's own ports; downstream stage-2 chains reading them stay
 stale. A round therefore re-runs the whole gated schedule. Sweeps are microseconds
 and rounds beyond the first require an actual cascade, so the cost is noise.
 
-**Within-round visibility: round-start `u`, live `y`, order inert.** §5.2's
+**Within-round visibility: round-start `u`, live `y`, order inert.** §5.3's
 cross-component claim — all guards and handlers read the same boundary
 snapshot, plus their own component's refreshed ports — is delivered by
 *binding time*, not by copying. After a round's guards are evaluated, the
@@ -2718,7 +2720,7 @@ conformant). The rejected alternative — inference-by-evaluation as schema
 authority — fails on three counts, established by walkthrough (§11.4): error
 *locality* inverts (failures surface inside correct code, pointed away from the
 wrong line); observed schemas are sample- and branch-dependent (the probe sees only
-the initial state's branch — the §5.5 hazard corrupting the schema instead of a
+the initial state's branch — the §5.6 hazard corrupting the schema instead of a
 diagnostic); and annotations have nowhere to live. Types by declaration, values by
 execution, conformance by comparison.
 
@@ -2762,7 +2764,7 @@ input_types(::Engine) = (throttle = Float64, starter = Bool,
 
 #output contract = the public interface, at concrete nominal types (§11.3)
 output_types(::Engine) = (M_shaft = Float64, P = Float64, ω = Float64)
-#ω names a state field no stage produces → auto-published at stage 1 (§5.2)
+#ω names a state field no stage produces → auto-published at stage 1 (§5.3)
 
 #stage and update functions destructure their bundle by name (§5.2)
 function h_xu(eng::Engine, (; x, m, u))
@@ -2772,7 +2774,7 @@ end
 
 f(eng::Engine, (; x, y, u)) = (ω = (y.M_shaft - u.M_load) / eng.J,)
 
-#events: ordered and named — order is load-bearing (§5.2, §8.6); detection policy by the `localize` flag
+#events: ordered and named — order is load-bearing (§5.3, §8.6); detection policy by the `localize` flag
 events(::Engine) = (
     start    = Event(start_guard, start_handler),                               # boundary-detected (default)
     ignition = Event(ignition_guard, ignition_handler),                         # boundary-detected
@@ -2917,7 +2919,7 @@ The inventory, and where each schema fact gets its authority:
   the workspace (`workspace` remains the within-call scratch, §7.3).
 - **`events(::C)`**: an ordered, named collection of guard/handler pairs, detection
   policy set per event by the `localize` flag — `Event(guard, handler; localize = true)`
-  is localized, and the default `false` is boundary-detected (§2.1). Order is semantics (§5.2 declaration
+  is localized, and the default `false` is boundary-detected (§2.1). Order is semantics (§5.3 declaration
   order, §8.6 once-per-event); nothing here is inferrable.
 - **No stage tags anywhere.** Which stage produces which port stays invisible in
   the contract, preserving §4.2 (moving a port between stages is non-breaking
@@ -2983,7 +2985,7 @@ exchange for "public" always meaning someone wrote it down.
 
 - **Conformance**: a declared port or local must be produced — by exactly one
   stage, or (ports only) by **auto-publication** for declared names matching
-  state, mode or `z` fields that no stage produces (§5.2). Stage membership is
+  state, mode or `z` fields that no stage produces (§5.3). Stage membership is
   derived over `output_types` ∪ `local_types` jointly (§12.1). Declared-but-unproduced
   and produced-by-two-stages are build errors, as is an `output_types`/`local_types`
   name collision; a declared port matching neither a stage product nor a state
@@ -3340,7 +3342,7 @@ organized as three strata:
   stage-1 probes at `Float64` on `init_x`/`init_m`/`init_z` values (well-founded — the
   no-feedthrough stage takes no inputs), port classification (stage-1 /
   auto-published / stage-2 remainder), feedthrough graph from wires carrying
-  stage-2 ports, topological order, §5.4 cycle rejection. The output is
+  stage-2 ports, topological order, §5.5 cycle rejection. The output is
   structural: names only, `T`-independent, branch-protected by the
   branch-shape rule plus the always-on check (§12.5).
 - **Stratum C — activation, parametric in `T`.** Everything type-shaped:
@@ -3457,9 +3459,9 @@ is `Float64` sweeps by design, §8.4). Only the continuous output stages
 (`h_x`/`h_xu`) and `f`
 ever see a `Dual` — so only they are probed. Probing the discrete stages, `g`, or guards at `Dual`
 would check code against a number type it cannot receive. One rule, no
-special cases; the §5.5 tracer activation follows it identically. "Tracer
+special cases; the §5.6 tracer activation follows it identically. "Tracer
 activation" names row 12's *global* set-tracer — a whole-model run at the
-tracer scalar, an activation like any other. §5.5's cycle classifier is row
+tracer scalar, an activation like any other. §5.6's cycle classifier is row
 12's other variant, the schedule-free per-member local trace, which runs in
 Stratum B's failure path and is not an activation at all.
 
@@ -4079,7 +4081,7 @@ commitments, a library and an idiom follow:
   *cheap*, and a junction hand-written per arity per type is not. Starting
   inventory strictly from demonstrated need — wrench/scalar summing
   junctions, the Bool gates the termination chains use, and `UnitDelay`, the
-  spelling §5.4's second loop-breaking remedy needs — growing by
+  spelling §5.5's second loop-breaking remedy needs — growing by
   migration demand only (Simulink's library is a language; this is a
   toolbox). Doctrine: **library blocks are ordinary components** — no
   framework privileges, no special vocabulary — which keeps schema authority
@@ -4098,7 +4100,7 @@ commitments, a library and an idiom follow:
   wherever the remedy is recommended: inserting one into a *continuous* loop
   moves that signal onto the discrete tier and inserts a `Δt_base`-scale ZOH
   into the model's mathematics — a modeling decision, the delayed signal being
-  genuinely sampled, not a transparent wire, which is why §5.4's diagnostic
+  genuinely sampled, not a transparent wire, which is why §5.5's diagnostic
   says so rather than offering the remedy as free. A
   migration-phase deliverable.
 - **The component test rig** is the library's companion idiom: a one-child
@@ -4860,7 +4862,7 @@ down structure previously kept in their heads, and pays them back by never letti
 silently rot.
 
 The genuine algebraic loop in the domain — α̇-dependent aerodynamics — is already
-broken in the current C172 model by a filter state, exactly the explicit break §5.4
+broken in the current C172 model by a filter state, exactly the explicit break §5.5
 prescribes. Evidence that reject-loops matches domain practice rather than fighting it.
 
 ### 15.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
@@ -4886,7 +4888,7 @@ lookups, two embedded continuous PI compensators, boolean transitions, argument-
 **`PID`** (control.jl:431-471) and the C172X FCS — the discrete side's representative:
 
 - The current update entangles outputs and next state by construction (`y_i = x_i`:
-  this tick's integral-path output *is* the updated integrator state). Under §5.2 the
+  this tick's integral-path output *is* the updated integrator state). Under §5.3 the
   law runs once in `h_zu`, publishing paths, saturation and the updated states;
   `g` is a three-field copy. Under the orthodox split, `g(z, u, t)` would reproduce
   the entire law per compensator per tick.
@@ -4906,7 +4908,7 @@ lookups, two embedded continuous PI compensators, boolean transitions, argument-
   ambiguity through, and stage 1's is having the delayed value already on a port.)
 
 Both components passed without blockers, with zero publications forced beyond current
-practice — the empirical basis for §5.2's claim that derivative/output overlap is the
+practice — the empirical basis for §5.3's claim that derivative/output overlap is the
 domain norm and the decoder matches the codebase's grain.
 
 **The supervisor slice: scheduled gains and bumpless engage.** One level
@@ -5308,7 +5310,7 @@ held the previous boundary's decode it would equal `z.V` exactly (that is the
 value `g` latched), and sculling would vanish without an error anywhere. The
 guarantee is the §8.6 macro-sequence, not a scheduling accident: integrate →
 project → sweep, with the due sampler's stages gated *into* that sweep (§8.5) and
-the integrals arriving at stage-1 position (auto-published state, §5.2) — before
+the integrals arriving at stage-1 position (auto-published state, §5.3) — before
 any stage-2 function runs, regardless of topological placement. The rest of the
 timeline closes consistently: the sampler's `h_zu` decodes `z` (the `t_{k-1}` latch)
 *before* `g` runs — the `z⁻¹` semantics — and after event quiescence `g` latches
@@ -5332,7 +5334,7 @@ values from its *feedthrough* stage (`h_zu` reads `u`, so the latch port carries
 the current tick's values, ZOH until the next; an `h_z`-published latch would be
 one period stale), and the continuous `f` computes `x − u.latch`. Both cross-wires
 consume the other side's ports and the schedule stays acyclic (integrals stage 1 →
-sampler `h_zu`; sampler `h_zu` → the integrals' `f`-edge, §5.3). The "reset"
+sampler `h_zu`; sampler `h_zu` → the integrals' `f`-edge, §5.4). The "reset"
 becomes a visible tier-crossing feedback loop — which is what it always was,
 physically.
 
@@ -5471,7 +5473,7 @@ For component authors:
   zero sets every prior to not-holding, so a predicate already holding in
   the authored state fires at `t₀`. The opposite crossing direction is a
   second event with the negated guard.
-- **Handler-phase visibility** (§5.2, §8.6). Your `u` is the boundary's
+- **Handler-phase visibility** (§5.3, §8.6). Your `u` is the boundary's
   world, materialized at round start: same-round foreign transitions are
   invisible and arrive through the next round's re-sweep, one round per
   causal link. Your `y` is your own fresh decode, and your `x`/`m` reflect
@@ -5764,7 +5766,7 @@ Severities, in the vocabulary §13 fixes:
 
 | kind | payload | owner | severity |
 |---|---|---|---|
-| `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | §5.4, §5.5 | build (collected) |
+| `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | §5.5, §5.6 | build (collected) |
 | `ProducedByTwoStages` | component path, port name, both stage names | §4.3, §11.3 | build (collected) |
 | `ContractNameCollision` | component path, the name declared in both `output_types` and `local_types` | §11.3 | build (collected) |
 | `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | §11.3 | build (collected) |
@@ -5893,7 +5895,7 @@ events, post-step manifold projection, and externally injected inputs (§2).
 **the letters** — `f` the continuous flow, `g` the discrete update, `h_*` the
 output stages (suffix = dependence class, not argument list), `x`/`m`/`z` the
 state stores, `u` wired inputs, `y` own published signals, `ws` the
-workspace. Bare `h` means the integration step size only (§5.2, §8).
+workspace. Bare `h` means the integration step size only (§5.3, §8).
 
 **periodic discrete component** — a leaf with discrete state `z`, update `g`
 at a declared rate, and two output stages whose cells hold zero-order between
@@ -5948,7 +5950,7 @@ speaks face names only; the read side speaks slash paths (§11.6, §9.3).
 **feedthrough** — an instantaneous input→output dependence. **Structural
 feedthrough** is this design's version: fixed by which stage produces a port
 rather than annotated, with every stage-2 output conservatively presumed
-dependent on every wired input (§5.2).
+dependent on every wired input (§5.3).
 
 **field handle / function-valued signal** — an immutable query object carried
 on an ordinary port (`ISAField`, `TerrainField`) that consumers evaluate at
@@ -6004,13 +6006,13 @@ and is value-identical on re-materialization within a sweep (§7.1, §5.2).
 
 **algebraic loop** — a genuine cycle in the instantaneous dependency graph: a
 build error naming the path in canonical slash form, broken by the author with
-inserted dynamics, an explicit `UnitDelay` or restructuring (§5.4). Not to be
+inserted dynamics, an explicit `UnitDelay` or restructuring (§5.5). Not to be
 confused with an **artificial loop**, port-level acyclic but stage-level
-cyclic, whose remedy is splitting the component (§5.3).
+cyclic, whose remedy is splitting the component (§5.4).
 
 **flow / RHS** — `f`, the continuous derivative function. Evaluating the RHS
 means running the whole sweep, since `f` reads the fresh table: there is no
-incremental `f`-only re-evaluation (§3.1, §5.2).
+incremental `f`-only re-evaluation (§3.1, §5.3).
 
 **frame** — one iteration of the loop — drain, integrate, boundary sequence,
 publication — the unit `step!` counts and the trace's ordinal key (§9.1).
@@ -6030,7 +6032,7 @@ order, stage 2 in topological order, then `f`. The hot loop runs a flat list of
 **sweep** — one execution of that schedule against the current state, with due
 discrete stages gated in. Mid-step sweeps are integrator scratch; the boundary
 sweep restores table consistency, and the event phase re-runs whole sweeps
-until quiescence (§5.2, §8.3, §8.5, §8.6).
+until quiescence (§5.3, §8.3, §8.5, §8.6).
 
 ### D.4 Time and events
 
@@ -6477,7 +6479,7 @@ frames in the hot path (§13.4).
 
 **feedthrough tracer** — the set-propagation instrument (global value-blind,
 or local primal-carrying at sampled states) used to classify a rejected cycle
-as real or artificial; diagnostic only, never an input to scheduling (§5.5).
+as real or artificial; diagnostic only, never an input to scheduling (§5.6).
 
 **kind** — a diagnostic's identity in the closed set enumerated normatively in
 Appendix C, with payload fields, owning section and severity; tests match on

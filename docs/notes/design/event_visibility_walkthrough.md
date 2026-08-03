@@ -1,7 +1,7 @@
 # Event visibility at a boundary, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` §5.2 (step-boundary semantics), §8.6 (event iteration)
+`framework_spec.md` §5.3 (step-boundary semantics), §8.6 (event iteration)
 and decision row 100, which settled the visibility rule below (round-start
 `u`, live `y`, pre-materialized bundles) on 2026-07-31 during the round-3
 cluster-4 adjudication. If this document and the spec ever disagree, the
@@ -9,7 +9,7 @@ spec wins.*
 
 Everything here answers one question: **when several events fire at the same
 boundary, what world does each handler see?** The spec's one-sentence answer
-(§5.2) is: *all guards and handlers read the same boundary snapshot, plus
+(§5.3) is: *all guards and handlers read the same boundary snapshot, plus
 their own component's refreshed ports; one component's transition reaches
 others through the next sweep.* This document builds the mechanism that makes
 that sentence true — and shows why it costs nothing.
@@ -179,7 +179,7 @@ depend on it.
 
 ## 8. The own-component exception: why `y` binds live
 
-§5.2 promises handlers "their own component's refreshed ports", and it must.
+§5.3 promises handlers "their own component's refreshed ports", and it must.
 If one component declares events `A1`, `A2` (declaration order) and both
 fire, `A2`'s handler sees post-`A1` state stores — `x`/`m` are live; that is
 the sequential-composition guarantee — so its own `y` must be the decode of
