@@ -1,7 +1,7 @@
 # Event visibility at a boundary, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` §5.2 (step-boundary semantics), §11.6 (event iteration)
+`framework_spec.md` §5.2 (step-boundary semantics), §8.6 (event iteration)
 and decision row 100, which settled the visibility rule below (round-start
 `u`, live `y`, pre-materialized bundles) on 2026-07-31 during the round-3
 cluster-4 adjudication. If this document and the spec ever disagree, the
@@ -17,7 +17,7 @@ that sentence true — and shows why it costs nothing.
 ## 1. The primitive fact: cells hold references to immutable values
 
 A signal-table cell does not hold bytes that get mutated in place — it holds
-a *reference* to an immutable value (§4.1, §9). "Writing a cell" means
+a *reference* to an immutable value (§4.1, §7). "Writing a cell" means
 replacing that reference with a reference to a *new* value:
 
 ```julia
@@ -28,7 +28,7 @@ table[battery_bus_voltage] = 0.0     # cell now → ref to 0.0
 
 The old value is untouched by the overwrite. Anyone who already loaded the
 old reference keeps a perfectly coherent view of `24.0` for as long as they
-hold it, and the GC keeps it alive. This is exactly the mechanism §12.2 uses
+hold it, and the GC keeps it alive. This is exactly the mechanism §9.2 uses
 to publish snapshots across tasks; here the same trick is applied *within*
 one boundary, between the event phase's writers and readers.
 
@@ -49,7 +49,7 @@ below expressible without policing anything.
 
 ## 3. The round, and who writes what
 
-At a step boundary the event phase iterates (§11.6): rounds of
+At a step boundary the event phase iterates (§8.6): rounds of
 
 > re-run the boundary sweep → evaluate **all** guards once → fire the
 > newly-fired events → repeat until a round fires nothing,
@@ -63,7 +63,7 @@ anything, anywhere.** A handler is pure like every other user function: it
 returns `(; x, m)` as immutable values, and the *framework* latches them into
 the component's state stores — immediately after the return, before `project`
 and before the next fired event runs (that immediacy is what makes
-same-component sequential composition real, §8). The only mid-round *table*
+same-component sequential composition real, §6.1). The only mid-round *table*
 writes are the framework's re-decodes, confined to the *firing component's
 own* cells. So the set of cells that can change between a round's start and
 its end is exactly "the cells of components that fired this round" — small,
@@ -79,10 +79,10 @@ a port of A through its `u`. Executed naively against the live table:
    **post-transition A**.
 
 Whether B observes pre- or post-transition A now depends on *execution
-order* — and "declaration order" (§13.2) orders events only within one
+order* — and "declaration order" (§11.2) orders events only within one
 component. Cross-component order would fall to the build's executor order, a
 schedule artifact that rewiring silently permutes: model semantics leaking
-from a build detail, the same disease §11.6 diagnosed when it rejected the
+from a build detail, the same disease §8.6 diagnosed when it rejected the
 single-pass cascade.
 
 ## 5. The rule, and its nearly-free mechanism
@@ -102,7 +102,7 @@ shadow table, no allocation. Nothing that happens to the cells afterwards can
 change what the bundle already holds.
 
 `y` stays bound to the live table, which is what delivers the "plus their own
-component's refreshed ports" clause — see §8 below.
+component's refreshed ports" clause — see §6.1 below.
 
 ## 6. One boundary, end to end
 
@@ -136,7 +136,7 @@ boundary.
 3. *Pre-materialization.* Battery's `args.u` loads the load-current
    reference; Avionics' `args.u` loads the reference to `24.0`. These
    NamedTuples now own those references.
-4. *Battery fires* (canonical order — see §7; it doesn't matter): the handler
+4. *Battery fires* (canonical order — see §4.4; it doesn't matter): the handler
    returns `(; m = (; m..., tripped = true))`, which the framework latches
    into the mode store; project; the re-decode runs `h_x` against the new
    mode → the cell `battery/bus_voltage` is overwritten with a reference to
@@ -173,7 +173,7 @@ Swapping the execution order of Battery and Avionics changes nothing
 observable, so **cross-component handler order stops being a semantic
 decision at all**. The framework still fixes a canonical order (the
 executor's component order, declaration order within a component) — but only
-so the §15.4 execution cursor ("event round *r*, component *c*") and the
+so the §13.4 execution cursor ("event round *r*, component *c*") and the
 diagnostics stream are deterministic and nameable, not because trajectories
 depend on it.
 
