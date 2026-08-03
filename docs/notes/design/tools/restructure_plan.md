@@ -120,7 +120,10 @@ adjudications), and every cited section exists in the new outline.
   inside fenced code blocks or inline code spans) to markdown links against
   GitHub-style auto-slugs of the actual headings (lowercase, punctuation
   stripped, spaces→hyphens). Companion files link cross-file:
-  `framework_spec.md#slug`. `row N` citations stay plain text (the decisions
+  `framework_spec.md#slug` — except `framework_decisions.md`, deliberately
+  left plain: it is one large table whose rows are edited constantly, and
+  links would clutter every cell's source (exemption honored by
+  `linkify.jl`). `row N` citations stay plain text everywhere (the decisions
   table has no per-row anchors; row numbers are stable by contract).
 - Insert a generated, linked table of contents (`## Contents`, unnumbered)
   between the document's front matter and the `# Part I` heading, listing

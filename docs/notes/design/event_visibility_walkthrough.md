@@ -1,7 +1,7 @@
 # Event visibility at a boundary, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` §5.3 (step-boundary semantics), §8.6 (event iteration)
+`framework_spec.md` [§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) (step-boundary semantics), [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-once-per-event) (event iteration)
 and decision row 100, which settled the visibility rule below (round-start
 `u`, live `y`, pre-materialized bundles) on 2026-07-31 during the round-3
 cluster-4 adjudication. If this document and the spec ever disagree, the
@@ -9,7 +9,7 @@ spec wins.*
 
 Everything here answers one question: **when several events fire at the same
 boundary, what world does each handler see?** The spec's one-sentence answer
-(§5.3) is: *all guards and handlers read the same boundary snapshot, plus
+([§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)) is: *all guards and handlers read the same boundary snapshot, plus
 their own component's refreshed ports; one component's transition reaches
 others through the next sweep.* This document builds the mechanism that makes
 that sentence true — and shows why it costs nothing.
@@ -17,7 +17,7 @@ that sentence true — and shows why it costs nothing.
 ## 1. The primitive fact: cells hold references to immutable values
 
 A signal-table cell does not hold bytes that get mutated in place — it holds
-a *reference* to an immutable value (§4.1, §7). "Writing a cell" means
+a *reference* to an immutable value ([§4.1](framework_spec.md#41-immutable-value-semantics), [§7](framework_spec.md#7-state-and-data-representation)). "Writing a cell" means
 replacing that reference with a reference to a *new* value:
 
 ```julia
@@ -28,14 +28,14 @@ table[battery_bus_voltage] = 0.0     # cell now → ref to 0.0
 
 The old value is untouched by the overwrite. Anyone who already loaded the
 old reference keeps a perfectly coherent view of `24.0` for as long as they
-hold it, and the GC keeps it alive. This is exactly the mechanism §9.2 uses
+hold it, and the GC keeps it alive. This is exactly the mechanism [§9.2](framework_spec.md#92-outbound-snapshot-publication) uses
 to publish snapshots across tasks; here the same trick is applied *within*
 one boundary, between the event phase's writers and readers.
 
 ## 2. Bundles and gathers: the ownership partition
 
 Every user function is called as `fn(comp, args)`, where `args` is a
-NamedTuple bundle of views (§5.2). Two of its fields are **gathers** — small
+NamedTuple bundle of views ([§5.2](framework_spec.md#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)). Two of its fields are **gathers** — small
 compiled loops that load cell references into a NamedTuple — and they
 partition the table by ownership:
 
@@ -49,7 +49,7 @@ below expressible without policing anything.
 
 ## 3. The round, and who writes what
 
-At a step boundary the event phase iterates (§8.6): rounds of
+At a step boundary the event phase iterates ([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-once-per-event)): rounds of
 
 > re-run the boundary sweep → evaluate **all** guards once → fire the
 > newly-fired events → repeat until a round fires nothing,
@@ -63,7 +63,7 @@ anything, anywhere.** A handler is pure like every other user function: it
 returns `(; x, m)` as immutable values, and the *framework* latches them into
 the component's state stores — immediately after the return, before `project`
 and before the next fired event runs (that immediacy is what makes
-same-component sequential composition real, §6.1). The only mid-round *table*
+same-component sequential composition real, [§6.1](framework_spec.md#61-connections-and-hierarchy)). The only mid-round *table*
 writes are the framework's re-decodes, confined to the *firing component's
 own* cells. So the set of cells that can change between a round's start and
 its end is exactly "the cells of components that fired this round" — small,
@@ -79,10 +79,10 @@ a port of A through its `u`. Executed naively against the live table:
    **post-transition A**.
 
 Whether B observes pre- or post-transition A now depends on *execution
-order* — and "declaration order" (§11.2) orders events only within one
+order* — and "declaration order" ([§11.2](framework_spec.md#112-the-declaration-inventory)) orders events only within one
 component. Cross-component order would fall to the build's executor order, a
 schedule artifact that rewiring silently permutes: model semantics leaking
-from a build detail, the same disease §8.6 diagnosed when it rejected the
+from a build detail, the same disease [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-once-per-event) diagnosed when it rejected the
 single-pass cascade.
 
 ## 5. The rule, and its nearly-free mechanism
@@ -96,13 +96,13 @@ single-pass cascade.
 
 "Materialize" means: build the args NamedTuple early. The executor already
 builds one per call; this moves the `u` reference-loads a few microseconds
-earlier, once per fired event. Because the values are immutable (§1), loading
+earlier, once per fired event. Because the values are immutable ([§1](framework_spec.md#1-purpose-and-method)), loading
 the references early *is* a capture of the round-start world — no copy, no
 shadow table, no allocation. Nothing that happens to the cells afterwards can
 change what the bundle already holds.
 
 `y` stays bound to the live table, which is what delivers the "plus their own
-component's refreshed ports" clause — see §6.1 below.
+component's refreshed ports" clause — see [§6.1](framework_spec.md#61-connections-and-hierarchy) below.
 
 ## 6. One boundary, end to end
 
@@ -136,7 +136,7 @@ boundary.
 3. *Pre-materialization.* Battery's `args.u` loads the load-current
    reference; Avionics' `args.u` loads the reference to `24.0`. These
    NamedTuples now own those references.
-4. *Battery fires* (canonical order — see §4.4; it doesn't matter): the handler
+4. *Battery fires* (canonical order — see [§4.4](framework_spec.md#44-function-valued-signals-environment-access); it doesn't matter): the handler
    returns `(; m = (; m..., tripped = true))`, which the framework latches
    into the mode store; project; the re-decode runs `h_x` against the new
    mode → the cell `battery/bus_voltage` is overwritten with a reference to
@@ -173,20 +173,20 @@ Swapping the execution order of Battery and Avionics changes nothing
 observable, so **cross-component handler order stops being a semantic
 decision at all**. The framework still fixes a canonical order (the
 executor's component order, declaration order within a component) — but only
-so the §13.4 execution cursor ("event round *r*, component *c*") and the
+so the [§13.4](framework_spec.md#134-runtime-failures-one-catch-site-an-execution-cursor) execution cursor ("event round *r*, component *c*") and the
 diagnostics stream are deterministic and nameable, not because trajectories
 depend on it.
 
 ## 8. The own-component exception: why `y` binds live
 
-§5.3 promises handlers "their own component's refreshed ports", and it must.
+[§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) promises handlers "their own component's refreshed ports", and it must.
 If one component declares events `A1`, `A2` (declaration order) and both
 fire, `A2`'s handler sees post-`A1` state stores — `x`/`m` are live; that is
 the sequential-composition guarantee — so its own `y` must be the decode of
 *that* state, not a stale pre-`A1` decode; otherwise `A2` receives an
 incoherent bundle where `y ≠ h(x)`.
 
-The ownership partition (§2) makes the split exact: `y` = own cells (live),
+The ownership partition ([§2](framework_spec.md#2-formalism)) makes the split exact: `y` = own cells (live),
 `u` = foreign cells (round-start). One corner, stated for completeness: a
 component whose input port is wired, through some contortion, from its own
 stage-1 output still gets round-start `u` — the binding rule is uniform, and

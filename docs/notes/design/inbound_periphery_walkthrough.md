@@ -1,13 +1,13 @@
 # The inbound periphery, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` §9.3 (staging, claims, drain), §9.7 (GUI write path),
-§10.6 (harness cell) and decision rows 44, 93, 96, 106, 107. Written
+`framework_spec.md` [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster) (staging, claims, drain), [§9.7](framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract) (GUI write path),
+[§10.6](framework_spec.md#106-run-lifecycle-and-partial-advance) (harness cell) and decision rows 44, 93, 96, 106, 107. Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
 for the roster freeze (rows 106–107). If this document and the spec ever
 disagree, the spec wins.*
 
-Everything in §9.3 answers one question: **how do things outside the loop
+Everything in [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster) answers one question: **how do things outside the loop
 feed values into a simulation that owns its data exclusively?** FlightCore's
 answer was a lock around the live model. This design's answer is a small
 pipeline of immutable handoffs, configured entirely while the simulation is
@@ -18,7 +18,7 @@ the story.
 
 ## 1. Slots and faces: *what* can be written
 
-The root assembly exports input faces (§11.6) — named, typed inputs that no
+The root assembly exports input faces ([§11.6](framework_spec.md#116-paths-wiring-and-exports)) — named, typed inputs that no
 component inside the model produces. Say our aircraft's root exports four:
 
 ```julia
@@ -40,7 +40,7 @@ may write** — the entire outside world (joysticks, network peers, GUI, your
 REPL) influences the model *only* by proposing new slot values. The write
 side addresses them by face *name* (`"throttle"`), never by structural path —
 the root contract is the vocabulary. (The read side is different: snapshot
-consumers address table cells by path or face, §9.2/§14.4.)
+consumers address table cells by path or face, [§9.2](framework_spec.md#92-outbound-snapshot-publication)/[§14.4](framework_spec.md#144-two-application-registers-over-one-plan).)
 
 ## 2. The roster, attaching, claiming: *who* may write
 
@@ -63,7 +63,7 @@ end
 
 **Attaching** (`attach!(sim, device, binding)`) is: validate the binding's
 face names against the root contract (unknown face → `AttachUnknownFace`),
-register the **claims**, compile the staging shape (§3), add the entry.
+register the **claims**, compile the staging shape ([§3](framework_spec.md#3-component-taxonomy)), add the entry.
 A **claim** is exclusive ownership of a face: one writer per slot at any
 time, a second claimant is a `ClaimConflict` at attach, and `detach!`
 releases the claims. The claim set is derived from the **binding** — the
@@ -77,17 +77,17 @@ joystick_binding = (stick_y  = (face = "elevator", expo = 0.6),
 
 Because the roster is frozen per run, so is the **partition of the face set**
 it induces: every face is either claimed by exactly one device or belongs to
-the shared interactive remainder (§5), and that partition is a static,
+the shared interactive remainder ([§5](framework_spec.md#5-evaluation-order-and-feedthrough)), and that partition is a static,
 printable fact of the run — who writes what, decided before the first frame.
 
 One consequence is deliberate and worth stating early: **device death is not
 detach**. A task that crashes, returns voluntarily, or loses its hardware
-mid-run simply stops filling its cell; the §10.2 heartbeat reports the death
+mid-run simply stops filling its cell; the [§10.2](framework_spec.md#102-loop-scheduling-wait-primitive-yields-thread-budget) heartbeat reports the death
 by name, and the entry — claims included — persists to run end. The orphaned
 slots hold their last-drained values, and the GUI renders the fact where the
-user is looking ("claimed by `T16000M` — task dead", §9.7). Recovery is
+user is looking ("claimed by `T16000M` — task dead", [§9.7](framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract)). Recovery is
 between runs: stop, `detach!`, then `init!` for a fresh trajectory or
-`replay!`-to-end + `run!` to continue the interrupted one (§10.7).
+`replay!`-to-end + `run!` to continue the interrupted one ([§10.7](framework_spec.md#107-replay-the-trace-re-drives-the-ordinary-loop)).
 
 ## 3. Batches and staging cells: *how* a write is proposed
 
@@ -130,8 +130,8 @@ idempotent and survive coalescing.
 At the top of each frame — and only there — the loop takes each cell's
 contents atomically and applies it through the entry's attach-compiled
 **scatter** (position → slot store, statically typed, `nothing` skips — the
-mirror of §9.2's output gather), in attachment order (the harness cell
-last, §5):
+mirror of [§9.2](framework_spec.md#92-outbound-snapshot-publication)'s output gather), in attachment order (the harness cell
+last, [§5](framework_spec.md#5-evaluation-order-and-feedthrough)):
 
 ```julia
 for entry in roster                                    # frame top, loop task
@@ -143,7 +143,7 @@ end
 ```
 
 Note what is *absent*: the drain validates nothing. Every check ran at
-staging (§6.2), so the drain is pure application — and since the roster is a
+staging ([§6.2](framework_spec.md#62-aggregation-explicit-summing-junctions)), so the drain is pure application — and since the roster is a
 fixed value at `run!`, the whole thing is compilable: the cells and their
 scatters form a known tuple the frame function can specialize on, with no
 name resolved and no dynamic dispatch at frame top.
@@ -159,7 +159,7 @@ One retention detail (row 107): an enumerated writer's batch enters the trace
 verbatim — claim-narrow, dense by nature — while the interactive register's
 wide, mostly-`nothing` tuple is converted on retention to sparse
 (position ⇒ value) pairs, so trace size tracks information, not surface
-width; replay converts back once, up front, off the loop (§10.7).
+width; replay converts back once, up front, off the loop ([§10.7](framework_spec.md#107-replay-the-trace-re-drives-the-ordinary-loop)).
 
 ## 5. "Registers": modes of use, not more machinery
 
@@ -169,8 +169,8 @@ register). There are two:
 
 - **The claimed register**: enumerate faces in your binding, claim them at
   attach, own them exclusively. The joystick. Autonomous devices live here.
-- **The interactive register**: the GUI (§9.7) and the harness/REPL's
-  task-free entry point `stage!(sim, "face" => value, ...)` (§10.6). Its
+- **The interactive register**: the GUI ([§9.7](framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract)) and the harness/REPL's
+  task-free entry point `stage!(sim, "face" => value, ...)` ([§10.6](framework_spec.md#106-run-lifecycle-and-partial-advance)). Its
   writers share the **unclaimed remainder** of the run's partition — the
   complement of the union of all claims, computed rather than staked, and
   every bit as static for the run as a claim set. It has its own compiled
@@ -208,7 +208,7 @@ enumerated, currently unclaimed. `map_input` dutifully produces
 `flaps` has no position in the peer's schema → `OutOfClaimEntry`, attributed
 to the device whose mapping drifted, before the value ever nears the loop.
 
-The GUI is therefore not an exception: one device contract (§9.6), two
+The GUI is therefore not an exception: one device contract ([§9.6](framework_spec.md#96-devices-one-authoring-contract-no-taxonomy)), two
 *binding* sides (enumerated vs. derived), one staging rule, one checkless
 drain. Opportunistic writing by autonomous devices does not exist — a device
 that wants a face enumerates it — so cross-writer races on one slot
@@ -229,7 +229,7 @@ its authority, unchanged, to every frame of the run.
 
 Joystick attached while stopped (claims `throttle`, `elevator`); GUI
 attached (claims nothing); `run!` reads the roster, bakes widget liveness
-(§9.7) and specializes the drain; slots as above.
+([§9.7](framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract)) and specializes the drain; slots as above.
 
 1. *Between frames*: the joystick task polls at its own rate, runs
    `map_input` (deadzone, expo — pure, on the device task), stages
