@@ -115,7 +115,7 @@ fires on `ω > ω_idle && fuel_available`).
 
 ## 3. Component taxonomy
 
-Three kinds, two of them leaves with crisp, closed semantics, one pure composition:
+Three classes, two of them leaves with crisp, closed semantics, one pure composition:
 
 ### 3.1 Continuous component (the hybrid primitive)
 
@@ -1519,7 +1519,11 @@ free between steps — but its costs are structural:
   the live model; under the immutable signal table there is nothing to poke — the
   periphery needs a defined write path regardless.
 
-The replacement has five planes:
+The replacement has five planes. (Vocabulary, anchored here: a **frame** is one
+iteration of the loop — drain, integrate, boundary sequence, publication — the
+unit `step!` counts, the trace's ordinal keys, and "per frame" means throughout
+this document. Distinct from the kinematic *reference frames* of the aircraft
+domain, which always appear compounded: the b frame, the ECEF frame.)
 
 1. **Staging (inbound):** devices submit pending input writes at any wall-clock
    moment, never touching live slots (§12.3).
@@ -1723,9 +1727,9 @@ performs no checks at all. A surface arises in one of two ways:
   a subsequent `attach!` claims — is renormalized away at the attach itself
   (below). §12.5's widget liveness is this surface made visible.
 
-One rule, two surface kinds. The GUI is not an exception
-but the resident of the second kind — one device kind (§12.4), two *binding*
-kinds (enumerated vs. derived), one drain rule — and opportunistic writing by
+One rule, two surface classes. The GUI is not an exception
+but the resident of the second class — one device contract (§12.4), two *binding*
+sides (enumerated vs. derived), one drain rule — and opportunistic writing by
 autonomous devices does not exist: a device that wants a face enumerates it.
 Cross-writer races on one slot therefore cannot arise structurally (claimed
 faces have exclusivity; unclaimed faces admit only the interactive register),
@@ -2034,12 +2038,12 @@ difference (§12.1's topology, §12.9's join exclusion).
 **The author owns the loop body; the framework owns the bracket.** The fork
 is decided by FlightCore's own history: its eight device hooks were never
 sufficient alone — the framework loop calling them came in three flavors,
-and the *taxonomy* carried the loop-shape information. One device kind
+and the *taxonomy* carried the loop-shape information. One device contract
 therefore means author-owned loop bodies. A framework-owned hook loop must
 ask each device what it waits on — a poll timer, a blocking socket, the
 §12.8 boundary counter — and that declaration is the taxonomy resurrected
 as a trait; the bidirectional peer (one socket, one lifecycle — the
-one-kind headline case) needs two waits at once, which a hook loop cannot
+no-taxonomy headline case) needs two waits at once, which a hook loop cannot
 serve without a select engine; and the GUI's render loop fits no hook set
 at all. Under the author-owned body, every wait structure is ordinary user
 code composed from handle primitives:
@@ -2943,7 +2947,7 @@ The inventory, and where each schema fact gets its authority:
   declarations announce); a stateless leaf declares no store, so its stage names
   alone decide — which is what makes a stateless `h_xu` component tier-
   transparent library material (§15.7). Members of both families, or of neither,
-  are the §13.5 kind errors. **The root of a build is an assembly:** root slots
+  are the §13.5 class errors. **The root of a build is an assembly:** root slots
   are the root's exported input faces (§8, §12.3) and only assemblies declare
   `exports` (§13.6), so a primitive root has no faces and every input it declares
   is an unconnected-input error. Exercising a leaf alone is what §15.7's
@@ -2954,7 +2958,7 @@ The inventory, and where each schema fact gets its authority:
 **Declared in `output_types` = public; declared in `local_types` = private intermediate;
 declared in neither = build error; absent `output_types()` = no outputs** —
 visibility by declaration *site*, the same move as
-kind-by-declaration-shape. Ports in the contract are connectable, GUI-listed and
+class-by-declaration-shape. Ports in the contract are connectable, GUI-listed and
 log-exported. `local_types` entries occupy table cells (they must survive from their
 computing stage to `f`/guards, and they serve the author's own debug panels via
 the snapshot, §12.2), but they are non-connectable — a build error, not a
@@ -3132,12 +3136,12 @@ the internal endpoints — §13.2's blessed derivation-from-declarations — and
 derivation is forced, not merely convenient: an assembly is tier-neutral (it
 exports continuous-sourced and discrete-sourced ports side by side), so
 author-declared face types would need per-face tier annotations restating what
-each producer's kind already fixes (§13.5; the leaf walk reads the tier from
+each producer's class already fixes (§13.5; the leaf walk reads the tier from
 the producer). Rejected spellings: routing values under the leaf names
 `input_types`/`output_types` (a name-level pun — a discrete leaf's exact signature with
-alien value semantics, killing §13.5's name-level kind split); leaf-style *typed*
+alien value semantics, killing §13.5's name-level class split); leaf-style *typed*
 faces plus face wires inside `connections` (the tier problem above, plus
-face/child namespace collisions and the weakest kind marker); routing-as-wires
+face/child namespace collisions and the weakest class marker); routing-as-wires
 with derived types and no face list (facehood implicit in wiring — publicity is
 never implicit, §13.3).
 
@@ -3300,7 +3304,7 @@ organized as three strata:
 
 - **Stratum A — structure.** Pure declaration reading; no user stage code
   executes (`exports`/`faces` bodies are declaration code, §13.8). Tree walk
-  from the root instance: components by path, kind classification by
+  from the root instance: components by path, class read off
   declaration shape (§13.5), leaf contract collection (`input_types`,
   `output_types`, `local_types`, `init_*` values, `events`), bottom-up face
   derivation, then global wiring resolution to absolute leaf terminals:
@@ -4070,7 +4074,7 @@ commitments, a library and an idiom follow:
   and an early validation that the contract functions support parametric
   components). Tier-transparency falls out of settled semantics: a stateless
   continuous `h_xu` recomputes every sweep, so fed ZOH-held discrete signals
-  its output changes only at ticks — no tier-neutral kind needed.
+  its output changes only at ticks — no tier-neutral class needed.
   `UnitDelay{V}` is a **discrete** leaf at `K = 1`: `init_z = (v = zero(V),)`,
   `h_z` publishing the stored value and `g` storing the incoming one — the
   tier's native `z⁻¹` (§11.6, the shape §17.2's `sat_out_0` hand-writes), no
@@ -5067,7 +5071,7 @@ forced by this cast):
   into `act`, bypassing avionics; that bypass becomes a declared route.
 - `Simulation(world; algorithm = RK4(), h = 0.02, n = 1, t_end = 1000)` — `n`
   binds `Δt_base = n·h` (§11.5; default 1: base tick every step). The entire
-  build pipeline runs here: kind resolution, path validation, face derivation
+  build pipeline runs here: class resolution, path validation, face derivation
   (computed exports expanded, printable), two-producers/unconnected checks,
   topological sort, probe passes, rate compilation, flat layout, slot table.
 - `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services (§16;
@@ -5133,26 +5137,26 @@ avionics-internal derivation — aircraft design, not framework design).
 
 ### 17.5 The strapdown IMU: integrate-and-dump across the tier boundary
 
-The strongest challenge mounted against the §3 kind split, and its resolution.
-The general question first: why two leaf kinds at all — why not one all-in-one
+The strongest challenge mounted against the §3 class split, and its resolution.
+The general question first: why two leaf classes at all — why not one all-in-one
 primitive carrying `x`, `m` *and* `z`, with `f`, events *and* `g`, purely
 continuous or discrete components falling out by whichever facets an author
-declares? (Kind is already read off declaration shape, §13.5 — the question is
+declares? (Class is already read off declaration shape, §13.5 — the question is
 whether the two declaration sets should be exclusive.)
 
 **Why the merge buys nothing.** The split is between *time bases*, not state
-kinds — the continuous primitive is already hybrid (`m`, guards, handlers, §3.1);
+classes — the continuous primitive is already hybrid (`m`, guards, handlers, §3.1);
 what separates the classes is sweep-driven versus tick-driven execution. And the
 settled rules force a merged component's two halves to communicate exactly as two
 siblings do: one home per datum (§5.2), `f` has no `z` view, `g` has no `x` view,
 and `z⁺` is decoded only at the owner's next tick (`g` runs last) — the very
 fact that makes ticks→events structurally impossible and terminates the boundary iteration (§11.6). Cross-tier
-influence inside the merged kind still routes through published table cells, so
+influence inside the merged class still routes through published table cells, so
 the all-in-one component is an assembly of two primitives in a trench coat. Its
 costs, meanwhile, are real: a stage cannot run both every sweep *and* only at
-ticks, so the merged kind needs four tier-disambiguated stage functions; tier
+ticks, so the merged class needs four tier-disambiguated stage functions; tier
 stops being a component property readable off one `output_types` signature (§13.2) and
-becomes per-port vocabulary; every kind-implied obligation (rate required,
+becomes per-port vocabulary; every class-implied obligation (rate required,
 `K`-on-continuous error, `Δt` bundle availability, `Dual` activation membership) becomes a
 facet-conditional web; and the sampling seam — ZOH and the `z⁻¹` delay, the most
 bug-prone boundary in a flight-control stack — disappears into a monolith where
@@ -5256,7 +5260,7 @@ init_z(::IMUSampler) = (Θ = zeros(SVector{3}), q = SVector{4}(1.0, 0, 0, 0),
                         Υ = zeros(SVector{3}), V = zeros(SVector{3}))
 input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = SVector{4,Float64},
                          Υ = SVector{3,Float64}, V = SVector{3,Float64})
-output_types(::IMUSampler) = (sample = IMUSample,)   # discrete kind: cells pin (frozen-exact)
+output_types(::IMUSampler) = (sample = IMUSample,)   # discrete class: cells pin (frozen-exact)
 
 function h_zu(s::IMUSampler, (; z, u, Δt))
     q_z = RQuat(z.q, normalization = false);  q_u = RQuat(u.q, normalization = false)
@@ -5314,7 +5318,7 @@ sampler `h_zu`; sampler `h_zu` → the integrals' `f`-edge, §5.3). The "reset"
 becomes a visible tier-crossing feedback loop — which is what it always was,
 physically.
 
-**Verdict.** The strongest counterexample landed on the two-kind taxonomy with
+**Verdict.** The strongest counterexample landed on the two-class taxonomy with
 *less* code than the fused original — same thirteen integral scalars, same math,
 minus the reset block — and three structural gains. The sampling seam became a
 wire. The sketch's incidental violations became visible structure: the
@@ -5328,7 +5332,7 @@ linearization semantics could coherently handle. Residual escape hatch, recorded
 unbuilt: if interval-relative dynamics ever neither factor algebraically nor
 tolerate the latch-back wire, the guarded addition is a **tick-triggered handler**
 on continuous components (periodic events). Nothing surveyed needs it, and it
-would be the camel's nose for the merged kind.
+would be the camel's nose for the merged class.
 
 ---
 
@@ -5737,7 +5741,7 @@ Severities, in the vocabulary §15 fixes:
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | §13.2 | build (collected) |
 | `PrimitiveAtRoot` | root path, component type | §13.2 | build (collected) |
 | `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions (§13.1) | §13.5 | build (collected) |
-| `KindMixed` | component path, the `connections` declaration and the offending leaf declarations | §13.5 | build (collected) |
+| `ClassMixed` | component path, the `connections` declaration and the offending leaf declarations | §13.5 | build (collected) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | §13.5 | build (collected) |
 | `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | §5.2, §13.2, §13.5 | build (collected) |
 | `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | §13.6 | build (collected) |
@@ -5805,3 +5809,743 @@ Severities, in the vocabulary §15 fixes:
 | `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | §12.3 | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | §9.3 | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | Appendix B, §15.5 | warning (runtime), at run start |
+
+---
+
+## Appendix D. Glossary
+
+*Non-normative. Each entry compresses the meaning its owning section fixes
+and cites that section; where an entry and its owning section diverge, **the
+owning section wins** — the same precedence rule the companion walkthrough
+explainers carry. The glossary's job is to route a reader to the normative
+text and to make drift visible, never to be a second source of truth. Entries
+are grouped by subject and alphabetical within each group; a term appears
+once, in the group that owns it, with a "not to be confused with" clause
+wherever a neighboring term is genuinely close.*
+
+### D.1 Component model and declaration layer
+
+**abstract entry** — an `input_types` entry whose declared type is abstract,
+stating **structural substitutability**: any concrete producer face below the
+bound wires to it (§7's field handles are the demonstrated client). Never
+needed for eltype genericity, and illegal where the face surfaces as a root
+slot (`AbstractAtRoot`) (§13.2).
+
+**assembly** — pure composition: component-typed fields as children, plus
+`connections` (mandatory, the class marker), `exports` and `rates`, with no
+dynamics of its own; flattened away for scheduling, retained as the
+navigation hierarchy and as declaration-level rate scopes (§3.3, §13.5).
+
+**class** — a component's primitive-vs-assembly status, read off *which*
+well-known declarations its type defines: `connections` ⇒ assembly, any leaf
+declaration ⇒ primitive, neither ⇒ `ClassUnreadable` (§13.5). Not to be
+confused with *tier* (continuous vs. discrete, §D.4) or with a diagnostic
+*kind* (§D.9).
+
+**component** — the unit of modeling: a leaf (continuous or periodic discrete
+primitive) or an assembly of components; "primitive" and "leaf" are used
+interchangeably for the non-assembly classes (§3).
+
+**container children** — a `Tuple`/`NamedTuple` field whose elements are all
+components, contributing them as children path-named `"field/1"` or
+`"field/key"`. Transparent grouping, not an assembly: no contract, no
+`connections`, no rate scope (§13.5).
+
+**continuous component** — the hybrid primitive: continuous state `x`, modes
+`m`, flow `f`, two output stages, events (guards + handlers) and optional
+`project`; any facet may be empty, so a state-free instance is an FSM (§3.1).
+
+**contract** — a component's declared interface: `input_types` (its
+requirements) and `output_types` (its public ports). Declared in
+`output_types` = public, in `local_types` = private intermediate, in neither =
+build error (§13.3).
+
+**declaration inventory** — the closed set of well-known functions a component
+or assembly defines — `init_x`/`init_m`/`init_z`, `workspace`,
+`input_types`/`output_types`/`local_types`, `events`, the stages, `f`/`g`/
+`project`, and `connections`/`exports`/`rates` — each declared in a stated
+register of authority: by value, by type, by allocation (§13.2).
+
+**function family** — which bundle fields a given function may legally
+receive: `h_x`/`h_xu`/`h_z`/`h_zu`/`f`/`g`/guard/handler/`project`, with
+§5.2's comment block stating each family's maximal legal set and
+`BundleFieldError` classifying a read as illegal for the family (§5.2).
+Not a diagnostic *kind* (§D.9).
+
+**generic holding** — a parent holding a child through a non-concrete field
+type; the child is opaque below its exported faces, and the wires and exports
+referencing those faces *are* the imposed contract, checked per instantiation
+(§13.8, §8).
+
+**hybrid causal system** — what the framework simulates: continuous flow with
+algebraic outputs, multi-rate periodic discrete dynamics, zero-crossing
+events, post-step manifold projection, and externally injected inputs (§2).
+
+**the letters** — `f` the continuous flow, `g` the discrete update, `h_*` the
+output stages (suffix = dependence class, not argument list), `x`/`m`/`z` the
+state stores, `u` wired inputs, `y` own published signals, `ws` the
+workspace. Bare `h` means the integration step size only (§5.2, §11).
+
+**periodic discrete component** — a leaf with discrete state `z`, update `g`
+at a declared rate, and two output stages whose cells hold zero-order between
+ticks; it has no `m` store, and `z` reaches others only through signals
+(§3.2).
+
+**rate scope** — an assembly's `rates` declaration: immediate child name ⇒
+integer multiplier `K ≥ 1` relative to the enclosing scope, composing
+multiplicatively down the tree and compiled to one absolute tick divisor per
+discrete component (§13.7, §11.5).
+
+**schema authority** — the principle that declarations *define* structure and
+evaluation only *checks* conformance against them, never the reverse; types by
+declaration, values by execution, conformance by comparison (§13.1).
+
+**stage function / two-stage outputs** — every component provides exactly two
+output stages, `h_x`/`h_z` (no `u` in the bundle, hence structurally no
+feedthrough) and `h_xu`/`h_zu`; feedthrough is thereby declared by signature,
+with no dependency annotations anywhere (§5.2).
+
+**workspace** — component-declared mutable scratch, declared *by allocation*
+(`workspace(::C, ::Type{T})` continuous, `workspace(::C)` discrete), arriving
+as the `ws` bundle field; excluded from state semantics, never a condition
+target, and poisoned before every call in debug mode (§9.3).
+
+### D.2 Signals and data homes
+
+**buffer** — the framework-owned contiguous `Vector{T}` backing all continuous
+state, laid out at build time; authoritative, with typed state values as
+ephemeral reconstructions of it (§9.1). §15.6's integration intermediates live
+in framework-owned integrator buffers, never in a component's workspace.
+
+**bundle** — the single `NamedTuple` of zero-copy views a component function
+receives beside the component itself. Under the bundle law a name is present
+**iff** the corresponding store or fact exists for that component; undeclared
+stores are absent, never `nothing`-filled (§5.2).
+
+**cell** — one concretely-typed entry of the signal table, one per output port
+and per `local_types` entry of the flattened model, written by its producing
+stage and read by every gatherer (§4.1). Bare "cell" is only this — see
+*staging cell* (§D.6) and *store*.
+
+**entry** — never used bare: the spec's compounds are table entry (a cell),
+input entry (§13.2), executor entry (§14.7), roster entry (§12.3), batch entry
+(§12.3) and condition entry (§16.3), each a different thing.
+
+**face** — a name in an assembly's `exports` contract: an opaque token with
+two build-checked invariants (no `/`, unique within the assembly), its type
+and direction derived from its internal endpoint. The periphery's write side
+speaks face names only; the read side speaks slash paths (§13.6, §12.3).
+
+**feedthrough** — an instantaneous input→output dependence. **Structural
+feedthrough** is this design's version: fixed by which stage produces a port
+rather than annotated, with every stage-2 output conservatively presumed
+dependent on every wired input (§5.2).
+
+**field handle / function-valued signal** — an immutable query object carried
+on an ordinary port (`ISAField`, `TerrainField`) that consumers evaluate at
+arguments of their own choosing; bulk data rides as build-time-frozen
+references, never as mutable caches (§7).
+
+**immutable value semantics** — the signal rule, stated precisely as
+immutability *plus frozen references* (`isbits` is the common case, not the
+rule): no aliasing, safe concurrent reads, and a definite per-cell freshness
+tied to the producer's schedule position (§4.1).
+
+**locals** — `local_types` entries: component-local intermediates occupying
+table cells for the component's own later consumption (`f`, guards, its debug
+panels), non-connectable and presentation-filtered by default (§13.3).
+
+**one home per datum** — buffer for `x`, stores for `z`/`m`, table for
+produced signals; no store mirrors another, and the table never holds
+transported data (§5.2, §9.1).
+
+**port** — the addressable unit of the model: one declared name, one cell, one
+root slot, one staged write, one device claim, one trace address, one GUI
+liveness verdict. Wiring is port-granular, and which stage computes a port is
+invisible outside the component (§4.2, §4.3).
+
+**signal table** — the framework-owned collection of cells holding every
+produced signal of the flattened model; consumers gather views from it, and
+its consistency is a boundary property, transiently integrator scratch within
+a step (§4.1, §11.3).
+
+**slot** — a root input slot: the root assembly's exported input face,
+produced by no component, constant within a frame, and the only thing the
+periphery may write (§12.3, §13.6).
+
+**staging cell** — the per-device atomic holding place where a device's pending
+write batch waits between drains; mutated frame by frame, hence outside the
+table's publish-once discipline (§12.3). Not a table cell (§4.1).
+
+**store** — the typed home of `m` and `z`: overwritten by the framework when a
+handler or update returns a new value, never arithmetic-touched, snapshot-free
+to copy. Never called a cell — root slots, by contrast, *are* source cells of
+the table (§9.3, §4.1, §12.2).
+
+**summing junction** — an ordinary library component performing N-to-1
+aggregation through explicit wires (`SumJunction{W, N}` or a named
+site-specific variant); there is no framework aggregation mechanism, and fold
+order is the junction's positional input order (§6).
+
+**view** — a zero-copy reconstruction of a store handed to a function through
+its bundle; it materializes in the caller's frame for the duration of the call
+and is value-identical on re-materialization within a sweep (§9.1, §5.2).
+
+### D.3 Evaluation and scheduling
+
+**algebraic loop** — a genuine cycle in the instantaneous dependency graph: a
+build error naming the path in canonical slash form, broken by the author with
+inserted dynamics, an explicit `UnitDelay` or restructuring (§5.4). Not to be
+confused with an **artificial loop**, port-level acyclic but stage-level
+cyclic, whose remedy is splitting the component (§5.3).
+
+**flow / RHS** — `f`, the continuous derivative function. Evaluating the RHS
+means running the whole sweep, since `f` reads the fresh table: there is no
+incremental `f`-only re-evaluation (§3.1, §5.2).
+
+**frame** — one iteration of the loop — drain, integrate, boundary sequence,
+publication — the unit `step!` counts and the trace's ordinal key (§12.1).
+Distinct from a *boundary* (§D.4), and from the kinematic reference frames of
+the aircraft domain, which always appear compounded ("the b frame").
+
+**projection** — the optional per-component hook `x ← project(x)`, run in the
+only two schedule positions between a state write and its decode (after
+integration, after a handler's `x`-reset); the cheap end of geometric
+integration's projection methods (§2, §9.1).
+
+**schedule** — the static evaluation order computed once at build time from
+wiring edges plus intra-component feedthrough: all stage-1 functions in any
+order, stage 2 in topological order, then `f`. The hot loop runs a flat list of
+`(component, stage)` entries, with zero runtime graph logic (§5.1).
+
+**sweep** — one execution of that schedule against the current state, with due
+discrete stages gated in. Mid-step sweeps are integrator scratch; the boundary
+sweep restores table consistency, and the event phase re-runs whole sweeps
+until quiescence (§5.2, §11.3, §11.5, §11.6).
+
+### D.4 Time and events
+
+**boundary** — a published consistency point: where the §11.6 macro-sequence
+completes and a snapshot goes out. Every grid point is a boundary, but `t*`
+and boundary zero are boundaries that are not frame tops (§11.4). *Boundary
+zero* (§16.5, §D.8) is a hyponym — it is an ordinary boundary whose incoming
+transitions are authored rather than computed.
+
+**boundary-detected** — the default detection policy: guards are checked for
+not-holding → holding edges against their priors at step boundaries only, with
+no root-finding and no step rejection, the handler firing at the end of the
+step in which the edge was observed (§2.1).
+
+**chattering / event budget** — the bounded per-step localization allowance;
+exhaustion *degrades* rather than throws — localization stops for the rest of
+the frame and further crossings fire at the next boundary, under a
+`ChatteringBudget` warning naming the event (§11.4).
+
+**`Δt_base`** — the base tick period, an integer multiple `n·h` of the
+continuous step and fixed at `Simulation` construction; every discrete
+component's period is an integer multiple of it (§11.5).
+
+**due** — a discrete component is due at a boundary when its compiled absolute
+divisor admits it; due components' output stages are gated into the sweep and
+their `g` updates run after quiescence (§11.5, §11.6).
+
+**edge semantics / holding** — an event fires on a not-holding → holding
+transition of its predicate, never on a bare sign change; the opposite
+crossing direction is declared as a second event with the negated guard (§2.1,
+§11.6).
+
+**guard** — the declared function defining an event's predicate, evaluated
+against the fresh boundary table and paired with a handler in an ordered,
+named `events` collection; its detection policy is set per event by the
+`localize` flag (§2.1, §13.2).
+
+**harmonic grid** — the rule that every discrete period is an integer multiple
+of `Δt_base`, itself an integer multiple of `h`, so ticks land only on step
+boundaries; grid times are indexed from the frame count, never accumulated
+(§11.5, §11.4).
+
+**interpolant** — the lazily built cubic Hermite continuous extension over the
+last completed step, from which localization probes read the states they sweep;
+invalidated at `t*`, where the handlers have made it a lie (§11.4).
+
+**localized** — the opt-in per-event detection policy: the crossing instant is
+bracketed by derivative-free root-finding over probe sweeps of interpolated
+states. Requires the continuous (sign) guard form, and runs identically paced
+or unpaced (§2.1, §11.4).
+
+**once per event** — the rule bounding the boundary event iteration: each
+declared event fires at most once per boundary, which makes termination
+structural; an event legitimately re-enabled within the boundary waits one
+step, with an `EventDeferred` warning (§11.6).
+
+**pacing / pacer debt** — the pacer inserts waits between completed frames and
+never alters the boundary sequence; a frame exceeding its wall budget leaves
+**debt** that later frames repay, with excess forgiven by re-anchor plus
+warning (§11.7).
+
+**predicate** — what a guard defines: a `Bool`-valued form, or the sign of a
+continuous function with positive = holding (writing the sign value `σ`,
+holding = `σ ≥ 0`) (§2.1). Not to be confused with §16's *condition*, the
+value that sets a build's state (§D.8).
+
+**prior** — the per-event stored sample of its predicate at the previous
+boundary's quiescence, held in loop state and never in `z`; "newly fired"
+is defined against it, and boundary zero establishes every prior as
+not-holding (§11.6).
+
+**quiescence** — the fixed point of the boundary event phase: rounds of
+[sweep → guards → handlers] iterate until a round fires nothing, after which
+the priors are updated and due `g` updates run (§11.6).
+
+**remainder step** — the integration from `t*` to the original grid target
+after a localized event, with `h′` derived at use; guards are re-checked on it
+under the event budget (§11.4).
+
+**`t*`** — the localized event time: the holding endpoint of the root-finder's
+final bracket, structurally strictly later than `tₙ`. A full boundary runs
+there, but no ticks are due and no staged inputs are drained (§11.4).
+
+**tick** — an instant at which a discrete component's stages and update run,
+gated by counter modulo against the harmonic grid; different boundaries
+therefore run different subsets of the schedule (§11.5).
+
+**tier** — the continuous or discrete side of the hybrid formalism, read off a
+leaf's declaration shape (`DeclarationOnWrongTier` names a violation) (§13.2,
+§13.5). Bare "tier" means only this: the genericity classes are *walked /
+pinned / exempt* (§D.5) and the detection policies *boundary-detected /
+localized*.
+
+### D.5 Build pipeline
+
+**activation** — a re-run of Stratum C at a given scalar type `T`: cells
+re-typed by the leaf walk, buffers re-laid-out, workspace allocators
+re-invoked, probe chain re-run. Structure and schedule are `T`-independent;
+non-nominal activations are lazy, with an opt-in exhaustive set for CI (§14.4).
+
+**always-on conformance check** — the probe's comparison left permanently in
+place: one type test of a stage return against the declaration-derived
+expected `NamedTuple` at the table-write point, folding to zero instructions
+when the return type is proven (§14.5).
+
+**`Build`** — the artifact `build(world)` produces: wire list, face table with
+provenance, schedule and root slots as plain printable data — the inspectable
+contract of the instantiation, and what `attach!`, `stop_on`, replay and
+condition resolution all validate against (§14.2).
+
+**chunking** — splitting a large phase body's entry tuple into statically
+typed chunks behind non-inlined function barriers; the implementation's only
+representation freedom, converting compile cost from superlinear in body size
+to linear in entry count (§14.7).
+
+**executable set** — the function set an activation can actually run, hence
+exactly what it probes: a `Dual` activation sees only the continuous output
+stages and `f` — never the discrete stages, `g`, guards or handlers (§14.4).
+
+**executor** — the compiled execution form of the schedule: a concretely-typed
+tuple of entries over statically typed cell storage, traversed by a
+compile-time-unrolled walk, with code-selecting facts in type parameters and
+plain data in fields (§14.7).
+
+**leaf walk** — the framework's derivation of per-activation cell and store
+types from the declared nominal types: on continuous producers real leaves and
+`Real` type parameters follow the activation scalar, everything else pins; on
+discrete producers the walk pins wholesale (§13.2; applied in §14.1's
+Stratum C).
+
+**lens (`Getter`)** — the compiled navigation step of a condition entry: its
+tree position tuple lifted to a type parameter, giving type-stable access to
+the authored value at apply time (§16.3).
+
+**measurement seam / phase bodies** — `phase_bodies(sim)` returns the compiled
+bodies of the nominal activation bound over the simulation's own buffers
+(`rhs`, `sweep_hx`, `sweep_hxu`, `ticks`, plus per-event guards and handlers
+and per-component `project`). Its one promise is identity with what the loop
+runs, which is what makes §9.5's allocation assertions honest (§14.7).
+
+**nominal** — the `Float64` activation, and of a declared type its `Float64`
+face; the only activation that runs in real time, and the one where the
+conformance check demands exact type match (§13.2, §14.4, §14.5).
+
+**probe** — the build's single evaluation of a user function with real values,
+checking shape and type conformance and discarding the result. Every user
+function is probed once, at the initial state; probes see only that state's
+branch (§14.3).
+
+**probe value / input synthesis** — `probe_value(::Type)` fabricates values
+for the one kind of terminal with no producer, root slots
+(`zero(T)`/`false`/first enum/`T()`, overridable). Strictly probe-scoped:
+never an initial slot value, which §16.6 makes a structural barrier (§14.3).
+
+**`ProbeDual`** — the framework's exported canonical concrete probe scalar
+(`ForwardDiff.Dual{ProbeTag, Float64, 1}`), which keys the CI activation
+pinning walked-leaf genericity; its width is arbitrary, since what CI pins is
+genericity, not a particular Jacobian (§14.4).
+
+**schema vs. layout** — the two lookup families the `Build` supplies to
+condition resolution: *schema* is the evaluated declarations (may you write
+this field, at what leaf type — the authority), *layout* is where it
+physically lives (buffer ranges, store and slot indices) (§16.3).
+
+**stratum** — one of the build's three phases: A structure (pure declaration
+reading), B schedule (the single evaluation-feeds-structure step), C
+activation (everything type-shaped). Strata are barriers — a stratum that
+produced any error-severity diagnostic throws before the next begins (§14.1,
+§15.1).
+
+**walked / pinned / exempt** — the eltype-genericity classes: walked
+payload/value types follow the activation scalar, pinned parameters and
+definitions stay `Float64`, and the discrete side is exempt. Enforced by the
+leaf walk, never declared (§9.2).
+
+### D.6 Runtime periphery
+
+**bad datum** — a datum unmappable for environmental reasons (truncated
+datagram, malformed JSON, out-of-range field): tolerated *in the loop body* —
+catch, stage nothing, `report(handle, MalformedDatum(cause))`, continue —
+while any other exception propagates and becomes `DeviceCrash`. The
+classification is the device author's (§12.4).
+
+**batch** — a device's staged set of face ⇒ value writes, coalesced in its
+staging cell and applied whole at the next drain (§12.3). The word means only
+this; error reporting *collects* (§D.9).
+
+**binding** — the value passed at `attach!` that makes a device
+framework-legible: `faces`/`map_input` on the input half, `selectors`/
+`map_output` on the output half, sides detected by method presence.
+Enumerated bindings stake claims; `TableBinding` is the shipped data-driven
+one (§12.4, §12.3).
+
+**boundary counter** — the monotonic count of *published boundaries* carried
+in the snapshot and mirrored in the loop state the wait predicate tests;
+incremented after the `latest` release-store, so a waking waiter can never see
+a stale snapshot (§12.8).
+
+**calling task** — the task that invoked `run!`. It runs the loop itself (the
+unattended register) unless a `needs_calling_task` device is rostered, in
+which case it runs that device's loop body inline and the loop moves to a
+spawned task (§12.1).
+
+**claim** — the set of faces a device *may* write, registered at attach from
+its binding's enumeration and released at detach; claiming an already-claimed
+face is an attach-time error (`ClaimConflict`), and a broad claim costs GUI
+liveness (§12.3).
+
+**coalescing** — the CAS merge keeping one pending batch per device:
+untouched faces survive, re-staged faces take the newest level (the per-face
+ZOH). Its outbound mirror is newest-wins snapshot delivery (§12.3, §12.8).
+
+**control plane** — the separate few-word atomic surface carrying pause,
+un-pause, pace, `margin` and stop, consulted at frame top and inside the
+loop's wait and pause states; structurally not staging, since a paused loop
+drains nothing (§12.6).
+
+**derived liveness** — the rule that a GUI widget is live iff its port's feed
+chain terminates in a root slot that is unclaimed in the run's frozen surface
+partition; baked once at run start, with no per-port "GUI-controlled" marking
+anywhere (§12.5).
+
+**device** — any attached participant in the periphery, under one authoring
+contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
+`needs_calling_task`) and one handle; input-only and output-only are
+degenerate uses, and the GUI is an ordinary device (§12.4).
+
+**drain** — the single point at the top of each frame where the loop takes
+each staging cell by `atomicswap` and applies it through the attach-compiled
+scatter, in attachment order; never at a `t*` boundary, and under the roster
+freeze it performs no checks at all (§12.1, §12.3).
+
+**harness cell** — the interactive-register staging path for the calling task
+itself, written by `stage!(sim, "face" => value, …)`: ordinary batches,
+traced and surface-checked, drained last among interactive writers (§12.11,
+§12.3).
+
+**interactive register** — the shared writer set holding the *derived* write
+surface — the complement of the union of all claims, computed rather than
+staked — occupied by the GUI and the harness cell, and re-derived only at
+stopped-sim roster changes (§12.3).
+
+**`latest`** — the `@atomic` reference a published snapshot is release-stored
+into and readers acquire-load; `latest(sim)` hands the calling task the same
+immutable value a device handle gets (§12.2).
+
+**next-snapshot wait** — `wait_next_snapshot(handle)`: the boundary counter
+plus one `Threads.Condition` under the canonical predicate loop
+(`counter > last_seen && running`), newest-wins, no queues, no per-frame reset
+(§12.8).
+
+**orphaned claims** — the claims of a device whose task died mid-run. Death is
+not detach: the roster entry and claims persist to run end, the slots hold
+their last-drained values, and the GUI renders the fact in the widget's
+provenance; recovery is between runs (§12.3).
+
+**peek** — the GUI display rule: a widget shows its own pending write if any,
+else the snapshot value. Own-cell only, which is what makes multi-click
+counting and paused editing correct (§12.5).
+
+**periphery** — everything outside the loop that exchanges data with it — GUI,
+input devices, network I/O, logging — together with the concurrency model
+binding them: staged writes inbound, snapshot reads outbound, control on its
+own surface (§12).
+
+**roster** — the list of attached device entries (binding, claims, stable
+device id, attachment order): a plain immutable value the loop reads once at
+`run!`, since `attach!`/`detach!` are stopped-sim operations (§12.3).
+
+**scenario component** — the home of a sim-time script under the mid-run
+mutation doctrine: an ordinary periodic discrete component executed
+synchronously in the loop, deterministic paced or unpaced and replayed by
+recomputation. The clock is the criterion — wall-clock interactions are
+devices (§12.10).
+
+**selector (read-selector family)** — the closed set of deferred reads
+`get_state`/`get_deriv`/`get_output`/`get_local`/`get_slot`/`get_face`, each
+resolving against a source (snapshot cells vs. live stores) before any client
+policy applies (§16.4).
+
+**snapshot** — the immutable per-boundary publication: boundary-consistent
+signal table (local cells and root slots included), `t`, boundary index and
+framework status. It deliberately carries no state stores — the state
+trajectory is derived data (§12.2).
+
+**stage-on-interaction** — the GUI staging contract: value widgets stage the
+new level on edit, edge widgets on activation as a level computed from the
+peek; held buttons do not re-stage, and no widget stages per render pass
+(§12.5).
+
+**unattended run** — a run with empty staging and no snapshot readers: the
+same loop, fully synchronous on the calling task, rethrowing after the
+shutdown tail so CI fails honestly (§12.1, §15.4).
+
+**write surface** — the set of faces a writer's batch entries may reach:
+**enumerated** (a device's claim set) or **derived** (the interactive
+register's unclaimed complement). Static per run and enforced entirely at
+staging — `OutOfClaimEntry`, `ClaimedFaceEntry` (§12.3).
+
+### D.7 Recording and replay
+
+**decimation** — the log's keep-every-kth retention policy (`log_every`),
+admissible on the log alone because it is derived data; every boundary still
+runs, publishes to live readers and enters the trace (§12.2).
+
+**frame ordinal** — the trace's key: replay applies the recording's batches
+for frame *k* at frame *k*, exact because the frame sequence is itself
+deterministic under replay (§12.12, §12.1).
+
+**log** — the retained sequence of published snapshots (the same objects, no
+copies), with a plain kill switch and `log_every` decimation; derived data,
+recomputable from the trace by replay (§12.2).
+
+**recorders** — the trace and the log jointly, cleared together at `init!` and
+at a trim commit so they restart with the run they record (§12.11, §16.8).
+
+**replay** — the ordinary loop with exactly two substitutions: boundary zero
+from the trace header, and a drain reading the trace by frame ordinal. It
+re-records, ends `initialized`, and validates the header against the `Build`
+up front (§12.12).
+
+**trace** — the primary record of a session: the sequence of drained,
+device-tagged batches per frame, plus its header. On by default, because the
+log is recomputable from the trace and never the reverse (§12.3).
+
+**trace header** — the trace's preamble: the resolved initial stores
+`(x, m, z)`, the initial root-slot values, and each writer's face-name →
+position schema — captured after `apply!` and the slot writes, before the
+boundary-zero sequence runs (§12.3, §16.5).
+
+**trace record density** — the rule that retained records match each batch's
+natural density: an enumerated writer's positional batch is retained verbatim
+and zero-copy, while the interactive register's wide mostly-`nothing` tuple is
+converted at the drain into (position ⇒ value) pairs, so trace size tracks
+information rather than surface width (§12.3, row 107).
+
+**what-if register** — replaying a trace against the same structure with
+changed parameters: deterministic re-driving of the recorded inputs through a
+modified model, promising determinism but never bit-identical reproduction
+(§12.12).
+
+### D.8 Stopped-sim services and the condition algebra
+
+**`at` / `Scoped`** — the scoping combinator: `at(prefix, node)` stores a
+prefix beside a condition node and applies nothing, path concatenation
+happening once at resolution. It also lifts whole `TrimProblem`s and
+linearization tap sets (§16.2, §16.9).
+
+**baseline** — an aircraft-shipped, full-coverage condition function
+(`ready_for_taxi(ac)`, `cold_and_dark(ac)`) layered under tweaks by
+`override`, and the `baseline` keyword `init!`/`trim!` take (§16.6). Not to be
+confused with an event *prior* (§D.4).
+
+**boundary zero** — the initialization boundary: the ordinary macro-sequence
+with an empty integrate — project → [sweep → guards → handlers]\* → due `g`
+updates → header and first snapshot — run at `t₀` once `apply!` has
+established the stores (§16.5).
+
+**capture** — the service reading the current committed stores *and* root
+slots back as a condition value, returning `(condition, t)`; the gather twin
+of `apply!`, and what makes warm restart need no second semantics (§16.1,
+§16.10).
+
+**component test rig** — a one-child assembly exporting the child's entire
+input face set, so any component can be built and simulated in isolation; an
+abstract entry is satisfied *inside* the rig by a concrete **stub child**
+wired to that face (§15.7).
+
+**condition** — the datum that says "set this build to this state": a
+path-addressed sparse overlay on the declared defaults, covering `x`, `m` and
+`z` fields plus root slots by face — never outputs, never workspace (§16.1).
+§16 owns the word; a guard defines a *predicate* (§D.4).
+
+**`design_world`** — the shipped thin world (aircraft +
+`SimpleAtmosphere(wind = NoWind())` + `HorizontalTerrain`) that mounts an
+aircraft for trim and linearization; "aircraft as root" is the shallowest
+world, not a special case (§16.9).
+
+**fragment** — the leaf node of the condition algebra: `fragment(; x, m, z,
+slots)` payloads speaking only about the component at the authoring point
+(**self-vocabulary**), with addressing left entirely to `at` (§16.2).
+
+**fragment tree** — the inert, lazy composition of `Fragment`/`Scoped`/
+`Merged`/override nodes; isbits but for the interned prefixes, so rebuilding
+it per trim iteration is stack-only construction (§16.2).
+
+**merge** — the symmetric, collision-intolerant combinator over condition
+nodes: a duplicate leaf is an error naming both provenance chains, and mixing
+a node with a bare `NamedTuple` is an error method, not `Base.merge` (§16.2).
+
+**mounting** — relocating a whole problem or tap set with `at(prefix, …)`:
+every field is either condition-producing (path-relative, post-composed) or
+path-free, so the service never knows where its paths sit (§16.9).
+
+**override** — the ordered, asymmetric layering combinator: on a shared leaf
+the patch wins and provenance keeps both sources, while collisions *within* a
+layer remain errors; variadic (§16.6).
+
+**service lifecycle** — the `Simulation` states `built` / `initialized` /
+`running` / `stopped` / `errored` (§12.11) and each service's legality against
+them; a violation is `ServiceLifecycle`, and `errored` is terminal for all
+four services (§16).
+
+**slot totality** — the pre-write requirement that an application at boundary
+zero cover every root slot. Conditions themselves are legitimately partial; a
+shortfall is `UninitializedSlots`, collected and declaration-ordered, leaving
+the simulation untouched (§16.6).
+
+**taps** — the three selector lists (`x`, `u`, `y`) declaring what
+linearization seeds and reports, with an optional component index so a vector
+leaf yields named scalars; validated at resolution (`TapResolution`) and
+relocatable via `at` (§16.10).
+
+**`TrimProblem`** — the closed seven-field value
+`guess`/`lower`/`upper`/`condition`/`reads`/`residuals`/`tolerances`: an
+*implicitly specified* condition, solved as a square root-find over named
+residuals and committed as an `init!` of `override(baseline, solution)`
+(§16.7, §16.8).
+
+### D.9 Error discipline and diagnostics
+
+**carrier exception** — the single exception a set of diagnostics travels in:
+`BuildError` thrown at a stratum barrier, `StepError` at the runtime catch
+site. Diagnostics themselves are plain values (§15.2, §15.4).
+
+**collect the checks, fail the evaluations fast** — the reporting policy:
+declarative passes over collected structure return their full violation list,
+while the first user-code exception aborts the phase; strata are barriers, and
+the site column spells the collecting case "build (collected)" (§15.1,
+Appendix C).
+
+**did-you-mean** — the required shape of any name-shaped failure: the
+offending name plus the list-in-hand it should have come from, carried as
+payload rather than baked into message text (§15.2).
+
+**error locality** — the property the declaration layer buys: a mistake fails
+at the site of the mistake, not later and inside correct code. §13.4's five
+walkthroughs are its grounding cases and the acceptance tests (§13.4).
+
+**execution cursor** — the plain mutable field recording where in the compiled
+schedule execution is (component path, function, boundary phase); one cheap
+store per dispatch, so a runtime failure gets its frame without exception
+frames in the hot path (§15.4).
+
+**feedthrough tracer** — the set-propagation instrument (global value-blind,
+or local primal-carrying at sampled states) used to classify a rejected cycle
+as real or artificial; diagnostic only, never an input to scheduling (§10).
+
+**kind** — a diagnostic's identity in the closed set enumerated normatively in
+Appendix C, with payload fields, owning section and severity; tests match on
+kind plus payload, never on message text (§15.2). Not a component *class*
+(§D.1) or a *function family* (§D.1).
+
+**payload** — the structured data a diagnostic carries beside its kind: paths
+and names as strings (never instances or model types), expected/observed port
+types, the list-in-hand, the severity (§15.2, Appendix C).
+
+**poison** — the debug-mode overwrite of a workspace before every call (`NaN`
+for float-eltype stores, `typemin` for integer ones) so read-before-write of
+stale scratch detonates immediately; stores with no sentinel are skipped and
+named once per activation (`PoisonSkip`) (§9.3).
+
+**`stop_on` / termination is a state** — graceful termination is model state,
+never an exception: detection is ordinary event machinery, publication an
+ordinary root-exported `Bool` output face, and `stop_on` the deployment policy
+naming the faces the loop reads after every published boundary (§15.5).
+
+**warning streams** — two, scoped separately: the *build* stream, whose
+warning set is deliberately empty, and the *runtime* stream — per-occurrence,
+rate-limited wherever its source can repeat, surfaced through published
+framework status, with its committed inventory listed in §15.2.
+
+### D.10 Meta-vocabulary
+
+**blessed** — the spec's marker for a practice it explicitly sanctions where a
+neighboring one is forbidden: derivation from other declarations (§13.2), the
+one spot where evaluation feeds structure (§14.1), the workspace-plus-snapshot
+idiom for zero-allocation ticks (§9.3).
+
+**the freeze** — the roster freeze: `attach!`/`detach!` are stopped-sim
+operations, so the roster, its claims and the run's partition of the root face
+set into write surfaces are static, inspectable facts of each run (§12.3, rows
+106–107).
+
+**guarded addition** — a capability the design admits but does not build,
+weighed against Flight.jl's fundamental strengths and recorded with its shape
+so adoption stays additive (§1; e.g. §4.3's field-addressed staging, §12.3's
+mid-run reader attach).
+
+**normative / index, not a second home** — the spec is the normative statement
+of the design, and its appendices are indices: each recall line's normative
+statement stays in the owning section (Appendix A, and the same rule for
+Appendices B, C and D). The design directory's walkthrough explainers are
+non-normative companions by their own preambles.
+
+**recorded, not built** — the disposition of a worked-out extension
+deliberately left unimplemented, with its seams named so adoption is additive
+(§16.7's closed-loop trim, §16.10's sampled-data `Dual` activation and
+declarative non-participation).
+
+**register** — the spec's word for a mode or idiom in which something is done,
+always compounded: the didactic register (§15.2), the inspection and
+integration registers (§12.2), the by-allocation register (§13.2), the
+harness, unattended and what-if registers (§12.11, §12.12). Reserved for this
+sense — the recording artifacts are the *recorders* (§D.7).
+
+**row** — a numbered entry of `framework_decisions.md`, cited throughout as
+"row N": one settled decision with the alternatives weighed against it. Row
+numbers are stable and never reused, and each row states its *current*
+position, a superseded one being demoted into its rejected-alternatives column
+rather than rewritten (§18).
+
+**seam** — a narrow, named interface kept deliberately thin so what sits
+behind it can be replaced or measured: the stepper seam (§11.2), the backend
+seam (§16.8), the measurement seam (§14.7), the phase-body seams of the
+compiled executor (§14.7).
+
+**torture test** — an existing, maximally awkward artifact transliterated
+against a proposed mechanism to validate it before adoption: `PistonEngine`
+and the FCS cascade against §5.2 (§17.2), filter/joystick/GUI against §12's
+staging shapes (§17.3), the strapdown IMU against the leaf split (§17.5); the
+standard component library is the standing ergonomics one (§15.7).
+
+**worked (example)** — a full spelling of a mechanism against a real artifact,
+carried in the spec rather than left to the reader: the worked assembly of
+§13.6, the worked C172 cruise problem of §16.7, and §17.5's IMU as the
+boundary-sampling example Appendix A points at.
