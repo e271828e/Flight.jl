@@ -183,7 +183,7 @@ a named tuple of fresh values; the framework writes each into its cell; consumer
 cells. (Vocabulary, binding throughout this document: bare *cell* is the table
 entry, and only that — the `z`/`m` state registers are *stores*, §7.3, not cells;
 *staging cell* is a distinct compound term, the per-device inbound register of
-§9.3, which unlike a table cell is mutated frame by frame and sits outside the
+§9.4, which unlike a table cell is mutated frame by frame and sits outside the
 table's publish-once discipline; *slot* is reserved for the root input slots of
 §9.3.)
 
@@ -249,7 +249,7 @@ directly. Row 16.)
 - **Write-side corollary** (from §15.4): **bundle what is written
   together.** The port is the atomic unit of the entire periphery — one cell, one
   root slot, one staged write, one device claim (§9.3), one trace address, one
-  GUI liveness verdict (§9.5). Data written by different external writers, or at
+  GUI liveness verdict (§9.7). Data written by different external writers, or at
   different cadences, must not share a port: pilot commands are scalar faces under
   a namespace prefix, and the convenient bundle is assembled *downstream*, inside
   the graph, by an ordinary component (single producer, consumed together — legal
@@ -646,7 +646,7 @@ hierarchy rules; §6.2 gives the aggregation idiom they force.
   observation-oriented ports no wire consumes, §9.2 blesses exactly that,
   and §9.2's path-bound readers attach after the build, so "unused" is not
   even decidable; a warning firing on every honest port poisons the sole
-  warning stream, §9.5's anti-diagnostic lesson. The hazard it nominally
+  warning stream, §9.7's anti-diagnostic lesson. The hazard it nominally
   guarded — a wire someone meant to draw — is caught from the consumer side,
   where the information actually lives). Unconnected input ports: build error
   (no silent defaults). **The check is a whole-tree property, not a
@@ -917,7 +917,7 @@ live example pattern).
   types with no sentinel — `Bool` flags, enums, opaque handles — are skipped,
   the skip reported once per activation. Naming the skipped stores is the point:
   a guarantee that is silently partial is exactly the anti-diagnostic pattern
-  §9.5 rejects. Declared **by
+  §9.7 rejects. Declared **by
   allocation**: the well-known method *is*
   the allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
   c.n, c.n), x̂ = Vector{T}(undef, c.n))` on the continuous tier, plain
@@ -1042,7 +1042,7 @@ offending commit.
   zero either way, and §4.4's summarize-or-skip rule governs what such a field
   contributes on export.
 - **What is not recorded**: event firings. The log holds boundary snapshots and
-  the trace holds staged inputs (§9.2, §9.3); neither carries a per-event
+  the trace holds staged inputs (§9.2, §9.5); neither carries a per-event
   record. Which events fired at which boundary is recovered by replay plus the
   published modes — the honest remedy of §9.2, a mode field declared public is
   in every snapshot. An event-firing stream is a guarded addition, not built.
@@ -1189,7 +1189,7 @@ it puts projection cost inside the root-finder's loop to correct an interpolant
 drift far below the localization tolerance.
 
 **`t*` is a boundary, not a frame.** A *frame* is a grid step
-`[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top (§9.3), pacer
+`[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top (§9.4), pacer
 deadlines (§8.7), tick eligibility (§8.5). A *boundary* is a published
 consistency point — where the §8.6 macro-sequence completes and a snapshot
 goes out. Every grid point is a boundary; `t*` and boundary zero (§14.5) are
@@ -1531,7 +1531,7 @@ this document. Distinct from the kinematic *reference frames* of the aircraft
 domain, which always appear compounded: the b frame, the ECEF frame.)
 
 1. **Staging (inbound):** devices submit pending input writes at any wall-clock
-   moment, never touching live slots (§9.3).
+   moment, never touching live slots (§9.4).
 2. **The drain:** exactly one point, at the top of each frame — never at a `t*`
    boundary (§8.4) — where the
    loop takes the staged batches and applies them to the root input slots. Between
@@ -1547,13 +1547,13 @@ domain, which always appear compounded: the b frame, the ECEF frame.)
    (§9.3), and the task appears at the next `run!`. **The calling-task
    device is pinned; the loop is the movable piece.** Calling-task
    affinity is a device trait (`needs_calling_task`, default `false`,
-   §9.4) with at most one holder per roster (§9.3's admission checks);
+   §9.6) with at most one holder per roster (§9.3's admission checks);
    the shipped GUI declares it — CImGui ties rendering to the calling
    (main) task. The topology is derived from the frozen roster alone,
    never from `run!`'s keywords: with a calling-task device rostered the
    loop moves to a spawned task for the duration of the run and the
    calling task runs that device's loop body — inline, inside the same
-   §9.4 wrapper as any spawned device's — otherwise the loop runs on the
+   §9.6 wrapper as any spawned device's — otherwise the loop runs on the
    calling task — the unattended register, what §13.4's synchronous rethrow
    presupposes, and what lets parallel unattended sweeps thread `run!` inline
    with no nested task fan-out. Either way `run!` blocks its caller until
@@ -1584,7 +1584,7 @@ Two rules bind the implementation:
 Consequence, recorded because it collapses an API axis: interactive and unattended
 simulation stop being different execution modes. An unattended run is the same loop with
 empty staging and no snapshot readers; a replayed interactive session is the same
-loop with staging fed from a recording (§9.3, §10.7).
+loop with staging fed from a recording (§9.5, §10.7).
 
 ### 9.2 Outbound: snapshot publication
 
@@ -1607,14 +1607,14 @@ mechanical, and they serve the author's own debug panels; presentation layers (l
 export, GUI listings) filter to the public contract by default. **It also includes
 the root slots** (§15.4): slots are source cells of the
 table, not state stores, so they ride along — and this is load-bearing, not
-incidental: the §9.5 peek's else-snapshot fallback is what an idle live widget
+incidental: the §9.7 peek's else-snapshot fallback is what an idle live widget
 displays, and read-only mirrors of claimed slots (the axis sliders under joystick
 claim) show the applied slot value from the snapshot. Slot values in the log are
 derived data (recomputable from the trace), which is consistent — snapshots are
 derived wholesale. The snapshot
 deliberately does **not** carry the state stores (`x`, `m`, `z`): the state
 trajectory is *derived* data — recomputable from the trace header plus the batches
-(§9.3) by bit-identical replay — and per-boundary capture would systematically
+(§9.5) by bit-identical replay — and per-boundary capture would systematically
 record derived data, the same asymmetry the trace-default decision (row 29) refuses
 in the other direction. "What was the private state at t = 37.2?" is answered by
 replaying to 37.2 and inspecting the live stores; a state field wanted in logs or
@@ -1633,7 +1633,7 @@ buffers (double/triple ring) — reuse reintroduces exactly the reader-liveness 
 the GC provides for free, to save an allocation profiling has not indicted.
 
 **Retention: the trace's kill switch, plus decimation.** The log takes the same
-plain on/off switch the trace has (§9.3), and additionally a keep-every-kth
+plain on/off switch the trace has (§9.5), and additionally a keep-every-kth
 policy (`log_every`, Appendix B). What makes decimation admissible here and not
 there is the derived/primary split (row 38): the log is recomputable from the
 trace by replay, so a thinned log costs resolution in a *view*, never a record —
@@ -1645,7 +1645,7 @@ still published to live readers, and still enters the trace.
 streaming) consumes snapshots via §10.3 and addresses what it reads with
 §14.4's selectors — any cell, the diagnostic register admitting `get_local`
 entries and deep paths — resolved at attach against the `Build` with
-did-you-mean and compiled to one gather (the output half of §9.4's binding
+did-you-mean and compiled to one gather (the output half of §9.6's binding
 interface), so `map_output` receives a labeled
 NamedTuple rather than performing its own path lookups (§15.4's obligation: a
 substitution that breaks a binding fails at attach, not with silent garbage
@@ -1671,7 +1671,7 @@ structurally checkable (`VelocityData`, its `v_eb_b` defined *at the type* as
 body-origin velocity: a bare vector doesn't wire, and wrapping the wrong
 quantity is a deliberate lie, not a drift).
 
-### 9.3 Inbound: root input slots and per-device staging
+### 9.3 Inbound: root input slots, claims and the frozen roster
 
 **The write surface is root input slots** — and a root slot *is* the root
 assembly's exported input face (§11.6): routed inward to consumers, produced by no
@@ -1682,7 +1682,7 @@ exclusivity below is a producer's one-writer right, and §14.6's totality is
 its completeness obligation.) No dedicated vocabulary survives (`add_input!` in the early
 sketches is dead). Slots are sources to the build-time scheduler, constants within
 a frame, and the *only* thing the periphery may write (the GUI reaches them
-through §9.5's resolution; control commands are not writes, §10.1); devices,
+through §9.7's resolution; control commands are not writes, §10.1); devices,
 mappings, the trace and the GUI write path address them by **face name** (§11.6):
 structural slash paths never cross the periphery's *write* boundary — the write
 side speaks the root contract's names only. (The read side is diagnostic
@@ -1692,7 +1692,7 @@ by path — §9.2/§13.5.)
 **Slot exclusivity: one writer per slot at any time** (§15.4). A
 device claims its slots at attach; claiming an already-claimed slot is an
 attach-time error, and detaching releases the claims (a released slot's GUI
-widgets are live again from the next run, §9.5). Exclusivity replaces any cross-device conflict *policy* —
+widgets are live again from the next run, §9.7). Exclusivity replaces any cross-device conflict *policy* —
 attachment-order precedence at drain, say — because such a policy resolves races the
 case study shows nobody wants: every dual-writer field in the C172X demo is a joystick stream
 shadowed by a GUI mirror, where simultaneous live writing is a bug. Per-device
@@ -1706,7 +1706,7 @@ never inspects. Such a device therefore claims the **binding's enumerated
 allowed set** — the faces the binding table lists, whether or not any given
 batch touches them — and the claim is registered at attach exactly as a
 joystick's is. A broad claim costs liveness: every enumerated face is claimed
-for the device's whole attachment, so §9.5's derived-liveness rule renders its
+for the device's whole attachment, so §9.7's derived-liveness rule renders its
 GUI widget read-only even on faces the peer never writes. Narrow the binding to
 narrow the claim — the enumeration *is* the interface.
 
@@ -1722,7 +1722,7 @@ performs no checks at all. A surface arises in one of two ways:
   and binding-bounded even where no one else is involved — a mapping that has
   drifted onto an unenumerated face is a diagnosable anomaly
   (`OutOfClaimEntry`), never a silent write, claimed or not.
-- **Derived** — the **interactive register**'s surface (the GUI, §9.5, and
+- **Derived** — the **interactive register**'s surface (the GUI, §9.7, and
   `stage!` below) is the unclaimed face set: the complement of the union of
   all claims, computed rather than staked. Shared among the interactive
   writers, it is re-derived only when the roster changes — a stopped-sim
@@ -1730,16 +1730,16 @@ performs no checks at all. A surface arises in one of two ways:
   write to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming
   the incumbent), and the one seam — a batch staged while stopped whose face
   a subsequent `attach!` claims — is renormalized away at the attach itself
-  (below). §9.5's widget liveness is this surface made visible.
+  (below). §9.7's widget liveness is this surface made visible.
 
 One rule, two surface classes. The GUI is not an exception
-but the resident of the second class — one device contract (§9.4), two *binding*
+but the resident of the second class — one device contract (§9.6), two *binding*
 sides (enumerated vs. derived), one drain rule — and opportunistic writing by
 autonomous devices does not exist: a device that wants a face enumerates it.
 Cross-writer races on one slot therefore cannot arise structurally (claimed
 faces have exclusivity; unclaimed faces admit only the interactive register),
 which is what keeps drain order a diagnostic fact (below) and lets a drained
-GUI value simply stay (§9.5). The interactive register also has a
+GUI value simply stay (§9.7). The interactive register also has a
 **task-free entry point**: `stage!(sim, "face" => value, ...)` stages a batch
 from the calling task itself — the harness/REPL write path (§10.6) —
 drained, traced and surface-checked exactly as the GUI's. Among interactive
@@ -1798,23 +1798,25 @@ running after the identity check always names two *distinct* devices,
 never a device colliding with its own earlier attachment.
 
 **Device death does not detach.** A mid-run crash, voluntary exit or unplug
-(§9.4, §10.4) ends the device's *task*: the cell stops filling, the §10.2
+(§9.6, §10.4) ends the device's *task*: the cell stops filling, the §10.2
 heartbeat shows the death by name, and the roster entry — claims included —
 persists to the end of the run. The orphaned claims are the accepted cost of
 the freeze: the device's slots hold their last-drained values and no other
-writer inherits them; §9.5's read-only widgets render the orphan visibly
+writer inherits them; §9.7's read-only widgets render the orphan visibly
 ("claimed by `T16000M` — task dead"), never mysteriously. Recovery is
 between runs — stop, `detach!`, and either `init!` (fresh trajectory) or
 `replay!`-to-end then `run!` (continuation from the interrupted boundary,
 §10.7) — and the anomaly is exactly that: an anomaly, not a surface event.
 One deliberate asymmetry is on record as a **guarded addition**: a pure
-reader (a binding with no input half, §9.4 — a visualizer, a telemetry
+reader (a binding with no input half, §9.6 — a visualizer, a telemetry
 tap) claims nothing, so attaching one mid-run would move no writer's
 surface; a dynamic reader list (touching only §10.3 wakeups, the heartbeat
 and the shutdown join — never the drain) is cleanly severable from the
 freeze should the join-a-running-session workflow find a customer. The
 §10.2 thread-budget warning runs once per `run!`, against the frozen
 population.
+
+### 9.4 Inbound: per-device staging, representation and the drain
 
 **Staging: one atomic cell per attached device, one coalescing policy — CAS
 merge, newest wins per face.** Each cell has a single writer — its own
@@ -1838,7 +1840,7 @@ not worth a declarable promise whose false direction loses writes.
 
 **The staged representation is fixed per attachment, compiled at attach.**
 An enumerated writer's claim set and slot types are both known at attach
-(`faces(binding)`, §9.4, against the root contract), so the framework
+(`faces(binding)`, §9.6, against the root contract), so the framework
 fixes the cell's content type there: a positional tuple over the claim
 set, `Union{Nothing, T}` per face (isbits unions — pointer-free), with
 `nothing` meaning *not touched this time*, never "reset" — the levels
@@ -1902,6 +1904,15 @@ only at stopped-sim attach points. (The specialization is an implementation
 freedom the freeze creates, not an obligation; iterating a roster array
 costs a handful of dispatches per frame and remains acceptable.)
 
+Rejected shapes (both torture-tested in §15.3): **per-slot atomic cells** — the
+simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
+but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
+phase (run-to-run behavioral variance, §15.3), peeks are cross-device, the trace
+loses provenance, and wide slot types hit Julia's atomic-width lock fallback; **a
+shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity and
+the richest trace, but conflict order is still temporal (push order), and pending
+memory is unbounded while paused, taxing every peek that must walk the chain.
+
 **Mappings run on the device task**: today's `assign_input!(mdl, mapping, data)`
 becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
 executes inside the loop's frame, and the trace consists of slot-level batches.
@@ -1910,7 +1921,7 @@ executes inside the loop's frame, and the trace consists of slot-level batches.
 a declarative table — axis/button → slot path, plus per-axis conditioning
 parameters (deadzone, expo strength) applied by the shipped `TableBinding`'s
 generic `map_input` on the
-device task (§9.4 — the shared pure helper, with an owner). The boundary is set by the face contract: **a face's meaning is
+device task (§9.6 — the shared pure helper, with an owner). The boundary is set by the face contract: **a face's meaning is
 writer-independent**, so faces carry *post-conditioning* semantics — a GUI slider
 or a script writes the same command a curved stick delivers (running a mouse drag
 through a deadzone would be absurd); this GUI-parity test is what places
@@ -1922,6 +1933,8 @@ exactly what the model consumed, so replay is exact; raw-stick provenance (re-ru
 a session through *different* curves) is the known, accepted loss. Edge logic
 follows the levels doctrine: devices stage monotonic press counters; accumulators
 (trim offsets, flap detents) are model state, not mapping state (§15.4).
+
+### 9.5 Inbound: the input trace
 
 **The input trace** is the sequence of drained, device-tagged batches per frame. It
 extends §8.7's determinism end-to-end: replaying a recorded interactive session —
@@ -1980,22 +1993,15 @@ drain-rate × device-count — tens of MB per hour worst case, two orders of mag
 below the snapshot log. No sampling, no rolling window (complexity without a
 customer).
 
-Rejected shapes (both torture-tested in §15.3): **per-slot atomic cells** — the
-simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
-but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
-phase (run-to-run behavioral variance, §15.3), peeks are cross-device, the trace
-loses provenance, and wide slot types hit Julia's atomic-width lock fallback; **a
-shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity and
-the richest trace, but conflict order is still temporal (push order), and pending
-memory is unbounded while paused, taxing every peek that must walk the chain.
-
-### 9.4 Devices: one authoring contract, no taxonomy
+### 9.6 Devices: one authoring contract, no taxonomy
 
 FlightCore's input/output/GUI trichotomy is lock choreography, not modeling:
 `get_data!` may block, so it runs outside the lock; `extract_output` must not block,
 because it runs inside; the GUI breaks both rules at once and gets a third interface
 (`render!` under lock, `sync = 0` so VSync cannot stall the sim, a manual framerate
 sleep). With no lock, the protocol the taxonomy encoded has no referent.
+
+#### Every attached device receives the same handle
 
 **Every attached device receives the same handle**, carrying the two primitive
 capabilities — read (latest snapshot; optionally wait-for-next-boundary, §10.3) and
@@ -2006,7 +2012,9 @@ framework classes; a bidirectional network peer is *one* device with one socket 
 lifecycle, not two framework devices sharing state. The GUI is an ordinary device —
 the paradigm one, using every capability — with exactly two genuine peculiarities,
 neither taxonomic: main-thread affinity (a launch concern) and read-modify-write
-widgets (§9.5).
+widgets (§9.7).
+
+#### The authoring contract: four functions, one optional, one trait
 
 **The authoring contract: four functions, one optional, one trait.** A device is a plain
 user type; the framework asks for
@@ -2039,6 +2047,8 @@ end
 A `needs_calling_task` device runs the identical wrapper *inline* on the
 calling task — the invocation site, not the contract, is its only
 difference (§9.1's topology, §10.4's join exclusion).
+
+#### The author owns the loop body; the framework owns the bracket
 
 **The author owns the loop body; the framework owns the bracket.** The fork
 is decided by FlightCore's own history: its eight device hooks were never
@@ -2098,6 +2108,8 @@ literally "the task body returned." The GUI implements the same contract; the fr
 `loop` inline on the calling task instead of spawning (§9.1's pinning,
 unchanged).
 
+#### The binding: framework-legible by enumeration, opaque in its mappings
+
 **The binding: framework-legible by enumeration, opaque in its mappings.**
 A binding is a value whose type implements a small interface. The legible
 half is explicit methods returning data, called once at attach on the
@@ -2116,7 +2128,7 @@ only between `loop` and `map_input`, written by the same author, and the
 framework's structural knowledge comes entirely from the enumeration
 methods — everything enumerable validates at attach, everything opaque is
 bounded at its runtime enforcement point (`map_input` by the staging
-checks, §9.3; `map_output` receives exactly the compiled gather's
+checks, §9.4; `map_output` receives exactly the compiled gather's
 NamedTuple, and what it puts on the wire is the peer's business). Sides are
 detected by declaration shape — method presence, the §11.5 idiom, probed
 once at attach: `faces` defined ⇒ input side, claims staked; `selectors`
@@ -2130,6 +2142,8 @@ narrows the claim (§9.3). Rejected: an abstract binding-type taxonomy
 two types at once); a declared `sides(b)` trait (redundant with the methods
 that must exist anyway, one more thing to drift).
 
+#### One shipped binding type; conditioning has an owner
+
 **One shipped binding type; conditioning has an owner.** `TableBinding` is
 *data-driven* — the framework writes its `map_input` once, and a table
 value (axis/button entry → face, deadzone/expo parameters) is constructed
@@ -2141,7 +2155,7 @@ TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
              trigger  = (face = "brake_count",))       # levels doctrine: a counter
 ```
 
-Its generic `map_input` *is* §9.3's shared pure conditioning helper, now
+Its generic `map_input` *is* §9.4's shared pure conditioning helper, now
 with an owner; the entry tuple rides in the type, so the mapping
 specializes per table with no dynamic dispatch. A *code-driven* binding (a
 JSON telecommand peer: `faces` returns the vocabulary, `map_input` parses
@@ -2149,6 +2163,8 @@ bytes) looks identical to the framework. Purity note, taught in Appendix A:
 cross-datum state — press counters, edge detection — lives in the device
 struct, maintained by the loop, arriving *inside* the datum; `map_input`
 stays pure.
+
+#### Bad datum versus bug: two classes, two fates
 
 **Bad datum versus bug: two classes, two fates.** A datum that cannot be
 mapped for environmental reasons — a truncated datagram, malformed JSON, an
@@ -2168,7 +2184,7 @@ attached, nothing happens"; tolerating nothing kills a live telemetry link
 on its first truncated datagram — and since tasks are per-run artifacts
 (row 93), kills it for the rest of the run.
 
-### 9.5 The GUI write path: port resolution, peek, staging contract
+### 9.7 The GUI write path: port resolution, peek, staging contract
 
 Panels remain per-component extensions in FlightCore's style — `GUI.draw!(ctx,
 ::LowPassFilter)`, discovered by walking the assembly — but widgets name **the
@@ -2290,7 +2306,7 @@ argument for `Libc.systemsleep` (≈0.5 ms vs ≈1.4 ms median overshoot, §8.7)
 worth ~1.5 ms of `margin` — a few percent of one core at 50 Hz. Against it: `sleep`
 releases the loop's thread, making the pacer's wait slot the natural scheduling
 window for co-resident device tasks (the design already spends that slot twice:
-§8.7's staging slot, §9.3's drain source); `systemsleep` turns the slot into dead
+§8.7's staging slot, §9.4's drain source); `systemsleep` turns the slot into dead
 time and makes the periphery correct only when every device task has its own
 thread — resurrecting FlightCore's hard `nthreads` check as a correctness
 precondition. The failure asymmetry decides: `sleep`'s worst case is a late
@@ -2384,7 +2400,7 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    the blocked task (caught by the framework wrapper, treated as shutdown).
    This demotes FlightCore's EOT convention from load-bearing shutdown mechanism
    to an optional wire-protocol courtesy between remote peers.
-4. **Loop bodies exit:** the author's `while running(handle)` (§9.4's
+4. **Loop bodies exit:** the author's `while running(handle)` (§9.6's
    contract — the predicate check and interruptible blocking are the two
    taught obligations) with all blocking points
    interruptible per (2)–(3); the wrapper's `finally shutdown!(device)` is
@@ -2402,13 +2418,13 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    body that never blocks between `running` checks; the shipped GUI's
    render loop polls once per frame and never blocks.
 6. **Device-initiated paths:** voluntary exit — the loop body returns
-   (window ✕, peer EOT; no `should_close` hook exists, §9.4); with
+   (window ✕, peer EOT; no `should_close` hook exists, §9.6); with
    `should_abort` set the wrapper's exit path also requests a sim stop,
    otherwise the sim continues with the device's *task* absent: its cell
    stops filling — the loop is structurally indifferent — while its roster
    entry and claims persist to run end (§9.3's freeze: death is not
    detach; the orphaned slots hold their last-drained values, visibly,
-   §9.5). A crashing device task is caught by the
+   §9.7). A crashing device task is caught by the
    framework wrapper and follows the same path, logged with the device's name
    (`DeviceCrash`, Appendix C).
 7. **Loop-side failure** runs (1)–(5) from the catch path — specified in
@@ -2456,7 +2472,7 @@ fresh by topological order (the callback ran post-step, one boundary staler);
 the pure timetable script is a one-liner reading its bundle's clock
 (`h_zu(s, (; t)) = (; offset = profile(t))` — exact at its own ticks, no
 latching); and
-in a scenario configuration the script drives the avionics' input ports, so §9.5
+in a scenario configuration the script drives the avionics' input ports, so §9.7
 renders the corresponding GUI widgets read-only with provenance — today's
 demo-vs-GUI dead-slider fight, resolved by the port-resolution rule.
 
@@ -2568,7 +2584,7 @@ reproduction is trace replay (§10.7), not resurrection.
 
 ### 10.7 Replay: the trace re-drives the ordinary loop
 
-The entry point the §9.3 trace exists for:
+The entry point the §9.5 trace exists for:
 
 ```julia
 trc  = trace(sim)                     # the recorded session: header + per-frame batches
@@ -2586,7 +2602,7 @@ loop true of replay:
   and slot values directly — no condition resolution; §14.6's totality holds
   by capture — and then executes the ordinary boundary-zero sequence
   (§14.5). Authored-condition events re-fire identically: the header
-  predates the sequence (§9.3's capture placement), so nothing is applied
+  predates the sequence (§9.5's capture placement), so nothing is applied
   twice and nothing is skipped.
 - **The drain reads the trace.** Each frame top applies the recording's
   batches for that **frame ordinal** instead of swapping the roster's
@@ -2632,7 +2648,7 @@ Everything else is the loop as already specified:
   batch entries against the root input-face list — attach-style, with
   did-you-mean (`ReplayHeaderMismatch`, `ReplayUnknownFace`, Appendix C).
   The same pass pays the trace-record conversion in reverse: the interactive
-  register's sparse records (§9.3) are normalized to positional batches
+  register's sparse records (§9.5) are normalized to positional batches
   against the header's schemas, once, off the loop — replay has the whole
   trace in hand before frame 1 — so the replay drain applies compiled
   scatters exactly as the live drain does, and no face name is resolved
@@ -2791,6 +2807,8 @@ flameout_handler(::Engine, _) = (; m = (; phase = off))
 
 The inventory, and where each schema fact gets its authority:
 
+#### State, modes, discrete state
+
 - **State, modes, discrete state** (`init_x`, `init_m`, `init_z`): declaration
   *by initial value* — the type is derived from the
   value, so there is no second artifact to drift and no separate type declaration to
@@ -2815,6 +2833,9 @@ The inventory, and where each schema fact gets its authority:
   style: contracts describe table cells, recomputed from scratch every
   sweep, needing only types; `init_*` describe stores — the model's memory,
   which must have contents before the first sweep can run.
+
+#### `input_types(::C)`
+
 - **`input_types(::C)`**: a bare `NamedTuple` of types — zero framework vocabulary, no
   wrapper types (the last candidate, `Reduce`, died with reduce-ports, §6.2). Entries
   are **face constraints, not cell types**: each states a bound on the
@@ -2851,6 +2872,9 @@ The inventory, and where each schema fact gets its authority:
   concrete producer — in a test rig, a stub child, §13.7). Under fan-out the slot type is the unique concrete declaration
   among its consumers — two different concrete declarations remain an error —
   and abstract co-consumers are checked against it.
+
+#### `output_types(::C)`
+
 - **`output_types(::C)`**: a concrete `NamedTuple` of *nominal* types, both
   tiers — same species as `input_types`. (An earlier design gave this method a
   `::Type{T}` signature, making the declaration a function of the sweep scalar; it
@@ -2899,6 +2923,9 @@ The inventory, and where each schema fact gets its authority:
   a continuous state — integers, `Bool`s and enums belong in `init_m`";
   "`init_x` field `q_nb::RQuat` is not a state leaf — declare the
   `SVector{4}` backing and cast where rotation semantics are wanted (§7.1)".
+
+#### `local_types(::C)`
+
 - **`local_types(::C)`** (concrete nominal types, same species and leaf walk as
   `output_types`): the component-local
   intermediates — fields a stage returns for the component's *own* later
@@ -2917,10 +2944,16 @@ The inventory, and where each schema fact gets its authority:
   *to* is the component, not a function: computed in one stage, read by the
   component's own consumers, invisible outside — cross-stage table cells, not
   the workspace (`workspace` remains the within-call scratch, §7.3).
+
+#### `events(::C)`
+
 - **`events(::C)`**: an ordered, named collection of guard/handler pairs, detection
   policy set per event by the `localize` flag — `Event(guard, handler; localize = true)`
   is localized, and the default `false` is boundary-detected (§2.1). Order is semantics (§5.3 declaration
   order, §8.6 once-per-event); nothing here is inferrable.
+
+#### No stage tags anywhere
+
 - **No stage tags anywhere.** Which stage produces which port stays invisible in
   the contract, preserving §4.2 (moving a port between stages is non-breaking
   for consumers).
@@ -2931,6 +2964,9 @@ The inventory, and where each schema fact gets its authority:
   values. The "decoder takes no inputs" property is exactly what makes
   the derivation well-founded. A stage name on the wrong tier (`h_zu` on a
   continuous component) is a build error in the §11.5 family.
+
+#### Custom structs as port types
+
 - **Custom structs as port types** (`contact = GearContact{Float64}`) are
   first-class under §7.2's walked-leaf rules: parametric in their
   real-scalar leaves, constructors inferring the scalar, no pinned fields on
@@ -2939,6 +2975,9 @@ The inventory, and where each schema fact gets its authority:
   cell pins and any `Dual`-carrying construction detonates inside the stage
   with an `InexactError` naming the offending constructor — the §7.2 CI
   invariant reached through the declaration layer with no extra machinery.
+
+#### Completeness of the declaration set
+
 - **Completeness of the declaration set** — four rules the build checks in
   Stratum A (§12.1), stated here because they are properties of the
   declarations, not of the wiring. **A store needs its update:** `init_x`
@@ -3825,7 +3864,7 @@ about what the *build* warns on. The committed runtime warnings, in one place:
   fired by the stopped-sim attach renormalizing a pending batch) and
   `EntryTypeMismatch` (a value unconvertible to its
   slot's declared type, rejected at staging for every writer);
-- **a tolerated device-side datum failure** (§9.4, §13.4):
+- **a tolerated device-side datum failure** (§9.6, §13.4):
   `MalformedDatum` — emitted by the author's loop via `report(handle, …)`,
   rate-limited per device, the `InputMappingError` successor;
 - **staging discarded during replay** (§10.7): `ReplayDiscardedStaging` —
@@ -3906,11 +3945,11 @@ naming the offending component's state block and the boundary. It catches
 diverging models generally, not just post-terminal ones.
 
 **Domain separation.** Device-side user code — loop bodies and mappings run
-on the device task (§9.3, §9.4) — fails in the device's own domain, and in
+on the device task (§9.4, §9.6) — fails in the device's own domain, and in
 two classes: a genuine bug takes the per-device crash path (liveness
 heartbeat, `DeviceCrash`) while the sim keeps running; an unmappable datum
 is not a failure at all — the loop body tolerates and reports it
-(`MalformedDatum`, §9.4). The two failure domains never mix — exactly what
+(`MalformedDatum`, §9.6). The two failure domains never mix — exactly what
 the no-shared-mutable-model decision bought.
 
 ### 13.5 Termination is a state, not an exception
@@ -4254,7 +4293,7 @@ payload names faces *of the authoring level's contract*; resolution walks the
 export chain to the root slot and errors if the face never surfaces — an
 internally-wired input has no slot and writing it is meaningless (the first
 sweep overwrites), and unexported stays unpokeable for init exactly as for
-the GUI (§9.5, §15.4).
+the GUI (§9.7, §15.4).
 
 **The locality law** is §6.1's, third instance (connections, computed exports,
 now conditions): each level speaks its own fields, its declared children's
@@ -4397,7 +4436,7 @@ established stores; making the model *coherent* is boundary zero, §14.5.
 ### 14.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
 After `apply!` establishes stores at `t₀` — and the trace header captures
-them, together with the slot values, *before anything below runs* (§9.3's
+them, together with the slot values, *before anything below runs* (§9.5's
 capture placement; a post-sequence capture would hand replay
 already-transitioned state) — the init service completes the
 §8.6 macro-sequence with an empty integrate — project → [sweep → guards →
@@ -4418,9 +4457,9 @@ parity is exact, not approximate. Piece by piece:
   than one step later — grounded by the prior rule (§8.6):
   boundary zero establishes every guard prior as not-holding. Suppression
   would delay the identical firings while hiding the diagnostic that the
-  authored condition was not quiescent — §9.5's stage-on-interaction lesson
+  authored condition was not quiescent — §9.7's stage-on-interaction lesson
   (insurance that masks invariant violations is anti-diagnostic). The header
-  records the *resolved pre-sequence* stores and slots (§9.3), so replay
+  records the *resolved pre-sequence* stores and slots (§9.5), so replay
   re-executes boundary zero from the same starting point and whatever fires
   at `t₀` fires again identically (§10.7) — the firings are recomputed,
   never recorded. (A `stop_on` face already `true` is a
@@ -4948,7 +4987,7 @@ can catch it (both spellings are meaningful designs). The update stage cannot
 rescue its own boundary — republish-from-`z⁺` is rejected (row 67) — so the
 output stage is the *only* same-tick path. Today's hand-ordering (`f_init!`
 before `f_periodic!` in one call) is this contract enforced manually;
-Appendix A carries it as the same-tick reset entry, and §9.5's
+Appendix A carries it as the same-tick reset entry, and §9.7's
 bumpless-engage answer — engage semantics live in the FCS — presupposes
 exactly this spelling. One relative outside the FCS: the landing gear's
 level-triggered cross-component reset (`!wow` re-initializing the friction
@@ -4957,7 +4996,7 @@ regulator every step) becomes an edge-triggered event owned by the regulator
 
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
-The exercise that selected per-device cells (§9.3) and produced the §9.5
+The exercise that selected per-device cells (§9.4) and produced the §9.7
 contracts. Setup (the `sketch_io.jl` listing): a first-order filter with
 root inputs `u_cmd` and `τ`; a fictitious 100 Hz single-axis joystick streaming a
 slow ramp onto `u_cmd` (complete writer); a 60 Hz GUI with sliders for both slots
@@ -4981,7 +5020,7 @@ concrete interleaving did:
   the edit never applies. Batch stack — the edit is buried under newer pushes,
   and the pending chain grows at the polling rate (~10³ nodes per 10 s pause)
   with every peek walking it. Per-device cell — the edit holds in the GUI's own
-  cell across the pause (the knob keeps it, §9.5 peek rule), merges with the
+  cell across the pause (the knob keeps it, §9.7 peek rule), merges with the
   `τ` edit (the sparse-accumulation case), and applies at the un-pause drain —
   for one deterministic frame before the joystick reclaims the slot, which is
   the honest semantics of one-shot editing a streamed input. The uncontested
@@ -4993,14 +5032,14 @@ concrete interleaving did:
   attachment-order policy — only per-device cells make precedence a rule rather
   than a race.
 - **Discoveries**: the active-widget contract, and the port-resolution answer to
-  panel reuse (§9.5) — prompted by asking how the filter's panel survives the
+  panel reuse (§9.7) — prompted by asking how the filter's panel survives the
   filter becoming an embedded component with `u_cmd` driven by another component
   (the `Cessna172Xv0` → `Xv1` throttle situation).
 - **Note**: under slot exclusivity (§9.3) the contested-`u_cmd`
   scenario itself becomes an attach-time error — the drag-against-the-stream
   phase cannot arise. The test's verdicts on cell *shapes* (atomicity,
   coalescing, pause behavior, the peek rule) stand; its conflict-precedence
-  findings and the active-widget stage-every-pass contract (§9.5) do not —
+  findings and the active-widget stage-every-pass contract (§9.7) do not —
   both were patches for the contested-slot world this test examined, and that
   world is gone.
 
@@ -5031,24 +5070,26 @@ surface, with each item's home:
   mappings — the duplication smell), plus the `q_ref = q_sf · axis` fan-out. It
   decomposes into device conditioning (device truth), feel curves (deployment
   preference) and command semantics (FCS design); the face contract splits it —
-  conditioning upstream as mapping data, semantics in-model (§9.3).
+  conditioning upstream as mapping data, semantics in-model (§9.4).
 - **Mode engage** (`mode_req` + setpoint capture from current measurements — the
   GUI handler does `u.EAS_ref = EAS` read from `vehicle.y`): the one place the
-  GUI composes writes from model state. Open fork: GUI peek-batch (§9.5 supports
+  GUI composes writes from model state. Open fork: GUI peek-batch (§9.7 supports
   it as-is) vs. capture-on-engage latched inside the control laws (uniform across
   all writers, but moves behavior into the FCS).
 - **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
   masses, terrain surface enum, sea-level T/p, wind NED): ordinary component
   inputs exported to root faces; GUI as the interactive register's writer via
-  §9.5; no machinery. The interactive surface is *not* one thing: pilot commands cluster
+  §9.7; no machinery. The interactive surface is *not* one thing: pilot commands cluster
   under a prefix; environment knobs stay with their components' panels.
 - **The Xv1 actuator sliders**: FlightCore's dead sliders; resolved read-only by
-  §9.5. No action.
+  §9.7. No action.
 - **Outbound** (XPlane12: control-surface angles, nose-wheel steering, prop
   speed/phase, pose, `t`): a snapshot-consuming device, pure `map_output` on the
   device task (§9.2). No friction found.
 - **Init/trim, pause/pace, post-run plots**: stopped-sim services (§14), control
-  plane (§10.1), log/trace (§9.2–§9.3).
+  plane (§10.1), log/trace (§9.2, §9.5).
+
+#### Architectures examined here and rejected
 
 **Architectures examined here and rejected** (the §9, §10 periphery decisions were
 forced by this cast):
@@ -5067,7 +5108,7 @@ forced by this cast):
 - **A root-level `PilotInterface` cockpit component** assembling `pilot_commands`
   beside the physical models: its claimed jobs dissolved one by one — struct
   assembly happens in-model downstream of scalar faces (any component can gather
-  and bundle), curves became mapping data, widget arbitration is §9.5 +
+  and bundle), curves became mapping data, widget arbitration is §9.7 +
   exclusivity, and the stateful residue (accumulators, capture-on-engage) fits
   the avionics, where FBW stick shaping arguably belongs. What remained was a
   component with no natural place — a cockpit artifact sitting beside
@@ -5078,6 +5119,8 @@ forced by this cast):
   FlightCore's argument-threading world is provided here by the namespace prefix
   and `faces` (§11.8); the struct reappears legitimately downstream, assembled
   in-model by a single producer.
+
+#### Surface walkthrough
 
 **Surface walkthrough.** The demo line by line:
 
@@ -5126,6 +5169,8 @@ forced by this cast):
   a fresh `Simulation(world)` bit-identically — which is also the state-trajectory
   inspector (row 38 paying its way).
 
+#### Frame anatomies
+
 **Frame anatomies.** One frame each:
 
 - *Stick motion*: device task polls, conditioning helper applies binding params,
@@ -5135,7 +5180,7 @@ forced by this cast):
 - *Flaps click*: button peeks counter `k` (own-pending-else-snapshot), stages
   level `k+1` on activation; drain applies; avionics compares slot counter to its
   `z` counter, moves the detent, stores. Multi-click in one window counts via
-  own-pending-first peek; repeated staging idempotent (§9.5).
+  own-pending-first peek; repeated staging idempotent (§9.7).
 - *Mode engage*: the GUI stages `mode_req` (plus optionally peek-captured
   setpoint slots); **bumpless-engage semantics live in the FCS already** — the
   current `ControlLaws` latches each controller's reference from the present
@@ -5164,6 +5209,8 @@ continuous or discrete components falling out by whichever facets an author
 declares? (Class is already read off declaration shape, §11.5 — the question is
 whether the two declaration sets should be exclusive.)
 
+#### Why the merge buys nothing
+
 **Why the merge buys nothing.** The split is between *time bases*, not state
 classes — the continuous primitive is already hybrid (`m`, guards, handlers, §3.1);
 what separates the classes is sweep-driven versus tick-driven execution. And the
@@ -5182,6 +5229,8 @@ facet-conditional web; and the sampling seam — ZOH and the `z⁻¹` delay, the
 bug-prone boundary in a flight-control stack — disappears into a monolith where
 the split keeps it a visible wire. (Simulink and FMI allow the fused block;
 sample-time propagation confusion is the documented price.)
+
+#### The counterexample
 
 **The counterexample** (from a pre-design FlightCore sketch, `navsensors.jl`,
 whose operative content and companion derivation note are recorded here in
@@ -5203,6 +5252,8 @@ into continuous state, exactly the operation this design forbids (`g` writes onl
 its own `z`; handlers are the sole `x`-resetters, and they are guard-driven).
 Integrate-and-dump falls squarely into the crack between the classes:
 tightly-coupled continuous and periodic dynamics in one physical device.
+
+#### The idiom: integrate-and-difference
 
 **The idiom: integrate-and-difference.** The reset is eliminable by algebra, not
 approximation. Every interval-relative integral becomes a *cumulative* one; the
@@ -5237,6 +5288,8 @@ sampled-data latch, and the only new store (the memory the reset used to erase):
   sculling corrections are *about*, stays inside the integrand via $q(t)$: every
   RHS evaluation, RK stages included, applies the current cumulative attitude,
   exactly as the sketch applies the current `q_c_cc`.
+
+#### Exactness condition, stated once
 
 **Exactness condition, stated once**: interval-relative integrals factor into
 cumulative ones whenever the interval-dependence enters through a *left action by
@@ -5304,6 +5357,8 @@ rest: its due `g` latches `z ← integrals(t₀)` for every subsequent sample, s
 only the `t₀` sample itself depends on the authored `z` — a condition-authoring
 obligation under trim, §14.5.)
 
+#### Why `u.V` is fresh — the line that would silently zero
+
 **Why `u.V` is fresh — the line that would silently zero.** The sculling line is
 correct only because a due tick samples the *completed* boundary: if `u.V` still
 held the previous boundary's decode it would equal `z.V` exactly (that is the
@@ -5316,6 +5371,8 @@ timeline closes consistently: the sampler's `h_zu` decodes `z` (the `t_{k-1}` la
 *before* `g` runs — the `z⁻¹` semantics — and after event quiescence `g` latches
 the `t_k` values for the next tick; same-boundary events re-run the gated stages
 in their re-sweeps, so `g` and external readers see the settled boundary.
+
+#### Author-knowledge note
 
 **Author-knowledge note** (user observation, recorded as a documentation
 obligation): the clean implementation leans on the author *knowing* that "sampling
@@ -5395,7 +5452,7 @@ Still to be settled:
   left unexported — with *unexported* the preferred disposition for
   extension-only surface: the declaration and stage family of §11.1's import
   list — the larger half of the question, on every component file's first
-  line, settled there — plus the §9.4 binding interface `faces`/`map_input`/
+  line, settled there — plus the §9.6 binding interface `faces`/`map_input`/
   `selectors`/`map_output` and the device contract `init!`/`loop`/`shutdown!`/
   `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
   rather than call every day; and the **§12.7 executor compile-cost re-measurement** on
@@ -5404,16 +5461,16 @@ Still to be settled:
   belongs here); whether `stop_on` needs a root-declared overridable default
   (§13.5 — reopen only if the ctor argument proves chronically forgotten).
 
-- **GUI panel authoring API.** The semantics are settled (§9.5: derived
+- **GUI panel authoring API.** The semantics are settled (§9.7: derived
   liveness, first-class read-only rendering, own-pending-else-snapshot peek,
   stage-on-interaction, claim transitions); the calling convention — context
   contents, port naming, child composition — is deferred to migration,
-  co-designed against the GUI library under §9.5's four constraints.
+  co-designed against the GUI library under §9.7's four constraints.
 
 - **Log and trace persistence.** The in-memory artifacts
   are settled — the log as retained boundary snapshots (§9.2), the
   always-on device-tagged input trace with its header of initial stores and
-  slot values (§9.3, §14.5, §14.6), and the primary/derived rule (the log
+  slot values (§9.5, §14.5, §14.6), and the primary/derived rule (the log
   is recomputable from the trace, never the reverse) — but nothing on-disk
   is. Deferred to migration, where the consumers exist to ground the
   choices: the HDF5 export scope (whole snapshot log vs. selected
@@ -5484,24 +5541,24 @@ For component authors:
 
 For periphery authors and consumers:
 
-- **Levels, never deltas** (§9.3). Staged input values are levels
+- **Levels, never deltas** (§9.4). Staged input values are levels
   (`press_count = 17`, never `presses += 1`) — idempotent under
   coalescing; button edges ride as monotonic counters. Cross-datum state
   (press counters, edge detection) lives in the device struct, maintained
-  by the loop, arriving *inside* the datum — `map_input` is pure (§9.4).
-- **The device loop idioms** (§9.4, §10.4). Loop on `running(handle)`;
+  by the loop, arriving *inside* the datum — `map_input` is pure (§9.6).
+- **The device loop idioms** (§9.6, §10.4). Loop on `running(handle)`;
   make every blocking call interruptible (an `unblock!` override, or
   timeouts); voluntary exit is returning. Three canonical shapes:
   timer-poll (sleep, poll, stage), source-driven (block on your socket;
   `unblock!` closes it), boundary-driven (`wait_next_snapshot`, gather,
   send). A forgotten predicate check surfaces as `DeviceJoinTimeout` with
   your device's name; a stall as a stale heartbeat.
-- **Bad datum vs. bug** (§9.4, §13.4). Catch what your parser can throw,
+- **Bad datum vs. bug** (§9.6, §13.4). Catch what your parser can throw,
   `report(handle, MalformedDatum(cause))`, stage nothing, continue; let
   everything else propagate — the wrapper makes it `DeviceCrash`.
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
-- **Derived liveness** (§9.5). A widget is live iff its port's feed chain
+- **Derived liveness** (§9.7). A widget is live iff its port's feed chain
   terminates in a root slot unclaimed in the run's frozen partition; there
   is no per-port marking, and unexported ports are unpokeable.
 - **The two observation registers** (§9.2, §13.5). A deep snapshot path is
@@ -5586,16 +5643,16 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   **defaults**, overridable per run at `run!` (§13.5, §10.6). Recording:
   `trace` is the input trace's plain kill switch and `log` the snapshot log's,
   with `log_every` the log's keep-every-kth decimation — admissible on the
-  derived artifact only, never on the trace (§9.2, §9.3, row 29). `debug`
+  derived artifact only, never on the trace (§9.2, §9.5, row 29). `debug`
   gates the workspace poison (§7.3).
-- `attach!(sim, device, binding)` — sides by method presence (§9.4):
+- `attach!(sim, device, binding)` — sides by method presence (§9.6):
   `faces(b)`/`map_input(datum, b)` is the input half (the enumerated face
   set *is* the claim — what the device may write,
   not what it will — registered with exclusivity enforced, the staged
-  shape and normalization shim compiled, §9.3); `selectors(b)`/
+  shape and normalization shim compiled, §9.4); `selectors(b)`/
   `map_output(nt, b)` is the output half (§14.4 selectors validated and
   compiled to one gather, §9.2); `TableBinding` is the shipped
-  data-driven binding (§9.4). A stopped-sim operation — legal in `built`,
+  data-driven binding (§9.6). A stopped-sim operation — legal in `built`,
   `initialized` and `stopped`, an error while `running`
   (`ServiceLifecycle`, §9.3's roster freeze); admission checks identity
   (`AlreadyAttached` — one roster entry per instance, rebinding =
@@ -5605,16 +5662,16 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - `detach!(sim, device)` — removes the roster entry and releases the
   device's claims; stopped-sim only, like `attach!`. A loop body's
   voluntary exit or crash mid-run does *not* detach: the task dies, the
-  claims persist to run end (§9.3, §9.4, §10.4).
+  claims persist to run end (§9.3, §9.6, §10.4).
 - The device contract — `init!(dev)` / `loop(dev, handle)` /
   `shutdown!(dev)` / optional `unblock!(dev)` / optional trait
   `needs_calling_task(dev) = false` (§9.1's topology: at most one per
   roster, its loop body runs inline on the calling task): per-run `init!`
   on the calling task, the author-owned task body inside the framework's
-  try/catch/finally wrapper, voluntary exit = return (§9.4, §10.4).
+  try/catch/finally wrapper, voluntary exit = return (§9.6, §10.4).
 - The device handle — one type, capabilities not taxonomy: `running`,
   `latest`, `wait_next_snapshot` (§10.3), `stage!`, `binding`, `gather`,
-  `report` (§9.4).
+  `report` (§9.6).
 
 **Condition algebra** (§14.1–§14.6).
 
@@ -5656,7 +5713,7 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - `run!(sim; gui = false, pace = 1, margin = <default>, t_end = <ctor value>,
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
   (§8.7); the GUI an ordinary rostered device rendered on the calling task
-  (§9.4, §9.5); `gui = true` is idempotent attach sugar — it ensures the
+  (§9.6, §9.7); `gui = true` is idempotent attach sugar — it ensures the
   standard GUI device is rostered, attaching it only if absent, and never
   detaches; placement follows the roster, not the flag: a rostered GUI
   moves the loop to a spawned task, on this run and every later one until
@@ -5705,7 +5762,7 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   (boundary zero from the trace header, drain fed by frame ordinal), ending
   `initialized` — inspect via `latest`/live stores, advance via `step!`,
   continue via `run!`; the state-trajectory inspector and the `StepError`
-  reproduction tool (§9.2, §9.3, §10.7; on-disk persistence deferred,
+  reproduction tool (§9.2, §9.5, §10.7; on-disk persistence deferred,
   §16).
 
 ---
@@ -5810,14 +5867,14 @@ Severities, in the vocabulary §13 fixes:
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted localization budget | §8.4 | warning (runtime) |
 | `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | §8.6 | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | §8.7 | warning (runtime) |
-| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness); the site (staging, or a stopped-sim attach's renormalization) | §9.3, §9.5 | warning (runtime) |
+| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness); the site (staging, or a stopped-sim attach's renormalization) | §9.3, §9.7 | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | §9.3 | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count | §10.2 | warning (runtime), at `run!` |
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | §10.4 | warning (runtime) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | §10.4, §13.4 | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | §10.7 | warning (runtime), rate-limited per device |
-| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | §9.4, §13.4 | warning (runtime), rate-limited per device |
-| `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | §9.3 | warning (runtime) |
+| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | §9.6, §13.4 | warning (runtime), rate-limited per device |
+| `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | §9.4 | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | §7.3 | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | Appendix B, §13.5 | warning (runtime), at run start |
 
@@ -5986,7 +6043,7 @@ periphery may write (§9.3, §11.6).
 
 **staging cell** — the per-device atomic holding place where a device's pending
 write batch waits between drains; mutated frame by frame, hence outside the
-table's publish-once discipline (§9.3). Not a table cell (§4.1).
+table's publish-once discipline (§9.4). Not a table cell (§4.1).
 
 **store** — the typed home of `m` and `z`: overwritten by the framework when a
 handler or update returns a new value, never arithmetic-touched, snapshot-free
@@ -6214,17 +6271,17 @@ leaf walk, never declared (§7.2).
 datagram, malformed JSON, out-of-range field): tolerated *in the loop body* —
 catch, stage nothing, `report(handle, MalformedDatum(cause))`, continue —
 while any other exception propagates and becomes `DeviceCrash`. The
-classification is the device author's (§9.4).
+classification is the device author's (§9.6).
 
 **batch** — a device's staged set of face ⇒ value writes, coalesced in its
-staging cell and applied whole at the next drain (§9.3). The word means only
+staging cell and applied whole at the next drain (§9.4). The word means only
 this; error reporting *collects* (§D.9).
 
 **binding** — the value passed at `attach!` that makes a device
 framework-legible: `faces`/`map_input` on the input half, `selectors`/
 `map_output` on the output half, sides detected by method presence.
 Enumerated bindings stake claims; `TableBinding` is the shipped data-driven
-one (§9.4, §9.3).
+one (§9.6, §9.4).
 
 **boundary counter** — the monotonic count of *published boundaries* carried
 in the snapshot and mirrored in the loop state the wait predicate tests;
@@ -6243,7 +6300,7 @@ liveness (§9.3).
 
 **coalescing** — the CAS merge keeping one pending batch per device:
 untouched faces survive, re-staged faces take the newest level (the per-face
-ZOH). Its outbound mirror is newest-wins snapshot delivery (§9.3, §10.3).
+ZOH). Its outbound mirror is newest-wins snapshot delivery (§9.4, §10.3).
 
 **control plane** — the separate few-word atomic surface carrying pause,
 un-pause, pace, `margin` and stop, consulted at frame top and inside the
@@ -6253,17 +6310,17 @@ drains nothing (§10.1).
 **derived liveness** — the rule that a GUI widget is live iff its port's feed
 chain terminates in a root slot that is unclaimed in the run's frozen surface
 partition; baked once at run start, with no per-port "GUI-controlled" marking
-anywhere (§9.5).
+anywhere (§9.7).
 
 **device** — any attached participant in the periphery, under one authoring
 contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
 `needs_calling_task`) and one handle; input-only and output-only are
-degenerate uses, and the GUI is an ordinary device (§9.4).
+degenerate uses, and the GUI is an ordinary device (§9.6).
 
 **drain** — the single point at the top of each frame where the loop takes
 each staging cell by `atomicswap` and applies it through the attach-compiled
 scatter, in attachment order; never at a `t*` boundary, and under the roster
-freeze it performs no checks at all (§9.1, §9.3).
+freeze it performs no checks at all (§9.1, §9.4).
 
 **harness cell** — the interactive-register staging path for the calling task
 itself, written by `stage!(sim, "face" => value, …)`: ordinary batches,
@@ -6291,7 +6348,7 @@ provenance; recovery is between runs (§9.3).
 
 **peek** — the GUI display rule: a widget shows its own pending write if any,
 else the snapshot value. Own-cell only, which is what makes multi-click
-counting and paused editing correct (§9.5).
+counting and paused editing correct (§9.7).
 
 **periphery** — everything outside the loop that exchanges data with it — GUI,
 input devices, network I/O, logging — together with the concurrency model
@@ -6321,7 +6378,7 @@ trajectory is derived data (§9.2).
 **stage-on-interaction** — the GUI staging contract: value widgets stage the
 new level on edit, edge widgets on activation as a level computed from the
 peek; held buttons do not re-stage, and no widget stages per render pass
-(§9.5).
+(§9.7).
 
 **unattended run** — a run with empty staging and no snapshot readers: the
 same loop, fully synchronous on the calling task, rethrowing after the
@@ -6356,18 +6413,18 @@ up front (§10.7).
 
 **trace** — the primary record of a session: the sequence of drained,
 device-tagged batches per frame, plus its header. On by default, because the
-log is recomputable from the trace and never the reverse (§9.3).
+log is recomputable from the trace and never the reverse (§9.5).
 
 **trace header** — the trace's preamble: the resolved initial stores
 `(x, m, z)`, the initial root-slot values, and each writer's face-name →
 position schema — captured after `apply!` and the slot writes, before the
-boundary-zero sequence runs (§9.3, §14.5).
+boundary-zero sequence runs (§9.5, §14.5).
 
 **trace record density** — the rule that retained records match each batch's
 natural density: an enumerated writer's positional batch is retained verbatim
 and zero-copy, while the interactive register's wide mostly-`nothing` tuple is
 converted at the drain into (position ⇒ value) pairs, so trace size tracks
-information rather than surface width (§9.3, row 107).
+information rather than surface width (§9.5, row 107).
 
 **what-if register** — replaying a trace against the same structure with
 changed parameters: deterministic re-driving of the recorded inputs through a

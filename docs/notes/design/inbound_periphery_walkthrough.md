@@ -1,7 +1,7 @@
 # The inbound periphery, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` §9.3 (staging, claims, drain), §9.5 (GUI write path),
+`framework_spec.md` §9.3 (staging, claims, drain), §9.7 (GUI write path),
 §10.6 (harness cell) and decision rows 44, 93, 96, 106, 107. Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
 for the roster freeze (rows 106–107). If this document and the spec ever
@@ -85,7 +85,7 @@ detach**. A task that crashes, returns voluntarily, or loses its hardware
 mid-run simply stops filling its cell; the §10.2 heartbeat reports the death
 by name, and the entry — claims included — persists to run end. The orphaned
 slots hold their last-drained values, and the GUI renders the fact where the
-user is looking ("claimed by `T16000M` — task dead", §9.5). Recovery is
+user is looking ("claimed by `T16000M` — task dead", §9.7). Recovery is
 between runs: stop, `detach!`, then `init!` for a fresh trajectory or
 `replay!`-to-end + `run!` to continue the interrupted one (§10.7).
 
@@ -169,7 +169,7 @@ register). There are two:
 
 - **The claimed register**: enumerate faces in your binding, claim them at
   attach, own them exclusively. The joystick. Autonomous devices live here.
-- **The interactive register**: the GUI (§9.5) and the harness/REPL's
+- **The interactive register**: the GUI (§9.7) and the harness/REPL's
   task-free entry point `stage!(sim, "face" => value, ...)` (§10.6). Its
   writers share the **unclaimed remainder** of the run's partition — the
   complement of the union of all claims, computed rather than staked, and
@@ -208,7 +208,7 @@ enumerated, currently unclaimed. `map_input` dutifully produces
 `flaps` has no position in the peer's schema → `OutOfClaimEntry`, attributed
 to the device whose mapping drifted, before the value ever nears the loop.
 
-The GUI is therefore not an exception: one device contract (§9.4), two
+The GUI is therefore not an exception: one device contract (§9.6), two
 *binding* sides (enumerated vs. derived), one staging rule, one checkless
 drain. Opportunistic writing by autonomous devices does not exist — a device
 that wants a face enumerates it — so cross-writer races on one slot
@@ -229,7 +229,7 @@ its authority, unchanged, to every frame of the run.
 
 Joystick attached while stopped (claims `throttle`, `elevator`); GUI
 attached (claims nothing); `run!` reads the roster, bakes widget liveness
-(§9.5) and specializes the drain; slots as above.
+(§9.7) and specializes the drain; slots as above.
 
 1. *Between frames*: the joystick task polls at its own rate, runs
    `map_input` (deadzone, expo — pure, on the device task), stages
