@@ -129,9 +129,9 @@
 This document specifies a modeling and simulation framework intended to
 replace `FlightCore` as the substrate for `FlightPhysics` and `FlightApps`.
 It is the normative statement of the design: what the framework *is*, in
-present tense. It is derived from `framework_design.md`, which remains the
-historical original and carries the full record of how the design was
-reached. The new framework must match or surpass `FlightCore` in
+present tense. It is derived from `framework_design.md`, the historical
+original, which carries the full record of how the design was reached and
+survives in git history. The new framework must match or surpass `FlightCore` in
 functionality, performance and flexibility, while being more rigorous and
 explicit — reducing the learning curve and the number of latent footguns for
 model authors.
