@@ -53,7 +53,7 @@ The framework simulates **hybrid causal systems**, composed of:
 - **Continuous dynamics**: $\dot{x} = f(x, m, u, t)$ with algebraic outputs.
 - **Multi-rate periodic discrete dynamics**: $z^{+} = g(z, u, t)$ at declared rates, with
   outputs held zero-order between ticks.
-- **Zero-crossing events**: guard functions with handlers, in two tiers (below).
+- **Zero-crossing events**: guard functions with handlers, under two detection policies (below).
 - **Post-step manifold projection**: an optional per-component hook `x ← project(x)`
   applied after each accepted step (quaternion renormalization, DCM orthonormalization,
   any manifold-valued state). This is the cheap end of the projection-methods family
@@ -61,36 +61,36 @@ The framework simulates **hybrid causal systems**, composed of:
 - **External inputs**: injected asynchronously by the runtime (pilot controls, network),
   under the staging rules settled in §12.
 
-### 2.1 Events: two-tier detection
+### 2.1 Events: two detection policies
 
-Both tiers share one declaration (guard function + handler); only the detection policy
+Both policies share one declaration (guard function + handler); only detection
 differs:
 
-- **Tier 1 (default, cheap):** guards are checked for not-holding → holding edges
-  against their baselines (§11.6) at step boundaries
+- **Boundary-detected (default, cheap):** guards are checked for not-holding → holding edges
+  against their priors (§11.6) at step boundaries
   only. No root-finding, no step rejection; the handler fires at the end of the step in
   which the edge was observed. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
-- **Tier 2 (opt-in, per event):** localization of the crossing instant by root-finding,
+- **Localized (opt-in, per event):** localization of the crossing instant by root-finding,
   for events where timing precision genuinely matters (mechanics in §11.4). Runs
   identically in every execution mode: under real-time pacing the
   localization cost is absorbed as pacer debt like any other expensive frame
   (§11.7) — detection policy never depends on pacing, as the §11.7 invariant
-  requires. (Degrading to Tier 1 under pacing was rejected: it would
+  requires. (Degrading to boundary detection under pacing was rejected: it would
   move `t*` and diverge paced from unpaced trajectories — row 80.)
 
 This gives step-boundary logic *well-defined semantics*: the transition is defined by
 the crossing; detection resolution is an execution-policy detail.
 
-A guard defines a **condition**: a boolean predicate, or the sign of a
-continuous function with **positive = condition holds** (normative; writing the
-guard's condition value `σ`, holding = `σ ≥ 0`). An event fires when its
-condition transitions from
+A guard defines a **predicate**: a `Bool`-valued form, or the sign of a
+continuous function with **positive = predicate holds** (normative; writing the
+guard's sign value `σ`, holding = `σ ≥ 0`). An event fires when its
+predicate transitions from
 not-holding to holding — edge semantics, uniform across both forms, with the
-baseline bookkeeping stated in §11.6; the opposite crossing direction is
+prior bookkeeping stated in §11.6; the opposite crossing direction is
 declared as a second event with the negated guard (stall entry/exit as a
-pair). Tier 1 handles both forms; Tier 2 localization requires the continuous
-form. This matters in practice: most transitions in FlightPhysics mix
+pair). Boundary detection handles both forms; localization requires the
+continuous (sign) form. This matters in practice: most transitions in FlightPhysics mix
 input predicates with state thresholds (e.g. the piston engine's `starting → running`
 fires on `ω > ω_idle && fuel_available`).
 
@@ -104,7 +104,7 @@ fires on `ω > ω_idle && fuel_available`).
   framework guarantee: **deterministic replay** — RNG state lives in component discrete
   state (`z`), never in ambient globals, so same seed ⇒ bit-identical trajectory.
 - **No unconditional per-step hook** (no `f_step!` equivalent). Every current use
-  decomposes into projection (quaternion renorm) or Tier-1 events (engine phase
+  decomposes into projection (quaternion renorm) or boundary-detected events (engine phase
   transitions, stall hysteresis latch) — for one class the mapping tightens
   semantics: level-triggered cross-component resets (the gear friction
   regulator under `!wow`) become edge-triggered events (§17.2, §19).
@@ -288,7 +288,7 @@ y_zu     = h_zu(comp, args)         # z, u, y_z, t, Δt [, ws]
 z⁺       = g(comp, args)            # z, y, u, t, Δt [, ws]
 
 # event system (continuous side only) — same fresh table, same state views:
-σ        = guard(comp, args)        # x, m, y, u, t [, ws] — Bool or scalar condition value (§2.1)
+σ        = guard(comp, args)        # x, m, y, u, t [, ws] — Bool or scalar sign value (§2.1)
 (; x, m) = handler(comp, args)      # x, m, y, u, t [, ws] — keys by the return law below (§14.5)
 x⁺       = project(comp, x)         # manifold projection; positional (below)
 ```
@@ -310,7 +310,7 @@ out, nothing to select.
 
 **The bundle law.** A name appears in a component's bundle **iff the
 corresponding store or fact exists for that component**: `x`/`m`/`z`/`ws` iff
-declared (`init_x`, `init_m`, `init_z`, `workspace`), `u` iff the function kind
+declared (`init_x`, `init_m`, `init_z`, `workspace`), `u` iff the function family
 may see inputs **and** the component declares `input_types`, `y` iff the
 component produces any table cell at all (`output_types` ∪ `local_types` ∪
 auto-published), `y_x`/`y_z` iff stage-1 ports exist, `t` always, `Δt` on the
@@ -323,7 +323,7 @@ not textual: destructuring an absent field throws a `FieldError` carrying the
 type and the field name as data (Julia ≥ 1.12), the probe catches it *matched
 against the bundle's own NamedTuple type*, and synthesizes the framing
 diagnostic from the legal set — classifying the field as an undeclared store, a
-wrong-tier fact, or a name illegal for this function kind. No message text is
+wrong-tier fact, or a name illegal for this function family. No message text is
 scraped, and the bundle stays a bare NamedTuple (row 74); a getproperty-wrapper
 spelling is the recorded fallback should type-matched interception prove
 insufficient. The per-function name sets
@@ -795,7 +795,7 @@ the §14.5 embedding guarantee.)
 
 Scoping (what actually needs genericity — roughly half the type inventory):
 
-- **Tier 1 — payload/value types constructed during evaluation (~25 structs):**
+- **Walked — payload/value types constructed during evaluation (~25 structs):**
   the quaternion/attitude family (`Quaternion` becomes
   `Quaternion{N,T} <: AbstractVector{T}` — by invariance, `Float64` instances still
   match every existing `AbstractVector{Float64}` method, so existing behavior is
@@ -803,12 +803,12 @@ Scoping (what actually needs genericity — roughly half the type inventory):
   geodesy value types, `TerrainData`, continuous output structs. Mechanical
   parametrization; constructors infer `T`, so call sites don't change; `@kwdef`
   defaults pin the no-argument case to `Float64`.
-- **Tier 2 — parameters and definitions:** stay `Float64` (promotion handles mixing);
+- **Pinned — parameters and definitions:** stay `Float64` (promotion handles mixing);
   no migration.
-- **Tier 3 — the discrete side** (compensators, avionics): exempt; linearization and
+- **Exempt — the discrete side** (compensators, avionics): linearization and
   trim differentiate continuous dynamics only.
 
-Lookups: **table data is a Tier-2 parameter; the query coordinate is Tier-1 traffic.**
+Lookups: **table data is a pinned parameter; the query coordinate is walked traffic.**
 Interpolations.jl evaluates generically over the coordinate (`itp(x::Dual)` works
 through the `BSpline`/`scale`/`extrapolate` compositions in use). Caveats: `Linear()`
 interpolants have kinked derivatives at knots (no regression vs. finite differences;
@@ -870,7 +870,7 @@ live example pattern).
   called at `Dual`, and the in-place math runs through Julia's generic
   fallbacks (no BLAS; activations probe and linearize, they don't run
   marathons). The calls-per-boundary multiplicity of the continuous side (RK
-  stages, Tier-2 probes, event re-sweeps) makes the no-information-between-
+  stages, localization probes, event re-sweeps) makes the no-information-between-
   calls contract *more* load-bearing there, not less — which is the poison
   check earning its keep, not a prohibition. (Rejected: `workspace_type`
   returning types with framework instantiation — array types carry no
@@ -946,7 +946,7 @@ derivable from pose alone migrates to stage 1, shortening the stage-2 chain.
 ### 9.5 Allocation policy: a scoped invariant
 
 Not dogma — three reasons, only one about speed: (1) GC-pause jitter control for
-real-time; (2) throughput for batch runs; (3) **the canary**: an unexpected allocation
+real-time; (2) throughput for unattended runs; (3) **the canary**: an unexpected allocation
 is Julia's most reliable symptom of type instability, so a zero baseline makes
 `@allocated == 0` a CI-testable invariant that catches inference regressions at the
 offending commit.
@@ -1079,7 +1079,7 @@ a narrow internal interface (the **stepper seam**). Its contract:
 
 - **advance by arbitrary `h`** — required anyway to land on tick boundaries and to
   resume from a localized event time;
-- **dense output on demand over the last completed step** — required only by Tier-2
+- **dense output on demand over the last completed step** — required only by event
   localization (§11.4), constructed lazily;
 - **one-step methods only** — event handlers reset state discontinuously, and a
   one-step method restarts from a new state for free; multistep methods would need
@@ -1124,10 +1124,10 @@ is what restores consistency at each accepted boundary. The rule, binding for th
 **external readers (GUI, logging, network output) observe the signal table only at
 step boundaries.** Mid-step contents carry no meaning.
 
-### 11.4 Tier-2 localization mechanics
+### 11.4 Localization mechanics
 
-Trigger: a Tier-2 guard's condition was not-holding at $t_n$'s quiescence (its
-baseline, §11.6) and is holding at $t_{n+1}$ — the directional edge of §2.1, never a
+Trigger: a localized event's predicate was not-holding at $t_n$'s quiescence (its
+prior, §11.6) and is holding at $t_{n+1}$ — the directional edge of §2.1, never a
 bare sign change: a holding → not-holding transition neither fires nor localizes.
 
 - **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
@@ -1151,18 +1151,18 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
   invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
   `t*` with the remainder step targeting `tₙ₊₁` → re-check guards on the remainder,
   under a bounded per-step event budget with a chattering diagnostic. Multiple
-  Tier-2 guards localizing in one step fire at the *earliest* `t*` (ties fire
+  events localizing in one step fire at the *earliest* `t*` (ties fire
   together at that boundary, declaration order within the iteration, §11.6);
   later crossings re-localize on the remainder.
 - **Shared blind spot, documented:** an even number of crossings within one step
-  returns the condition to not-holding at the boundary, so no edge is observed —
-  defeating detection in both tiers; the mitigation is step size, not
+  returns the predicate to not-holding at the boundary, so no edge is observed —
+  defeating detection under both policies; the mitigation is step size, not
   machinery.
 
 **Budget exhaustion degrades; it does not throw.** When a step spends its event
 budget, localization stops for the remainder of that frame: the remainder step
 completes, and any further crossings fire in the next boundary's ordinary
-iteration — Tier-1 granularity for that frame — under a warning naming the
+iteration — boundary granularity for that frame — under a warning naming the
 chattering event and the localization count. The degradation is a function of
 the trajectory alone, never of wall clock, so row 80's pace-independence stands
 untouched and the run replays identically. A `StepError` would misclassify an
@@ -1206,19 +1206,19 @@ frame-indexed — `t*` boundaries consume no inputs.
 
 **Endpoint policy and grid integrity.** The root-finder returns the
 **holding endpoint of its final bracket** — the smallest probed point where
-the condition holds. Consequences: **`t* = tₙ` is structurally impossible**,
-not clamped away — localization only triggers when the condition was
-not-holding at `tₙ`'s quiescence (§11.6 baselines), and the interpolant
+the predicate holds. Consequences: **`t* = tₙ` is structurally impossible**,
+not clamped away — localization only triggers when the predicate was
+not-holding at `tₙ`'s quiescence (§11.6 priors), and the interpolant
 reproduces the endpoint exactly (`x̂(0) = xₙ`, probe sweeps deterministic), so
 the bracket's left end stays strictly not-holding and the returned point is
 strictly later than the published, immutable `tₙ` (worst rounding:
 `nextfloat(tₙ)`). And the guard observably *holds* at `t*`: handlers fire in
-states where their own condition is true, and the post-fire baseline records
+states where their own predicate holds, and the post-fire prior records
 an actual observation rather than an assumption. **`t* = tₙ₊₁` exactly is
 legitimate** (a crossing at the grid point: `σ(tₙ₊₁) = 0` both triggers
 detection and is the root) and **degenerates to the grid boundary**: the
 localization result is discarded and the event fires inside `tₙ₊₁`'s ordinary
-iteration — bitwise the Tier-1 outcome, one boundary, one snapshot, no
+iteration — bitwise the boundary-detected outcome, one boundary, one snapshot, no
 zero-length remainder. A near-degenerate `t*` leaves a tiny remainder step,
 numerically harmless (increments are `h′`-scaled); the real hazard is
 bookkeeping, killed by rule: **grid times are indexed, never accumulated** —
@@ -1314,7 +1314,7 @@ step size — the same footgun class §2.2 cited when killing `f_step!` — and 
 blessing of externalized FSM components makes cross-component cascades the expected
 idiom, not a corner case. Orthodoxy concurs: hybrid automata take sequences of
 instantaneous transitions at one time point; Modelica iterates events to quiescence;
-Stateflow runs charts to completion within a tick. (Tier-1 detection timing remains
+Stateflow runs charts to completion within a tick. (Boundary-detection timing remains
 h-dependent — that is the *resolution* at which a physical crossing is noticed; the
 cascade delay would have been structure the framework inserts between transitions the
 model declares simultaneous.)
@@ -1362,25 +1362,25 @@ effects appear at the next micro-step).
 **Why once-per-event rather than a round cap.** Termination becomes structural —
 rounds are bounded by the number of declared events, with no arbitrary K knob — and a
 livelock (two FSMs toggling each other) resolves deterministically into "each fired
-once, quiescence, re-fire next boundary," i.e. degrades to Tier-1 granularity instead
+once, quiescence, re-fire next boundary," i.e. degrades to boundary granularity instead
 of burning a budget and erroring. The cost: an event legitimately re-enabled within
-the same boundary waits one step — accepted at the same granularity Tier 1 accepts
+the same boundary waits one step — accepted at the same granularity boundary detection accepts
 physical re-crossings, and flagged when it occurs (a runtime warning, §15.2).
 
-**Guard baselines and firing semantics.** "Newly-fired" means precisely this:
-an event fires at a boundary iff its condition (§2.1: predicate true, or
-`σ ≥ 0`) is observed holding in some iteration round, its **baseline** — the
+**Guard priors and firing semantics.** "Newly-fired" means precisely this:
+an event fires at a boundary iff its predicate (§2.1: the `Bool` form true, or
+`σ ≥ 0`) is observed holding in some iteration round, its **prior** — the
 previous boundary's quiescent sample — was not-holding, and it has not yet
-fired this boundary. The baseline lives in **loop state, per event**, updated
+fired this boundary. The prior lives in **loop state, per event**, updated
 at each boundary's quiescence from the final post-iteration samples. It is
 detection bookkeeping, not model memory — correctly *not* in `z`: not
-captured, not traced, reconstructed deterministically. A condition that holds
+captured, not traced, reconstructed deterministically. A predicate that holds
 and *keeps* holding fires once, at the boundary where it first held — sticky
-flags do not re-fire every boundary. **Boundary zero establishes the baseline
-as nothing-holds**, so an authored condition already in holding territory
+flags do not re-fire every boundary. **Boundary zero establishes every prior
+as not-holding**, so a predicate already holding in the authored state
 fires at `t₀` — §16.5's behavior, derived rather than asserted —
-and a warm restart (`init!` re-runs boundary zero, §16.5) re-baselines from
-scratch: conditions true in the newly applied state fire again at the new
+and a warm restart (`init!` re-runs boundary zero, §16.5) resets the priors from
+scratch: predicates holding in the newly applied state fire again at the new
 `t₀`.
 
 **Ticks stay outside the iteration, after quiescence.** The two possible couplings
@@ -1421,7 +1421,7 @@ completed frames and never reorders, skips or alters the boundary sequence. A
 paced and an unpaced run with identical input traces produce bit-identical
 trajectories — deterministic replay (§2.2) extends over pace. Interactive runs differ
 only because their *inputs* differ. Detection policy is inside the semantics:
-Tier-2 localization runs identically paced or unpaced, its sweep cost
+Event localization runs identically paced or unpaced, its sweep cost
 absorbed as debt like any other expensive frame (§2.1).
 
 **Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
@@ -1545,8 +1545,8 @@ The replacement has five planes:
    loop moves to a spawned task for the duration of the run and the
    calling task runs that device's loop body — inline, inside the same
    §12.4 wrapper as any spawned device's — otherwise the loop runs on the
-   calling task — the batch register, what §15.4's synchronous rethrow
-   presupposes, and what lets parallel batch sweeps thread `run!` inline
+   calling task — the unattended register, what §15.4's synchronous rethrow
+   presupposes, and what lets parallel unattended sweeps thread `run!` inline
    with no nested task fan-out. Either way `run!` blocks its caller until
    the run ends; what varies is what the calling task spends the run
    doing. Spawn-inside-`run!` *is* the start gate — a task exists only
@@ -1572,8 +1572,8 @@ Two rules bind the implementation:
   exposures: GC pauses and OS scheduling — the pacer's debt absorption is the
   mitigation.)
 
-Consequence, recorded because it collapses an API axis: interactive and batch
-simulation stop being different execution modes. A batch run is the same loop with
+Consequence, recorded because it collapses an API axis: interactive and unattended
+simulation stop being different execution modes. An unattended run is the same loop with
 empty staging and no snapshot readers; a replayed interactive session is the same
 loop with staging fed from a recording (§12.3, §12.12).
 
@@ -1980,7 +1980,7 @@ shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity 
 the richest trace, but conflict order is still temporal (push order), and pending
 memory is unbounded while paused, taxing every peek that must walk the chain.
 
-### 12.4 Devices: one kind, one authoring contract
+### 12.4 Devices: one authoring contract, no taxonomy
 
 FlightCore's input/output/GUI trichotomy is lock choreography, not modeling:
 `get_data!` may block, so it runs outside the lock; `extract_output` must not block,
@@ -1993,7 +1993,7 @@ capabilities — read (latest snapshot; optionally wait-for-next-boundary, §12.
 stage —
 plus control access (observe running, request shutdown; `should_abort` stays a
 per-attachment flag). Input-only and output-only devices are degenerate uses, not
-framework kinds; a bidirectional network peer is *one* device with one socket and one
+framework classes; a bidirectional network peer is *one* device with one socket and one
 lifecycle, not two framework devices sharing state. The GUI is an ordinary device —
 the paradigm one, using every capability — with exactly two genuine peculiarities,
 neither taxonomic: main-thread affinity (a launch concern) and read-modify-write
@@ -2449,7 +2449,7 @@ a full `System` declaration against a ten-line closure; this framework prices a
 component at roughly the closure's weight, removing the pressure. Its call sites
 migrate to scenario components, not devices.
 
-**Manual event triggering needs no mechanism:** a root input slot plus a Tier-1
+**Manual event triggering needs no mechanism:** a root input slot plus a boundary-detected
 guard reading it (levels doctrine: latched commands or counters), already
 expressible in settled machinery — the demos' engine start/stop buttons are
 `u`-writes today.
@@ -2466,7 +2466,7 @@ root-input writes and issues control commands — nothing else, structurally.
 Anything that wants to poke the model mid-run is an *input* in disguise (wire a
 slot and guard), *model behavior* in disguise (add a scenario component), or a
 *wall-clock interaction* (attach a device). Graceful termination follows the
-same shape (§15.5): a declared condition in the model plus `stop_on` policy at
+same shape (§15.5): a declared stop face in the model plus `stop_on` policy at
 deployment — never a callback, never a thrown exception.
 
 ### 12.11 Run lifecycle and partial advance
@@ -2481,8 +2481,8 @@ the one alternative entry: it runs boundary zero from a trace header,
 §12.12.) The loop runs on
 the calling task unless a calling-task device — the GUI — is rostered
 (§12.1's roster-derived topology); deviceless, `run!` is fully
-synchronous — the batch
-register (§12.1: a batch run is the same loop with empty staging), and what
+synchronous — the unattended
+register (§12.1: an unattended run is the same loop with empty staging), and what
 §15.4's synchronous rethrow presupposes.
 
 **Partial advance.** `step!(sim; frames = 1)` advances whole frames
@@ -2503,14 +2503,14 @@ stopped-sim state (`initialized`, below), so `attach!` is legal there and
 does what it always does — registers (§12.3); the task appears at the next
 `run!`. The frame-top drain still runs — `step!` frames stay
 bit-identical to `run!` frames — and what it drains is the **harness
-register**: `stage!(sim, "face" => value, ...)`, §12.3's interactive
-register with the calling task as writer. Staged batches are ordinary
+cell**: `stage!(sim, "face" => value, ...)`, §12.3's interactive
+write path with the calling task as writer. Staged batches are ordinary
 batches — traced, so replay and bit-identity hold; applied at the next frame
 top; surface-checked like any writer's (§12.3). The read half is
 `latest(sim)`: the same immutable snapshot value a device handle acquires
 (§12.2), navigated directly for assertions. Advance-assert-advance is
 `stage!` → `step!` → `latest`. Both entry points work under `run!` too — the
-harness register is not step-scoped — and an inspection accessor leaves
+harness cell is not step-scoped — and an inspection accessor leaves
 §15.5's rejection of closure-based termination untouched.
 
 **Status, termination and the `run!` seam.** Between `step!` calls a simulation
@@ -2529,7 +2529,7 @@ truncation without inspecting the clock.
 **Re-running.** `stopped → init! → run!` is the supported cycle: `init!`
 re-runs boundary zero from its condition (warm restart = `capture` → tweak →
 `init!`, §16.1) and clears the trace, the log, *and* any batches still in
-staging cells — the recording registers restart with the run they record, and
+staging cells — the recorders restart with the run they record, and
 no stale batch survives to clobber the boundary zero it predates. Device attachments persist across
 re-initialization — attachment is orthogonal to the run lifecycle (§12.3) —
 and persistence means *roster* persistence: binding, claims and device id
@@ -2676,7 +2676,7 @@ short names are deliberately unexported, precisely because `f`, `g`, `events`,
 `project` are the most collision-prone identifiers in numerical Julia, so
 there is no clash for the language to detect) — and the build then sees a
 component with no `f` method and reports a *modeling* diagnostic
-(`StoreWithoutUpdate`; `KindUnreadable` when the whole inventory was shadowed)
+(`StoreWithoutUpdate`; `ClassUnreadable` when the whole inventory was shadowed)
 for a one-line namespace mistake, pointed away from the wrong line — the §13.4
 error-locality inversion arriving through the namespace. Two mitigations,
 both normative: the import list above is authoring surface, stated wherever a
@@ -2754,11 +2754,11 @@ end
 
 f(eng::Engine, (; x, y, u)) = (ω = (y.M_shaft - u.M_load) / eng.J,)
 
-#events: ordered and named — order is load-bearing (§5.2, §11.6); tier by the `localize` flag
+#events: ordered and named — order is load-bearing (§5.2, §11.6); detection policy by the `localize` flag
 events(::Engine) = (
-    start    = Event(start_guard, start_handler),                               # Tier 1 (default)
-    ignition = Event(ignition_guard, ignition_handler),                         # Tier 1
-    flameout = Event(flameout_guard, flameout_handler; localize = true))        # Tier 2
+    start    = Event(start_guard, start_handler),                               # boundary-detected (default)
+    ignition = Event(ignition_guard, ignition_handler),                         # boundary-detected
+    flameout = Event(flameout_guard, flameout_handler; localize = true))        # localized
 start_guard(::Engine, (; m, u)) =                        #manual trigger: an input (§12.10)
     m.phase === off && u.starter
 start_handler(::Engine, _) = (; m = (; phase = starting))          #no `x` key: no reset
@@ -2843,11 +2843,11 @@ The inventory, and where each schema fact gets its authority:
   `Real` *type* parameters follow the scalar: value parameters pin, being
   structure rather than number (`Ranged{Float64, -1, 1}` walks to
   `Ranged{Dual, -1, 1}`; the bounds are not scalars to re-type). The companion
-  obligation is **constructibility at the walked type** — a Tier-1 type must be
+  obligation is **constructibility at the walked type** — a walked type must be
   buildable at the activation scalar — and the `Dual` probe enforces it by
   construction: it builds real values, so a type whose constructor cannot
   accept them detonates at the probe with its own name in the message. On
-  discrete producers the walk pins wholesale — the Tier-3 exemption (§9.2),
+  discrete producers the walk pins wholesale — the discrete exemption (§9.2),
   now enforced by the typing rule rather than spelled in a signature (tier is
   known from declaration shape, §13.5). During a generic sweep, gated-off
   discrete producers hold their `Float64` values, consumers gather mixed
@@ -2897,9 +2897,9 @@ The inventory, and where each schema fact gets its authority:
   *to* is the component, not a function: computed in one stage, read by the
   component's own consumers, invisible outside — cross-stage table cells, not
   the workspace (`workspace` remains the within-call scratch, §9.3).
-- **`events(::C)`**: an ordered, named collection of guard/handler pairs, tier set
-  per event by the `localize` flag — `Event(guard, handler; localize = true)` is
-  Tier 2, and the default `false` is Tier 1 (§2.1). Order is semantics (§5.2 declaration
+- **`events(::C)`**: an ordered, named collection of guard/handler pairs, detection
+  policy set per event by the `localize` flag — `Event(guard, handler; localize = true)`
+  is localized, and the default `false` is boundary-detected (§2.1). Order is semantics (§5.2 declaration
   order, §11.6 once-per-event); nothing here is inferrable.
 - **No stage tags anywhere.** Which stage produces which port stays invisible in
   the contract, preserving §4.2 (moving a port between stages is non-breaking
@@ -2912,7 +2912,7 @@ The inventory, and where each schema fact gets its authority:
   the derivation well-founded. A stage name on the wrong tier (`h_zu` on a
   continuous component) is a build error in the §13.5 family.
 - **Custom structs as port types** (`contact = GearContact{Float64}`) are
-  first-class under the existing §9.2 Tier-1 rules: parametric in their
+  first-class under §9.2's walked-leaf rules: parametric in their
   real-scalar leaves, constructors inferring the scalar, no pinned fields on
   the continuous path. The leaf walk parametrizes `Real` *type parameters*
   (recursively); a struct with a hardcoded `Float64` field offers none, so its
@@ -3027,7 +3027,7 @@ the failure surfaced inside *correct* code, later, or never):
    name's absence surfacing later as a missing-field error inside correct
    `f`/guard code (the return-side twin of walkthrough 1).
 
-### 13.5 Assembly declaration: type-based, kind by declaration shape
+### 13.5 Assembly declaration: type-based, class by declaration shape
 
 An assembly is a plain struct: fields whose type is `<: AbstractComponent` are its
 children (field names = path segments), all other fields are inert parameters;
@@ -3068,25 +3068,25 @@ any more than a returned value can). Its one real advantage, programmatic
 generation, survives intact in the type-based form: a declaration is an ordinary
 function body — loops and comprehensions build the returned tuple.
 
-**No `AbstractAssembly`; one root `AbstractComponent`.** Two facts kill a kind
+**No `AbstractAssembly`; one root `AbstractComponent`.** Two facts kill a class
 supertype: Julia's single inheritance is already spoken for by the domain
 hierarchies (`AbstractAircraft`, engine families — a slot `E <: AbstractEngine`
 must accept a primitive `PistonEngine` and a composite turbofan assembly alike),
-and §13.3 says kind is an implementation detail behind the contract — encoding it
+and §13.3 says class is an implementation detail behind the contract — encoding it
 in public type identity is exactly what contract visibility exists to prevent.
-Kind is instead declared by *which* well-known declarations a type defines:
+Class is instead declared by *which* well-known declarations a type defines:
 `connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
 precedent) makes an **assembly**; any leaf declaration makes a **primitive** —
 `init_x`/`init_m`/`init_z`, `workspace`,
 `input_types`/`output_types`/`local_types`, `events`, or any stage, `f`, `g` or
 `project` method. The rule is total: a `<: AbstractComponent` type declaring
-neither family has no kind to read, and is a build error naming both families
+neither family has no class to read, and is a build error naming both families
 rather than a silence that fails later and elsewhere.
 Reading which declarations exist is reading declarations — the same move as
 §13.3's visibility-by-declaration-site, not §13.1's banned
-inference-by-evaluation. Kind also settles the tier fact the `T`-signature
+inference-by-evaluation. Class also settles the tier fact the `T`-signature
 used to spell (row 79): the leaf walk pins or parametrizes a
-producer's cells by the kind its declaration shape announces. Error
+producer's cells by the class its declaration shape announces. Error
 taxonomy: `connections` plus `init_x`/stages on one type is a build error
 (assemblies have no state of their own — §11.5's no-atomic-assemblies at
 declaration time); the neither-family error sharpens into a did-you-mean when the
@@ -3284,7 +3284,7 @@ flat state layout, root slots. §13 states what is declared and what must hold;
 this section states *when* each fact is checked, against what, and with which
 failure. The §13.4 walkthroughs plus §8's error rules are its acceptance tests.
 Error-*reporting* policy is settled in §15.1: declarative checking passes
-batch, user-code evaluation fails fast, strata are barriers — the only partial
+collect, user-code evaluation fails fast, strata are barriers — the only partial
 results carried past failures are violation lists from pure checks.
 
 ### 14.1 Three strata
@@ -3334,7 +3334,7 @@ organized as three strata:
 
 Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm, harmonic-grid
 validation, tick schedule instantiation) sits after all three, at `Simulation`
-construction — nothing in A–C depends on it. Its validation is batched like
+construction — nothing in A–C depends on it. Its validation is collected like
 its declarative siblings (§15.1): a nonpositive `h`, an `n < 1`, a
 harmonic-grid violation, an algorithm the stepper seam does not know are
 collected and reported as `DeploymentInvalid` (Appendix C — parameter,
@@ -3388,7 +3388,7 @@ instance), ultimate fallback the zero-argument constructor `T()` — which is
 where well-behaved constrained types already put their valid default (`RQuat()`
 = identity; the `@kwdef` convention supplies it broadly). `probe_value` is
 **overridable**: a type whose valid default is not reachable that way declares
-its own method, which is also the seam a Tier-1 type uses to state a
+its own method, which is also the seam a walked type uses to state a
 constrained default. No method → build error, in the didactic register: it
 names the face and the type, and asks for one of the two fixes ("no
 `probe_value` for `Ranged{Float64, -1, 1}` at face `pilot.elevator_axis` —
@@ -3452,7 +3452,7 @@ stated openly: `build` succeeding does **not** certify the model linearizable �
 a pinned `Float64` (§9.2) lurks until the first `Dual` activation detonates it
 at the probe, naming the offending constructor. The repository's test suite
 pins the invariant instead: `build(world; activations = (Float64, ProbeDual))`
-(or a `check` entry) runs the exhaustive set in CI, catching Tier-1 genericity
+(or a `check` entry) runs the exhaustive set in CI, catching walked-leaf genericity
 violations at PR time. `ProbeDual` is the framework's exported canonical probe
 scalar — `const ProbeDual = ForwardDiff.Dual{ProbeTag, Float64, 1}` — because
 an activation is keyed by a *concrete* scalar type and the bare `Dual`
@@ -3539,14 +3539,14 @@ computation that folds when inferred. An absent key is not an error and not a
 no-op to diagnose: it is the handler saying it does not touch that store. The
 completeness asymmetry is storage-shaped: `x` must be complete because it lives
 in a flat buffer written back wholesale, while `m` may be partial because
-`m` lives in per-field cells where a partial merge is the natural write.
+`m` lives in per-field stores where a partial merge is the natural write.
 
 **Guards have two admissible forms** (§2.1), so their check is form-aware
-rather than a flat `isa Bool`: a predicate guard's probed return is `Bool`, a
-continuous guard's is the nominal scalar — guards run only at the nominal
+rather than a flat `isa Bool`: a `Bool`-form guard's probed return is `Bool`, a
+sign-form guard's is the nominal scalar — guards run only at the nominal
 activation (row 52), so no parametrized-leaf case arises here. Any other probed
-return type is a build error naming both admissible forms. So is a Tier-2 event
-whose guard probes `Bool`: localization brackets a root, and the predicate form
+return type is a build error naming both admissible forms. So is a localized event
+whose guard probes `Bool`: localization brackets a root, and the `Bool` form
 offers none — return `x.ω - eng.ω_idle`, not `x.ω > eng.ω_idle`.
 
 **Failure payload:** component path, stage, field-level diff (missing /
@@ -3705,7 +3705,7 @@ paid-for lessons ground it: the compact-backtrace discipline (parameterized
 model types make rendered output unreadable) and the `SimulationTermination`
 machinery, which §15.5 replaces.
 
-### 15.1 Reporting policy: batch the checks, fail the evaluations fast
+### 15.1 Reporting policy: collect the checks, fail the evaluations fast
 
 The fail-fast vs. compiler-style question dissolves once the build's failure
 sites are split into their two populations:
@@ -3718,10 +3718,10 @@ sites are split into their two populations:
   violation is the natural output of the pass — truncating to the first would
   be extra work — and these failures cluster in practice (a freshly written
   assembly has five unwired inputs; a renamed port breaks three wires).
-  **These passes batch:** each returns its full violation list.
+  **These passes collect:** each returns its full violation list.
 - **User-code evaluation** — `exports` bodies (Stratum A), the stage-1 probes
   (B), the probe chain (C). When user code throws there is no meaningful
-  rest-of-batch: a failed `exports` leaves the parent's face derivation
+  rest-of-collection: a failed `exports` leaves the parent's face derivation
   undefined; a failed stage-2 probe starves every downstream probe of its wired
   inputs (probe values flow topologically, §14.3). Continuing past these
   requires genuine compiler machinery — poisoned nodes, cascade suppression,
@@ -3750,7 +3750,7 @@ severity — which is the artifact the §13.4 acceptance tests and the
 error-message work are written against. Each kind carries its structured payload: endpoint paths, face names,
 expected/observed types, the *list-in-hand* for did-you-mean rendering, and a
 severity. Checking passes return diagnostics; the stratum barrier throws a
-single `BuildError` wrapping the batch; `showerror` renders it compiler-style,
+single `BuildError` wrapping the collection; `showerror` renders it compiler-style,
 grouped by kind and sorted by path. A user-code exception is wrapped in a
 framing diagnostic — component path, which function, the probe context
 including synthesized inputs — with the original exception as `cause`, so the
@@ -3778,18 +3778,18 @@ Two rendering rules are doctrine, not style:
 
 **Two warning streams, scoped separately.** The *build* diagnostic stream is
 the one Appendix C's build kinds ride: warnings there carry warning severity,
-render with the batch, and never trigger the throw. That stream's warning set
+render with the collection, and never trigger the throw. That stream's warning set
 is **currently empty** — the unconnected-output warning having been rejected as
 its sole candidate (§8, row 84) — and better an empty, trusted stream than a
 noisy one; a warnings-as-errors CI switch is addable, not built. The *runtime*
 status/log stream is a different channel and is not empty: it is
 per-occurrence, rate-limited wherever its source can repeat, and surfaced
 through the published framework status (§12.2) alongside the §11.7 pacer
-diagnostics and the §12.7 liveness heartbeats — never batched, since there is
-no batch to join. Nothing in row 84's argument applies to it: that decision is
+diagnostics and the §12.7 liveness heartbeats — never collected, since there is
+no collection to join. Nothing in row 84's argument applies to it: that decision is
 about what the *build* warns on. The committed runtime warnings, in one place:
 
-- **chattering / localization-budget exhaustion** (§11.4) — a Tier-2 event
+- **chattering / localization-budget exhaustion** (§11.4) — a localized event
   whose bracketing budget runs out at a boundary;
 - **event re-enabled within a boundary** (§11.6) — deferred to the next
   boundary by the once-per-event rule;
@@ -3838,7 +3838,7 @@ The §13.8 sketch's primitives, made normative:
   path's final segment (unambiguous: face names may contain dots, never
   slashes, §13.6) and resolves the prefix through `resolve`. First-class
   because five clients share it — wiring resolution, condition addressing
-  (§16.3), device-binding validation (§12.2), surface resolution (§16.10),
+  (§16.3), device-binding validation (§12.2), tap resolution (§16.10),
   snapshot inspection — one splitter, one did-you-mean site.
 
 ### 15.4 Runtime failures: one catch site, an execution cursor
@@ -3851,7 +3851,7 @@ exception frames for no benefit. Framing information does not need to be
 plain mutable field in the loop state recording where in the compiled schedule
 it is — component path (schedule index), which function
 (`h_x`/`h_xu`/`h_z`/`h_zu`/`f`/`g`/guard/handler/`project`), and the boundary phase
-(integration stage *k*, event round *r*, Tier-2 localization probe at trial
+(integration stage *k*, event round *r*, localization probe at trial
 time, tick). One cheap store per dispatch on a single-tasked executor — no
 allocation, no exception frames — and it covers every user-code surface
 uniformly, including the forgettable ones: RHS evaluations at interior RK
@@ -3871,7 +3871,7 @@ to, and `replay!(sim2, trc; to_boundary = k - 1)` then `step!` re-executes
 the failure under instrumentation (§12.12).
 
 **Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
-`errored` — with the exception retrievable. A synchronous batch run rethrows
+`errored` — with the exception retrievable. A synchronous unattended run rethrows
 after the shutdown tail completes, so CI fails honestly; an interactive
 session logs the rendered error and surfaces the status through the control
 plane and GUI.
@@ -3901,7 +3901,7 @@ abnormal**; graceful termination is model *state*, reaching the loop through
 declared machinery:
 
 - **Detection** is ordinary guard/handler/mode machinery. Declare the
-  condition as a Tier-2 event if the stop should be localized — touchdown
+  predicate as a localized event if the stop should be localized — touchdown
   overload is precisely a zero-crossing: the boundary is localized to the
   crossing, the handler sets `m.crashed`, and the snapshot at the crossing
   instant carries the touchdown state.
@@ -3922,7 +3922,7 @@ declared machinery:
   already do. `run!` therefore checks the boundary-zero snapshot before the
   first step: an authored condition already terminal ends the run at `t₀`
   with that snapshot final, integrating nothing. Default: no stop faces, run
-  to `t_end` — `stop_on` is `t_end`'s model-condition sibling at the same
+  to `t_end` — `stop_on` is `t_end`'s model-declared sibling at the same
   declaration site.
 
 **Both are `run!`-time overridable, with the constructor value as the
@@ -3942,10 +3942,10 @@ stopping policies on different runs. The honest cost is two homes for one fact,
 which the precedence rule above is what settles.
 
 Taught contract: **stop faces are sampled at completed boundaries; declare an
-event if you need the stop localized.** Both condition shapes work without
+event if you need the stop localized.** Both stop-flag shapes work without
 framework latching — a handler-set `m` flag is sticky by nature, a transient
 stage-2 Bool is caught because the loop reacts to the first `true`. Compound
-conditions compose in-model — a monitor component reading the relevant
+stop logic composes in-model — a monitor component reading the relevant
 signals and outputting one Bool — the same move §12.10 made for scripts.
 
 Post-terminal dynamics are the model's job, and that is a feature: today
@@ -3966,7 +3966,7 @@ Rejected mechanisms:
 - **Root-type-declared stop policy**: the rates precedent read correctly cuts
   the other way — ratios travel with the design, *absolutes* bind at
   deployment, and "stop here" is absolute-flavored run policy: development
-  runs past the condition to inspect, batch studies log it and continue,
+  runs past the condition to inspect, unattended studies log it and continue,
   services don't step at all. (A root-declared *default* overridable at the
   ctor remains the one variant worth reopening if migration shows the ctor
   argument chronically forgotten.)
@@ -4144,7 +4144,7 @@ A condition may specify: continuous state fields (`x`), modes (`m`,
 continuous components only, §3.2) and discrete state (`z`) — addressed by
 §13.6 slash path plus field name — and root
 input slots, addressed by face. Never outputs (derived data) and never
-workspace (scratch). Entries are validated in the §15.1 batch register: full
+workspace (scratch). Entries are validated in the §15.1 collecting register: full
 list, violations collected, one `BuildError`.
 
 **Overlay base = the declared defaults, always.** Every store has a declared
@@ -4272,7 +4272,7 @@ admitted one sub-topic later, when slot totality produced its use case
 Resolution takes the root node plus a `Build`. Flattening is the only place
 path strings are ever concatenated — a trivial recursion with a path
 accumulator that also records each entry's **tree position** (its
-`getfield`/`getindex` step tuple). The batch pass then checks each flat
+`getfield`/`getindex` step tuple). The collecting pass then checks each flat
 entry: path resolves (did-you-mean over children), field declared in the
 target's `init_x`/`init_m`/`init_z`, value type convertible to the declared
 leaf type, slot faces reach root slots, no duplicate
@@ -4348,7 +4348,7 @@ reader naming a store selector is therefore a resolution error at attach
 remedy: declare the field public and read the auto-published port. Client
 policy rides on top — row 83's registers restated as a resolver property:
 
-- **Load-bearing services** (trim's `reads`, linearization's surfaces) speak
+- **Load-bearing services** (trim's `reads`, linearization's taps) speak
   the contract: `get_state`/`get_deriv`/`get_output`/`get_slot`, within the
   scopes §8's locality law and §16.2's fragment scoping own; `get_local` is
   rejected at resolution — a service evaluation needing a private
@@ -4391,10 +4391,10 @@ parity is exact, not approximate. Piece by piece:
   divisor, so all discrete output stages are gated in, publishing from the
   authored `z` — necessarily, since no earlier tick exists for a ZOH to
   hold. The `t₀` snapshot carries a fully populated table.
-- **Events run.** A condition landing in guard-true territory (an authored
-  stall flag, a strut authored into contact) fires visibly at `t₀` rather
-  than one step later — grounded by the baseline rule (§11.6):
-  boundary zero establishes the guard baseline as nothing-holds. Suppression
+- **Events run.** A condition landing a guard predicate in holding territory
+  (an authored stall flag, a strut authored into contact) fires visibly at `t₀` rather
+  than one step later — grounded by the prior rule (§11.6):
+  boundary zero establishes every guard prior as not-holding. Suppression
   would delay the identical firings while hiding the diagnostic that the
   authored condition was not quiescent — §12.5's stage-on-interaction lesson
   (insurance that masks invariant violations is anti-diagnostic). The header
@@ -4453,7 +4453,7 @@ write subsets; capture-then-tweak patches leaves) — "every root slot
 covered" is not a property of conditions but of *application at boundary
 zero*. `init!` (and trim's commit, which runs the same boundary) compares
 the resolved plan's slot coverage against the `Build`'s `input_faces`
-before writing anything; a shortfall is one batched, declaration-ordered
+before writing anything; a shortfall is one collected, declaration-ordered
 diagnostic (`UninitializedSlots`, a §15.2 kind) naming every uncovered
 face. Pre-write means all-or-nothing: a rejected init leaves the sim
 exactly as it was, the same posture as failed trim.
@@ -4620,9 +4620,9 @@ in every respect: `override(baseline, solution)` through boundary zero —
 §16.6 pre-write slot totality, §16.5's sequence, guards at commit — with
 the harmonic grid anchored at `trim!`'s own `t0` argument (default `0.0`,
 the same default as `init!`'s: one rule for both init-service entry
-points), and the recording registers cleared exactly as §12.11 states for
+points), and the recorders cleared exactly as §12.11 states for
 `init!` — trace, log, and any batches still in staging cells. A fresh
-recording starting at its own anchor is the batch register's natural
+recording starting at its own anchor is the unattended register's natural
 shape; fly-then-retrim keeps continuity explicitly — `capture` returns
 `(condition, t)` separately for exactly this (§16.1), so the resumed
 spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
@@ -4636,8 +4636,8 @@ information), per §15's exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
 Appendix C — guess/bounds shape disagreement, an unknown `reads` selector, a
 `tolerances`/residual key-set mismatch observed at the setup guess evaluation:
-the offending field with the shapes or names in hand, batched, mirroring
-linearization's `SurfaceResolution`).
+the offending field with the shapes or names in hand, collected, mirroring
+linearization's `TapResolution`).
 
 **The AD obligation, scoped.** The default formulation requires `Dual`
 genericity of exactly: the continuous output-stage chains and `f`, plus the
@@ -4715,9 +4715,9 @@ the scoped condition trees, stack the residuals. If joint trims become
 routine, a `product(p₁ => "lead", p₂ => "wing")` helper belongs in the
 §15.7 library; recorded, not built.
 
-### 16.10 Linearization: surface selectors, one seeded pass, a pure query
+### 16.10 Linearization: tap selectors, one seeded pass, a pure query
 
-**The surface declaration.** Today's per-aircraft `XStateSpace`/
+**The tap declaration.** Today's per-aircraft `XStateSpace`/
 `UStateSpace`/`YStateSpace` structs plus the `get_*_ss`/`assign_*_ss!`
 shuttle methods (~150 lines of bookkeeping per variant) become three
 selector lists drawn from §16.4's family (`get_state`/`get_slot`/`get_output`), with the
@@ -4727,13 +4727,13 @@ key is the label control design slices by:
 `u = (throttle_cmd = get_slot("throttle"), …)`,
 `y = (EAS = get_output("vehicle/airflow", :EAS), …)`. Validated at resolution
 against `init_x`/faces/`output_types` with did-you-mean errors, compiled to
-offsets once, relocatable whole via `at(prefix, surface)` — the shuttle
+offsets once, relocatable whole via `at(prefix, taps)` — the shuttle
 layer's successor is the compiled writer/reader pair, and §9.1's promised
 `get_x_ss` deletion is discharged.
 
 **The evaluation.** Instantiate a per-invocation scratch store set
 (§16.8's mechanism verbatim), apply the operating-point condition, run
-**one** Dual evaluation with a seed direction per `x`- and `u`-surface
+**one** Dual evaluation with a seed direction per `x`- and `u`-tap
 entry (chunked internally). Value parts give `ẋ₀`, `y₀`; partials give
 `A`, `B`, `C`, `D` simultaneously, exact to machine precision — replacing
 four `FiniteDiff` jacobians, their step-size heuristics and ~4n perturbed
@@ -4752,12 +4752,12 @@ after `FiniteDiff` dirtied the model) has no successor. Default operating
 point = the sim's current committed state via `capture(sim) → (condition,
 t)` — the full gather of stores *and root slots* (§16.6's totality makes slot
 coverage mandatory for capture → apply): after a
-`trim!` commit, `linearize(sim, surface)` is about the trim point with
+`trim!` commit, `linearize(sim, taps)` is about the trim point with
 nothing re-specified; an `about = <condition>` keyword linearizes anywhere
 else without touching the sim.
 
 **The returned object and `LinearizedSS`.** `linearize` returns labeled
-data — `(ẋ₀, x₀, u₀, y₀, A, B, C, D)` with the surface's label sets — on
+data — `(ẋ₀, x₀, u₀, y₀, A, B, C, D)` with the taps' label sets — on
 which `subsystem`/`delete_vars` survive as pure label-indexed matrix
 slicing (no model involvement); the `c172x_ctl` LQR pipeline consumes it
 with cosmetic changes. `LinearizedSS` the *component* survives separately
@@ -4765,12 +4765,12 @@ as an ordinary continuous component in the migrated library (`init_x` =
 the state vector, labeled faces, the affine update in `h_xu`/`f`) — no
 privileges, schema like everyone else.
 
-**Recorded guidance.** Linearization surfaces should select
+**Recorded guidance.** Linearization taps should select
 minimal-coordinate mechanizations — perturbing Euler-angle states is
 meaningful where seeding quaternion components steps off the unit-norm
 manifold. This is why today's code linearizes the `{NED}` variant;
 `design_world(ac)` rigs it, promoting implicit practice to stated rule.
-The coordinate choice belongs to the surface author, not the framework.
+The coordinate choice belongs to the tap author, not the framework.
 
 **Recorded, not built: the sampled-data Dual activation.** The
 frozen-exact doctrine is consumer-scoped, not a capability wall: today's
@@ -4780,7 +4780,7 @@ answer, enforced by the type system (§13.2). Differentiating "through" the
 discrete side means differentiating a *different object*: the sampled-data
 step map $\Phi : (x_k, z_k, \mathrm{slots}) \to (x_{k+1}, z_{k+1})$ (integrate one period,
 then run the due ticks). The extension is additive along existing seams:
-Tier-1 parametrization of `z`'s real-scalar leaves (counters/enums stay
+walked-leaf parametrization of `z`'s real-scalar leaves (counters/enums stay
 pinned, like `m`); opt-in participation on discrete components (frozen-exact
 stays the default; a participating component opts in through an explicit
 trait, the leaf walk then parametrizing its cells instead of pinning them —
@@ -4805,10 +4805,10 @@ Jacobians as silent zero rows; a stop-gradient coupling likewise; and no
 slot can be marked never-differentiable — an unseeded slot already *is* a
 held parameter, so such a marking would be pure protection, not semantics.
 If these ever earn schema visibility, the vocabulary is additive, no flag
-day: pinned-face declarations validated by the linearization surface
+day: pinned-face declarations validated by the tap declaration
 (selecting a declared-frozen output = warning), a feedthrough-graph lint
 (a frozen output fed by participating inputs names the severed coupling),
-forbid-seeding slot markers rejected at surface resolution. Until a real
+forbid-seeding slot markers rejected at tap resolution. Until a real
 consumer shows up, the sharp tool and the visible zero row suffice.
 
 ---
@@ -4826,7 +4826,7 @@ The grounding exercise that validated §5. Current `Vehicle.f_ode!`
 | Hand-ordered `f_ode!` body (kinematics → airdata → systems → route five `dynamics.u` assignments → dynamics last) | Build-time topological sort; wrong wiring = build error naming the cycle or dangling port |
 | Velocity state duplicated (`dynamics.x` and `kinematics.u`) with manual sync, incl. `dynamics.x .= kinematics.u  #essential` in `f_init!` | One state, one owner; consumers wire to `dyn.vel` |
 | `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | Summing junctions at ownership boundaries, one explicit wire per contributor, exported totals (§6) |
-| `f_step!` quaternion renorm + engine-phase/stall-latch checks | `project` hook + Tier-1 events with defined semantics |
+| `f_step!` quaternion renorm + engine-phase/stall-latch checks | `project` hook + boundary-detected events with defined semantics |
 | `Aircraft.f_ode!` runs avionics before the vehicle → continuous avionics reads one-stage-stale `vehicle.y` (implicit delay) | Avionics scheduled inside the sweep after the stage-1 outputs it consumes — no delay; or declared periodic and samples post-step by stated semantics |
 | `atmosphere`/`terrain` threaded as arguments through every signature | Field-handle signals through ordinary ports (§7) |
 
@@ -4856,7 +4856,7 @@ lookups, two embedded continuous PI compensators, boolean transitions, argument-
 - `h_xu` runs the lookup chain and the mode branch once; `f` is a three-field copy
   (`ω̇`, `ẋ_idle`, `ẋ_frc`). Under the orthodox split, `f` would reproduce essentially
   the whole `f_ode!` body — four lookups and the mode branch — ×4 RK stages per step.
-- `f_step!`'s transitions become Tier-1 events with mixed predicate/threshold guards
+- `f_step!`'s transitions become boundary-detected events with mixed predicate/threshold guards
   (§2.1); `fuel_available` becomes an ordinary port (state-derived at the fuel system,
   hence stage-1 — no loop).
 - Forced publications: none — everything `f` reads was already in `PistonEngineY`.
@@ -5142,7 +5142,7 @@ whether the two declaration sets should be exclusive.)
 
 **Why the merge buys nothing.** The split is between *time bases*, not state
 kinds — the continuous primitive is already hybrid (`m`, guards, handlers, §3.1);
-what separates the kinds is sweep-driven versus tick-driven execution. And the
+what separates the classes is sweep-driven versus tick-driven execution. And the
 settled rules force a merged component's two halves to communicate exactly as two
 siblings do: one home per datum (§5.2), `f` has no `z` view, `g` has no `x` view,
 and `z⁺` is decoded only at the owner's next tick (`g` runs last) — the very
@@ -5177,7 +5177,7 @@ cumulative stores, term by term. The reset is periodic, not
 condition-triggered, so events are the wrong tier; and it is a discrete-tier write
 into continuous state, exactly the operation this design forbids (`g` writes only
 its own `z`; handlers are the sole `x`-resetters, and they are guard-driven).
-Integrate-and-dump falls squarely into the crack between the kinds:
+Integrate-and-dump falls squarely into the crack between the classes:
 tightly-coupled continuous and periodic dynamics in one physical device.
 
 **The idiom: integrate-and-difference.** The reset is eliminable by algebra, not
@@ -5345,7 +5345,7 @@ Row numbers are stable, so a citation here always names the same row there.
 
 Still to be settled:
 
-- **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
+- **Migration.** Outline for FlightPhysics/FlightApps (the walked-leaf parametrization
   pass — whose `Ranged` rewrite targets §13.2's walk rule where `Ranged`
   survives, at ports and parameters: constructor
   discipline admitting the walked scalar with the value parameters left alone,
@@ -5450,14 +5450,14 @@ For component authors:
   only in `g` reaches the outputs one tick late (the plant integrates a full
   step under the stale command). Both spellings are legal; they mean
   different things.
-- **Guard conditions, edges and baselines** (§2.1, §11.6). A guard defines
-  a condition — a predicate, or a continuous condition value `σ` with
+- **Guard predicates, edges and priors** (§2.1, §11.6). A guard defines
+  a predicate — a `Bool` form, or a sign value `σ` with
   positive = holding. Events fire on not-holding → holding *edges* against per-event
-  baselines (the previous boundary's quiescent sample): a condition that
+  priors (the previous boundary's quiescent sample): a predicate that
   keeps holding fires once, at the boundary where it first held. Boundary
-  zero baselines as nothing-holds, so a condition authored already-holding
-  fires at `t₀`. The opposite crossing direction is a second event with
-  the negated guard.
+  zero sets every prior to not-holding, so a predicate already holding in
+  the authored state fires at `t₀`. The opposite crossing direction is a
+  second event with the negated guard.
 - **Handler-phase visibility** (§5.2, §11.6). Your `u` is the boundary's
   world, materialized at round start: same-round foreign transitions are
   invisible and arrive through the next round's re-sweep, one round per
@@ -5465,7 +5465,7 @@ For component authors:
   earlier events of your own component in declaration order. Coupling
   tighter than one round belongs inside one component.
 - **Stop-face sampling** (§15.5). Stop faces are read in completed-boundary
-  snapshots; declare a Tier-2 event if the stop needs localizing.
+  snapshots; declare a localized event if the stop needs localizing.
 
 For periphery authors and consumers:
 
@@ -5514,10 +5514,10 @@ lifecycle:
   (`Event(guard, handler; localize)`), `project`.
 - Discrete leaf: `init_z`, `workspace(::C)`,
   `input_types`/`output_types`/`local_types` — stages `h_z`, `h_zu`, `g`.
-- Assembly: `connections` (mandatory — the kind marker), `exports`, `rates`.
+- Assembly: `connections` (mandatory — the class marker), `exports`, `rates`.
 - Shipped conditions: `condition(::C; kw)` fragment functions (§16.2).
 
-Bundle contents by function kind (the maximal legal sets, §5.2 — signatures
+Bundle contents by function family (the maximal legal sets, §5.2 — signatures
 destructure less at will):
 
 | function | bundle fields |
@@ -5597,7 +5597,7 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   roster, its loop body runs inline on the calling task): per-run `init!`
   on the calling task, the author-owned task body inside the framework's
   try/catch/finally wrapper, voluntary exit = return (§12.4, §12.9).
-- The device handle — one kind, capabilities not taxonomy: `running`,
+- The device handle — one type, capabilities not taxonomy: `running`,
   `latest`, `wait_next_snapshot` (§12.8), `stage!`, `binding`, `gather`,
   `report` (§12.4).
 
@@ -5606,7 +5606,7 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - `fragment(; x, m, z, slots)` — self-vocabulary payloads at the authoring
   level; `slots` names faces of that level's contract.
 - `at(prefix, node)` — scoping; stores, never applies. Also lifts whole
-  `TrimProblem`s and linearization surfaces (§16.9, §16.10).
+  `TrimProblem`s and linearization tap sets (§16.9, §16.10).
 - `merge(nodes...)` — symmetric collection; duplicate leaves error with dual
   provenance; mixing a node with a bare NamedTuple is an error method, not
   `Base.merge` (§16.2).
@@ -5631,9 +5631,9 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   throws (§16.7, §16.8).
 - `capture(sim) → (condition, t)` — full-store gather including root slots;
   warm restart = capture → tweak → apply (§16.1, §16.10).
-- `linearize(sim, surface) → labeled (ẋ₀, x₀, u₀, y₀, A, B, C, D)` — pure query, one
+- `linearize(sim, taps) → labeled (ẋ₀, x₀, u₀, y₀, A, B, C, D)` — pure query, one
   seeded Dual pass on scratch; operating point defaults to `capture(sim)`;
-  surface = `get_state`/`get_slot`/`get_output` selector lists with control-design
+  taps = `get_state`/`get_slot`/`get_output` selector lists with control-design
   labels (§16.10).
 
 **Running.**
@@ -5663,9 +5663,9 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   current boundary; a stepping session is deviceless — write via `stage!`,
   read via `latest` (§12.11).
 - `stage!(sim, "face" => value, ...)` — task-free staging from the calling
-  task into §12.3's interactive register (surface = the currently-unclaimed
+  task into §12.3's interactive write path (surface = the currently-unclaimed
   faces): traced, drained last at the next frame top, surface-checked exactly
-  as the GUI's writes (§12.11's harness register; legal under `run!` and
+  as the GUI's writes (§12.11's harness cell; legal under `run!` and
   `step!` alike).
 - `latest(sim) → snapshot` — the current published snapshot, the same
   immutable value device handles read (§12.2); the assertion/inspection
@@ -5708,12 +5708,12 @@ values, in the manner of Appendices A and B.
 
 Severities, in the vocabulary §15 fixes:
 
-- **build (batch)** — a diagnostic from a declarative pass, collected with its
+- **build (collected)** — a diagnostic from a declarative pass, collected with its
   siblings and thrown as one `BuildError` at the stratum barrier (§15.1);
 - **build (fail-fast)** — raised while *user code* runs (an `exports` body, a
   probe); the first one aborts the phase (§15.1);
 - **service** — raised by a stopped-sim service, or by
-  `attach!`/`Simulation`/`run!` validating against the `Build`; batched into one
+  `attach!`/`Simulation`/`run!` validating against the `Build`; collected into one
   carrier wherever the owning section says so (§16.1's register, §16.6's
   pre-write check), a single throw at the call otherwise;
 - **runtime** — fail-fast during a boundary, reaching §15.4's single catch site
@@ -5725,42 +5725,42 @@ Severities, in the vocabulary §15 fixes:
 
 | kind | payload | owner | severity |
 |---|---|---|---|
-| `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | §8, §13.4 w1 | build (batch) |
-| `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | §8, §13.4 w2 | build (batch) |
-| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / export entry) | §8, §13.8 | build (batch) |
-| `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | §8, §13.2, §13.4 w4 | build (batch) |
-| `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | §8, §15.3 | build (batch) |
-| `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, §15.7) | §13.2 | build (batch) |
-| `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations | §13.2 | build (batch) |
-| `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | §9.1, §13.2 | build (batch) |
-| `StoreWithoutUpdate` | component path, store (`x`/`z`), the missing function (`f`/`g`); shadowing note when the parent module defines its own `f`/`g` (§13.1) | §13.2 | build (batch) |
-| `EventHalfMissing` | component path, event name, which half, the function that has no method | §13.2 | build (batch) |
-| `PrimitiveAtRoot` | root path, component type | §13.2 | build (batch) |
-| `KindUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions (§13.1) | §13.5 | build (batch) |
-| `KindMixed` | component path, the `connections` declaration and the offending leaf declarations | §13.5 | build (batch) |
-| `ContainerMixed` | container field path, offending element keys/indices, their types | §13.5 | build (batch) |
-| `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | §5.2, §13.2, §13.5 | build (batch) |
-| `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | §13.6 | build (batch) |
-| `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | §13.6 | build (batch) |
-| `FaceDirectionConflict` | assembly path, face name, its internal endpoints, derived directions | §13.6 | build (batch) |
-| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | §13.8 | build (batch) |
-| `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | §11.5, §13.7 | build (batch) |
-| `MissingProbeValue` | face name, type | §14.3 | build (batch) |
+| `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | §8, §13.4 w1 | build (collected) |
+| `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | §8, §13.4 w2 | build (collected) |
+| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / export entry) | §8, §13.8 | build (collected) |
+| `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | §8, §13.2, §13.4 w4 | build (collected) |
+| `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | §8, §15.3 | build (collected) |
+| `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, §15.7) | §13.2 | build (collected) |
+| `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations | §13.2 | build (collected) |
+| `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | §9.1, §13.2 | build (collected) |
+| `StoreWithoutUpdate` | component path, store (`x`/`z`), the missing function (`f`/`g`); shadowing note when the parent module defines its own `f`/`g` (§13.1) | §13.2 | build (collected) |
+| `EventHalfMissing` | component path, event name, which half, the function that has no method | §13.2 | build (collected) |
+| `PrimitiveAtRoot` | root path, component type | §13.2 | build (collected) |
+| `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions (§13.1) | §13.5 | build (collected) |
+| `KindMixed` | component path, the `connections` declaration and the offending leaf declarations | §13.5 | build (collected) |
+| `ContainerMixed` | container field path, offending element keys/indices, their types | §13.5 | build (collected) |
+| `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | §5.2, §13.2, §13.5 | build (collected) |
+| `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | §13.6 | build (collected) |
+| `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | §13.6 | build (collected) |
+| `FaceDirectionConflict` | assembly path, face name, its internal endpoints, derived directions | §13.6 | build (collected) |
+| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | §13.8 | build (collected) |
+| `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | §11.5, §13.7 | build (collected) |
+| `MissingProbeValue` | face name, type | §14.3 | build (collected) |
 
 **Schedule and contract conformance** (Strata B and C):
 
 | kind | payload | owner | severity |
 |---|---|---|---|
-| `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | §5.4, §10 | build (batch) |
-| `ProducedByTwoStages` | component path, port name, both stage names | §4.3, §13.3 | build (batch) |
-| `ContractNameCollision` | component path, the name declared in both `output_types` and `local_types` | §13.3 | build (batch) |
-| `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | §13.3 | build (batch) |
-| `LocalConnected` | wire endpoints, the local cell named | §13.3 | build (batch) |
+| `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | §5.4, §10 | build (collected) |
+| `ProducedByTwoStages` | component path, port name, both stage names | §4.3, §13.3 | build (collected) |
+| `ContractNameCollision` | component path, the name declared in both `output_types` and `local_types` | §13.3 | build (collected) |
+| `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | §13.3 | build (collected) |
+| `LocalConnected` | wire endpoints, the local cell named | §13.3 | build (collected) |
 | `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types` ∪ `local_types`) | §13.3, §13.4 w5 | build (fail-fast) |
 | `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed), simulation time | §14.5 | build (fail-fast) at probe; **runtime** as a `StepError` species |
 | `GuardForm` | component path, event name, observed probe return type, both admissible forms | §14.5 | build (fail-fast) |
-| `Tier2GuardPredicate` | component path, event name — a localizing event whose guard probes `Bool` | §14.5 | build (fail-fast) |
-| `BundleFieldError` | component path, function kind, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function kind) | §5.2, §15.2 | build (fail-fast) at probe; **runtime** thereafter |
+| `LocalizedGuardForm` | component path, event name — a localized event whose guard probes `Bool` (localization requires the sign form) | §14.5 | build (fail-fast) |
+| `BundleFieldError` | component path, function family, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function family) | §5.2, §15.2 | build (fail-fast) at probe; **runtime** thereafter |
 | `HandlerReturnKey` | component path, event name, offending key, the legal set `{x, m}` narrowed to the stores that exist | §5.2, §14.5 | build (fail-fast) |
 | `UserCodeFraming` | component path, which function, the probe context including synthesized inputs; the original exception as `cause` | §15.2 | build (fail-fast) |
 
@@ -5771,20 +5771,20 @@ Severities, in the vocabulary §15 fixes:
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | §12.11 | service |
 | `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | §12.3, §16 | service |
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | §15.5 | service |
-| `DeploymentInvalid` | the deployment parameter, the value in hand, the violated constraint | §14.1 | service (batch) |
+| `DeploymentInvalid` | the deployment parameter, the value in hand, the violated constraint | §14.1 | service (collected) |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | §12.3 | service |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | §12.3 | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | §12.1, §12.3 | service |
 | `ClaimConflict` | face name, claiming device id, incumbent device id | §12.3 | service |
 | `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (§16.4's source rule) | §12.2, §16.4 | service |
-| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | §16.2, §16.3 | service (batch) |
-| `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | §16.2 | service (batch) |
+| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | §16.2, §16.3 | service (collected) |
+| `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | §16.2 | service (collected) |
 | `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | §16.2 | service |
-| `UninitializedSlots` | every uncovered root face, in declaration order | §16.6 | service (batch), pre-write |
-| `SurfaceResolution` | surface (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | §16.10 | service (batch) |
-| `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | §16.7, §16.8 | service (batch) |
+| `UninitializedSlots` | every uncovered root face, in declaration order | §16.6 | service (collected), pre-write |
+| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | §16.10 | service (collected) |
+| `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | §16.7, §16.8 | service (collected) |
 | `ReplayHeaderMismatch` | the mismatched store or slot: component path, store, expected vs. found layout/type; the build's and the trace's provenance | §12.12 | service |
-| `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | §12.12 | service (batch) |
+| `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | §12.12 | service (collected) |
 
 **Runtime:**
 

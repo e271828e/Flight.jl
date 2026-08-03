@@ -2,7 +2,7 @@
 
 *A companion explainer, not normative text. The ground truth is
 `framework_spec.md` §12.3 (staging, claims, drain), §12.5 (GUI write path),
-§12.11 (harness register) and decision rows 44, 93, 96, 106, 107. Written
+§12.11 (harness cell) and decision rows 44, 93, 96, 106, 107. Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
 for the roster freeze (rows 106–107). If this document and the spec ever
 disagree, the spec wins.*
@@ -208,8 +208,8 @@ enumerated, currently unclaimed. `map_input` dutifully produces
 `flaps` has no position in the peer's schema → `OutOfClaimEntry`, attributed
 to the device whose mapping drifted, before the value ever nears the loop.
 
-The GUI is therefore not an exception: one device kind (§12.4), two
-*binding* kinds (enumerated vs. derived), one staging rule, one checkless
+The GUI is therefore not an exception: one device contract (§12.4), two
+*binding* sides (enumerated vs. derived), one staging rule, one checkless
 drain. Opportunistic writing by autonomous devices does not exist — a device
 that wants a face enumerates it — so cross-writer races on one slot
 structurally cannot arise: claimed faces have exclusivity, unclaimed faces

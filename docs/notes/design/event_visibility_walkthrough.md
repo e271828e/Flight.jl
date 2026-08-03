@@ -115,7 +115,7 @@ guard_ovld(b::Battery, (; u))   = u.i_load > b.i_max          # wired load curre
 handler_ovld(b::Battery, (; m)) = (; m = (; m..., tripped = true))
 
 # Avionics: on reaching target altitude, latches what it saw at capture
-guard_cap(a::Avionics, (; x))   = x.alt - a.alt_target        # Tier-1: σ ≥ 0
+guard_cap(a::Avionics, (; x))   = x.alt - a.alt_target        # boundary-detected: σ ≥ 0
 handler_cap(a::Avionics, (; m, u)) =
     (; m = (; m..., captured = true, v_at_capture = u.bus_voltage))
 ```
@@ -129,7 +129,7 @@ boundary.
 
 1. *Sweep.* The table is boundary-consistent: `battery/bus_voltage → 24.0`,
    the load current above `i_max`, `alt` past target.
-2. *Guards, all at once.* Both hold, both baselines were not-holding → fired
+2. *Guards, all at once.* Both hold, both priors were not-holding → fired
    set `{Battery.ovld, Avionics.cap}`. (The fired set is snapshot-consistent
    under any option — guards run before any handler. The question is only
    what the handlers see.)
