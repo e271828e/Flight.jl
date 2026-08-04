@@ -2096,7 +2096,15 @@ so replay is broken without the slots; the init/trim services own slot
 initialization ([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)), and the header capture extends naturally.) The header
 also carries **each writer's face-name → position schema** — the run's frozen
 surface partition — since positional records are meaningless without it and
-replay does not reconstruct claims ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). This is the one
+replay does not reconstruct claims ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). And it carries the run's
+**deployment block**: `t₀`, `Δt_base`, `h`, `n`, the algorithm identifier,
+and the effective `t_end`/`stop_on` pair, captured at the same instant as the
+stores. The trajectory depends on these exactly as it depends on the stores —
+[§12.1](#121-three-strata)'s deployment binding sits outside the `Build`, and `t₀` post-dates
+even deployment ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) — so a header without them could not back
+[§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)'s bit-identity claim. This block is also the artifact **run
+metadata** names ([§13.5](#135-termination-is-a-state-not-an-exception), [Appendix B](#appendix-b-api-synopsis-the-entry-points)): the recorded home of the
+effective termination pair. This is the one
 full-state capture in a normal run, and the other half of what "given the
 initial state and the trace, the log is recomputable" requires. Header plus batches
 are the *primary* record; everything else, the state trajectory included, is
@@ -2737,7 +2745,13 @@ Everything else is the loop as already specified:
 
 - **Termination and partial replay.** Replay ends at the recording's final
   frame, or earlier at `to_boundary = k` — the consumer of [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)'s replay
-  pointer — or earlier still under the ordinary policies: `t_end` and
+  pointer, defined as running **through the frame whose execution published
+  boundary `k`**, so replay always halts at a frame top. For a grid boundary
+  that is exactly at `k` (the frame that publishes one ends at it), and
+  [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)'s frame-entry pointer lands the same way; a localized `t*`
+  boundary inside the frame is reproduced but not stoppable-at
+  ([§8.4](#84-localization-mechanics)'s separation: the trace stays frame-indexed, boundaries are
+  the reporting index) — or earlier still under the ordinary policies: `t_end` and
   `stop_on` overrides bind for this replay exactly as at `run!` ([§10.6](#106-run-lifecycle-and-partial-advance)); a
   termination the recorded session hit through `stop_on` reproduces itself
   anyway, deterministically.
@@ -2779,6 +2793,17 @@ Everything else is the loop as already specified:
   through a modified model. Bit-identity is promised only against the
   identical build; the what-if register promises determinism, never
   reproduction.
+  The header's deployment block ([§9.5](#95-inbound-the-input-trace)) validates in the same pass, on
+  the *structural* side of that line: `Δt_base`, `h`, `n` and the algorithm
+  are compared against the target `Simulation`'s own deployment binding —
+  mismatch is `ReplayHeaderMismatch` with a deployment-parameter
+  discriminator, never a what-if, because a deployment change moves the
+  times at which the frame-ordinal batches apply: different inputs, not a
+  modified model. `t₀` is *applied*, not compared — replay stands in the
+  `init!` position and owns the anchor, so `replay!` takes no `t0`
+  argument — and the header's `t_end`/`stop_on` pair is a recorded fact of
+  the recorded session, never a constraint on this one: overrides bind as
+  stated above.
 
 Rejected shapes, for the record: a `run!(sim; replay = trc)` flag (replay
 replaces `init!` and swaps the drain source — it is a lifecycle *entry*, not
@@ -4040,16 +4065,19 @@ stage points, guard evaluations inside ITP/Brent probes, environment closures.
 
 **How handled.** The catch site wraps the original exception in `StepError` —
 the runtime counterpart of `BuildError` — carrying the cursor's frame, the
-boundary time, the trace boundary index (the replay pointer), and the original
+boundary time, the **frame-entry boundary index** (the replay pointer: the
+frame-top boundary — grid or boundary zero — at which the failing frame
+began, always a legal replay halt, [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)), and the original
 exception as `cause`, rendered with compact frames per [§13.2](#132-diagnostics-structured-values-one-carrier-exception)'s doctrine. The
 [§12.5](#125-the-always-on-conformance-check) conformance failure needs no separate path: it is thrown as its typed
 diagnostic at the table-write point and arrives at the same catch site, a
 species of `StepError` with the field-diff payload. Reproducibility holds by
 construction: staged inputs are drained and recorded to the trace at the frame
 top, *before* the boundary executes, so the failing boundary's inputs are
-already in the trace when it fails — the error names the boundary to replay
-to, and `replay!(sim2, trc; to_boundary = k - 1)` then `step!` re-executes
-the failure under instrumentation ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
+already in the trace when it fails — the error names the frame-entry
+boundary `k` to replay to, and `replay!(sim2, trc; to_boundary = k)` halts
+exactly at that frame top; `step!` then re-executes the failing frame under
+instrumentation, localized boundaries included ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
 
 **Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
 `errored` — with the exception retrievable. A synchronous unattended run rethrows
@@ -4095,7 +4123,8 @@ declared machinery:
   not plumbing ([§11.8](#118-computed-exports-and-generic-boundaries)'s imposed contract).
 - **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
   names root-exported `Bool` output faces, OR-combined, validated against the
-  `Build`, recorded in the run metadata. After *every* published boundary —
+  `Build`, recorded in the run metadata (the trace header's deployment block,
+  [§9.5](#95-inbound-the-input-trace)). After *every* published boundary —
   grid, `t*` ([§8.4](#84-localization-mechanics)) and boundary zero ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) alike — the
   loop reads the named faces in the snapshot it just published; the first
   `true` initiates [§10.4](#104-shutdown-protocol) shutdown with *this* snapshot as the final one — the
@@ -5785,7 +5814,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
   start (an unbounded batch run is almost always an oversight); `stop_on` names
   root-exported `Bool` output faces, OR-combined, recorded in
-  run metadata ([§13.5](#135-termination-is-a-state-not-an-exception); walkthrough [§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)). `t_end` and `stop_on` are
+  run metadata — the trace header's deployment block ([§9.5](#95-inbound-the-input-trace), [§13.5](#135-termination-is-a-state-not-an-exception);
+  walkthrough [§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)). `t_end` and `stop_on` are
   **defaults**, overridable per run at `run!` ([§13.5](#135-termination-is-a-state-not-an-exception), [§10.6](#106-run-lifecycle-and-partial-advance)). Recording:
   `trace` is the input trace's plain kill switch and `log` the snapshot log's,
   with `log_every` the log's keep-every-kth decimation — admissible on the
@@ -6002,14 +6032,14 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
-| `ReplayHeaderMismatch` | the mismatched store or slot: component path, store, expected vs. found layout/type; the build's and the trace's provenance | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
+| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
 
 **Runtime:**
 
 | kind | payload | owner | severity |
 |---|---|---|---|
-| `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization probe, tick), boundary time, trace boundary index (replay pointer), original exception as `cause` | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
+| `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization probe, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
 | `NonfiniteState` | component path, the offending state block, boundary time and index | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted localization budget | [§8.4](#84-localization-mechanics) | warning (runtime) |
 | `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) | warning (runtime) |
@@ -6556,17 +6586,22 @@ at a trim commit so they restart with the run they record ([§10.6](#106-run-lif
 
 **replay** — the ordinary loop with exactly two substitutions: boundary zero
 from the trace header, and a drain reading the trace by frame ordinal. It
-re-records, ends `initialized`, and validates the header against the `Build`
-up front ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
+re-records, ends `initialized`, and validates the header — stores, slot
+faces and deployment block — up front, applying the header's `t₀`
+([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
+
+**run metadata** — the trace header's deployment block: `t₀`, `Δt_base`,
+`h`, `n`, the algorithm identifier and the effective `t_end`/`stop_on`
+pair ([§9.5](#95-inbound-the-input-trace), [§13.5](#135-termination-is-a-state-not-an-exception)).
 
 **trace** — the primary record of a session: the sequence of drained,
 device-tagged batches per frame, plus its header. On by default, because the
 log is recomputable from the trace and never the reverse ([§9.5](#95-inbound-the-input-trace)).
 
 **trace header** — the trace's preamble: the resolved initial stores
-`(x, m, z)`, the initial root-slot values, and each writer's face-name →
-position schema — captured after `apply!` and the slot writes, before the
-boundary-zero sequence runs ([§9.5](#95-inbound-the-input-trace), [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)).
+`(x, m, z)`, the initial root-slot values, each writer's face-name →
+position schema, and the deployment block — captured after `apply!` and the
+slot writes, before the boundary-zero sequence runs ([§9.5](#95-inbound-the-input-trace), [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)).
 
 **trace record density** — the rule that retained records match each batch's
 natural density: an enumerated writer's positional batch is retained verbatim
