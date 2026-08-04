@@ -28,7 +28,10 @@ const DESIGN = normpath(joinpath(@__DIR__, ".."))
 const SPEC = "framework_spec.md"
 
 const COMPANIONS = ["event_visibility_walkthrough.md",
-                    "inbound_periphery_walkthrough.md"]
+                    "inbound_periphery_walkthrough.md",
+                    "review4_2026-08-03_dryrun.md",
+                    "review4_2026-08-03_gaps.md",
+                    "review4_2026-08-03_inconsistencies.md"]
 
 # Scanned left to right. The first two alternatives are the exclusion zones —
 # they are matched so they can be skipped whole; the rest are the citations.

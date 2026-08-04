@@ -24,7 +24,10 @@ const SPEC = "framework_spec.md"
 
 const COMPANIONS = ["framework_decisions.md",
                     "event_visibility_walkthrough.md",
-                    "inbound_periphery_walkthrough.md"]
+                    "inbound_periphery_walkthrough.md",
+                    "review4_2026-08-03_dryrun.md",
+                    "review4_2026-08-03_gaps.md",
+                    "review4_2026-08-03_inconsistencies.md"]
 
 const CITATION = r"§([A-D]|\d+)(?:\.(\d+))?|Appendix ([A-D])(?![\w–—-])"
 const ANCHOR = r"\]\(([^)#]*)#([^)]+)\)"
