@@ -4518,7 +4518,10 @@ the family.
 
 **A selector resolves against a source, before any client policy applies.**
 The table selectors — `get_output`, `get_local`, `get_slot`, `get_face` —
-resolve against a boundary snapshot. The store selectors — `get_state`,
+resolve against a *table source*: a boundary snapshot, or the scratch tables
+a service evaluation instantiates ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)) — the axis separates
+table-borne values from store-borne ones, not snapshots from services. The
+store selectors — `get_state`,
 `get_deriv` — resolve only against live stores, which only stopped-sim
 service evaluations, `capture`, and post-run inspection of the live stores
 ([§9.2](#92-outbound-snapshot-publication)'s replay-to-inspect) ever hold: the snapshot deliberately carries no
@@ -4530,8 +4533,13 @@ remedy: declare the field public and read the auto-published port. Client
 policy rides on top — row 83's registers restated as a resolver property:
 
 - **Load-bearing services** (trim's `reads`, linearization's taps) speak
-  the contract: `get_state`/`get_deriv`/`get_output`/`get_slot`, within the
-  scopes [§6.1](#61-connections-and-hierarchy)'s locality law and [§14.2](#142-fragment-composition-locality-without-schema)'s fragment scoping own; `get_local` is
+  the contract: `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`,
+  within the scopes [§6.1](#61-connections-and-hierarchy)'s locality law and [§14.2](#142-fragment-composition-locality-without-schema)'s fragment scoping own.
+  `get_face` is the set's seam-crossing member: it resolves through export
+  chains exactly as [§14.9](#149-mounting-problems-as-relocatable-values)'s mounting resolves slot faces — the read
+  side mirroring the write side — so an equilibrium equation reaching
+  behind a generically-held child binds the curated face register instead
+  of a path the locality law forbids. `get_local` is
   rejected at resolution — a service evaluation needing a private
   intermediate is the signal to export it ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)).
 - **Diagnostic readers** (output-device bindings, GUI panels, log
@@ -4617,7 +4625,12 @@ parity is exact, not approximate. Piece by piece:
   no `g`; only the committed solution executes boundary zero. A guard firing
   at commit is a wanted failure signal: today's hand-written trim asserts
   (`!stall`, no weight-on-wheels, `ω > ω_idle`) become the model's own event
-  logic, surfaced through the ordinary machinery instead of `@assert`.
+  logic, surfaced through the ordinary machinery instead of `@assert`. And
+  the signal has a channel: boundary zero reports the fired set on the
+  `TrimReport` and raises `TrimCommitEvents` when it is non-empty
+  ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report), [Appendix C](#appendix-c-the-diagnostic-kind-set)) — a handler that fires at commit moves the
+  committed stores off the solved point, and saying nothing would be
+  warn-but-assign relocated.
 
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
@@ -4683,12 +4696,21 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
 - **`TrimParameters` stays a plain user struct** the framework never sees;
   the assignment is the pure `trim_condition(ac, params, d)` fragment-tree
   function ([§14.2](#142-fragment-composition-locality-without-schema)), applied per iteration by the compiled plan ([§14.4](#144-two-application-registers-over-one-plan)).
-- **The read side is declared, then compiled**: `reads(name = get_deriv(path,
-  field) | get_output(path, field), ...)` — `get_deriv` addresses a declared
-  state field's derivative (validated against `init_x`), `get_output` a
-  declared output port (validated against `output_types`); `local_types` are
+- **The read side is declared, then compiled**: `reads(name = get_state(path,
+  field) | get_deriv(path, field) | get_output(path, field) | get_slot(face) |
+  get_face(name), ...)` — [§14.4](#144-two-application-registers-over-one-plan)'s load-bearing set. `get_state` and
+  `get_deriv` address a declared state field and its derivative (validated
+  against `init_x`), `get_output` a declared output port (validated against
+  `output_types`), `get_slot` and `get_face` a root input and output face
+  (validated against the root face lists). The path selectors reach only
+  through [§6.1](#61-connections-and-hierarchy)'s locality scopes; an equilibrium equation crossing a
+  generic seam reads a face. `local_types` are
   not addressable (no `get_local` in `reads`, [§14.4](#144-two-application-registers-over-one-plan)) —
-  a trim evaluation needing one is a signal the component should export it.
+  a trim evaluation needing one is a signal the component should export it —
+  and a derivative wanted across a contract boundary takes the same remedy:
+  publish it as an ordinary output port computed in `h_xu` ([§7.4](#74-the-fused-evaluation-lineage-prior-art-and-how-we-got-here) step 2's
+  one-line binding, made contract), leaving `get_deriv` scoped to owned
+  concrete subtrees.
   The compiled reader ([§14.4](#144-two-application-registers-over-one-plan)'s gather twin) fills a stack-only NamedTuple
   per evaluation.
 - **The user supplies a residual *system*, not a scalar cost** — authored as a
@@ -4811,7 +4833,11 @@ spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
 **The report, not an exception.** `trim!` returns a structured
 `TrimReport`: converged flag, solution NamedTuple (guess-shaped —
 warm-startable), final residuals with tolerances, iteration/evaluation
-counts, saturated-bounds list. Non-convergence never throws — it is an
+counts, saturated-bounds list, and the commit's fired events (component
+paths and event names, empty when boundary zero ran quiet — [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions); a
+non-empty set also raises `TrimCommitEvents`, [Appendix C](#appendix-c-the-diagnostic-kind-set): the committed
+stores then sit at the post-handler point, not the reported solution, and a
+`capture`-defaulted `linearize` ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) reads that point). Non-convergence never throws — it is an
 expected *outcome* (envelope-sweep data: hitting the infeasible edge is
 information), per [§13](#13-error-discipline)'s exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
@@ -5975,6 +6001,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `UninitializedSlots` | every uncovered root face, in declaration order | [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator) | service (collected), pre-write |
 | `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
+| `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
 | `ReplayHeaderMismatch` | the mismatched store or slot: component path, store, expected vs. found layout/type; the build's and the trace's provenance | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
 
@@ -6487,8 +6514,9 @@ devices ([§10.5](#105-scripts-and-the-mid-run-mutation-doctrine)).
 
 **selector (read-selector family)** — the closed set of deferred reads
 `get_state`/`get_deriv`/`get_output`/`get_local`/`get_slot`/`get_face`, each
-resolving against a source (snapshot cells vs. live stores) before any client
-policy applies ([§14.4](#144-two-application-registers-over-one-plan)).
+resolving against a source (table sources — a boundary snapshot or a service
+evaluation's scratch tables — vs. live stores) before any client policy
+applies ([§14.4](#144-two-application-registers-over-one-plan)).
 
 **snapshot** — the immutable per-boundary publication: boundary-consistent
 signal table (local cells and root slots included), `t`, boundary index and
