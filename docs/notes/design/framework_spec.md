@@ -1761,7 +1761,7 @@ whereas thinning the trace would destroy the only primary account of a session
 (row 29). Decimation is a retention policy only: every boundary still runs, is
 still published to live readers, and still enters the trace.
 
-**Output-device bindings are snapshot-path bindings.** An output device (telemetry, the XPlane visualizer, disk
+**Output-device bindings are snapshot bindings.** An output device (telemetry, the XPlane visualizer, disk
 streaming) consumes snapshots via [§10.3](#103-the-next-snapshot-wait) and addresses what it reads with
 [§14.4](#144-two-application-registers-over-one-plan)'s selectors — any cell, the diagnostic register admitting `get_local`
 entries and deep paths — resolved at attach against the `Build` with
@@ -1805,9 +1805,10 @@ a frame, and the *only* thing the periphery may write (the GUI reaches them
 through [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)'s resolution; control commands are not writes, [§10.1](#101-control-plane)); devices,
 mappings, the trace and the GUI write path address them by **face name** ([§11.6](#116-paths-wiring-and-exports)):
 structural slash paths never cross the periphery's *write* boundary — the write
-side speaks the root contract's names only. (The read side is diagnostic
-observation: snapshot consumers, output devices included, address table cells
-by path — [§9.2](#92-outbound-snapshot-publication)/[§13.5](#135-termination-is-a-state-not-an-exception).)
+side speaks the root contract's names only. (The read side chooses per
+binding: slash paths in the inspection register, face names in the
+integration register and in load-bearing service reads —
+[§9.2](#92-outbound-snapshot-publication)/[§13.5](#135-termination-is-a-state-not-an-exception)/[§14.4](#144-two-application-registers-over-one-plan).)
 
 **Slot exclusivity: one writer per slot at any time** ([§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)). A
 device claims its slots at attach; claiming an already-claimed slot is an
@@ -3322,12 +3323,14 @@ two build-checked invariants: no `/` (reserved for structural paths) and
 uniqueness within the assembly's face set** — every other naming choice
 (separators, grouping prefixes like `"pilot.throttle_axis"`) is author
 convention, not framework law; the `faces` helper's defaults ([§11.8](#118-computed-exports-and-generic-boundaries)) document the
-house style without legislating it. The two-notation rule this rests on: **slash
-is structure** (endpoint paths walking real children and ports; snapshot and log
-addressing), **face names are opaque contract tokens** — and the periphery's
-write side (input devices, mappings, the trace, the GUI write path) speaks face
-names only ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)); the read side addresses snapshot cells by slash path
-([§9.2](#92-outbound-snapshot-publication)).
+house style without legislating it. The two-notation rule this rests on is directional —
+structure vs. contract, not read vs. write: **slash is structure** (endpoint
+paths walking real children and ports; the inspection register's snapshot and
+log addressing), **face names are opaque contract tokens** — the periphery's
+write side (input devices, mappings, the trace, the GUI write path) speaks
+face names exclusively ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), and the read side speaks them wherever it
+wants meaning that outlives the build: integration bindings ([§9.2](#92-outbound-snapshot-publication)'s
+`get_face`) and load-bearing service reads ([§14.4](#144-two-application-registers-over-one-plan)).
 Pairs-of-strings rather than a NamedTuple also removes the `var"..."` noise that
 non-identifier names would force. Direction is derived from the endpoints
 (wired-to-inputs = input face, wired-from-one-output = output face; mixed or
@@ -4036,6 +4039,25 @@ The [§11.8](#118-computed-exports-and-generic-boundaries) sketch's primitives, 
   type) is a diagnostic even though the concrete instance in hand would
   resolve it — resolving *to* a generic child is port-level access and legal.
   An unknown segment errors with the sibling field list in hand.
+  **The duty is register-scoped** — row 83's load-bearing/diagnostic line
+  carried into resolution, client policy riding on one primitive exactly as
+  in [§14.4](#144-two-application-registers-over-one-plan):
+    - *Structural* (wiring resolution, Stratum A): the strict rule above,
+      verbatim — the register [§6.1](#61-connections-and-hierarchy)'s law lives in.
+    - *Load-bearing* (condition entries, trim `reads`, taps — [§14.3](#143-resolution-flatten-validate-compile-once), [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals),
+      [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)): strict, evaluated **at the authoring or mount level**. The
+      locality law is an authoring-level law ([§14.2](#142-fragment-composition-locality-without-schema): absolute paths are a
+      compiled derivative), and a mount prefix is checked by the mount
+      itself ([§14.9](#149-mounting-problems-as-relocatable-values) validates the problem's declared type against the mount
+      point's contract) — this register checks the authored path below it.
+    - *Diagnostic* (device read bindings, GUI panels, snapshot and log
+      inspection — [§9.2](#92-outbound-snapshot-publication), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)): the instance walk. A generic seam is not an
+      error for a client that never claimed substitutability — "what is in
+      *this* build" is the inspection register's defining question — and
+      drift stays loud: an unknown path is an attach-time
+      `ReadBindingUnresolved` with did-you-mean.
+  Which register a client resolves under is internal framework fact, never
+  user-facing API — the same status as [§14.4](#144-two-application-registers-over-one-plan)'s two `apply!` registers.
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — the keys of
   `input_types(c)` (stringified) for a leaf; the input/output entries of
   `exports(c)` for an assembly. Declaration order is preserved: deterministic
@@ -4043,9 +4065,11 @@ The [§11.8](#118-computed-exports-and-generic-boundaries) sketch's primitives, 
 - `resolve_terminal(asm, path) → (component, name)` — splits a terminal
   path's final segment (unambiguous: face names may contain dots, never
   slashes, [§11.6](#116-paths-wiring-and-exports)) and resolves the prefix through `resolve`. First-class
-  because five clients share it — wiring resolution, condition addressing
-  ([§14.3](#143-resolution-flatten-validate-compile-once)), device-binding validation ([§9.2](#92-outbound-snapshot-publication)), tap resolution ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)),
-  snapshot inspection — one splitter, one did-you-mean site.
+  because five clients share it across the three registers — wiring
+  resolution (structural); condition addressing ([§14.3](#143-resolution-flatten-validate-compile-once)) and tap
+  resolution ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) (load-bearing); device-binding validation ([§9.2](#92-outbound-snapshot-publication))
+  and snapshot inspection (diagnostic) — one splitter, one did-you-mean
+  site.
 
 ### 13.4 Runtime failures: one catch site, an execution cursor
 
@@ -6179,7 +6203,8 @@ input entry ([§11.2](#112-the-declaration-inventory)), executor entry ([§12.7]
 **face** — a name in an assembly's `exports` contract: an opaque token with
 two build-checked invariants (no `/`, unique within the assembly), its type
 and direction derived from its internal endpoint. The periphery's write side
-speaks face names only; the read side speaks slash paths ([§11.6](#116-paths-wiring-and-exports), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+speaks face names only; the read side speaks them wherever it wants contract
+rather than structure ([§11.6](#116-paths-wiring-and-exports), [§9.2](#92-outbound-snapshot-publication), [§14.4](#144-two-application-registers-over-one-plan)).
 
 **feedthrough** — an instantaneous input→output dependence. **Structural
 feedthrough** is this design's version: fixed by which stage produces a port
