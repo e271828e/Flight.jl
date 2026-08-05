@@ -4137,6 +4137,37 @@ checks types, not physics.
 enforcement is the pre-write `UninitializedSlots` check at `init!`/commit
 ([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
 
+**The author's side of that bargain.** Silly values are acceptable *because* the
+author is obliged to accept them: **stage code must be total over type-valid
+inputs** — every probed user function (stages, `f`, `g`, guards, handlers,
+`project`) evaluates without throwing on any input satisfying its declared
+types. The domain is type-validity, not the probe's particular synthesized
+values: the branch-shape rule already bans value-dependent return types, so
+types are the only domain the framework can speak of, and the probe is the
+enforcement moment, not the reason — asking whether one can detect being probed
+reads the contract backwards. Two consequence sites, the same throw at both: at
+build it is a `UserCodeFraming`-wrapped build failure ([§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)) whose diagnostic
+points at code that is "correct" on every trajectory it has ever seen; at
+runtime it is a `StepError` and the run ends `errored` ([§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)) — exceptions from
+model code are always abnormal ([§13.5](#135-termination-is-a-state-not-an-exception)). Three habits of shipped code have
+sanctioned spellings. A *plausibility* check meaning "stop the run" — a strut
+throwing on a touchdown overload — is a published `Bool` output face plus
+`stop_on` ([§13.5](#135-termination-is-a-state-not-an-exception)), machinery already there. A *self-consistency* assert — an
+author checking that their own contact algebra cancels a velocity component to a
+hard tolerance — is a regression test about that algebra, and its home is the
+test suite; it is also the most probe-fragile of the three, since a
+near-degenerate synthesized geometry can keep the cancellation algebraically
+exact while missing an absolute tolerance in floating point. And a *defensive
+exhaustiveness* branch — an `else error("unrecognized surface type")` over a
+closed enum, or a coefficient constructor asserting an ordering of its
+arguments when that constructor runs per step inside a stage — is not banned
+validation but **mislocated** validation: totality over a closed enum means
+handling every instance (an `else error` is an admission that the function is
+partial), and parameter validation belongs where user-controlled data enters —
+the constructors of parameter and instance values, which run before the build,
+where asserts are perfectly legitimate — never inside a stage, on probe-fed
+data.
+
 ### 12.4 Activations: executable sets, laziness, caching
 
 An **activation at `T`** re-runs Stratum C with a different scalar: table cells
@@ -6391,6 +6422,12 @@ For component authors:
   causal link. Your `y` is your own fresh decode, and your `x`/`m` reflect
   earlier events of your own component in declaration order. Coupling
   tighter than one round belongs inside one component.
+- **Stage totality** ([§12.3](#123-probing-and-input-synthesis); [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor), [§13.5](#135-termination-is-a-state-not-an-exception)). Stage code is total over
+  type-valid inputs: the probe evaluates every user function against values
+  chosen for their types alone, and a value-level throw is a build failure
+  there and a `StepError` at runtime. Physical plausibility is a published
+  `Bool` and `stop_on`; self-consistency asserts belong in tests; parameter
+  validation belongs at instance construction, not inside a stage.
 - **Stop-face sampling** ([§13.5](#135-termination-is-a-state-not-an-exception)). Stop faces are read in completed-boundary
   snapshots; declare a localized event if the stop needs localizing.
 
