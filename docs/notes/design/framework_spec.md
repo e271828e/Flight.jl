@@ -644,15 +644,48 @@ A component that bundles a no-feedthrough output with a feedthrough output in on
 atomic evaluation unit can be **port-level acyclic yet unschedulable** (Simulink's
 "artificial algebraic loop"). The canonical instance in this domain is rigid-body
 dynamics: velocity out (pure state) + acceleration out (feedthrough from total force).
-The two-stage split resolves it. In the rare case where a single component's stage-2
-outputs cross-couple through a neighbor (port-level acyclic, stage-level cyclic), the
-remedy is **splitting the component** — which documents real structure — and the build
-diagnostic says so explicitly ("cycle through `systems/aero` is artificial at port
-level — split the component", with the offending stage `h_xu` carried as a separate
-payload field rather than dotted onto the path, [§11.6](#116-paths-wiring-and-exports)/[§13.2](#132-diagnostics-structured-values-one-carrier-exception)). One consequence of stage-2 conservatism worth recording: an
-input consumed only by `f` (never by `h_xu`) still creates a scheduling edge if the
-component has stage-2 outputs; in practice such components are integrator-shaped and
-have none, and the remedy, if ever needed, is the same split.
+The two-stage split resolves it, and it is the rung that absorbs most of the class:
+[§15.1](#151-vehicle-today--this-framework)'s `VehicleDynamics` instance — velocity state-only, accelerations feedthrough —
+simply dissolves under it.
+
+What survives the split is the case where a single component's stage-2 outputs
+cross-couple through a neighbor (port-level acyclic, stage-level cyclic), which [§5.6](#56-diagnostics-feedthrough-tracing)'s
+tracer labels **artificial**. Two remedies, in this order:
+
+- **Re-factor the contract.** Before moving any code, re-examine the cycle's wires. An
+  input the neighbor consumes *only in a fallback branch* is the archetypal false
+  dependency: the neighbor is computing, on the component's behalf, a fallback whose
+  semantics belong on the component's own side of the boundary. Move the branch to its
+  natural owner and the wire disappears. The canonical instance is the landing gear's
+  strut/steering pair: the steering model consumes the contact-point velocity azimuth
+  `ψ_v` only in its disengaged (castoring) branch, but castoring is free-swiveling
+  wheel physics — the strut's business, not the steering law's. Re-factoring the
+  steering contract to emit `(engaged, ψ_cmd)` and computing
+  `ψ_sw = engaged ? ψ_cmd : ψ_v` inside the strut deletes the backward wire outright.
+  The factoring survives substitution, which is the test that it records structure
+  rather than dodging the diagnostic: a stateful steering actuator produces `ψ_cmd`
+  from its own state and still needs nothing from the strut ([§16](#16-open-axes) records the
+  migration).
+- **Split the component** — the residual remedy, when both halves genuinely belong to
+  it, and it documents real structure. Its cost, stated where it bites: [§11.3](#113-visibility-the-contract-is-the-interface)'s
+  visibility is binary, so every intermediate shared across the new boundary becomes
+  `output_types` — public, connectable, substitution-relevant. The mitigating idiom is
+  [§4.3](#43-table-mechanics-and-port-granularity)'s granularity guideline, which the split case satisfies trivially (one
+  producing stage, one consumer): **one struct-valued bundle port** — a
+  `StrutGeometry`-shaped value — not N loose ports. The bundle type is then contract,
+  a real cost but a bounded and honest one. No visibility register is added for the
+  orphaned intermediates: rows 34 and 55 (`unlisted`, `Private(T)`) stay closed.
+
+The build diagnostic offers both exits explicitly ("cycle through `systems/aero` is
+artificial at port level — split the component, or narrow the neighbor's contract",
+with the offending stage `h_xu` carried as a separate payload field rather than dotted
+onto the path, [§11.6](#116-paths-wiring-and-exports)/[§13.2](#132-diagnostics-structured-values-one-carrier-exception)). The split is rare, and the ladder is what earns the word
+rather than asserting it: the two-stage split dissolves the common shapes and the
+contract re-factoring absorbs the false wires, leaving the split for cycles whose
+halves really are one component's own work. One consequence of stage-2 conservatism
+worth recording: an input consumed only by `f` (never by `h_xu`) still creates a
+scheduling edge if the component has stage-2 outputs; in practice such components are
+integrator-shaped and have none, and the remedy, if ever needed, is the same ladder.
 
 ### 5.5 Algebraic loop policy: reject at build time
 
@@ -681,7 +714,7 @@ Rejected alternatives:
 Tracing is **diagnostic only, never load-bearing**: scheduling correctness comes
 exclusively from the structural two-stage split; tracing improves error messages and
 verification. Triggered when the scheduler finds a cycle, to classify it (genuine →
-"insert a state"; artificial → "split this component").
+"insert a state"; artificial → [§5.4](#54-artificial-loops-and-the-escape-hatch)'s remedy ladder).
 
 **Detection and naming.** A cycle surfaces as a topological-sort stall in
 Stratum B. The stall's residue is not the diagnostic: it also holds the innocent
@@ -712,7 +745,9 @@ be conflated.
 speaks for the branch taken at the probe state (row 12's diagnostic-only
 doctrine). Discrete members trace *structurally* — row 79's pinned signatures
 admit no tracer scalar — which is sound as a may-depend answer but never sharp,
-so the "split this component" hint is offered only for continuous members. And
+so the remedy hint — split this component, *or* narrow the neighbor's contract when
+the dead hop's input is consumed only in a fallback branch ([§5.4](#54-artificial-loops-and-the-escape-hatch)'s ladder) — is
+offered only for continuous members. And
 if a member's evaluation itself throws, the diagnostic ships with the member
 list alone: classification is a bonus on the cycle error, never its
 precondition.
@@ -6193,7 +6228,17 @@ Still to be settled:
   **supervisor seam** ([§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)): compensator gain ports plus scheduler
   components (~7 for the C172X), the same-tick reset respelling of every
   mode-transition latch, and the gear's level-triggered reset converted to
-  an edge event; the **state-declaration conversion to [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s closed
+  an edge event; the **steering contract re-factoring** ([§5.4](#54-artificial-loops-and-the-escape-hatch)'s middle rung,
+  worked on the shipped instance): `AbstractSteering` moves from "give me the
+  angle" to `(engaged, ψ_cmd)`, with the castoring fallback
+  (`ψ_sw = engaged ? ψ_cmd : ψ_v`) computed inside `Strut`, which deletes the
+  strut → steering → strut artificial loop that stage-2 conservatism would
+  otherwise manufacture — beside [§15.1](#151-vehicle-today--this-framework)'s `VehicleDynamics` instance, which
+  dissolves under the two-stage split alone; splitting `Strut`, its shared
+  geometry crossing the new boundary as one `StrutGeometry` bundle port, is the
+  residual remedy, recorded and not taken (an aircraft-library call — a
+  component's own contract — recorded here, not framework vocabulary); the
+  **state-declaration conversion to [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s closed
   vocabulary** (each `RQuat` state field becomes its `SVector{4}` backing
   with the explicit `normalization = false` cast at its use sites — today's
   `Attitude.dt` already delivers the 4-wide rate — and each `Ranged` state
