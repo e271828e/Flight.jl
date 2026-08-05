@@ -1704,7 +1704,9 @@ domain, which always appear compounded: the b frame, the ECEF frame.)
    affinity is a device trait (`needs_calling_task`, default `false`,
    [§9.6](#96-devices-one-authoring-contract-no-taxonomy)) with at most one holder per roster ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s admission checks);
    the shipped GUI declares it — CImGui ties rendering to the calling
-   (main) task. The topology is derived from the frozen roster alone,
+   (main) task. The topology is derived from the frozen roster alone —
+   as device `init!` leaves it, a failed calling-task holder returning the
+   loop to the calling task ([§10.4](#104-shutdown-protocol)) — and
    never from `run!`'s keywords: with a calling-task device rostered the
    loop moves to a spawned task for the duration of the run and the
    calling task runs that device's loop body — inline, inside the same
@@ -2256,8 +2258,15 @@ sleep). With no lock, the protocol the taxonomy encoded has no referent.
 **Every attached device receives the same handle**, carrying the two primitive
 capabilities — read (latest snapshot; optionally wait-for-next-boundary, [§10.3](#103-the-next-snapshot-wait)) and
 stage —
-plus control access (observe running, request shutdown; `should_abort` stays a
-per-attachment flag). Input-only and output-only devices are degenerate uses, not
+plus control access (observe running, request shutdown). **`should_abort` is an
+`attach!` keyword**, defaulting to `false`: per-attachment, never a device
+property — the same joystick is advisory in one deployment and load-bearing in
+another — so with it clear a device's departure (loop body returning, crash, or
+a failed `init!`) is reported and the run continues without it, and with it set
+that departure also requests a sim stop ([§10.4](#104-shutdown-protocol)). The shipped GUI attaches with
+`should_abort = true` — closing the window is the interactive session's natural
+end — and `gui = true`'s standard attachment states that value ([Appendix B](#appendix-b-api-synopsis-the-entry-points)).
+Input-only and output-only devices are degenerate uses, not
 framework classes; a bidirectional network peer is *one* device with one socket and one
 lifecycle, not two framework devices sharing state. The GUI is an ordinary device —
 the paradigm one, using every capability — with exactly two genuine peculiarities,
@@ -2283,7 +2292,8 @@ and owns everything around them — the wrapper is the [§10.4](#104-shutdown-pr
 structural:
 
 ```julia
-init!(dev)                                   # failure surfaces by name, pre-spawn (§10.4)
+init!(dev)                                   # its own bracket, pre-spawn (§10.4): a throw
+                                             # here is shutdown! + DeviceCrash by name
 task = Threads.@spawn try
     loop(dev, handle)
 catch e
@@ -2297,6 +2307,16 @@ end
 A `needs_calling_task` device runs the identical wrapper *inline* on the
 calling task — the invocation site, not the contract, is its only
 difference ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s topology, [§10.4](#104-shutdown-protocol)'s join exclusion).
+
+**`shutdown!` must tolerate a partially initialized device.** The release
+guarantee holds on the one path *outside* this wrapper too: [§10.4](#104-shutdown-protocol)'s
+initialization step brackets each `init!` and hands a device that threw
+half-way through acquisition straight back to `shutdown!`, so nothing it did
+manage to open is leaked. The obligation that follows is "close only what is
+open" — the same defensiveness `shutdown!` already owes the crash path, where a
+loop body may die at any point in its own life — and `init!` is correspondingly
+*not* asked to clean up after itself: the bracket does once, for every device,
+what would otherwise be duplicated in each and enforced in none.
 
 One discrimination in that wrapper: **an `InterruptException` is never a
 `DeviceCrash`.** Under the spawned-loop topology the calling task is the one
@@ -2909,7 +2929,64 @@ create-a-new-socket-each-`init!` in network.jl is the precedent — and spawns
 fresh tasks against the re-armed [§10.3](#103-the-next-snapshot-wait) counter. While stopped there are no
 device tasks, so voluntary exit and the [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) liveness heartbeat are
 run-scoped observables; a device unplugged while stopped surfaces as the next
-run's `init!` failure, reported by name through (6)'s crash path.
+run's `init!` failure, disposed of by the initialization step below.
+
+**Initialization is a step of this protocol, taken at the top of a run.**
+Before any task is spawned, the loop calls `init!` once per roster entry, in
+attachment order, on the calling task — and each call sits in its own bracket:
+
+```julia
+for entry in roster                       # attachment order, calling task
+    try
+        init!(entry.device)
+    catch e
+        shutdown!(entry.device)           # release, unconditionally (§9.6)
+        report(DeviceCrash, entry.device, e)
+        mark_dead!(entry)                 # from boundary zero; no task is spawned
+        entry.should_abort && stop!(control)
+    end
+end
+```
+
+The bracket is what makes [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s "guaranteed on every exit path" true of
+the path outside its wrapper: a device that throws half-way through acquisition
+is handed back to `shutdown!` right there, so its partially acquired OS
+resources are released rather than leaked — which is exactly why `shutdown!`
+owes tolerance of a partially initialized device ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s taught obligation).
+The report is the ordinary `DeviceCrash` ([Appendix C](#appendix-c-the-diagnostic-kind-set)), not a kind of its own:
+its payload — device id, the cause exception, whether `should_abort` was set —
+already carries everything an init-time failure has to say, and the name is
+honest, a device that cannot acquire its resources having crashed before it
+lived. No task is spawned for a failed device, so it is **dead from boundary
+zero**, and that needs no machinery: its diagnostic cell never receives a
+heartbeat timestamp, so it reads stale against [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget)'s threshold from the
+first frame ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)). Its **claims persist to run end** — [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s
+death-is-not-detach disposition, applied one step earlier than (6)'s: the
+roster is frozen for the run, and the orphaned slots hold their initial values,
+well-defined by [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)'s slot totality where an orphan of (6) holds a last
+drained batch.
+
+**The run's disposition splits on `should_abort`, uniformly with (6).** Clear —
+the default ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) — the remaining entries initialize, the run starts, and
+the sim runs with that device absent from frame zero: (6)'s "the sim continues
+with the device's task absent", shifted to `t₀`. Set, the failure requests a
+control-plane stop, and that stop is simply *already pending* when the run
+reaches boundary zero — a path this protocol already has, since [§13.5](#135-termination-is-a-state-not-an-exception)'s
+boundary-zero check ends a run at `t₀` with that snapshot final, integrating
+nothing. No new exit protocol, therefore: the remaining entries still
+initialize — every rostered device gets its `init!`/`shutdown!` pair, uniformly
+— the run publishes boundary zero, and it ends `stopped` at `t₀` through this
+same tail, with the termination record naming the source ([§13.5](#135-termination-is-a-state-not-an-exception)). What the
+operator is left with is an ordinary stopped simulation: a terminal snapshot,
+the failure named in its diagnostic account, fully serviceable by [§14](#14-stopped-sim-services) and
+resumable by the next `run!` ([§10.6](#106-run-lifecycle-and-partial-advance)) once the device is plugged back in.
+
+**Topology is derived after initialization**, not from the roster alone
+([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)): a `needs_calling_task` holder whose `init!` failed returns the loop
+to the calling task, which would otherwise be pinned waiting to run the loop
+body of a device that does not exist. The shipped GUI attaches with
+`should_abort = true`, so in practice that run ends at `t₀` anyway; the rule is
+stated generally because it costs nothing.
 
 **The operator interrupt is a stop, not a failure.** Ctrl-C in an interactive
 session is a control-plane stop command issued by hand: the run completes the
@@ -6182,6 +6259,12 @@ For periphery authors and consumers:
   `unblock!` closes it), boundary-driven (`wait_next_snapshot`, gather,
   send). A forgotten predicate check surfaces as `DeviceJoinTimeout` with
   your device's name; a stall as a stale heartbeat.
+- **`shutdown!` closes only what is open** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§10.4](#104-shutdown-protocol)). The framework
+  runs it on every exit path, your own `init!`'s failure included: a throw
+  half-way through acquisition hands the half-built device straight back to
+  you, so guard each release (`isopen`, a `nothing` handle) rather than
+  assuming initialization completed. The converse is a burden you do *not*
+  carry: `init!` owes no cleanup of its own.
 - **Bad datum vs. bug** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)). Catch what your parser can throw,
   `report(handle, MalformedDatum(cause))`, stage nothing, continue; let
   everything else propagate — the wrapper makes it `DeviceCrash`.
@@ -6291,7 +6374,7 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   are view policies, not trajectory-determining: neither enters the deployment
   block, and replay neither records nor compares them. `debug`
   gates the workspace poison ([§7.3](#73-discrete-state-modes-and-workspace)).
-- `attach!(sim, device, binding)` — sides by method presence ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)):
+- `attach!(sim, device, binding; should_abort = false)` — sides by method presence ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)):
   `faces(b)`/`map_input(datum, b)` is the input half (the enumerated face
   set *is* the claim — what the device may write,
   not what it will — registered with exclusivity enforced, the staged
@@ -6309,7 +6392,11 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   `detach!` + `attach!`), calling-task affinity (`CallerTaskConflict` —
   at most one holder), interactivity (`InteractiveConflict` — likewise at
   most one holder) and claims (`ClaimConflict`), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster); registers
-  only, the task appears at the next `run!`.
+  only, the task appears at the next `run!`. `should_abort` is the
+  per-attachment failure policy: set, the device's departure — loop body
+  returning, crash, or a failed `init!` — also requests a sim stop; clear (the
+  default), the run continues with the device absent and its claims held to run
+  end ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§10.4](#104-shutdown-protocol)).
 - `detach!(sim, device)` — removes the roster entry and releases the
   device's claims; stopped-sim only, like `attach!`. A loop body's
   voluntary exit or crash mid-run does *not* detach: the task dies, the
@@ -6318,7 +6405,9 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   `shutdown!(dev)` / optional `unblock!(dev)` / optional trait
   `needs_calling_task(dev) = false` ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s topology: at most one per
   roster, its loop body runs inline on the calling task): per-run `init!`
-  on the calling task, the author-owned task body inside the framework's
+  on the calling task — bracketed, so a throw there is `shutdown!` plus
+  `DeviceCrash` by name and the device is dead from boundary zero
+  ([§10.4](#104-shutdown-protocol)) — the author-owned task body inside the framework's
   try/catch/finally wrapper, voluntary exit = return ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§10.4](#104-shutdown-protocol)).
 - The device handle — one type, capabilities not taxonomy: `running`,
   `latest`, `wait_next_snapshot` ([§10.3](#103-the-next-snapshot-wait)), `stage!`, `binding`, `gather`,
@@ -6365,7 +6454,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
   ([§8.7](#87-real-time-pacing)); the GUI an ordinary rostered device rendered on the calling task
   ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)); `gui = true` is idempotent attach sugar — it attaches the
-  standard GUI device under the standard interactive binding **iff no
+  standard GUI device under the standard interactive binding, with
+  `should_abort = true`, **iff no
   interactive device is already rostered** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s singleton rule), so a
   rostered GUI — or any other interactive front end — makes the flag a
   no-op rather than an admission error, and it never
@@ -6535,7 +6625,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count | [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) | warning (runtime), at `run!` |
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§10.4](#104-shutdown-protocol) | warning (runtime) |
-| `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | [§10.4](#104-shutdown-protocol), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime) |
+| `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§10.4](#104-shutdown-protocol), [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
 | `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
 | `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
@@ -7061,6 +7151,14 @@ devices ([§10.5](#105-scripts-and-the-mid-run-mutation-doctrine)).
 resolving against a source (table sources — a boundary snapshot or a service
 evaluation's scratch tables — vs. live stores) before any client policy
 applies ([§14.4](#144-two-application-registers-over-one-plan)).
+
+**`should_abort`** — the per-attachment failure policy, an `attach!` keyword
+defaulting to `false`: set, a device's departure — loop body returning, crash,
+or a failed `init!` — also requests a control-plane stop; clear, the run
+continues with the device absent and its claims held to run end. An attachment
+fact, never a device property, the same device being advisory in one deployment
+and load-bearing in another; the shipped GUI attaches with `true` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy),
+[§10.4](#104-shutdown-protocol)).
 
 **snapshot** — the immutable per-boundary publication: boundary-consistent
 signal table (local cells and root slots included), `t`, boundary index and
