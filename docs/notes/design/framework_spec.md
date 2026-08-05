@@ -2179,6 +2179,14 @@ A `needs_calling_task` device runs the identical wrapper *inline* on the
 calling task — the invocation site, not the contract, is its only
 difference ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s topology, [§10.4](#104-shutdown-protocol)'s join exclusion).
 
+One discrimination in that wrapper: **an `InterruptException` is never a
+`DeviceCrash`.** Under the spawned-loop topology the calling task is the one
+running a device loop body inline — the GUI's ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)) — so an operator
+Ctrl-C raises *there*, inside user code that did nothing wrong. The wrapper
+forwards the control-plane stop and lets the body leave through the ordinary
+`running(handle)` predicate ([§10.4](#104-shutdown-protocol)(4)): no crash report for what is not a
+crash, and no `should_abort` consultation, a stop being already requested.
+
 #### The author owns the loop body; the framework owns the bracket
 
 **The author owns the loop body; the framework owns the bracket.** The fork
@@ -2422,7 +2430,10 @@ separate atomic
 surface, consulted by the loop at frame top and inside its wait and pause states.
 `margin` ([§8.7](#87-real-time-pacing)) rides here for the same reason `pace` does — it tunes the
 wait, never the arithmetic — so retuning the coarse/spin split mid-run is safe
-by construction.
+by construction. The stop's issuers are the operator's channels — GUI button,
+device handle, calling code — and, in an interactive session, Ctrl-C: an
+operator interrupt is caught at one of the loop's unmask points and sets exactly
+this stop, no separate entry point involved ([§10.4](#104-shutdown-protocol)).
 **Not staging, structurally:** staged writes apply at drains, and a paused loop
 drains nothing — un-pause via staging would deadlock by construction. Riding outside
 the drain/trace path is safe for determinism precisely because [§8.7](#87-real-time-pacing) put pacing
@@ -2519,7 +2530,8 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 ### 10.4 Shutdown protocol
 
 1. **Initiation:** `t_end` reached, a control-plane stop (GUI, device handle,
-   code), or a `stop_on` face reading `true` in the just-published snapshot
+   code, or an operator interrupt — Ctrl-C, below), or a `stop_on` face
+   reading `true` in the just-published snapshot
    (model-detected termination, [§13.5](#135-termination-is-a-state-not-an-exception)). The loop always completes the current
    boundary sequence — never stops mid-frame — publishes the final snapshot,
    then sets the sticky stopped status.
@@ -2577,6 +2589,37 @@ fresh tasks against the re-armed [§10.3](#103-the-next-snapshot-wait) counter. 
 device tasks, so voluntary exit and the [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) liveness heartbeat are
 run-scoped observables; a device unplugged while stopped surfaces as the next
 run's `init!` failure, reported by name through (6)'s crash path.
+
+**The operator interrupt is a stop, not a failure.** Ctrl-C in an interactive
+session is a control-plane stop command issued by hand: the run completes the
+current boundary, publishes the final snapshot, takes this tail like any other
+stop, and ends `stopped` — boundary-consistent, fully serviceable by the [§14](#14-stopped-sim-services)
+stopped-sim services, resumable by the next `run!` ([§10.6](#106-run-lifecycle-and-partial-advance)). It is the escape
+from a run nothing else can end — deviceless, `t_end = Inf`, empty `stop_on`
+([Appendix C](#appendix-c-the-diagnostic-kind-set)'s `UnboundedRun`) — and it needs no entry point of its own: the
+control plane already carries the stop ([§10.1](#101-control-plane)), and [§13](#13-error-discipline)'s
+exceptions-are-abnormal doctrine is untouched, being about *model* code, while
+this is the one exception whose meaning the framework knows.
+**Masking across the boundary is normative**, not an implementation hint. An
+`InterruptException` is delivered asynchronously, so an interrupt landing
+mid-sweep would destroy the boundary this protocol is built on completing and
+leave half-written stores ([§13.6](#136-abnormal-shutdown-one-tail-two-entries)) — forcing a choice between `stopped` with
+dirty stores and a terminal `errored`, and the `stopped`-with-consistent-stores
+guarantee is exactly what the masking buys. The loop therefore masks delivery
+across the boundary macro-sequence (Julia's `disable_sigint`; a sigatomic
+counter increment, negligible per frame) and takes the deferred raise at the
+unmask points — the frame top, where it already consults the control plane
+([§10.1](#101-control-plane)), and inside its wait and pause blocks — all boundary-consistent.
+Caught there, it sets the control-plane stop and enters this tail; [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)'s catch
+site therefore never sees it. A **second interrupt during the tail** collapses
+the remaining joins immediately — (5)'s abandonment path taken at once, devices
+still reported by name (`DeviceJoinTimeout`) — and the run still ends `stopped`:
+escalation shortens the tail, never reclassifies the run. It cannot repair (5)'s
+honest asymmetry either, since nothing can abandon the task `run!` stands on.
+**Interactive-session scope**, stated plainly: outside the REPL, Julia's default
+(`exit_on_sigint(true)`) kills the process on SIGINT before any of this
+machinery runs, and the framework flips nothing process-global — unattended runs
+rely on `t_end` and `stop_on`, as they already must.
 
 ### 10.5 Scripts and the mid-run mutation doctrine
 
@@ -4105,6 +4148,15 @@ boundary `k` to replay to, and `replay!(sim2, trc; to_boundary = k)` halts
 exactly at that frame top; `step!` then re-executes the failing frame under
 instrumentation, localized boundaries included ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
 
+**The one exception never wrapped.** An `InterruptException` is not model code
+failing but the operator's stop command ([§10.4](#104-shutdown-protocol)), so the catch site discriminates
+it and routes it to the stop path: the run takes the ordinary graceful tail and
+ends `stopped`, never `errored` under a `StepError`. With [§10.4](#104-shutdown-protocol)'s boundary
+masking in force this branch is unreachable in practice — the interrupt is
+deferred to a frame-top or wait unmask point and never raises inside the guarded
+sequence — and it is kept defensively because the cost of being wrong about that
+is a terminally errored session in place of a clean stop.
+
 **Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
 `errored` — with the exception retrievable. A synchronous unattended run rethrows
 after the shutdown tail completes, so CI fails honestly; an interactive
@@ -4176,6 +4228,15 @@ more deployment-flavored, not less — and [§10.6](#106-run-lifecycle-and-parti
 cycle and `step!` register are precisely where one `Simulation` wants different
 stopping policies on different runs. The honest cost is two homes for one fact,
 which the precedence rule above is what settles.
+
+**The termination record names the source.** Where run metadata carries the
+effective *policy*, the run's termination record carries its *outcome*: which of
+the four sources ended the run — `t_end` reached, a named `stop_on` face reading
+`true`, a control-plane stop (GUI button, device handle, calling code), or an
+operator interrupt ([§10.4](#104-shutdown-protocol)) — so a `stopped` simulation answers "why did it
+stop?" without its consumer reconstructing the answer from the clock. The
+interrupt is a tag on an ordinary stop, not a diagnostic kind of its own
+([Appendix C](#appendix-c-the-diagnostic-kind-set) gains nothing here): nothing failed.
 
 Taught contract: **stop faces are sampled at completed boundaries; declare an
 event if you need the stop localized.** Both stop-flag shapes work without
@@ -4871,7 +4932,12 @@ coverage, so sweeps see a complete world); iterations rewrite only the
 problem's write-set via the compiled plan; an LM evaluation is one
 Dual-seeded sweep yielding `r` (value parts) and `J` (partials) together.
 No convergence → no commit → the sim is bit-for-bit untouched, including
-"never initialized" — today's warn-but-assign is structurally impossible.
+"never initialized" — today's warn-but-assign is structurally impossible. The
+same structure covers an interrupt: Ctrl-C during a long solve unwinds an
+ordinary Julia call operating on per-invocation scratch stores, no commit has
+happened, and the simulation is bit-for-bit untouched exactly as a
+non-converged solve leaves it — the services need no counterpart to the loop's
+boundary masking ([§10.4](#104-shutdown-protocol)).
 
 **The commit, in full.** The committed solution is applied as an `init!`
 in every respect: `override(baseline, solution)` through boundary zero —
@@ -6079,7 +6145,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), rate-limited per device |
 | `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | [§7.3](#73-discrete-state-modes-and-workspace) | warning (runtime), once per activation |
-| `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | [Appendix B](#appendix-b-api-synopsis-the-entry-points), [§13.5](#135-termination-is-a-state-not-an-exception) | warning (runtime), at run start |
+| `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§10.4](#104-shutdown-protocol)) | [Appendix B](#appendix-b-api-synopsis-the-entry-points), [§13.5](#135-termination-is-a-state-not-an-exception) | warning (runtime), at run start |
 
 ---
 
@@ -6544,6 +6610,13 @@ immutable value a device handle gets ([§9.2](#92-outbound-snapshot-publication)
 plus one `Threads.Condition` under the canonical predicate loop
 (`counter > last_seen && running`), newest-wins, no queues, no per-frame reset
 ([§10.3](#103-the-next-snapshot-wait)).
+
+**operator interrupt** — Ctrl-C in an interactive session, read as a
+control-plane stop rather than a failure: delivery is masked across the boundary
+macro-sequence (`disable_sigint`) and raised at a frame-top or wait unmask
+point, so the run takes the ordinary graceful tail and ends `stopped`. A second
+one collapses the device joins; outside the REPL, SIGINT still kills the process
+([§10.4](#104-shutdown-protocol), [§10.1](#101-control-plane)).
 
 **orphaned claims** — the claims of a device whose task died mid-run. Death is
 not detach: the roster entry and claims persist to run end, the slots hold
