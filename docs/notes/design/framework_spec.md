@@ -51,6 +51,7 @@
     - [9.5 Inbound: the input trace](#95-inbound-the-input-trace)
     - [9.6 Devices: one authoring contract, no taxonomy](#96-devices-one-authoring-contract-no-taxonomy)
     - [9.7 The GUI write path: port resolution, peek, staging contract](#97-the-gui-write-path-port-resolution-peek-staging-contract)
+    - [9.8 Diagnostics and liveness: the per-writer cell](#98-diagnostics-and-liveness-the-per-writer-cell)
   - [10. Runtime periphery: lifecycle and orchestration](#10-runtime-periphery-lifecycle-and-orchestration)
     - [10.1 Control plane](#101-control-plane)
     - [10.2 Loop scheduling: wait primitive, yields, thread budget](#102-loop-scheduling-wait-primitive-yields-thread-budget)
@@ -1657,7 +1658,8 @@ and the [§8](#8-time-and-execution) loop: the architecture that replaces the sh
 ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)), outbound snapshot publication ([§9.2](#92-outbound-snapshot-publication)), the inbound path — root
 input slots, claims and the frozen roster ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), per-device staging and the
 drain ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), the input trace ([§9.5](#95-inbound-the-input-trace)) — the device authoring contract
-([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), and the GUI write path ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)). The machinery that drives the loop
+([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), the GUI write path ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)), and the third cross-task channel —
+runtime diagnostics and liveness ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)). The machinery that drives the loop
 itself follows in [§10](#10-runtime-periphery-lifecycle-and-orchestration).
 
 ### 9.1 No shared mutable model: staged writes, snapshot reads
@@ -1745,7 +1747,7 @@ loop with staging fed from a recording ([§9.5](#95-inbound-the-input-trace), [�
 ### 9.2 Outbound: snapshot publication
 
 The loop builds each snapshot — boundary-consistent signal table, `t`, framework
-status ([§8.7](#87-real-time-pacing) diagnostics) — in private memory, then publishes it with a single
+status — in private memory, then publishes it with a single
 release-store to an `@atomic latest` reference; readers acquire-load and then work
 with an immutable, coherent world for as long as they like. `latest(sim)`
 hands the same value to the calling task — [§10.6](#106-run-lifecycle-and-partial-advance)'s inspection register.
@@ -1757,6 +1759,13 @@ tear a reader's view. Publication happens only after the boundary sequence compl
 **Binding rule: nothing reachable from a published snapshot is ever written again.**
 The table's immutable values ([§4.1](#41-immutable-value-semantics), [§7](#7-state-and-data-representation)) make the compiler enforce most of it; the
 rule is what the soundness of lock-free reading rests on.
+
+**The framework status is a concrete frozen value, not a window onto live
+bookkeeping** — [§8.7](#87-real-time-pacing)'s pacer diagnostics, plus the per-writer diagnostic
+batches, suppressed and cumulative counters and liveness timestamps the loop
+takes at frame top ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)). The binding rule is what forces that shape: a
+status referencing an accumulator its writers are still filling would be a
+snapshot whose contents change after publication.
 
 The captured table includes the component-local cells (`local_types`, [§11.3](#113-visibility-the-contract-is-the-interface)) — the copy is
 mechanical, and they serve the author's own debug panels; presentation layers (log
@@ -2285,7 +2294,8 @@ and diagnose, never force ([Appendix A](#appendix-a-taught-contracts-the-author-
 blocking calls interruptible (`unblock!`, or timeouts) — a forgotten
 predicate check surfaces as `DeviceJoinTimeout` with the device's name, a
 stall as a stale [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) heartbeat (liveness timestamps ride *inside* the
-handle primitives, so the framework observes activity without owning the
+handle primitives, which store them in the device's own diagnostic cell
+[§9.8](#98-diagnostics-and-liveness-the-per-writer-cell), so the framework observes activity without owning the
 loop). **`should_close` dissolves**: a window ✕ or peer EOT is the loop
 body returning; the wrapper's exit path releases the device's OS resources,
 marks it dead for the heartbeat and consults `should_abort` — claims and
@@ -2417,16 +2427,18 @@ stays pure.
 **Bad datum versus bug: two classes, two fates.** A datum that cannot be
 mapped for environmental reasons — a truncated datagram, malformed JSON, an
 out-of-range field — is tolerated *in the loop body*: catch, stage nothing,
-`report(handle, MalformedDatum(cause))`, continue — rate-limited per device
-([§13.2](#132-diagnostics-structured-values-one-carrier-exception)), visible next to a live heartbeat. Any other exception propagates,
+`report(handle, MalformedDatum(cause))`, continue — bounded by the device's
+own diagnostic cell ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)'s ring and suppressed counts, [§13.2](#132-diagnostics-structured-values-one-carrier-exception)'s
+stream), visible next to a live heartbeat. Any other exception propagates,
 and the wrapper turns it into `DeviceCrash` ([§10.4](#104-shutdown-protocol)). The classification is
 the author's — only they know their parser — exactly as FlightCore's
 `InputMappingError` docstring assigned it; what changes under the
 author-owned loop is that no framework per-iteration catch site exists, so
 the framework's contribution is the diagnostic channel, not the catch (a
 marked exception type with no framework consumer would be vestigial and is
-not provided). `report(handle, ...)` emits device-attributed runtime
-warnings into the [§13.2](#132-diagnostics-structured-values-one-carrier-exception) stream — nothing more; it is not a general
+not provided). `report(handle, ...)` writes device-attributed runtime
+warnings into that device's diagnostic cell — the [§13.2](#132-diagnostics-structured-values-one-carrier-exception) stream's
+single-writer entry point ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) — and nothing more; it is not a general
 user-diagnostics channel. Tolerating everything hides bugs as "device
 attached, nothing happens"; tolerating nothing kills a live telemetry link
 on its first truncated datagram — and since tasks are per-run artifacts
@@ -2526,6 +2538,116 @@ verdict are baked at run start, never performed at render; liveness and peek
 arrive through the framework-supplied context, never by reaching into the
 loop; and assembly panels compose children by path.
 
+### 9.8 Diagnostics and liveness: the per-writer cell
+
+The chapter's two data channels are specified down to their memory ordering.
+The runtime warning stream ([§13.2](#132-diagnostics-structured-values-one-carrier-exception)) and the liveness heartbeat ([§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget)) are
+a third, and they cross the same task boundaries: they are written by the
+device tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
+at staging ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), `MalformedDatum` from the author's loop body via
+`report(handle, …)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) — and by the loop itself (`ChatteringBudget`,
+`EventDeferred`, `DebtReanchor`), and read by the loop, which folds them into
+the published framework status ([§9.2](#92-outbound-snapshot-publication)) and hence into every snapshot. An
+unspecified structure with those writers is exactly the arbitrary shared
+mutable state [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s two rules exist to eliminate, so it gets the mechanism
+[§9.4](#94-inbound-per-device-staging-representation-and-the-drain) already established, not one of its own.
+
+**One diagnostic cell per writer — one per rostered device, one for the loop
+itself.** Each cell has a single writer, the same ownership argument as the
+staging cells: no locking, no arbitration, no new primitive. The cell holds a
+**bounded accumulation** — a small ring of diagnostic values, capacity **16**,
+plus a per-kind count of what the ring could not hold — and one atomic
+liveness timestamp.
+
+**That bound *is* the rate limit.** When a writer emits past the ring's
+capacity within one frame, the entry is not stored and its kind's suppressed
+count increments; the drop policy is earliest-in-frame retained, excess
+becomes counts — the first occurrences are the ones with diagnostic content,
+the hundredth is noise the count already reports. [§13.2](#132-diagnostics-structured-values-one-carrier-exception)'s "rate-limited
+wherever its source can repeat" is therefore not a policy layered over the
+stream but a structural property of the channel that carries it: a chattering
+model or a peer flooding malformed datagrams costs at most sixteen retained
+values and one integer increment per kind per frame, whatever its source
+does, and no writer can starve another — the cells are disjoint.
+
+**The drain is [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)'s drain.** One `atomicswap` per cell at frame top, at
+the same point and under the same indivisible-take argument as the staging
+drain; what the loop swaps *in* is a shared **empty sentinel**, so a quiet
+frame swaps the sentinel in and gets the sentinel back — no allocation, and
+no load-only code path that goes untested on healthy runs. The take is also
+what makes publication sound: the batch is exclusively the loop's before it
+is ever reachable from a snapshot, so [§9.2](#92-outbound-snapshot-publication)'s binding rule — nothing
+reachable from a published snapshot is ever written again — holds by
+construction, and the live accumulator is never reachable from a published
+value.
+
+**The heartbeat rides in the same cell**, as an atomic timestamp field the
+device task stores on every loop pass from inside the handle primitives
+([§9.6](#96-devices-one-authoring-contract-no-taxonomy): the framework observes activity without owning the loop body) and
+the loop acquire-loads at the drain. There is no separate liveness channel
+and no second registry: a device that is alive is a device whose cell carries
+a recent timestamp, and [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget)'s 2 s staleness threshold is read against
+this field. The heartbeat is not a diagnostic kind — it is a field, always
+present, never enumerated in [Appendix C](#appendix-c-the-diagnostic-kind-set).
+
+**The published framework status is a concrete frozen value.** Per writer it
+carries `recent` — the ring this boundary drained, at most sixteen entries;
+`suppressed` — the per-kind counts the ring refused this boundary; `totals` —
+the cumulative per-writer × per-kind counts since the run began, owned
+privately by the loop and *copied* into each status; and `heartbeat`. Beside
+the per-writer records ride [§8.7](#87-real-time-pacing)'s pacer diagnostics, as before. Delta
+plus total is what makes the status legible at any reading cadence: a GUI
+panel refreshing at 60 Hz sees each occurrence once in `recent`, while a
+consumer that samples occasionally still reads a complete account from
+`totals` — nothing is lost by not looking.
+
+**Presentation is where the old `maxlog` lives.** A status renderer prints a
+given writer × kind up to **25** cumulative occurrences and then switches to
+count-only display ("`MalformedDatum` from `UDPInput#3`: 1 482 occurrences").
+That threshold is presentation policy, not channel policy: counts keep
+accumulating regardless, nothing recorded depends on it, and the choice
+belongs to whoever renders. The channel's own bound, above, is the one that
+is normative.
+
+**The terminal snapshot carries the run's final cumulative counters**
+([§10.4](#104-shutdown-protocol), [§13.5](#135-termination-is-a-state-not-an-exception)), so an unattended run that nobody watched still
+answers "what went wrong, and how often" from the value its own shutdown
+published.
+
+**Allocation.** On a quiet frame there is **zero additional heap
+allocation**: the sentinel swap allocates nothing and the per-writer status
+rides inline in the one per-boundary snapshot allocation [§9.2](#92-outbound-snapshot-publication) already
+accepted. That requires the per-kind counters to be a **fixed-shape isbits
+record, never a `Dict`** — licensed by [Appendix C](#appendix-c-the-diagnostic-kind-set)'s closed kind set, which
+makes the counter layout a type rather than a lookup. On a noisy frame the
+diagnostic values are allocated at emission, on the writer's own task; a
+drained non-empty ring is frozen into the snapshot and can never be written
+again, so the writer allocates a fresh ring lazily at its next emission —
+that cost, too, landing on the writer's task — which is the same
+GC-over-reuse trade [§9.2](#92-outbound-snapshot-publication) makes when it rejects preallocated snapshot
+buffers. The rate limit is therefore an allocation bound as well: one ring of
+sixteen entries per writer per boundary is the worst case, everything past it
+an integer increment. [§7.5](#75-allocation-policy-a-scoped-invariant)'s zero-allocation invariant, scoped to the model
+sweep, is untouched — the cells sit on the framework side of that scope with
+publication and logging.
+
+Composition with the log, worth stating once: because the log retains
+snapshot references ([§9.2](#92-outbound-snapshot-publication)), `totals` is monotone across logged snapshots,
+so `log_every` decimation loses *which* boundary within a skipped stretch an
+occurrence fell on, never *how many* occurrences there were.
+
+Rejected: **a shared queue under a lock** — cross-task contention on the
+loop's own frame path, and no single-writer ownership to reason from, the
+shape [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads) refuses wholesale; **a status referencing the live
+accumulator** — the cheapest thing to write and a direct violation of the
+binding rule, a reader walking a structure the writer is still mutating;
+**ring reuse by double-buffering** — reintroduces exactly the reader-liveness
+proof the GC provides free, [§9.2](#92-outbound-snapshot-publication)'s own argument against preallocated
+snapshot buffers, to save an allocation that occurs only on frames already
+doing something unusual; **unbounded accumulation** — an unattended run with
+no status reader grows without bound in the configuration the framework most
+has to survive, and the drop policy is what a bound buys.
+
 ---
 
 ## 10. Runtime periphery: lifecycle and orchestration
@@ -2598,7 +2720,11 @@ thread for the duration). No pinning, no sticky tasks.
 
 **Liveness heartbeat.** Since starvation is survivable it must be diagnosable: the
 published framework status includes per-device liveness (last-staged / last-read
-wall time, task state) next to the pacer diagnostics. A starved, blocked or crashed
+wall time, task state) next to the pacer diagnostics. The mechanism is
+[§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)'s per-writer cell and nothing besides — an atomic timestamp field
+the device task stores on every loop pass from inside the handle primitives
+([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) and the loop acquire-loads at the frame-top drain, alongside that
+device's diagnostics. A starved, blocked or crashed
 device task shows in the GUI as a stale heartbeat with a name on it, not as
 mysteriously frozen physics. **Stale means a liveness timestamp more than 2 s
 behind wall clock** — deliberately loose, because the heartbeat is advisory
@@ -2651,7 +2777,9 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    (model-detected termination, [§13.5](#135-termination-is-a-state-not-an-exception)). The loop always completes the current
    boundary sequence — never stops mid-frame — publishes the final snapshot,
    then sets the sticky stopped status.
-   Publishing first guarantees output devices can flush the true final state.
+   Publishing first guarantees output devices can flush the true final state,
+   and that final status carries the run's cumulative diagnostic counters
+   ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) — the complete warning account of a run nobody watched.
    **`t_end` lands on the grid:** the run ends at the first grid boundary whose
    time reaches or exceeds `t_end` — whole frames only, never a shortened final
    step, which [§8.4](#84-localization-mechanics)'s grid integrity (`tₖ = t₀ + k·h`, indexed and never
@@ -4200,9 +4328,14 @@ is **currently empty** — the unconnected-output warning having been rejected a
 its sole candidate ([§6.1](#61-connections-and-hierarchy), row 84) — and better an empty, trusted stream than a
 noisy one; a warnings-as-errors CI switch is addable, not built. The *runtime*
 status/log stream is a different channel and is not empty: it is
-per-occurrence, rate-limited wherever its source can repeat, and surfaced
+per-occurrence, carried by [§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)'s per-writer diagnostic cells — which is
+where the rate limit lives, as a structural bound (a bounded ring plus
+per-kind suppressed counts, drained at frame top) rather than a policy
+layered over the stream, so "rate-limited wherever its source can repeat"
+holds of every kind below without any kind arranging it — and surfaced
 through the published framework status ([§9.2](#92-outbound-snapshot-publication)) alongside the [§8.7](#87-real-time-pacing) pacer
-diagnostics and the [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) liveness heartbeats — never collected, since there is
+diagnostics and the [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) liveness heartbeats, which ride in the same cells
+— never collected, since there is
 no collection to join. Nothing in row 84's argument applies to it: that decision is
 about what the *build* warns on. The committed runtime warnings, in one place:
 
@@ -4221,8 +4354,8 @@ about what the *build* warns on. The committed runtime warnings, in one place:
   `EntryTypeMismatch` (a value unconvertible to its
   slot's declared type, rejected at staging for every writer);
 - **a tolerated device-side datum failure** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)):
-  `MalformedDatum` — emitted by the author's loop via `report(handle, …)`,
-  rate-limited per device, the `InputMappingError` successor;
+  `MalformedDatum` — emitted by the author's loop via `report(handle, …)`
+  into the device's own cell ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)), the `InputMappingError` successor;
 - **staging discarded during replay** ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)): `ReplayDiscardedStaging` —
   a live batch found staged while the trace feeds the drain;
 - **thread-budget tightness** ([§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget)) — once per `run!`, against the frozen
@@ -4370,7 +4503,8 @@ declared machinery:
   loop reads the named faces in the snapshot it just published; the first
   `true` initiates [§10.4](#104-shutdown-protocol) shutdown with *this* snapshot as the final one — the
   terminal snapshot is the terminal state, no roll-back, nothing [§10.4](#104-shutdown-protocol) doesn't
-  already do. `run!` therefore checks the boundary-zero snapshot before the
+  already do (and its status carries the run's final cumulative diagnostic
+  counters, [§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)). `run!` therefore checks the boundary-zero snapshot before the
   first step: an authored condition already terminal ends the run at `t₀`
   with that snapshot final, integrating nothing. Default: no stop faces, run
   to `t_end` — `stop_on` is `t_end`'s model-declared sibling at the same
@@ -6239,7 +6373,13 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
   pre-write check), a single throw at the call otherwise;
 - **runtime** — fail-fast during a boundary, reaching [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)'s single catch site
   as a species of `StepError`;
-- **warning (runtime)** — the per-occurrence runtime stream of [§13.2](#132-diagnostics-structured-values-one-carrier-exception). The
+- **warning (runtime)** — the per-occurrence runtime stream of [§13.2](#132-diagnostics-structured-values-one-carrier-exception),
+  carried by [§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)'s per-writer diagnostic cells and rate-limited by them:
+  every kind in this severity is bounded per writer per boundary (a ring of
+  sixteen retained values, the excess becoming per-kind suppressed counts).
+  The per-row qualifiers below record where that bound is load-bearing — a
+  source that can repeat within a frame — and where the source itself fires
+  once. The
   *build* warning severity exists and its set is currently empty (row 84).
 
 **Declaration and wiring** (Stratum A):
@@ -6323,8 +6463,8 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `ThreadBudget` | thread count, device-task count | [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) | warning (runtime), at `run!` |
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§10.4](#104-shutdown-protocol) | warning (runtime) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | [§10.4](#104-shutdown-protocol), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime) |
-| `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | warning (runtime), rate-limited per device |
-| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), rate-limited per device |
+| `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
+| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
 | `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | [§7.3](#73-discrete-state-modes-and-workspace) | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§10.4](#104-shutdown-protocol)) | [Appendix B](#appendix-b-api-synopsis-the-entry-points), [§13.5](#135-termination-is-a-state-not-an-exception) | warning (runtime), at run start |
@@ -6772,10 +6912,24 @@ contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
 `needs_calling_task`) and one handle; input-only and output-only are
 degenerate uses, and the GUI is an ordinary device ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
 
+**diagnostic cell** — the single-writer cell each rostered device and the loop
+itself owns for runtime diagnostics and liveness: a bounded ring (capacity 16)
+of diagnostic values plus per-kind suppressed counts — the bound being the
+rate limit itself — and an atomic heartbeat timestamp, taken by the loop with
+`atomicswap` at the frame-top drain and frozen into the published status
+([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)).
+
 **drain** — the single point at the top of each frame where the loop takes
 each staging cell by `atomicswap` and applies it through the attach-compiled
 scatter, in attachment order; never at a `t*` boundary, and under the roster
-freeze it performs no checks at all ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)).
+freeze it performs no checks at all ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)). The diagnostic
+cells are taken at the same point ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)).
+
+**framework status** — the concrete frozen value each snapshot carries beside
+the signal table: [§8.7](#87-real-time-pacing)'s pacer diagnostics plus, per writer, this
+boundary's drained diagnostics (`recent`), the counts the ring refused
+(`suppressed`), the loop's cumulative per-writer × per-kind counters copied in
+(`totals`) and the liveness timestamp ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell), [§9.2](#92-outbound-snapshot-publication)).
 
 **harness cell** — the interactive-register staging path for the calling task
 itself, written by `stage!(sim, "face" => value, …)`: ordinary batches,
@@ -7031,7 +7185,8 @@ naming the faces the loop reads after every published boundary ([§13.5](#135-te
 
 **warning streams** — two, scoped separately: the *build* stream, whose
 warning set is deliberately empty, and the *runtime* stream — per-occurrence,
-rate-limited wherever its source can repeat, surfaced through published
+carried by the per-writer diagnostic cells that structurally rate-limit it
+([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)), surfaced through published
 framework status, with its committed inventory listed in [§13.2](#132-diagnostics-structured-values-one-carrier-exception).
 
 ### D.10 Meta-vocabulary
