@@ -4031,9 +4031,16 @@ Adding an actuator channel is then one edit: the new pair simultaneously
 creates the wire and removes the face from the export surface. The two
 declarations cannot drift, because neither holds the shared names — both are
 projections of the authored list, so the drift class is removed rather than
-detected. Every existing error stays loud: a misspelled destination is an
-unknown-face error at the `passthrough` call with the child's face list in
-hand, and a face the list fails to feed is an ordinary unconnected input.
+detected. Every misspelling stays loud: a mistyped destination is an
+unknown-face error with the child's face list in hand, whether the wire or
+the `except` entry meets it first. One honest asymmetry: a pair *omitted*
+from the list is not an error but a structural change — the face leaves the
+`except` set and joins the export surface, ultimately a root slot for
+conditions to cover
+([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
+What the idiom preserves, and the helper below surrenders, is that the feed
+statement exists to be reviewed: an omission is legible in one authored
+artifact, not defined away as the complement of the wire list.
 
 **The line not to cross** is deriving `except` from `connections` itself — a
 helper spelled `except = fed(s, "aero")`, reading the assembly's own wire
