@@ -400,6 +400,22 @@ pose). They are therefore carried by ordinary ports as **immutable query objects
   state, or the interpolant is restructured to be pure.
 - Loggers treat field-handle signals specially (skip or summarize).
 
+**The value-level constructor.** Every field-emitting component must expose the
+map (component, input values) → handle as a plain, pure, exported function —
+`atmospheric_field(atm; T_sl, p_sl, wind)` for the `SimpleAtmosphere`
+successor — and its swept output stage must be a **one-line call to that
+function**, never the other way round (the query math written into the output
+stage, where only a sweep can reach it). The reason is script-side: [§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s
+condition math must be able to construct, outside any sweep, bit-for-bit the
+same handle the sweep would produce from the same slot values — one
+implementation, two call sites, no drift (the silent-drift class [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) exists to
+kill). This is a *shipped component's obligation*, not something a consumer can
+retrofit: the real component composes sub-models, and anyone else
+reconstructing the map has re-created the drift class. For bulk-data components
+the obligation is only that the query math be reachable as a plain function —
+they own their resource loading, so building a handle outside a build may cost
+a load, which is acceptable because condition authoring is design-time code.
+
 Pre-sampling — a component consuming the field and a pose and emitting plain data
 (`Airflow` emitting `AirData` for the whole vehicle) — is an **idiom built on top**,
 used where natural; not a separate mechanism. Resource injection (declare-and-resolve
@@ -4259,7 +4275,10 @@ The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
   function returning a condition value (state by path, modes, slots by face)
   that the service writes and evaluates. Domain math — the pitch constraint,
   `Kinematics.Initializer`, per-residual scalings and the equilibrium-subset
-  choice — survives untouched, aircraft-side.
+  choice — survives aircraft-side, with one respelling: the initializer's
+  `atmosphere::Model` argument becomes a field handle ([§4.4](#44-function-valued-signals-environment-access)), built at value
+  level by the atmosphere's value-level constructor or held directly as a rig
+  slot value ([§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults), [§14.9](#149-mounting-problems-as-relocatable-values)).
 - **Linearization** is a `Dual` activation plus seeded sweeps: gather/scatter
   over the canonical layout replaces the hand-written
   `get_x_ss`/`assign_x_ss!` layer ([§7.1](#71-continuous-state-structured-immutable-flat-backing)'s deletion discharged); root slots are
@@ -4912,6 +4931,18 @@ definition; a would-be init value that depends on swept outputs is either
 analytically known to the caller (trim's `α_filt = α_a`: α is a *decision
 variable* — the value is known above, not computable below) or an equilibrium
 constraint, i.e. a job for the trim service, not for init.
+"Caller-computable" reaches past closed-form knowledge to **environment
+queries**: a condition needing one constructs the same handle the sweep will
+produce — through [§4.4](#44-function-valued-signals-environment-access)'s value-level constructor, applied to the same values
+its `baseline` writes into the environment component's slots, or, in a rig
+where the handle itself is a root slot value, by simply holding the value it
+wrote there — and then calls the same query function the consuming component
+calls. One implementation of the field math, evaluated one level up: no
+pre-sweep, no new mechanism. And where closed-form enforcement of a target is
+not wanted at all, the second escape already covers the case — promote the
+eliminated state coordinates to decision variables and enforce the targets as
+residuals on swept outputs, which needs no environment access at condition time
+whatsoever.
 
 ### 14.2 Fragment composition: locality without schema
 
@@ -5314,7 +5345,11 @@ The rule: **what the solver varies is passed; what is fixed per problem is
 closed over.** The gathered reads and the decision NamedTuple arrive as
 arguments — `d` is the one value that *cannot* be closed over — while
 `TrimParameters` stays behind the closure, exactly as `condition` already
-holds it (the framework never sees it). The returned NamedTuple's names are
+holds it (the framework never sees it). Being user-shaped, that record is also
+where any environment handles the condition math needs conventionally ride
+([§4.4](#44-function-valued-signals-environment-access)'s value-level constructor, [§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s pre-sweep doctrine): the problem
+*receives* the environment, and never writes it ([§14.9](#149-mounting-problems-as-relocatable-values)).
+The returned NamedTuple's names are
 the equation names the report and the failure messages use; the service packs
 residuals and tolerances by field order. Shapes are checked at setup: the
 guess evaluation the service performs anyway observes the residual key set,
@@ -5459,6 +5494,16 @@ untrimmable from outside, and the build says so. The service compiles the
 scoped condition and reads and runs the identical loop — it never knows
 where its paths are mounted.
 
+**A problem never authors the environment.** The environment — a sibling
+component's slots in a full world, a handle-valued root slot in a thin rig —
+is the world's and the `baseline`'s business; the problem *receives* its
+handles through the user parameter record ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)) and only queries them. The
+reason is the resolution rule just stated: a condition entry naming a wired
+input fails by name, correctly — so a problem writing an environment face
+would be applicable only to those rigs where that face happens to be
+unconnected, and the relocatability this section exists to guarantee would be
+lost.
+
 **The world wrapper dissolves.** Today's `f_init!(::Model{<:SimpleWorld})`
 (initialize environment, then call the aircraft's trim) has no successor
 method: the environment, the other aircraft and all slots are covered by
@@ -5466,13 +5511,20 @@ the `baseline` condition ([§14.6](#146-slot-totality-the-missing-value-error-an
 `override(baseline, at(mount, condition(d*)))`. Method nesting became value
 layering.
 
-**"Aircraft as root" is a thin world.** The aircraft is never literally the
-root — its environment inputs ([§4.4](#44-function-valued-signals-environment-access) function-valued signals) are wired from
-provider components — so design tasks use a shipped rig,
+**"Aircraft as root" is a thin world.** By default the aircraft is not
+literally the root — its environment inputs ([§4.4](#44-function-valued-signals-environment-access) function-valued
+signals) are wired from provider components — so design tasks use a shipped rig,
 `design_world(ac)` = aircraft + `SimpleAtmosphere(wind = NoWind())` +
 `HorizontalTerrain`: today's ad-hoc models inside `linearize` promoted to
 a named artifact. One register: the "root" case is the shallowest world,
-the trim problem mounts at `"aircraft"` like anywhere else.
+the trim problem mounts at `"aircraft"` like anywhere else. Leaving an
+environment face *unconnected* is legal by construction, though: the face
+becomes an ordinary root slot holding the handle **value**, written by the
+`baseline` like any other slot — the test-rig register, the function-valued
+sibling of a constant source, zero ceremony for a frozen environment. For
+design tasks the shipped rig stays `design_world(ac)`, which keeps the
+environment's tunables in the slot vocabulary that conditions, `capture`,
+linearization's input surface and the trace header already speak.
 
 **Swarm doctrine.** The service solves *one problem at a time*. Sequential
 independent trims (trim lead, commit, trim wing against the committed
@@ -6212,6 +6264,12 @@ For component authors:
 - **One home per datum** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§4.3](#43-table-mechanics-and-port-granularity)). The signal table holds *produced*
   signals only, never transported ones: buffer for `x`, stores for `z`/`m`,
   table for signals — no store mirrors another.
+- **The value-level constructor** ([§4.4](#44-function-valued-signals-environment-access)). A field-emitting component ships
+  the map (component, input values) → handle as a plain exported function,
+  and its output stage merely calls it: [§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s condition math must be able
+  to produce the sweep's exact handle outside any sweep, and only the
+  component's author can write that function without re-creating the
+  drift class.
 - **Boundary sampling** ([§8.5](#85-multi-rate-tick-scheduling)/[§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event); worked example [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)). "Sampling at
   `t_k`" means post-integration, post-projection, stage-1-fresh state: a
   due tick's gated stages run inside the boundary sweep and sample the
@@ -6809,6 +6867,12 @@ the table ([§7.3](#73-discrete-state-modes-and-workspace), [§4.1](#41-immutabl
 aggregation through explicit wires (`SumJunction{W, N}` or a named
 site-specific variant); there is no framework aggregation mechanism, and fold
 order is the junction's positional input order ([§6.2](#62-aggregation-explicit-summing-junctions)).
+
+**value-level constructor** — the plain exported function (component, input
+values) → field handle that every field-emitting component is obliged to
+provide, its own swept output stage being a one-line call to it; the device by
+which [§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults) condition math queries the environment before any sweep exists
+([§4.4](#44-function-valued-signals-environment-access)).
 
 **view** — a zero-copy reconstruction of a store handed to a function through
 its bundle; it materializes in the caller's frame for the duration of the call
