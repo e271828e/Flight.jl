@@ -1271,7 +1271,15 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
   (clamps, table knots, saturated stretches where σ′ = 0), Newton discards the
   bracket for merely local guarantees, and its superlinear convergence saves a
   handful of microsecond probes per rare event. AD earns its keep in Jacobians, not
-  in root-polishing a possibly-kinked bracketed scalar.
+  in root-polishing a possibly-kinked bracketed scalar. **Convergence is a
+  relative bracket width**: localization stops once the bracket is narrower
+  than `localization_tol · h`, with `localization_tol` a `Simulation` deployment
+  keyword defaulting to `1e-6` (below). Relative because an absolute-in-`t`
+  tolerance is not scale-free — one number is slack at `h = 1` and unreachable at
+  `h = 10⁻⁴`; `1e-6` because the event time can only ever be as accurate as the
+  interpolant (`O(h⁴)`, above), so at practical `h` anything tighter buys nothing
+  while every probe costs a full sweep — a handful of probes under ITP, ~20 even
+  in bisection's worst case.
 - **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
   invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
   `t*` with the remainder step targeting `tₙ₊₁` → re-check guards on the remainder,
@@ -1284,7 +1292,12 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
   defeating detection under both policies; the mitigation is step size, not
   machinery.
 
-**Budget exhaustion degrades; it does not throw.** When a step spends its event
+**Budget exhaustion degrades; it does not throw.** The budget is
+`event_budget`, the second deployment keyword this section fixes: an integer
+count of localizations permitted within one frame, defaulting to **8**. A
+legitimate multi-event frame — three landing-gear struts touching down inside
+one step — needs three or four; chattering needs tens; 8 bounds the pathology
+without ever binding on a healthy model. When a step spends its event
 budget, localization stops for the remainder of that frame: the remainder step
 completes, and any further crossings fire in the next boundary's ordinary
 iteration — boundary granularity for that frame — under a warning naming the
@@ -1296,6 +1309,18 @@ makes the asymmetry with [§8.6](#86-event-iteration-at-boundaries-to-quiescence
 structural — quiescence terminates because each event fires at most once per
 boundary — whereas re-localization across a frame has no structural bound, so it
 takes a budget, whose exhaustion degrades exactly as that section's would.
+
+**Both constants are deployment, not implementation.** `localization_tol` and
+`event_budget` are `Simulation` keywords standing beside `h`, `n` and the
+algorithm ([§12.1](#121-three-strata), [Appendix B](#appendix-b-api-synopsis-the-entry-points)), validated with their siblings — a positive
+tolerance, an integer budget ≥ 1 — and collected into `DeploymentInvalid`
+([Appendix C](#appendix-c-the-diagnostic-kind-set)). They are grid-independent, so neither enters [§8.5](#85-multi-rate-tick-scheduling)'s
+harmonic-grid check. And being trajectory-determining they are **recorded**:
+they ride the trace header's deployment block and join the set replay compares
+up front, exactly as `h` and the algorithm do ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). The
+replays-identically promise above is empty otherwise — a run that does not
+record what its localizer was told to do cannot be re-driven through the same
+localization outcomes.
 
 **Projection's reach is the boundary, not the probe.** Guard probes evaluate the
 raw interpolated state — the same rule RK-stage RHS evaluations already live
@@ -1561,9 +1586,12 @@ forgiven.
 **Deadline law: absolute schedule with bounded debt.** Frame deadlines come from
 the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent frames
 repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
-(GC, scheduler) are invisible. Debt beyond a threshold (a few frames' worth) is
-forgiven by re-anchor plus warning, so long stalls (debugger, laptop sleep) do not
-trigger catch-up bursts. Rejected: relative deadlines (next = last completion +
+(GC, scheduler) are invisible. Debt beyond a threshold — **five frames' worth of
+budget, `5·h/p`** — is forgiven by re-anchor plus warning, so long stalls
+(debugger, laptop sleep) do not trigger catch-up bursts. Five: comfortably above
+the ms-scale hiccups debt exists to absorb silently, and far below the
+seconds-to-minutes stalls forgiveness exists for, so neither case lands near the
+threshold. Rejected: relative deadlines (next = last completion +
 budget), under which every overrun permanently slips sim time against wall time.
 
 **`p = ∞` is pacer-off, not a limit value.** FlightCore's arithmetic trick
@@ -1591,12 +1619,15 @@ while τ() < deadline end            # spin phase: µs-precise, CPU cost bounded
 `margin` is a single constant calibrated to cover the primitive's granularity *plus*
 typical overshoot (no second threshold — the resolution floor is absorbed into the
 calibration, and a margin below the primitive's granularity defeats the spin phase's
-purpose). It spans the whole design space:
+purpose). **Its default is 2 ms**, the value the measurements above imply: it
+covers libuv's millisecond timer granularity and `sleep`'s ≈1.4 ms median
+overshoot, while anything larger merely spends more core in the spin phase. It
+spans the whole design space:
 
 - **`margin = 0` — pure sleep:** cheapest CPU; bursty frame spacing, but the
   absolute schedule still delivers the exact *average* rate through debt repayment.
   The spin phase buys regularity, never rate correctness.
-- **`margin` = a few ms — hybrid (default):** sleeps ~90% of a 20 ms budget, lands
+- **`margin` = 2 ms — hybrid (the default):** sleeps ~90% of a 20 ms budget, lands
   within µs of the deadline at a few percent of one core.
 - **`margin = ∞` — pure busy-wait:** FlightCore's behavior, maximum frame
   regularity at one pinned core; the "best attempt at real time" mode is the knob's
@@ -2101,6 +2132,7 @@ also carries **each writer's face-name → position schema** — the run's froze
 surface partition — since positional records are meaningless without it and
 replay does not reconstruct claims ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). And it carries the run's
 **deployment block**: `t₀`, `Δt_base`, `h`, `n`, the algorithm identifier,
+`localization_tol`, `event_budget` ([§8.4](#84-localization-mechanics))
 and the effective `t_end`/`stop_on` pair, captured at the same instant as the
 stores. The trajectory depends on these exactly as it depends on the stores —
 [§12.1](#121-three-strata)'s deployment binding sits outside the `Build`, and `t₀` post-dates
@@ -2488,7 +2520,11 @@ thread for the duration). No pinning, no sticky tasks.
 published framework status includes per-device liveness (last-staged / last-read
 wall time, task state) next to the pacer diagnostics. A starved, blocked or crashed
 device task shows in the GUI as a stale heartbeat with a name on it, not as
-mysteriously frozen physics.
+mysteriously frozen physics. **Stale means a liveness timestamp more than 2 s
+behind wall clock** — deliberately loose, because the heartbeat is advisory
+(a liveness display and a provenance record, never a kill trigger, never a
+detach) and must tolerate a device legitimately parked in a blocking read
+between rare data.
 
 ### 10.3 The next-snapshot wait
 
@@ -2536,6 +2572,16 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    boundary sequence — never stops mid-frame — publishes the final snapshot,
    then sets the sticky stopped status.
    Publishing first guarantees output devices can flush the true final state.
+   **`t_end` lands on the grid:** the run ends at the first grid boundary whose
+   time reaches or exceeds `t_end` — whole frames only, never a shortened final
+   step, which [§8.4](#84-localization-mechanics)'s grid integrity (`tₖ = t₀ + k·h`, indexed and never
+   accumulated) forbids. The final boundary may therefore overshoot `t_end` by
+   up to `h`, and the termination record carries the actual final `t`
+   ([§13.5](#135-termination-is-a-state-not-an-exception)). This is [§10.6](#106-run-lifecycle-and-partial-advance)'s `t_plus` spelling — whole frames until
+   the boundary time first covers the duration — applied to the run's own
+   clock, and it is where the two termination sources differ in kind: `t_end`
+   is a grid fact, checked against boundary times on the grid, while `stop_on`
+   is checked at *every* published boundary, `t*` included ([§13.5](#135-termination-is-a-state-not-an-exception)).
 2. **Wake all framework waits** (next-snapshot, pause): waiters observe the
    stopped status and unwind — a stop while paused therefore works.
 3. **Unblock device-specific blocking calls** via an `unblock!(device)` hook,
@@ -2548,9 +2594,11 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    taught obligations) with all blocking points
    interruptible per (2)–(3); the wrapper's `finally shutdown!(device)` is
    guaranteed on every exit path.
-5. **Join with a timeout:** a device task exceeding it is reported *by name*
+5. **Join with a timeout — 5 s:** a device task exceeding it is reported *by name*
    ([§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) heartbeat) and abandoned with a warning (`DeviceJoinTimeout`,
-   [Appendix C](#appendix-c-the-diagnostic-kind-set)) rather than hanging `run!`.
+   [Appendix C](#appendix-c-the-diagnostic-kind-set)) rather than hanging `run!`. Five seconds is generous for
+   GUI window teardown and socket closes, and short enough that an abandoned
+   join reads as a diagnosed timeout rather than a hang.
    The calling-task device — the GUI — having no spawned task ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)), is
    outside the join: its loop body is the calling task's own occupation of
    `run!`, exits by the same `running(handle)` predicate as any device
@@ -2840,12 +2888,17 @@ Everything else is the loop as already specified:
   identical build; the what-if register promises determinism, never
   reproduction.
   The header's deployment block ([§9.5](#95-inbound-the-input-trace)) validates in the same pass, on
-  the *structural* side of that line: `Δt_base`, `h`, `n` and the algorithm
+  the *structural* side of that line: the six trajectory-determining
+  parameters — `Δt_base`, `h`, `n`, the algorithm, `localization_tol` and
+  `event_budget` ([§8.4](#84-localization-mechanics)) —
   are compared against the target `Simulation`'s own deployment binding —
   mismatch is `ReplayHeaderMismatch` with a deployment-parameter
   discriminator, never a what-if, because a deployment change moves the
   times at which the frame-ordinal batches apply: different inputs, not a
-  modified model. `t₀` is *applied*, not compared — replay stands in the
+  modified model. The localization pair is compared for exactly the same
+  reason the grid parameters are: it moves the trajectory, so a run that
+  differs in it is not re-driving the recorded one. `t₀` is *applied*, not
+  compared — replay stands in the
   `init!` position and owns the anchor, so `replay!` takes no `t0`
   argument — and the header's `t_end`/`stop_on` pair is a recorded fact of
   the recorded session, never a constraint on this one: overrides bind as
@@ -3584,13 +3637,17 @@ organized as three strata:
   activation runs at build; other activations re-run *only this stratum*
   ([§12.4](#124-activations-executable-sets-laziness-caching)).
 
-Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm, harmonic-grid
+Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm,
+`localization_tol`, `event_budget`, harmonic-grid
 validation, tick schedule instantiation) sits after all three, at `Simulation`
 construction — nothing in A–C depends on it. Its validation is collected like
 its declarative siblings ([§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)): a nonpositive `h`, an `n < 1`, a
-harmonic-grid violation, an algorithm the stepper seam does not know are
-collected and reported as `DeploymentInvalid` ([Appendix C](#appendix-c-the-diagnostic-kind-set) — parameter,
-value, the violated constraint).
+harmonic-grid violation, an algorithm the stepper seam does not know, a
+nonpositive `localization_tol`, an `event_budget` that is not an integer ≥ 1
+are collected and reported as `DeploymentInvalid` ([Appendix C](#appendix-c-the-diagnostic-kind-set) — parameter,
+value, the violated constraint). The localization pair validates on its own
+terms only — grid-independent, so it takes no part in the harmonic-grid
+check ([§8.4](#84-localization-mechanics)).
 
 ### 12.2 The `Build` artifact
 
@@ -5897,7 +5954,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 **Deployment.**
 
 - `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
-  stop_on = (), trace = true, log = true, log_every = 1, debug = false)` —
+  stop_on = (), localization_tol = 1e-6, event_budget = 8,
+  trace = true, log = true, log_every = 1, debug = false)` —
   wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
   the `Build` overload takes the same deployment keywords and deploys an
   inspected artifact directly, [§12.2](#122-the-build-artifact)); `h` is required (a domain rate is not a
@@ -5908,7 +5966,13 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   names root-exported `Bool` output faces, OR-combined, recorded in
   run metadata — the trace header's deployment block ([§9.5](#95-inbound-the-input-trace), [§13.5](#135-termination-is-a-state-not-an-exception);
   walkthrough [§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)). `t_end` and `stop_on` are
-  **defaults**, overridable per run at `run!` ([§13.5](#135-termination-is-a-state-not-an-exception), [§10.6](#106-run-lifecycle-and-partial-advance)). Recording:
+  **defaults**, overridable per run at `run!` ([§13.5](#135-termination-is-a-state-not-an-exception), [§10.6](#106-run-lifecycle-and-partial-advance)); a run ends
+  at the first grid boundary reaching or exceeding `t_end`, whole frames only
+  ([§10.4](#104-shutdown-protocol)). `localization_tol` is the root-finder's relative bracket-width
+  convergence test (`localization_tol · h`) and `event_budget` the per-frame
+  localization allowance ([§8.4](#84-localization-mechanics)): trajectory-determining like their siblings,
+  hence validated with them (`DeploymentInvalid`) and recorded in the
+  deployment block, where replay compares them ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). Recording:
   `trace` is the input trace's plain kill switch and `log` the snapshot log's,
   with `log_every` the log's keep-every-kth decimation — admissible on the
   derived artifact only, never on the trace ([§9.2](#92-outbound-snapshot-publication), [§9.5](#95-inbound-the-input-trace), row 29). `debug`
@@ -5978,7 +6042,7 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 
 **Running.**
 
-- `run!(sim; gui = false, pace = 1, margin = <default>, t_end = <ctor value>,
+- `run!(sim; gui = false, pace = 1, margin = 0.002, t_end = <ctor value>,
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
   ([§8.7](#87-real-time-pacing)); the GUI an ordinary rostered device rendered on the calling task
   ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)); `gui = true` is idempotent attach sugar — it ensures the
@@ -5989,7 +6053,9 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   never activates by default. `run!` blocks until the run ends; deviceless
   it is fully synchronous on the calling task; `init!` required first
   ([§10.6](#106-run-lifecycle-and-partial-advance)). `margin` is the single pacing
-  knob ([§8.7](#87-real-time-pacing)), `0` / a few ms / `∞` spanning the design space. `t_end` and
+  knob ([§8.7](#87-real-time-pacing)), in seconds and defaulting to 2 ms — the sleep primitive's
+  granularity plus its measured overshoot — with `0` / 2 ms / `∞` spanning the
+  design space. `t_end` and
   `stop_on` override the constructor's defaults **for this run only**, with
   `stop_on` validated against the `Build` here exactly as at construction, and
   the effective pair recorded in the run metadata ([§13.5](#135-termination-is-a-state-not-an-exception)).
@@ -6111,7 +6177,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | [§10.6](#106-run-lifecycle-and-partial-advance) | service |
 | `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§14](#14-stopped-sim-services) | service |
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5](#135-termination-is-a-state-not-an-exception) | service |
-| `DeploymentInvalid` | the deployment parameter, the value in hand, the violated constraint | [§12.1](#121-three-strata) | service (collected) |
+| `DeploymentInvalid` | the deployment parameter (`h`, `n`, algorithm, `localization_tol`, `event_budget`, the harmonic-grid relation), the value in hand, the violated constraint | [§12.1](#121-three-strata) | service (collected) |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
@@ -6124,7 +6190,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
-| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
+| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`event_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
 
 **Runtime:**
@@ -6133,7 +6199,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 |---|---|---|---|
 | `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization probe, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
 | `NonfiniteState` | component path, the offending state block, boundary time and index | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
-| `ChatteringBudget` | component path, event name, boundary time, the exhausted localization budget | [§8.4](#84-localization-mechanics) | warning (runtime) |
+| `ChatteringBudget` | component path, event name, boundary time, the exhausted `event_budget` and the frame's localization count | [§8.4](#84-localization-mechanics) | warning (runtime) |
 | `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | [§8.7](#87-real-time-pacing) | warning (runtime) |
 | `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness); the site (staging, or a stopped-sim attach's renormalization) | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract) | warning (runtime) |
@@ -6374,7 +6440,8 @@ not-holding → holding edges against their priors at step boundaries only, with
 no root-finding and no step rejection, the handler firing at the end of the
 step in which the edge was observed ([§2.1](#21-events-two-detection-policies)).
 
-**chattering / event budget** — the bounded per-step localization allowance;
+**chattering / event budget** — the bounded per-step localization allowance,
+`event_budget`, a `Simulation` deployment keyword defaulting to 8;
 exhaustion *degrades* rather than throws — localization stops for the rest of
 the frame and further crossings fire at the next boundary, under a
 `ChatteringBudget` warning naming the event ([§8.4](#84-localization-mechanics)).
@@ -6408,8 +6475,9 @@ invalidated at `t*`, where the handlers have made it a lie ([§8.4](#84-localiza
 
 **localized** — the opt-in per-event detection policy: the crossing instant is
 bracketed by derivative-free root-finding over probe sweeps of interpolated
-states. Requires the continuous (sign) guard form, and runs identically paced
-or unpaced ([§2.1](#21-events-two-detection-policies), [§8.4](#84-localization-mechanics)).
+states, to a bracket narrower than `localization_tol · h` (a deployment
+keyword, default `1e-6`). Requires the continuous (sign) guard form, and runs
+identically paced or unpaced ([§2.1](#21-events-two-detection-policies), [§8.4](#84-localization-mechanics)).
 
 **once per event** — the rule bounding the boundary event iteration: each
 declared event fires at most once per boundary, which makes termination
@@ -6691,7 +6759,8 @@ faces and deployment block — up front, applying the header's `t₀`
 ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
 
 **run metadata** — the trace header's deployment block: `t₀`, `Δt_base`,
-`h`, `n`, the algorithm identifier and the effective `t_end`/`stop_on`
+`h`, `n`, the algorithm identifier, `localization_tol`, `event_budget` and the
+effective `t_end`/`stop_on`
 pair ([§9.5](#95-inbound-the-input-trace), [§13.5](#135-termination-is-a-state-not-an-exception)).
 
 **trace** — the primary record of a session: the sequence of drained,
