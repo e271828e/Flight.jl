@@ -1806,6 +1806,69 @@ whereas thinning the trace would destroy the only primary account of a session
 (row 29). Decimation is a retention policy only: every boundary still runs, is
 still published to live readers, and still enters the trace.
 
+**The bound: `log_max`.** Decimation slows the log's growth; it does not stop
+it, and the default configuration — `log = true, log_every = 1` alongside
+`t_end = Inf`, [Appendix B](#appendix-b-api-synopsis-the-entry-points)'s honest interactive default — grows for as long as
+the session lasts, which at C172X scale and 50 Hz is gigabytes per hour and
+ends in an out-of-memory nobody was warned about. So the log takes a
+**retention bound** beside its switch and its stride: `log_max`, the maximum
+number of retained snapshot references, default **65536** (2¹⁶), with `Inf`
+the explicit opt-out. **A count, not a memory budget** — snapshots are
+immutable object graphs with internal sharing ([§4.1](#41-immutable-value-semantics)), and [§4.4](#44-function-valued-signals-environment-access) field handles
+ride as references to build-time-frozen data ([§7.5](#75-allocation-policy-a-scoped-invariant)), so byte accounting over
+them is fuzzy and platform-dependent, while a count is exact and converts to
+memory through one number the user can measure once (`Base.summarysize` of a
+single snapshot). The default is **finite unconditionally**, not a modal rule
+keyed on `t_end`: a finite run shorter than the bound never notices the bound,
+and one number is easier to hold than two regimes. At 50 Hz and full density,
+2¹⁶ boundaries is about 22 minutes before anything is dropped at all.
+
+**When the log fills, the retention stride doubles: coverage stays global.**
+The obvious policy — a rolling window, keeping the recent past and forgetting
+the start of the session — optimizes for exactly the thing replay already
+serves, and pays for it with the thing replay is expensive for. Instead the log
+**re-decimates progressively**: after *k* generations the effective stride is
+`log_every · 2^k`, so the whole run stays plottable and what coarsens is
+density, never extent. That is row 38's division of labor carried through: the
+log's chief consumer is the post-run plot of a session *as a whole* (nobody
+plots hours at 50 Hz), while full density over any *segment* of interest is
+what replay from the trace recovers ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). **Normative are the
+guarantees, not the mechanism**: the bound is respected continuously (the
+retained count never exceeds `log_max`), coverage is global at the effective
+stride, and the endpoints below are kept.
+
+Mechanism sketch, non-binding: the thinning is **amortized**. When the log
+fills, the stride doubles immediately, and each subsequent retained append also
+releases one predecessor of the previous generation — a cursor over the odd
+indices, O(1) amortized, with physical compaction once per generation — so a
+generation's thinning completes exactly when its refill does. Amortizing rather
+than halving in one shot is a responsiveness choice: a one-shot halving would
+make ~`log_max/2` *old-generation* snapshots unreachable at a stroke, a
+major-GC burst worth a pacer-absorbed, `DebtReanchor`-visible hiccup ([§8.7](#87-real-time-pacing)) —
+exponentially rare, since the wall-clock gap between generations doubles, but
+needless. The amortized form drops exactly one old snapshot per retained
+append: the same steady trickle a rolling window would produce, so keeping
+coverage global costs nothing extra in GC pressure. The loop's own work is
+pointer bookkeeping, microseconds either way and on the framework side of
+[§7.5](#75-allocation-policy-a-scoped-invariant)'s scope; publication stays wait-free and readers never block — a reader
+holding a released snapshot simply keeps it alive.
+
+**The endpoints are retained unconditionally.** The boundary-zero snapshot
+([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) and the terminal snapshot ([§10.4](#104-shutdown-protocol), [§13.5](#135-termination-is-a-state-not-an-exception)) survive any `log_every`
+and any `log_max`, and do not count against the bound — two extra references.
+The terminal snapshot's status carries the run's final cumulative diagnostic
+counters ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)), so a run's two endpoints and its complete diagnostic account
+always outlive whatever retention did to the middle.
+
+Two compositions, worth stating once. The `totals` monotonicity across logged
+snapshots ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) is untouched: re-decimation, like decimation, loses *which*
+boundary within a stretch an occurrence fell on, never *how many*. And
+`log_max` is a **view policy, not a trajectory-determining one** — like `log`
+and `log_every` it stays out of the trace header's deployment block, and replay
+neither records nor compares it ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). Sizing follows: [§7.5](#75-allocation-policy-a-scoped-invariant)'s
+`sizehint!` for the expected duration is now naturally capped by `log_max`,
+which is also what defines the hint when `t_end = Inf`.
+
 **Output-device bindings are snapshot bindings.** An output device (telemetry, the XPlane visualizer, disk
 streaming) consumes snapshots via [§10.3](#103-the-next-snapshot-wait) and addresses what it reads with
 [§14.4](#144-two-application-registers-over-one-plan)'s selectors — any cell, the diagnostic register admitting `get_local`
@@ -2779,7 +2842,9 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    then sets the sticky stopped status.
    Publishing first guarantees output devices can flush the true final state,
    and that final status carries the run's cumulative diagnostic counters
-   ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) — the complete warning account of a run nobody watched.
+   ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) — the complete warning account of a run nobody watched. That
+   terminal snapshot is retained in the log unconditionally, under any
+   `log_every` and any `log_max` ([§9.2](#92-outbound-snapshot-publication)).
    **`t_end` lands on the grid:** the run ends at the first grid boundary whose
    time reaches or exceeds `t_end` — whole frames only, never a shortened final
    step, which [§8.4](#84-localization-mechanics)'s grid integrity (`tₖ = t₀ + k·h`, indexed and never
@@ -6196,12 +6261,14 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 
 - `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
   stop_on = (), localization_tol = 1e-6, event_budget = 8,
-  trace = true, log = true, log_every = 1, debug = false)` —
+  trace = true, log = true, log_every = 1, log_max = 65536, debug = false)` —
   wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
   the `Build` overload takes the same deployment keywords and deploys an
   inspected artifact directly, [§12.2](#122-the-build-artifact)); `h` is required (a domain rate is not a
   framework default) and `RK4` is the default stepper ([§8.2](#82-the-stepper-seam)); `n` binds
-  `Δt_base = n·h` ([§8.5](#85-multi-rate-tick-scheduling)); `t_end = Inf` is the honest interactive default, and
+  `Δt_base = n·h` ([§8.5](#85-multi-rate-tick-scheduling)); `t_end = Inf` is the honest interactive default —
+  open-ended in time but bounded in memory, `log_max` being what keeps such a
+  session from growing without limit ([§9.2](#92-outbound-snapshot-publication)) — and
   a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
   start (an unbounded unattended run is almost always an oversight); `stop_on`
   names root-exported `Bool` output faces, OR-combined, recorded in
@@ -6216,7 +6283,13 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   deployment block, where replay compares them ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). Recording:
   `trace` is the input trace's plain kill switch and `log` the snapshot log's,
   with `log_every` the log's keep-every-kth decimation — admissible on the
-  derived artifact only, never on the trace ([§9.2](#92-outbound-snapshot-publication), [§9.5](#95-inbound-the-input-trace), row 29). `debug`
+  derived artifact only, never on the trace ([§9.2](#92-outbound-snapshot-publication), [§9.5](#95-inbound-the-input-trace), row 29) — and
+  `log_max` the maximum number of retained snapshots, finite by default with
+  `Inf` the opt-out: when the log fills, the retention stride doubles, so the
+  whole run stays covered at coarsening density, the boundary-zero and terminal
+  snapshots being retained unconditionally and outside the bound ([§9.2](#92-outbound-snapshot-publication)). Both
+  are view policies, not trajectory-determining: neither enters the deployment
+  block, and replay neither records nor compares them. `debug`
   gates the workspace poison ([§7.3](#73-discrete-state-modes-and-workspace)).
 - `attach!(sim, device, binding)` — sides by method presence ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)):
   `faces(b)`/`map_input(datum, b)` is the input half (the enumerated face
@@ -7013,7 +7086,13 @@ staging — `OutOfClaimEntry`, `ClaimedFaceEntry` ([§9.3](#93-inbound-root-inpu
 
 **decimation** — the log's keep-every-kth retention policy (`log_every`),
 admissible on the log alone because it is derived data; every boundary still
-runs, publishes to live readers and enters the trace ([§9.2](#92-outbound-snapshot-publication)).
+runs, publishes to live readers and enters the trace. Bounded by `log_max`, the
+maximum number of retained snapshot references (default finite, `Inf` the
+opt-out): when the log fills, the effective stride doubles — *progressive
+re-decimation*, so coverage stays global at `log_every · 2^k` instead of
+collapsing to a rolling window — with the boundary-zero and terminal snapshots
+retained unconditionally and outside the bound. A view policy throughout, never
+trajectory-determining ([§9.2](#92-outbound-snapshot-publication)).
 
 **frame ordinal** — the trace's key: replay applies the recording's batches
 for frame *k* at frame *k*, exact because the frame sequence is itself
