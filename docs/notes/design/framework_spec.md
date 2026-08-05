@@ -3836,7 +3836,7 @@ internal endpoints (fan-out through the boundary)
 two build-checked invariants: no `/` (reserved for structural paths) and
 uniqueness within the assembly's face set** — every other naming choice
 (separators, grouping prefixes like `"pilot.throttle_axis"`) is author
-convention, not framework law; the `faces` helper's defaults ([§11.8](#118-computed-exports-and-generic-boundaries)) document the
+convention, not framework law; the `passthrough` helper's defaults ([§11.8](#118-computed-exports-and-generic-boundaries)) document the
 house style without legislating it. The two-notation rule this rests on is directional —
 structure vs. contract, not read vs. write: **slash is structure** (endpoint
 paths walking real children and ports; the inspection register's snapshot and
@@ -3888,13 +3888,13 @@ exports(imu::IMU) = (
     "sample"      => "sampler/sample",            # ideal increments
     "sample_meas" => "errors/sample_meas",        # measured increments (the error
                                                   # model's output port)
-    faces(imu, "integrals")...,                   # kinematic-truth inputs pass through
+    passthrough(imu, "integrals")...,             # kinematic-truth inputs pass through
 )
 
 rates(::IMU) = (sampler = 1, errors = 1)
 ```
 
-Two spellings worth reading closely: `faces` enumerates the child's **input**
+Two spellings worth reading closely: `passthrough` enumerates the child's **input**
 faces and nothing else ([§11.8](#118-computed-exports-and-generic-boundaries) — it is inputs-only by definition, so the
 pass-through of the integrals' kinematic-truth inputs (`q_eb`, `r_eb_e`,
 `ω_eb_b`, `a_ib_b`, `α_ib_b`, [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)) takes no direction argument);
@@ -3935,10 +3935,10 @@ instance, so it may *compute* entries from child contracts — derivation from
 declarations, [§11.2](#112-the-declaration-inventory)-blessed. The framework helper, sketched:
 
 ```julia
-function faces(asm, child_path::AbstractString;
-               prefix::AbstractString = child_path,   # "" → no prefixing
-               sep::AbstractString = ".",
-               except::Tuple = (), only::Tuple = ())  # mutually exclusive
+function passthrough(asm, child_path::AbstractString;
+                     prefix::AbstractString = child_path,   # "" → no prefixing
+                     sep::AbstractString = ".",
+                     except::Tuple = (), only::Tuple = ())  # mutually exclusive
 
     child = resolve(asm, child_path)      # getfield walk along "/" segments
     names = input_faces(child)            # keys(input_types(c)) for a leaf,
@@ -3953,8 +3953,8 @@ function faces(asm, child_path::AbstractString;
 end
 
 exports(w::World) = (
-    faces(w, "aircraft"; except = ("atm", "trn"))...,   # "aircraft.pilot.throttle_axis"
-    faces(w, "atmosphere"; prefix = "env", sep = "_")..., # "env_wind_N"
+    passthrough(w, "aircraft"; except = ("atm", "trn"))...,   # "aircraft.pilot.throttle_axis"
+    passthrough(w, "atmosphere"; prefix = "env", sep = "_")..., # "env_wind_N"
     "view_pose" => "aircraft/pose",                      # explicit entries mix freely
 )
 ```
@@ -3962,7 +3962,7 @@ exports(w::World) = (
 The child is named by path, never passed as an instance ([§11.6](#116-paths-wiring-and-exports)'s `===` problem);
 a face name containing dots is a legal final path segment on the right side
 precisely because slash is the only structural separator. `resolve` and
-`input_faces` are build-pipeline primitives needed anyway — `faces` is a thin
+`input_faces` are build-pipeline primitives needed anyway — `passthrough` is a thin
 composition, which is what keeps it sugar rather than machinery; no `rename` hook
 because `exports` is ordinary code (map over the pairs); normative signatures
 for both primitives in [§13.3](#133-build-primitives-resolve-and-the-face-list-accessors). Every error stays
@@ -3976,7 +3976,7 @@ auto-bubble: the author wrote down "every input face of this child that I don't
 feed, I expose under this prefix" — explicit at the type level, evaluated at
 build.
 
-**`faces` is inputs-only, by definition.** It reads `input_faces(child)`, and
+**`passthrough` is inputs-only, by definition.** It reads `input_faces(child)`, and
 `except`/`only` filter *face names* within that set — there is no direction
 argument, and none is implied: the helper exists for the pass-through case,
 where an assembly hands a child's unfed requirements up one level. Computed
@@ -4020,7 +4020,7 @@ exactly one blessed spot. The pipeline is therefore inherently heterogeneous,
 organized as three strata:
 
 - **Stratum A — structure.** Pure declaration reading; no user stage code
-  executes (`exports`/`faces` bodies are declaration code, [§11.8](#118-computed-exports-and-generic-boundaries)). Tree walk
+  executes (`exports`/`passthrough` bodies are declaration code, [§11.8](#118-computed-exports-and-generic-boundaries)). Tree walk
   from the root instance: components by path, class read off
   declaration shape ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)), leaf contract collection (`input_types`,
   `output_types`, `local_types`, `init_*` values, `events`), bottom-up face
@@ -4877,7 +4877,7 @@ Computed exports gain protagonism under this section — termination chains are
 their second structural customer after generic-boundary contracts — and two
 commitments, a library and an idiom follow:
 
-- **The `faces` helper family grows deliberately.** Predicate-based selection
+- **The `passthrough` helper family grows deliberately.** Predicate-based selection
   (an `endswith`-style filter alongside `except`/`only`) is a natural
   extension: still explicit at the declaration site, still evaluated at
   build, still printable — the blessed side of the auto-bubbling line, where
@@ -4930,7 +4930,7 @@ commitments, a library and an idiom follow:
   migration-phase deliverable.
 - **The component test rig** is the library's companion idiom: a one-child
   assembly whose `exports` surface the child's entire input face set —
-  `faces(rig, "child")` verbatim ([§11.8](#118-computed-exports-and-generic-boundaries)) — so any component can be built
+  `passthrough(rig, "child")` verbatim ([§11.8](#118-computed-exports-and-generic-boundaries)) — so any component can be built
   and simulated in isolation: every input becomes a root slot fed by
   ordinary conditions and devices, and every output is observable in the
   snapshot table. One qualification, from [§11.2](#112-the-declaration-inventory)'s root-slot rule: an
@@ -4938,7 +4938,7 @@ commitments, a library and an idiom follow:
   surface as a root slot — abstract-at-root is a build error — so the rig
   satisfies it *inside* the rig: a concrete stub child (a
   `SampleTerrainField` provider) wired to the face, and the concrete
-  remainder exported via `faces(rig, "strut"; except = ("terrain",))`. That
+  remainder exported via `passthrough(rig, "strut"; except = ("terrain",))`. That
   stub child is typically just a `Constant` holding the test handle — the
   source block's first shipped instance — with bespoke stubs remaining
   ordinary components wherever the double must compute something.
@@ -5975,7 +5975,7 @@ forced by this cast):
   claiming, liveness and trace provenance — the port is the periphery's atomic
   unit ([§4.3](#43-table-mechanics-and-port-granularity) write-side corollary). The routing convenience the bundle bought in
   FlightCore's argument-threading world is provided here by the namespace prefix
-  and `faces` ([§11.8](#118-computed-exports-and-generic-boundaries)); the struct reappears legitimately downstream, assembled
+  and `passthrough` ([§11.8](#118-computed-exports-and-generic-boundaries)); the struct reappears legitimately downstream, assembled
   in-model by a single producer.
 
 #### Surface walkthrough
@@ -6350,7 +6350,21 @@ Still to be settled:
   line, settled there — plus the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding interface `faces`/`map_input`/
   `selectors`/`map_output`/`interactive` and the device contract `init!`/`loop`/`shutdown!`/
   `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
-  rather than call every day; and the **[§12.7](#127-the-compiled-executor) executor compile-cost re-measurement** on
+  rather than call every day. Its criterion is the **four-register naming
+  convention** (row 144): declarations the author defines and the framework
+  calls are bare nouns or `init_*`/`_types` (`connections`, `exports`,
+  `events`, `input_types`, `workspace`, the stage letters, [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s `faces(b)`);
+  value selectors called against `reads` and snapshots carry `get_`
+  ([§14.4](#144-two-application-registers-over-one-plan)); lifecycle and mutating actions are verbs, `!` when they mutate;
+  build primitives ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)) are plain verbs. A name in the wrong register is a
+  rename candidate on that ground alone — which is what the `passthrough`
+  rename ([§11.8](#118-computed-exports-and-generic-boundaries)) already applied, retiring a caller-side helper that wore
+  declaration dress and collided with `get_face`. Two residuals are flagged
+  for the sweep and deliberately not renamed now: `input_faces`/`output_faces`
+  (noun accessors punning on the `_types` declarations, mitigated by being
+  framework-facing) and `workspace` (a declaration whose bare noun reads as an
+  accessor — every candidate replacement is clunkier, so lean keep). The
+  **[§12.7](#127-the-compiled-executor) executor compile-cost re-measurement** runs on
   the real vehicle skeleton — early, before the executor's shape hardens.
   Residuals: the `q_sf` home ([§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load) — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
@@ -6552,8 +6566,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   segments, enforcing [§6.1](#61-connections-and-hierarchy)'s generic-boundary rule at the primitive ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
   face names ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)).
-- `faces(asm, path; prefix, sep, except, only)` — the declaration-site helper
-  for computed exports ([§11.8](#118-computed-exports-and-generic-boundaries)).
+- `passthrough(asm, path; prefix, sep, except, only)` — the declaration-site
+  helper for computed exports ([§11.8](#118-computed-exports-and-generic-boundaries)).
 
 **Deployment.**
 
