@@ -907,6 +907,21 @@ junctions themselves — summing junctions, Bool gates — are the seed of the
 standard component library committed in [§13.7](#137-tooling-consequences-provenance-and-the-component-library): ordinary components, no
 framework privileges, inventory grown strictly by migration demand.
 
+**The zero-contributor end of the same spectrum.** Ragged contributors bottom out at
+none: a configuration in which a consumer's required aggregate input has *no* physical
+contributors at all — the bare-propagation `Vehicle{NoVehicleSystems}`, zero
+contributors to external wrench and to internal angular momentum, while
+`VehicleDynamics` requires both unconditionally. There is no junction to write and no
+producer to wire, [§6.1](#61-connections-and-hierarchy) bans unconnected inputs and silent defaults, and the identity
+element a zero-arity junction would need was retired on purpose (row 37). The spelling
+is a library `Constant` source ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)) wired straight to the consumer's input —
+`Constant(Wrench())` → `dynamics/wr_ext` — so the zero total becomes declared
+structure, the configuration stating "external wrench ≡ 0" as a visible wire and an
+observable port rather than as an identity method the framework supplies behind the
+author's back. This is not [§6.1](#61-connections-and-hierarchy)'s banned default in component clothing but its
+opposite: that default is silent and consumer-declared, this one is loud and
+assembly-declared, the author writing the child and the wire, both inspectable.
+
 The ledger against FlightCore's tree walk, recorded: its zero-wiring convenience and
 its worst failure mode were the same property — a contributor with a forgotten trait
 method contributes *silently nothing* (a lighter vehicle, no diagnostic, ever).
@@ -4879,10 +4894,10 @@ commitments, a library and an idiom follow:
   reduce-ports were rejected, the argument leaned on explicit junctions being
   *cheap*, and a junction hand-written per arity per type is not. Starting
   inventory strictly from demonstrated need — wrench/scalar summing
-  junctions, the Bool gates the termination chains use, and `UnitDelay`, the
-  spelling [§5.5](#55-algebraic-loop-policy-reject-at-build-time)'s second loop-breaking remedy needs — growing by
-  migration demand only (Simulink's library is a language; this is a
-  toolbox). Doctrine: **library blocks are ordinary components** — no
+  junctions, the Bool gates the termination chains use, `UnitDelay`, the
+  spelling [§5.5](#55-algebraic-loop-policy-reject-at-build-time)'s second loop-breaking remedy needs, and
+  `Constant{V}`, the source block — growing by migration demand only
+  (Simulink's library is a language; this is a toolbox). Doctrine: **library blocks are ordinary components** — no
   framework privileges, no special vocabulary — which keeps schema authority
   total and makes the library a permanent ergonomics torture test: if a
   three-input OR gate is painful to write under the declaration rules, the
@@ -4900,7 +4915,18 @@ commitments, a library and an idiom follow:
   moves that signal onto the discrete tier and inserts a `Δt_base`-scale ZOH
   into the model's mathematics — a modeling decision, the delayed signal being
   genuinely sampled, not a transparent wire, which is why [§5.5](#55-algebraic-loop-policy-reject-at-build-time)'s diagnostic
-  says so rather than offering the remedy as free. A
+  says so rather than offering the remedy as free. `Constant{V}` is the
+  **source block**: no inputs, no state,
+  `output_types(::Constant{V}) = (out = V,)`, and a stage-1 body returning
+  the value the instance holds — a stateless continuous leaf, so the
+  tier-transparency argument above already covers discrete consumers and no
+  discrete variant is needed. Two demonstrated needs admit it under this
+  bullet's charter: [§6.2](#62-aggregation-explicit-summing-junctions)'s zero-contributor configurations, where a
+  required aggregate input has no physical contributor and the zero total
+  must be spelled as a wire, and the rig stub below. Its value is instance
+  data, like junction arity — not an overridable default: a configuration
+  wanting an externally settable source uses a root slot ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), which
+  keeps the block from drifting into a back-door input default. A
   migration-phase deliverable.
 - **The component test rig** is the library's companion idiom: a one-child
   assembly whose `exports` surface the child's entire input face set —
@@ -4912,7 +4938,10 @@ commitments, a library and an idiom follow:
   surface as a root slot — abstract-at-root is a build error — so the rig
   satisfies it *inside* the rig: a concrete stub child (a
   `SampleTerrainField` provider) wired to the face, and the concrete
-  remainder exported via `faces(rig, "strut"; except = ("terrain",))`.
+  remainder exported via `faces(rig, "strut"; except = ("terrain",))`. That
+  stub child is typically just a `Constant` holding the test handle — the
+  source block's first shipped instance — with bespoke stubs remaining
+  ordinary components wherever the double must compute something.
   Zero new machinery — wiring and `except` already exist — and it is the
   substitutability contract doing its job: an abstract entry declares that
   a substitute must be chosen, and the rig choosing its test double
@@ -6934,6 +6963,11 @@ stores are absent, never `nothing`-filled ([§5.2](#52-two-stage-outputs-signatu
 and per `local_types` entry of the flattened model, written by its producing
 stage and read by every gatherer ([§4.1](#41-immutable-value-semantics)). Bare "cell" is only this — see
 *staging cell* ([§D.6](#d6-runtime-periphery)) and *store*.
+
+**constant source** — an ordinary library component with no inputs and no
+state, publishing a value its instance holds (`Constant{V}`); the spelling for
+an aggregate input with zero contributors and for the rig stub feeding an
+abstract face. Its value is instance data, never a default ([§13.7](#137-tooling-consequences-provenance-and-the-component-library), [§6.2](#62-aggregation-explicit-summing-junctions)).
 
 **entry** — never used bare: the spec's compounds are table entry (a cell),
 input entry ([§11.2](#112-the-declaration-inventory)), executor entry ([§12.7](#127-the-compiled-executor)), roster entry ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), batch entry
