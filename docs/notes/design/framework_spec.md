@@ -6049,7 +6049,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   wire list, face table with provenance, schedule, root slots ([§12.2](#122-the-build-artifact)).
   `build(world; activations = (Float64, ProbeDual))` additionally pins
   activation invariants for CI (`ProbeDual` the exported canonical concrete
-  probe scalar, [§12.4](#124-activations-executable-sets-laziness-caching)).
+  probe scalar, [§12.4](#124-activations-executable-sets-laziness-caching)), and pre-materializes activations so a parallel
+  sweep shares a fully immutable `Build` ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§12.4](#124-activations-executable-sets-laziness-caching)).
 - `resolve(asm, path) → AbstractComponent` — the getfield walk along `/`
   segments, enforcing [§6.1](#61-connections-and-hierarchy)'s generic-boundary rule at the primitive ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
