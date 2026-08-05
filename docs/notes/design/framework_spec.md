@@ -5785,7 +5785,12 @@ bumpless-engage answer — engage semantics live in the FCS — presupposes
 exactly this spelling. One relative outside the FCS: the landing gear's
 level-triggered cross-component reset (`!wow` re-initializing the friction
 regulator every step) becomes an edge-triggered event owned by the regulator
-— a semantic tightening recorded in [§16](#16-open-axes)'s migration mapping.
+— a semantic tightening recorded in [§16](#16-open-axes)'s migration mapping. There the
+respelling is not a stylistic one: the continuous tier admits no input
+spelling at all, because only handlers write `x` ([§3.1](#31-continuous-component-the-hybrid-primitive)), so the event is
+necessity rather than taste ([Appendix A](#appendix-a-taught-contracts-the-author-facing-index) carries the contract), and the
+reimplemented `PIVector`'s optional reset face ([§16](#16-open-axes)) is sugar over
+exactly this event.
 
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
@@ -6228,7 +6233,34 @@ Still to be settled:
   **supervisor seam** ([§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)): compensator gain ports plus scheduler
   components (~7 for the C172X), the same-tick reset respelling of every
   mode-transition latch, and the gear's level-triggered reset converted to
-  an edge event; the **steering contract re-factoring** ([§5.4](#54-artificial-loops-and-the-escape-hatch)'s middle rung,
+  an edge event — which lands on the *library* side: the reimplemented
+  `PIVector` gains a **flag-gated reset face**, `PIVector(; reset = true)`
+  adding a `Bool` input face plus the event, the default omitting both
+  (declarations are ordinary functions of the instance, [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) — the honest
+  version of Simulink's checkbox), under one fixed policy: rising edge →
+  reset to the declared `init_x` values, implemented internally as an
+  ordinary guard/handler event ([Appendix A](#appendix-a-taught-contracts-the-author-facing-index)'s continuous-reset contract in its
+  worked instance). Falling-edge consumers wire a NOT gate ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s Bool
+  gates); level-pinning and reset-to-an-external-value are different blocks
+  (tracking), not options. The gear then wires `strut.wow → frc.reset`: the
+  **touchdown** edge ([§2.1](#21-events-two-detection-policies)'s not-holding → holding semantics), fresh
+  regulator state per contact episode. The liftoff edge (`!wow`) was
+  rejected — its equivalence to today's level reset rests on the strut's
+  airborne zero-default (`v_ec_xy = [0,0]` in the no-contact branch) plus the
+  integrator leak, a cross-component dependency the touchdown edge dissolves
+  rather than documents. Boundary-detected policy suffices (the regulator's
+  input ramps from zero at touchdown; localization buys nothing), and a sim
+  initialized on ground fires the reset at boundary zero harmlessly (declared
+  inits are zero, and boundary-zero priors are not-holding, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)). The
+  engine's two `PIVector` instances (`PistonEngine`'s `idle` and `frc`)
+  migrate **unchanged, flag off** — verified reset-free in today's code,
+  where windup across unused phases is already handled by the saturation
+  bounds and `int_halted`; their `f_init!` gain writes become
+  construction-time parameters (row 89, as `Contact`'s do). The PI *law* is
+  shared as plain pure functions called by the block's stages (row 139's
+  laws-as-plain-functions pattern), and `sat_ext` poses the same
+  always-on-vs-flag-gated face question, to be decided at reimplementation
+  time on the same axis; the **steering contract re-factoring** ([§5.4](#54-artificial-loops-and-the-escape-hatch)'s middle rung,
   worked on the shipped instance): `AbstractSteering` moves from "give me the
   angle" to `(engaged, ψ_cmd)`, with the castoring fallback
   (`ψ_sw = engaged ? ψ_cmd : ψ_v`) computed inside `Strut`, which deletes the
@@ -6325,12 +6357,26 @@ For component authors:
   and produces `z_{k+1}` — the value the component's *next* tick decodes
   (the sampled-data `z⁻¹` delay, by construction). Hence `g` runs at
   boundary zero: it is the `t₀` sample's only chance.
-- **Same-tick reset consumption** ([§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)). A commanded reset is an input.
-  For same-tick output semantics the *output stage* consumes it — overriding
+- **Same-tick reset consumption** ([§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)) — *discrete tier*. A commanded reset
+  of a discrete component's `z` is an input. For same-tick output semantics
+  the *output stage* consumes it — overriding
   the state-derived path — and `g` stores the matching `z⁺`; a reset honored
   only in `g` reaches the outputs one tick late (the plant integrates a full
   step under the stale command). Both spellings are legal; they mean
-  different things.
+  different things. The continuous tier has no such choice — next entry.
+- **A continuous component's state reset is an event** ([§3.1](#31-continuous-component-the-hybrid-primitive), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event), [§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)).
+  Only handlers write `x`, so even a *commanded* reset — the condition
+  arriving as an ordinary `Bool` input, weight-on-wheels being the shipped
+  instance — is spelled as an event whose guard reads that input; the
+  discrete tier's input spelling does not transfer. The reason is semantic,
+  not stylistic: only the discrete tier's update stage is already a jump map,
+  so a reset there is just another value for `z⁺`, whereas a continuous state
+  jump must be solver-visible, applied *between* integration segments — the
+  flow/jump split every hybrid tool converges on (Simulink applies its reset
+  ports through zero-crossing events plus a solver restart; Modelica's
+  `reinit` is syntactically legal only inside a `when`). And there is no
+  stale-output hazard to manage: [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) re-sweeps outputs to quiescence after
+  handlers, so a continuous edge-reset is same-boundary by construction.
 - **Guard predicates, edges and priors** ([§2.1](#21-events-two-detection-policies), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). A guard defines
   a predicate — a `Bool` form, or a sign value `σ` with
   positive = holding. Events fire on not-holding → holding *edges* against per-event
