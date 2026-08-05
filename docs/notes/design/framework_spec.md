@@ -2033,7 +2033,7 @@ performs no checks at all. A surface arises in one of two ways:
 One rule, two surface classes. The GUI is not an exception
 but the resident of the second class — one device contract ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), two *binding*
 sides (enumerated vs. derived), one drain rule — and each side has its own
-declaration: `faces(b)` stakes the claim set, the marker `interactive(b)`
+declaration: `claims(b)` stakes the claim set, the marker `interactive(b)`
 elects the derived surface ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), so residency in the second class is
 something a binding declares and the framework checks, not a privilege the
 shipped GUI is granted — and a second interactive front end has a spelling.
@@ -2146,7 +2146,7 @@ not worth a declarable promise whose false direction loses writes.
 
 **The staged representation is fixed per attachment, compiled at attach.**
 An enumerated writer's claim set and slot types are both known at attach
-(`faces(binding)`, [§9.6](#96-devices-one-authoring-contract-no-taxonomy), against the root contract), so the framework
+(`claims(binding)`, [§9.6](#96-devices-one-authoring-contract-no-taxonomy), against the root contract), so the framework
 fixes the cell's content type there: a positional tuple over the claim
 set, `Union{Nothing, T}` per face (isbits unions — pointer-free), with
 `nothing` meaning *not touched this time*, never "reset" — the levels
@@ -2170,7 +2170,7 @@ the roster freeze its derived surface is as static as any claim set, so it
 too is compiled to a positional shape — over the unclaimed face set,
 recompiled at each `attach!`/`detach!` (a stopped-sim point) — with the
 same shim, merge and scatter. This compilation is what [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s
-`interactive(b)` marker asks for, exactly as `faces(b)` asks for the
+`interactive(b)` marker asks for, exactly as `claims(b)` asks for the
 enumerated one — the derived side is declared, not special-cased — and the
 harness cell, always present, gets it unasked. One representation, one mechanism; the
 name-keyed dynamic path the mutable surface used to force does not exist,
@@ -2462,9 +2462,9 @@ calling task; the opaque half is called per datum on the device task by the
 author's own loop:
 
 ```julia
-faces(b)               # input half:  the enumerated face set → the claim (§9.3)
+claims(b)              # input half:  the enumerated face set → the claim (§9.3)
 map_input(datum, b)    #              datum → face ⇒ value pairs — arbitrary user code
-selectors(b)           # output half: §14.4 selectors → validated, compiled to one gather
+reads(b)               # output half: §14.4 selectors → validated, compiled to one gather
 map_output(nt, b)      #              the gather's labeled NamedTuple → wire datum
 interactive(b)         # optional marker, no return value used: the derived write side —
                        # no claims staked, the unclaimed complement compiled instead
@@ -2479,15 +2479,15 @@ bounded at its runtime enforcement point (`map_input` by the staging
 checks, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain); `map_output` receives exactly the compiled gather's
 NamedTuple, and what it puts on the wire is the peer's business). Sides are
 detected by declaration shape — method presence, the [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) idiom, probed
-once at attach: `faces` defined ⇒ **enumerated** write side, claims staked;
+once at attach: `claims` defined ⇒ **enumerated** write side, claims staked;
 `interactive` defined ⇒ **derived** write side, no claims staked and
 [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)'s positional staging shape compiled over the unclaimed face set
-instead; `selectors` defined ⇒ output side, gather compiled; a write side
-plus `selectors` ⇒ bidirectional; none of the three ⇒ attach-time error
-naming the halves. `faces` and `interactive` are **mutually exclusive** —
+instead; `reads` defined ⇒ output side, gather compiled; a write side
+plus `reads` ⇒ bidirectional; none of the three ⇒ attach-time error
+naming the halves. `claims` and `interactive` are **mutually exclusive** —
 a surface cannot be enumerated and derived at once, so declaring both is
 the same attach-time error, naming both declarations — while `interactive`
-is orthogonal to `selectors`: an interactive front end may also drive a
+is orthogonal to `reads`: an interactive front end may also drive a
 compiled output gather (legal, currently uninstantiated; the plausible
 customer is a narrow-wire interactive surface — a motorized control board
 whose detents must be driven back out). (`hasmethod` here is public, stable
@@ -2502,7 +2502,7 @@ reach the `interactive` marker below, which declares a side no method
 could witness).
 
 **The derived side is a declaration, and the marker is not the `sides(b)`
-trait reborn.** That rejection turns on redundancy: `faces` and `selectors`
+trait reborn.** That rejection turns on redundancy: `claims` and `reads`
 must exist anyway, so a trait restating their presence is a second copy of
 a fact, free to drift from it. Nothing analogous exists for the derived
 side — its surface is *computed* from everyone else's claims, so the class
@@ -2527,8 +2527,8 @@ harness cell last ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-ro
 interaction", unchanged).
 
 **The shipped GUI binding is the class's sole shipped instance.** It
-declares `interactive` and nothing else: no `faces`, its surface being
-computed; no `selectors`, because its read path is the handle's primitive
+declares `interactive` and nothing else: no `claims`, its surface being
+computed; no `reads`, because its read path is the handle's primitive
 read — VSync-paced, it reads `latest` afresh each render ([§10.3](#103-the-next-snapshot-wait)) with an
 ad-hoc, render-time read set over the whole snapshot, the inspection
 register's shape ([§9.2](#92-outbound-snapshot-publication)) — so the compiled output gather has nothing to
@@ -2536,15 +2536,15 @@ do for it. Every other interactive front end anyone might want (a web
 console, a remote panel) now has the same spelling: declare `interactive`,
 attach where the GUI would have been.
 
-**The empty enumeration is not a back door.** `faces(b) = ()` stays an
+**The empty enumeration is not a back door.** `claims(b) = ()` stays an
 honest degenerate — an enumerated device that may write nothing, its writes
 still binding-bounded, so drift onto any face is `OutOfClaimEntry` — and it
-never promotes into the interactive class: `faces` bodies are ordinary code
+never promotes into the interactive class: `claims` bodies are ordinary code
 ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)'s idiom, comprehensions included), so an enumeration that came back
 empty by accident must stay inert rather than silently acquire the
 register's maximal write surface. The most privileged classification is the
 hardest to enter by accident, and method presence is deliberate authorship.
-For the same reason `faces` never returns `nothing` or a sentinel to mean
+For the same reason `claims` never returns `nothing` or a sentinel to mean
 "derived": the enumeration contract has one meaning, and a dual-meaning
 return would be exactly the ambiguity the declaration vocabulary is built
 to refuse.
@@ -2565,7 +2565,7 @@ TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
 Its generic `map_input` *is* [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)'s shared pure conditioning helper, now
 with an owner; the entry tuple rides in the type, so the mapping
 specializes per table with no dynamic dispatch. A *code-driven* binding (a
-JSON telecommand peer: `faces` returns the vocabulary, `map_input` parses
+JSON telecommand peer: `claims` returns the vocabulary, `map_input` parses
 bytes) looks identical to the framework. Purity note, taught in [Appendix A](#appendix-a-taught-contracts-the-author-facing-index):
 cross-datum state — press counters, edge detection — lives in the device
 struct, maintained by the loop, arriving *inside* the datum; `map_input`
@@ -6416,19 +6416,23 @@ Still to be settled:
   left unexported — with *unexported* the preferred disposition for
   extension-only surface: the declaration and stage family of [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s import
   list — the larger half of the question, on every component file's first
-  line, settled there — plus the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding interface `faces`/`map_input`/
-  `selectors`/`map_output`/`interactive` and the device contract `init!`/`loop`/`shutdown!`/
+  line, settled there — plus the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding interface `claims`/`map_input`/
+  `reads`/`map_output`/`interactive` and the device contract `init!`/`loop`/`shutdown!`/
   `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
   rather than call every day. Its criterion is the **four-register naming
   convention** (row 144): declarations the author defines and the framework
   calls are bare nouns or `init_*`/`_types` (`connections`, `exports`,
-  `events`, `input_types`, `workspace`, the stage letters, [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s `faces(b)`);
+  `events`, `input_types`, `workspace`, the stage letters, [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s `claims(b)`);
   value selectors called against `reads` and snapshots carry `get_`
   ([§14.4](#144-two-application-registers-over-one-plan)); lifecycle and mutating actions are verbs, `!` when they mutate;
   build primitives ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)) are plain verbs. A name in the wrong register is a
   rename candidate on that ground alone — which is what the `passthrough`
   rename ([§11.8](#118-computed-exports-and-generic-boundaries)) already applied, retiring a caller-side helper that wore
-  declaration dress and collided with `get_face`. Two residuals are flagged
+  declaration dress and collided with `get_face`; the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding-method
+  renames (`faces` → `claims`, `selectors` → `reads`, row 146) then applied the
+  convention's **semantic axis** — right register, wrong noun: both were correctly
+  bare-noun declarations but named their *content*, where the `exports` precedent
+  names the *consequence* the declaration has. Two residuals are flagged
   for the sweep and deliberately not renamed now: `input_faces`/`output_faces`
   (noun accessors punning on the `_types` declarations, mitigated by being
   framework-facing) and `workspace` (a declaration whose bare noun reads as an
@@ -6673,13 +6677,13 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   block, and replay neither records nor compares them. `debug`
   gates the workspace poison ([§7.3](#73-discrete-state-modes-and-workspace)).
 - `attach!(sim, device, binding; should_abort = false)` — sides by method presence ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)):
-  `faces(b)`/`map_input(datum, b)` is the input half (the enumerated face
+  `claims(b)`/`map_input(datum, b)` is the input half (the enumerated face
   set *is* the claim — what the device may write,
   not what it will — registered with exclusivity enforced, the staged
   shape and normalization shim compiled, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)); the marker `interactive(b)`
   is the *derived* write side — no claims, the unclaimed complement
-  compiled instead, mutually exclusive with `faces` and orthogonal to
-  `selectors` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); `selectors(b)`/
+  compiled instead, mutually exclusive with `claims` and orthogonal to
+  `reads` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); `reads(b)`/
   `map_output(nt, b)` is the output half ([§14.4](#144-two-application-registers-over-one-plan) selectors validated and
   compiled to one gather, [§9.2](#92-outbound-snapshot-publication)); `TableBinding` is the shipped
   data-driven binding, the standard GUI binding the shipped interactive
@@ -7345,9 +7349,9 @@ staging cell and applied whole at the next drain ([§9.4](#94-inbound-per-device
 this; error reporting *collects* ([§D.9](#d9-error-discipline-and-diagnostics)).
 
 **binding** — the value passed at `attach!` that makes a device
-framework-legible: `faces`/`map_input` on the enumerated write side, the
-marker `interactive` on the derived one (mutually exclusive with `faces`),
-`selectors`/`map_output` on the output side, all detected by method presence.
+framework-legible: `claims`/`map_input` on the enumerated write side, the
+marker `interactive` on the derived one (mutually exclusive with `claims`),
+`reads`/`map_output` on the output side, all detected by method presence.
 Enumerated bindings stake claims; `TableBinding` is the shipped data-driven
 one ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)).
 
@@ -7485,7 +7489,7 @@ same loop, fully synchronous on the calling task, rethrowing after the
 shutdown tail so CI fails honestly ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)).
 
 **write surface** — the set of faces a writer's batch entries may reach:
-**enumerated** (a device's claim set, staked by `faces`) or **derived** (the
+**enumerated** (a device's claim set, staked by `claims`) or **derived** (the
 interactive register's unclaimed complement, elected by the `interactive`
 marker, [§9.6](#96-devices-one-authoring-contract-no-taxonomy)). Static per run and enforced entirely at
 staging — `OutOfClaimEntry`, `ClaimedFaceEntry` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
