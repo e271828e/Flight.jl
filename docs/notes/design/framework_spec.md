@@ -7046,7 +7046,8 @@ and is value-identical on re-materialization within a sweep ([§7.1](#71-continu
 build error naming the path in canonical slash form, broken by the author with
 inserted dynamics, an explicit `UnitDelay` or restructuring ([§5.5](#55-algebraic-loop-policy-reject-at-build-time)). Not to be
 confused with an **artificial loop**, port-level acyclic but stage-level
-cyclic, whose remedy is splitting the component ([§5.4](#54-artificial-loops-and-the-escape-hatch)).
+cyclic, whose remedy is a ladder — the two-stage split, contract re-factoring,
+and as residual a component split ([§5.4](#54-artificial-loops-and-the-escape-hatch)).
 
 **flow / RHS** — `f`, the continuous derivative function. Evaluating the RHS
 means running the whole sweep, since `f` reads the fresh table: there is no
