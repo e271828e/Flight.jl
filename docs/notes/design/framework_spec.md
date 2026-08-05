@@ -3986,6 +3986,68 @@ conventional-surface work ([§9.2](#92-outbound-snapshot-publication), [§16](#1
 adopted here, because every output face in the worked assemblies is an explicit
 pair and no consumer has yet demonstrated the computed form.
 
+**One authored list, two declarations.** The `World` example's two-entry
+`except` understates the real shape. Every level of a realistic tree is a
+generic seam, and an assembly that feeds some of a child's input faces while
+passing the rest up must name the fed ones in `except` — at C172X scale, four
+seams and roughly ten names at the innermost one, restating in each `except`
+tuple the wire list sitting in the same assembly's `connections`. That is
+[§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s
+"structure kept in two artifacts" (row 39), the shape this design refuses
+elsewhere. It needs no vocabulary: declaration bodies are ordinary code
+([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)), so
+the author writes the feed list *once* and both declarations compute their
+share of it.
+
+```julia
+# one authored artifact: actuator output face => destination child input face
+const ACT_FEEDS = (
+    "e"          => "aero/e",
+    "a"          => "aero/a",
+    "r"          => "aero/r",
+    "brake_left" => "ldg/left.brake",
+    …                                            # ~10 entries for the C172X
+)
+
+# the face names of `child` the feed list targets
+fed_faces(feeds, child) = Tuple(chopprefix(dst, child * "/")
+                                for (_, dst) in feeds
+                                if startswith(dst, child * "/"))
+
+connections(::Systems) = (
+    (("act/" * src) => dst for (src, dst) in ACT_FEEDS)...,
+    "aero/wrench" => "wr_sum/in1",               # non-feed wires unchanged
+    …
+)
+
+exports(s::Systems) = (
+    passthrough(s, "aero"; except = fed_faces(ACT_FEEDS, "aero"))...,
+    passthrough(s, "ldg";  except = fed_faces(ACT_FEEDS, "ldg"))...,
+    …
+)
+```
+
+Adding an actuator channel is then one edit: the new pair simultaneously
+creates the wire and removes the face from the export surface. The two
+declarations cannot drift, because neither holds the shared names — both are
+projections of the authored list, so the drift class is removed rather than
+detected. Every existing error stays loud: a misspelled destination is an
+unknown-face error at the `passthrough` call with the child's face list in
+hand, and a face the list fails to feed is an ordinary unconnected input.
+
+**The line not to cross** is deriving `except` from `connections` itself — a
+helper spelled `except = fed(s, "aero")`, reading the assembly's own wire
+list. That is auto-bubbling under another name (row 43): the author's explicit
+statement of which faces are fed would vanish, so a *forgotten* wire would no
+longer be a build-time unconnected-input error but a silent promotion of the
+face to a live root slot — caught at best later as an `UninitializedSlots`
+deployment error of misleading shape
+([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)),
+at worst not at all, once a GUI or a condition writes it.
+[§11.4](#114-failure-walkthroughs-the-error-locality-grounding)'s walkthrough 2,
+inverted. The single source must be **authored data, never inferred
+structure**.
+
 **Generic holding = imposed contract.** A parent holding a child generically
 constrains it exactly through the faces its wires and exports reference: build a
 `World` whose concrete aircraft lacks a referenced face and the error names the
