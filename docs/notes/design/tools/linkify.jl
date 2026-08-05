@@ -35,10 +35,7 @@ const SPEC = "framework_spec.md"
 
 const COMPANIONS = ["event_visibility_walkthrough.md",
                     "inbound_periphery_walkthrough.md",
-                    "trim_environment_walkthrough.md",
-                    "review4_2026-08-03_dryrun.md",
-                    "review4_2026-08-03_gaps.md",
-                    "review4_2026-08-03_inconsistencies.md"]
+                    "trim_environment_walkthrough.md"]
 
 # Companions that cite their own numbered sections (the walkthroughs; the review
 # files' numbered findings are never cited with `§`). Only here is a bare `§N`
