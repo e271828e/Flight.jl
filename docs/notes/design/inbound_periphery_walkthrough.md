@@ -63,7 +63,7 @@ end
 
 **Attaching** (`attach!(sim, device, binding)`) is: validate the binding's
 face names against the root contract (unknown face → `AttachUnknownFace`),
-register the **claims**, compile the staging shape ([§3](framework_spec.md#3-component-taxonomy)), add the entry.
+register the **claims**, compile the staging shape ([§3](#3-batches-and-staging-cells-how-a-write-is-proposed)), add the entry.
 A **claim** is exclusive ownership of a face: one writer per slot at any
 time, a second claimant is a `ClaimConflict` at attach, and `detach!`
 releases the claims. The claim set is derived from the **binding** — the
@@ -77,7 +77,7 @@ joystick_binding = (stick_y  = (face = "elevator", expo = 0.6),
 
 Because the roster is frozen per run, so is the **partition of the face set**
 it induces: every face is either claimed by exactly one device or belongs to
-the shared interactive remainder ([§5](framework_spec.md#5-evaluation-order-and-feedthrough)), and that partition is a static,
+the shared interactive remainder ([§5](#5-registers-modes-of-use-not-more-machinery)), and that partition is a static,
 printable fact of the run — who writes what, decided before the first frame.
 
 One consequence is deliberate and worth stating early: **device death is not
@@ -131,7 +131,7 @@ At the top of each frame — and only there — the loop takes each cell's
 contents atomically and applies it through the entry's attach-compiled
 **scatter** (position → slot store, statically typed, `nothing` skips — the
 mirror of [§9.2](framework_spec.md#92-outbound-snapshot-publication)'s output gather), in attachment order (the harness cell
-last, [§5](framework_spec.md#5-evaluation-order-and-feedthrough)):
+last, [§5](#5-registers-modes-of-use-not-more-machinery)):
 
 ```julia
 for entry in roster                                    # frame top, loop task
@@ -143,7 +143,7 @@ end
 ```
 
 Note what is *absent*: the drain validates nothing. Every check ran at
-staging ([§6.2](framework_spec.md#62-aggregation-explicit-summing-junctions)), so the drain is pure application — and since the roster is a
+staging ([§6](#6-the-write-surface-rule-rows-44-and-106)), so the drain is pure application — and since the roster is a
 fixed value at `run!`, the whole thing is compilable: the cells and their
 scatters form a known tuple the frame function can specialize on, with no
 name resolved and no dynamic dispatch at frame top.

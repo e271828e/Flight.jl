@@ -896,7 +896,7 @@ The framework:
   loads at known offsets, register-level, zero cost);
 - receives immutable results back: derivative functions return an `Ẋ`-typed value
   (scatter-stored into the flat `ẋ` buffer); event handlers and projection return a new
-  `X` (written back).
+  `X` (written back — projection at [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)'s two schedule positions).
 
 **What `Ẋ` is.** With the leaf vocabulary closed, the answer takes one line:
 `Ẋ` has exactly `X`'s shape at the activation scalar — a scalar leaf's
@@ -1144,7 +1144,7 @@ offending commit.
 
 - **Continuous hot path** (per-stage evaluation), plus everything else that
   runs unconditionally per frame or boundary — guards (evaluated every
-  boundary, firing or not) and `project` (both [§7.1](#71-continuous-state-structured-immutable-flat-backing) schedule positions):
+  boundary, firing or not) and `project` (both [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) schedule positions):
   exactly zero, CI-enforced at the [§12.7](#127-the-compiled-executor) phase-body seam (`phase_bodies`).
 - **Periodic ticks and event handlers** (episodic execution — a tick when
   due, a handler only on firing): zero by idiom (workspace + snapshot
@@ -1621,11 +1621,13 @@ concurrency model generally, which [§8.3](#83-signal-table-consistency-is-a-bou
 
 ## 9. Runtime periphery: the data plane
 
-GUI, input devices, network I/O and logging, and the concurrency model binding them
-to the [§8](#8-time-and-execution) loop: architecture and data exchange ([§9](#9-runtime-periphery-the-data-plane), [§10.1](#101-control-plane)), loop scheduling and
-thread policy ([§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget)), the next-snapshot wait ([§10.3](#103-the-next-snapshot-wait)), shutdown ([§10.4](#104-shutdown-protocol)), the
-mid-run mutation doctrine ([§10.5](#105-scripts-and-the-mid-run-mutation-doctrine)), and the run lifecycle with its partial
-advance ([§10.6](#106-run-lifecycle-and-partial-advance)).
+GUI, input devices, network I/O and logging, and how data crosses between them
+and the [§8](#8-time-and-execution) loop: the architecture that replaces the shared mutable model
+([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)), outbound snapshot publication ([§9.2](#92-outbound-snapshot-publication)), the inbound path — root
+input slots, claims and the frozen roster ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), per-device staging and the
+drain ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), the input trace ([§9.5](#95-inbound-the-input-trace)) — the device authoring contract
+([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), and the GUI write path ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)). The machinery that drives the loop
+itself follows in [§10](#10-runtime-periphery-lifecycle-and-orchestration).
 
 ### 9.1 No shared mutable model: staged writes, snapshot reads
 
@@ -1970,7 +1972,7 @@ positions, and the `Union` never reaches the model. The face-name →
 position schema lives in the roster entry. The consequences are each
 mechanical: the merge is positional (`incoming[i] === nothing ? pending[i]
 : incoming[i]`) — straight-line, union-split; the drain applies each cell
-through an attach-compiled **scatter** (position → slot store, statically
+through an attach-compiled **scatter** (position → slot cell, statically
 typed, `nothing` skips) — the exact mirror of [§9.2](#92-outbound-snapshot-publication)'s compiled output
 gather; and authors never build the shape by hand — `map_input` returns
 face ⇒ value pairs for whatever the datum touched, and `stage!` normalizes
@@ -2399,10 +2401,10 @@ The panel-authoring calling convention — what the drawing context carries,
 how widgets name their component's ports, how an assembly's panel composes
 its children's — is deferred to migration ([§16](#16-open-axes)), where it is co-designed
 against the GUI library. Its constraints are fixed here: panels name their
-own ports by face-name string; resolution to root slots is baked at attach,
-never performed at render; liveness and peek arrive through the
-framework-supplied context, never by reaching into the loop; and assembly
-panels compose children by path.
+own ports by face-name string; resolution to root slots and the liveness
+verdict are baked at run start, never performed at render; liveness and peek
+arrive through the framework-supplied context, never by reaching into the
+loop; and assembly panels compose children by path.
 
 ---
 
@@ -2634,7 +2636,7 @@ deployment — never a callback, never a thrown exception.
 
 ### 10.6 Run lifecycle and partial advance
 
-A `Simulation` moves through four states: **built** (stores allocated,
+A `Simulation` moves through five states: **built** (stores allocated,
 nothing authored), **initialized** (`init!` completed boundary zero, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)),
 **running**, and terminally **stopped** or **errored** ([§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)). `init!` is
 mandatory: `run!` or `step!` on a simulation whose boundary zero has not
@@ -3727,11 +3729,11 @@ at the activation's `T` ([§7.1](#71-continuous-state-structured-immutable-flat-
 the same `SArray` at `T`), the predicate being "every
 field scatters into its field's block at `T`", which is what makes derivative
 completeness structural rather than a matter of author discipline; guards
-against their probe-derived condition form (below); `g`
+against their probe-derived predicate form (below); `g`
 against the `z` shape; handlers against the [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws) return law, key by key;
 `project` against `X`'s own shape at `T`, **complete** — the same
 predicate as a handler's `x` key, since its result is written back to the
-buffer wholesale at both of [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s schedule positions, and a projection
+buffer wholesale at both of [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)'s schedule positions, and a projection
 with a mode-dependent branch first executes its second branch at run
 time.
 
@@ -4687,7 +4689,7 @@ parity is exact, not approximate. Piece by piece:
 
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
-Slots are the one store family without declared defaults — [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s
+Slots are the one initialized datum without declared defaults — [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s
 bare-types decision, upheld here: a default inside a face declaration would
 scatter condition data into the wiring contract and recreate the
 competing-defaults problem that [§14.2](#142-fragment-composition-locality-without-schema) killed for `initialize` specs. So a
@@ -5662,7 +5664,7 @@ Still to be settled:
 
 - **GUI panel authoring API.** The semantics are settled ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract): derived
   liveness, first-class read-only rendering, own-pending-else-snapshot peek,
-  stage-on-interaction, claim transitions); the calling convention — context
+  stage-on-interaction, orphan display); the calling convention — context
   contents, port naming, child composition — is deferred to migration,
   co-designed against the GUI library under [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)'s four constraints.
 
@@ -5804,7 +5806,7 @@ destructure less at will):
 
 Table footnotes, from the bundle law ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) — the sets above are maximal, and
 each field is present only if it exists for the component: `u` iff the function
-kind may see inputs **and** the component declares `input_types`; `y` iff the
+family may see inputs **and** the component declares `input_types`; `y` iff the
 component produces any table cell (`output_types` ∪ `local_types` ∪
 auto-published); `x`/`m`/`z`/`ws` iff declared; `y_x`/`y_z` iff stage-1 ports
 exist; `Δt` on the discrete tier only. Returns: a stage returns a NamedTuple of
@@ -5836,8 +5838,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   framework default) and `RK4` is the default stepper ([§8.2](#82-the-stepper-seam)); `n` binds
   `Δt_base = n·h` ([§8.5](#85-multi-rate-tick-scheduling)); `t_end = Inf` is the honest interactive default, and
   a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
-  start (an unbounded batch run is almost always an oversight); `stop_on` names
-  root-exported `Bool` output faces, OR-combined, recorded in
+  start (an unbounded unattended run is almost always an oversight); `stop_on`
+  names root-exported `Bool` output faces, OR-combined, recorded in
   run metadata — the trace header's deployment block ([§9.5](#95-inbound-the-input-trace), [§13.5](#135-termination-is-a-state-not-an-exception);
   walkthrough [§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)). `t_end` and `stop_on` are
   **defaults**, overridable per run at `run!` ([§13.5](#135-termination-is-a-state-not-an-exception), [§10.6](#106-run-lifecycle-and-partial-advance)). Recording:
@@ -6281,7 +6283,7 @@ the aircraft domain, which always appear compounded ("the b frame").
 **projection** — the optional per-component hook `x ← project(x)`, run in the
 only two schedule positions between a state write and its decode (after
 integration, after a handler's `x`-reset); the cheap end of geometric
-integration's projection methods ([§2](#2-formalism), [§7.1](#71-continuous-state-structured-immutable-flat-backing)).
+integration's projection methods ([§2](#2-formalism), [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)).
 
 **schedule** — the static evaluation order computed once at build time from
 wiring edges plus intra-component feedthrough: all stage-1 functions in any

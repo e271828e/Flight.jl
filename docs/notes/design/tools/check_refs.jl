@@ -10,6 +10,15 @@
 #      framework_decisions.md keeps all of its citations plain by design.
 #   2. Anchors — every markdown link target (`#slug` in-file,
 #      `framework_spec.md#slug` cross-file) resolves to a real heading anchor.
+#      In-file anchors are checked against the file's own headings, which is what
+#      keeps the companions' self-references (a walkthrough citing its own `§N`)
+#      honest.
+#
+# Plus one advisory, not an error: in the walkthroughs — the companions that cite
+# their own numbered sections — a link labelled `§N` that points at the spec while
+# the walkthrough itself has a section `N`. Often legitimate (the spec is usually
+# what is meant), but it is the shape a mis-resolved self-reference takes, so the
+# set is printed and any growth in it deserves a look.
 #
 # `row N` citations are out of scope: they name rows of framework_decisions.md,
 # not sections.
@@ -29,8 +38,13 @@ const COMPANIONS = ["framework_decisions.md",
                     "review4_2026-08-03_gaps.md",
                     "review4_2026-08-03_inconsistencies.md"]
 
+# The companions that cite their own numbered sections (see the advisory above).
+const SELF_CITING = ["event_visibility_walkthrough.md",
+                     "inbound_periphery_walkthrough.md"]
+
 const CITATION = r"§([A-D]|\d+)(?:\.(\d+))?|Appendix ([A-D])(?![\w–—-])"
 const ANCHOR = r"\]\(([^)#]*)#([^)]+)\)"
+const LABELLED = r"\[§(\d+)\]\(([^)#]*)#"
 
 function main()
     hs = headings(joinpath(DESIGN, SPEC))
@@ -45,6 +59,7 @@ function main()
     isempty(dup) || println("  slug suffixes in use: ", dup)
 
     bad = Tuple{String,Int,String,String}[]
+    ambiguous = Tuple{String,Int,String}[]
     tc = ta = 0
     for file in [SPEC; COMPANIONS]
         path = joinpath(DESIGN, file)
@@ -52,7 +67,12 @@ function main()
             println("  skipped (absent): ", file)
             continue
         end
-        own = Set(h.slug for h in headings(path))
+        ownhs = headings(path)
+        own = Set(h.slug for h in ownhs)
+        ownnums = file in SELF_CITING ?
+                  Set(h.number for h in ownhs
+                      if h.number !== nothing && !occursin('.', h.number)) :
+                  Set{String}()
         nc = na = 0
         for (lineno, line) in enumerate(eachline(path))
             for m in eachmatch(CITATION, line)
@@ -71,11 +91,24 @@ function main()
                     push!(bad, (file, lineno, m.match, "unknown anchor"))
                 end
             end
+            for m in eachmatch(LABELLED, line)
+                m[2] == SPEC && m[1] in ownnums &&
+                    push!(ambiguous, (file, lineno, "§$(m[1])"))
+            end
         end
         tc += nc; ta += na
         println("  ", rpad(file, 42), lpad(nc, 5), " citations ", lpad(na, 5), " anchors")
     end
     println("total: ", tc, " citations, ", ta, " anchors")
+
+    if !isempty(ambiguous)
+        println("\nself-vs-spec advisory (", length(ambiguous),
+                " walkthrough citations resolved to the spec while naming a section",
+                " number the walkthrough also has):")
+        for (file, lineno, tok) in ambiguous
+            println("  $file:$lineno: $tok")
+        end
+    end
 
     if isempty(bad)
         println("OK — every citation and every anchor resolves.")

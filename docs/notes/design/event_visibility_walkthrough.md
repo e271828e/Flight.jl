@@ -96,7 +96,7 @@ single-pass cascade.
 
 "Materialize" means: build the args NamedTuple early. The executor already
 builds one per call; this moves the `u` reference-loads a few microseconds
-earlier, once per fired event. Because the values are immutable ([§1](framework_spec.md#1-purpose-and-method)), loading
+earlier, once per fired event. Because the values are immutable ([§1](#1-the-primitive-fact-cells-hold-references-to-immutable-values)), loading
 the references early *is* a capture of the round-start world — no copy, no
 shadow table, no allocation. Nothing that happens to the cells afterwards can
 change what the bundle already holds.
@@ -186,7 +186,7 @@ the sequential-composition guarantee — so its own `y` must be the decode of
 *that* state, not a stale pre-`A1` decode; otherwise `A2` receives an
 incoherent bundle where `y ≠ h(x)`.
 
-The ownership partition ([§2](framework_spec.md#2-formalism)) makes the split exact: `y` = own cells (live),
+The ownership partition ([§2](#2-bundles-and-gathers-the-ownership-partition)) makes the split exact: `y` = own cells (live),
 `u` = foreign cells (round-start). One corner, stated for completeness: a
 component whose input port is wired, through some contortion, from its own
 stage-1 output still gets round-start `u` — the binding rule is uniform, and
