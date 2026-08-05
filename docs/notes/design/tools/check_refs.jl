@@ -2,7 +2,7 @@
 #
 # Cross-reference checker for the framework spec and its companion files.
 #
-# Two checks, both over framework_spec.md and the six companions:
+# Two checks, both over framework_spec.md and the seven companions:
 #
 #   1. Citations — every `§N` / `§N.M` / `§X.N` / `Appendix X` names a heading
 #      that exists in framework_spec.md. Citations inside fenced code blocks,
@@ -34,6 +34,7 @@ const SPEC = "framework_spec.md"
 const COMPANIONS = ["framework_decisions.md",
                     "event_visibility_walkthrough.md",
                     "inbound_periphery_walkthrough.md",
+                    "trim_environment_walkthrough.md",
                     "review4_2026-08-03_dryrun.md",
                     "review4_2026-08-03_gaps.md",
                     "review4_2026-08-03_inconsistencies.md"]
