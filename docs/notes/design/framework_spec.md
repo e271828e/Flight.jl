@@ -1709,7 +1709,10 @@ domain, which always appear compounded: the b frame, the ECEF frame.)
    [§9.6](#96-devices-one-authoring-contract-no-taxonomy) wrapper as any spawned device's — otherwise the loop runs on the
    calling task — the unattended register, what [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)'s synchronous rethrow
    presupposes, and what lets parallel unattended sweeps thread `run!` inline
-   with no nested task fan-out. Either way `run!` blocks its caller until
+   with no nested task fan-out (one immutable `Build` shared across the
+   workers, [§12.2](#122-the-build-artifact), each `Simulation` owning its own buffers; pre-materializing
+   the sweep's activations — `build(world; activations = …)`, [§12.4](#124-activations-executable-sets-laziness-caching) — leaves no
+   worker synchronizing on anything). Either way `run!` blocks its caller until
    the run ends; what varies is what the calling task spends the run
    doing. Spawn-inside-`run!` *is* the start gate — a task exists only
    once the run it serves exists — and any first-boundary synchronization a
@@ -3738,7 +3741,13 @@ targeted or a face-provenance table was printed from is the one deployed,
 never an assumed-equal reconstruction (computed `exports` bodies are ordinary
 user code re-evaluated on every build, so equality between two builds of the
 same world is an assumption the factorization removes). Deployment binding
-still happens only at `Simulation` construction, whichever entry point runs. The `Build` is the
+still happens only at `Simulation` construction, whichever entry point runs.
+**The `Build` is immutable and may back any number of `Simulation`s,
+concurrently** — true by construction once buffers are single-owner ([§12.4](#124-activations-executable-sets-laziness-caching)): each
+`Simulation` materializes its own from the shared layouts, so nothing writable
+is shared. The one mutable thing on the artifact is the lazily populated
+activation cache, whose insertion [§12.4](#124-activations-executable-sets-laziness-caching) makes torn-state-free.
+The `Build` is the
 inspectable contract of the instantiation [§11.8](#118-computed-exports-and-generic-boundaries) gestures at — wire list, face
 table, schedule, root slots as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
@@ -3839,7 +3848,10 @@ a pinned `Float64` ([§7.2](#72-numeric-genericity-eltype)) lurks until the firs
 at the probe, naming the offending constructor. The repository's test suite
 pins the invariant instead: `build(world; activations = (Float64, ProbeDual))`
 (or a `check` entry) runs the exhaustive set in CI, catching walked-leaf genericity
-violations at PR time. `ProbeDual` is the framework's exported canonical probe
+violations at PR time. The same keyword is the recommended idiom for [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s
+parallel-sweep register: pre-materialize the activations the sweep will need and
+the shared `Build` is a fully immutable artifact, with no synchronization on any
+path. `ProbeDual` is the framework's exported canonical probe
 scalar — `const ProbeDual = ForwardDiff.Dual{ProbeTag, Float64, 1}` — because
 an activation is keyed by a *concrete* scalar type and the bare `Dual`
 `UnionAll` cannot key one, be walked to, or answer `zero(T)`. Its width is
@@ -3847,14 +3859,31 @@ arbitrary: what CI pins is genericity, not any particular Jacobian, so one
 canonical width suffices even though [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) chunks at whatever widths it needs.
 
 **Caching is implementation detail, not semantics.** An activation is a pure
-function of the build and the concrete scalar type; the `Build`/`Simulation`
-holds (layouts, buffers, validated-flag) keyed by that type. Compiled code is
-cached by Julia itself, process-wide; what the framework cache saves is probe
-re-runs and re-allocation — which matters exactly in activation-reusing loops
-(the envelope-grid gain-schedule case: hundreds of trim-then-linearize points
-on pre-existing buffers, zero-allocation). Nothing numerical is ever cached.
+function of the build and the concrete scalar type — so the cache is the
+`Build`'s, and it holds (layouts, compiled plans, validated-flag) keyed by that
+type: immutable once constructed, hence freely shareable. **Buffers are never
+cached**, because every buffer set has exactly one owner. The `Simulation` owns
+its nominal activation's buffers — materialized from the cached layouts at
+construction, what the loop's zero-allocation stepping runs on — and every
+service invocation owns the scratch set it instantiates from those same layouts;
+[§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) states this for `trim!`, and it is the general rule, not a trim-local one.
+Compiled code is cached by Julia itself, process-wide; what the framework cache
+saves is the expensive part — probe re-runs, layout construction, and Julia's
+compilation of the `Dual` chain — which is what actually amortizes in
+activation-reusing loops (the envelope-grid gain-schedule case: hundreds of
+trim-then-linearize points paying those costs once). What does not amortize is
+the per-point allocation of a working store set, O(model size) and trivial
+against the solve it feeds: [§7.5](#75-allocation-policy-a-scoped-invariant)'s zero-allocation invariant is scoped to the
+stepping loop, and the services were always allocation-tolerant. Nothing
+numerical is ever cached.
 Note `Dual{Tag,V,N}` carries the partial count: a different seeding width is a
 different scalar type, hence a separate entry and a separate Julia compile.
+**Lazy materialization is torn-state-free**, normatively: concurrent first
+requests for the same activation must never expose partially populated cache
+state. The mechanism is unspecified — a guard around insertion suffices, paid at
+service time and never on the hot path — and since an activation is a pure
+function of build and scalar, the worst benign race is duplicated work; torn
+state is excluded by contract, not by luck.
 
 ### 12.5 The always-on conformance check
 
