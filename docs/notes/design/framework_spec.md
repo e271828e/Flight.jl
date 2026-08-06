@@ -2092,8 +2092,9 @@ slot unfed by any device must hold a defined value from the first frame (today's
 `U()` constructors provide these: `mixture = 0.5`). Export-entry defaults were
 rejected: the trim service writes slot values it *solved for* (throttle,
 elevator) — not declaration constants. `init!` establishes every slot and the
-trace header captures the result; totality is enforced pre-write at
-`init!`/commit ([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
+trace header captures the result; totality is enforced pre-write at every
+complete-world application — `init!`, trim setup, trim commit
+([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
 
 **The roster is frozen per run: attach and detach are stopped-sim
 operations.** `attach!`/`detach!` are legal in the `built`, `initialized`
@@ -4255,7 +4256,8 @@ discrete-tier probes supply a placeholder period (`1.0`) in the bundle —
 a fabricated, probe-scoped value like any synthesized input; the probe
 checks types, not physics.
 `Simulation` must not reach its first boundary with uninitialized slots;
-enforcement is the pre-write `UninitializedSlots` check at `init!`/commit
+enforcement is the pre-write `UninitializedSlots` check carried by every
+complete-world application — `init!`, trim setup, trim commit
 ([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
 
 **The author's side of that bargain.** Silly values are acceptable *because* the
@@ -5456,13 +5458,18 @@ consequences follow.
 **Totality is a precondition of starting, checked by the service.** A
 condition value is legitimately partial (fragments compose; trim iterations
 write subsets; capture-then-tweak patches leaves) — "every root slot
-covered" is not a property of conditions but of *application at boundary
-zero*. `init!` (and trim's commit, which runs the same boundary) compares
-the resolved plan's slot coverage against the `Build`'s `input_faces`
-before writing anything; a shortfall is one collected, declaration-ordered
-diagnostic (`UninitializedSlots`, a [§13.2](#132-diagnostics-structured-values-one-carrier-exception) kind) naming every uncovered
-face. Pre-write means all-or-nothing: a rejected init leaves the sim
-exactly as it was, the same posture as failed trim.
+covered" is not a property of conditions but of *every application that
+establishes a complete world over virgin stores*. That principle, not an
+enumeration, names the sites: `init!`, trim's setup application to freshly
+allocated scratch stores, and trim's commit through boundary zero
+([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)) — one class, one mechanism, one kind. Each compares the resolved
+plan's slot coverage against the `Build`'s `input_faces` before writing
+anything; a shortfall is one collected, declaration-ordered diagnostic
+(`UninitializedSlots`, a [§13.2](#132-diagnostics-structured-values-one-carrier-exception) kind) naming every uncovered face.
+Coverage is a *plan-level fact* — both operands are resolution-time data —
+so the check is one comparison and runs before any evaluation, not merely
+before any write. Pre-write means all-or-nothing: a rejected init leaves
+the sim exactly as it was, the same posture as failed trim.
 
 **The probe-value barrier is structural.** [§12.3](#123-probing-and-input-synthesis)'s `probe_value` synthesis
 (zero/false/first-enum/`T()`) exists so build-time probes can exercise code
@@ -5631,8 +5638,19 @@ buffers being un-aliasable by type is defense in depth, not the mechanism —
 a `Float64` backend (NLopt) gets equally fresh buffers. The invariant is
 backend-independent: **the simulation's authoritative stores have exactly
 one writer, the commit through boundary zero.** Setup applies
-`override(baseline, condition(guess))` to the scratch set once (full
-coverage, so sweeps see a complete world); iterations rewrite only the
+`override(baseline, condition(guess))` to the scratch set once, its full
+coverage *checked here* — [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)'s comparison of the resolved plan against
+the `Build`'s `input_faces`, one plan-level comparison before the first
+evaluation — so sweeps see a complete world. Raw instantiation is sound
+exactly because of that check: every slot is written before any read, and
+an incomplete `baseline` is one declaration-ordered `UninitializedSlots`
+at setup rather than a whole solve against undefined cells. Since the
+commit applies the same composite over the same `baseline`
+([§14.9](#149-mounting-problems-as-relocatable-values)'s `override(baseline, condition(d*))`), its coverage is setup's:
+commit's totality check is structurally unfailable through the trim path
+and stands as the shared `init!`-boundary defense — a converged solve is
+always committable, so `TrimReport` carries no committed flag and the
+no-throw doctrine needs no exception. Iterations rewrite only the
 problem's write-set via the compiled plan; an LM evaluation is one
 Dual-seeded sweep yielding `r` (value parts) and `J` (partials) together.
 No convergence → no commit → the sim is bit-for-bit untouched, including
@@ -6805,7 +6823,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   nonlinear least squares on the packed residuals with exact Dual
   Jacobians, against the problem's own `tolerances`
   (`residuals(reads, d) → NamedTuple`, packed by field order — [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s
-  closed seven-field problem); commit = `init!` with `override(baseline, solution)` —
+  closed seven-field problem); setup and commit both carry [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)'s slot-totality
+  check; commit = `init!` with `override(baseline, solution)` —
   boundary zero anchored at `t0`, recordings cleared ([§10.6](#106-run-lifecycle-and-partial-advance)); resume-at-
   time = `capture`'s returned `t` as `t0`; non-convergence reports, never
   throws ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)).
@@ -7686,8 +7705,9 @@ layer remain errors; variadic ([§14.6](#146-slot-totality-the-missing-value-err
 them; a violation is `ServiceLifecycle`, and `errored` is terminal for all
 four services ([§14](#14-stopped-sim-services)).
 
-**slot totality** — the pre-write requirement that an application at boundary
-zero cover every root slot. Conditions themselves are legitimately partial; a
+**slot totality** — the pre-write requirement that an application establishing
+a complete world over virgin stores — `init!`, trim setup, trim commit —
+cover every root slot. Conditions themselves are legitimately partial; a
 shortfall is `UninitializedSlots`, collected and declaration-ordered, leaving
 the simulation untouched ([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
 
