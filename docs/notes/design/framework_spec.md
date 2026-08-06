@@ -604,10 +604,13 @@ construction, so discrete cells hold across the step).
 
 **Step-boundary semantics.** At each boundary: integrate → project → boundary sweep →
 evaluate **all guards once** against that sweep → for each fired event, in declaration
-order: `handler → project → re-run the component's output stages`. The per-event
-re-decode keeps `y` fully fresh for any subsequent handler of the *same* component
-(sequential composition, no lost updates) and leaves the signal table
-post-transition-consistent for whatever else the boundary does (discrete ticks,
+order: `handler → project → auto-publish → re-run the component's output stages`.
+Auto-publication is repeated because auto-published cells belong to no stage ([§12.5](#125-the-always-on-conformance-check)):
+the framework rewrites the firing component's auto-published cells from the
+just-latched state stores at their usual stage-1 position. The per-event re-decode
+keeps `y` fully fresh — auto-published ports included — for any subsequent handler of
+the *same* component (sequential composition, no lost updates) and leaves the signal
+table post-transition-consistent for whatever else the boundary does (discrete ticks,
 logging). Events are rare and the re-run touches one component, so the cost is noise.
 Across components, all guards and handlers read the same boundary snapshot (plus their
 own component's refreshed ports); one component's transition reaches others through

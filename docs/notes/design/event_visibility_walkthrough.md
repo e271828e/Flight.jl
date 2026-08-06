@@ -55,8 +55,9 @@ At a step boundary the event phase iterates ([§8.6](framework_spec.md#86-event-
 > newly-fired events → repeat until a round fires nothing,
 
 with each declared event firing at most once per boundary. Firing an event
-means `handler → project → re-run the component's own output stages` (the
-per-event **re-decode**).
+means `handler → project → auto-publish → re-run the component's own output
+stages` (the per-event **re-decode**; auto-published cells are rewritten from
+the just-latched stores at their stage-1 position, [§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)).
 
 Now the structural fact the whole design leans on: **no user code writes
 anything, anywhere.** A handler is pure like every other user function: it
