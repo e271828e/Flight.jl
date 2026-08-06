@@ -4370,13 +4370,34 @@ the complete expected return type at this activation — the declared types of t
 names *this stage* produces, as fixed by Stratum B's stage classification: one
 concrete `NamedTuple` type per (component, stage), drawn from `output_types` and
 `local_types` alike. Auto-published names belong to no stage's expected type;
-the framework writes those cells itself. The executor performs a single
+the framework writes those cells itself. The executor canonicalizes the
+observed return to that type's field order by a type-level reorder
+(`NamedTuple{names(Expected)}(y2)`) and performs a single
 type test against that type (conceptually `y2 isa Expected`). Type-stable conformant
 code: the compiler proves the return type, decides the test at compile time,
 and deletes it — zero instructions. Branch-divergent code: the test survives
 as a runtime check, nanoseconds on conformant branches, a loud located error
 on the divergent one at its first execution. (Type-unstable-but-conformant
 code pays nanoseconds on top of the dynamic dispatch it already bought.)
+
+**The names are the pairing; field order carries no semantics.** `Expected`'s
+order is an internal fact — derived from `output_types` ∪ `local_types`,
+stage-filtered, auto-published names removed, an order no single declaration
+shows the author — and the author never reproduces it: a return spelling the
+right names at the right types conforms in any order, `(; P = M*ω, M_shaft = M)`
+and `(; M_shaft = M, P = M*ω)` being the same return. This is the general rule
+at every author↔framework `NamedTuple` seam ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals) states it for the trim
+problem's decisions and residuals), and it is what downstream consumption
+already assumes: the scatter writes each returned field into its own *named*
+cell ([§4.3](#43-table-mechanics-and-port-granularity)), so order-sensitivity in the check would be incidental
+strictness rather than protection. The canonicalizing reorder costs nothing:
+a compile-time permutation of an already-typed value — register shuffling SROA
+deletes — folding exactly where the test folds, so row 53's economics stand
+unamended (one whole-type test, never per-field checks) and [§7.5](#75-allocation-policy-a-scoped-invariant)'s canary
+verifies the fold empirically rather than by assertion. What remains an error is
+what always was: a key-set mismatch or a per-field type mismatch, reported by
+the unchanged payload below. A permutation is not an error at all — which is
+equally why that diff never has to express one.
 
 **Exact match at nominal; embed-accept at parametrized leaves.** At
 the nominal activation — the only one that ever runs in real time — the check
@@ -5505,10 +5526,17 @@ lives.
 
 What the aircraft author ships, piece by piece against today's `c172.jl`:
 
-- **Decision variables, initial guess and box bounds are plain, same-shaped,
+- **Decision variables, initial guess and box bounds are plain, same-*named*,
   all-`Float64` NamedTuples.** The `AbstractTrimState{N}`/`FieldVector`
   supertype dies — its only job was vectorization, which is the service's
-  (pack/unpack by field order, shapes checked at setup). Guess, bounds and
+  (pack/unpack by field order, that order being the `guess` NamedTuple's own —
+  [§12.5](#125-the-always-on-conformance-check)'s rule at this seam: **the names are the pairing, order carries
+  no semantics**). `lower` and `upper` are checked at setup for key-set equality
+  with `guess` and `Float64` fields, then canonicalized to `guess`'s field order
+  by the same type-level reorder (`NamedTuple{keys(guess)}(lower)`), so a
+  permuted bound spelling is a non-event rather than `α`'s bound silently
+  applied to `throttle`; a key-set or field-type mismatch is
+  `TrimProblemInvalid`. Guess, bounds and
   the returned solution share one spelling; `Base.merge(guess, (throttle =
   0.3,))` is free warm-start tweaking; an author who wants a documented
   `@kwdef` struct keeps it privately and converts.
@@ -5533,8 +5561,10 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   The compiled reader ([§14.4](#144-two-application-registers-over-one-plan)'s gather twin) fills a stack-only NamedTuple
   per evaluation.
 - **The user supplies a residual *system*, not a scalar cost** — authored as a
-  NamedTuple of named equations, packed to the solver's vector by field order
-  (the decisions rule, symmetric on both ends of the seam). The
+  NamedTuple of named equations, packed to the solver's vector by field order —
+  `tolerances`' field order here, the declared side again, the residual return
+  canonicalized to it (the decisions rule, symmetric on both ends of the
+  seam: names pair, order never does). The
   FlightCore formulation's core — analytic elimination (`θ_constraint`
   substituting the pitch constraint, filter and actuator equilibria imposed
   by construction, the minimal 7-variable search) — is correct and survives
@@ -5573,10 +5603,10 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   gear forces) as simply another problem value over the same service.
 
 **The field set, normative** — [§14.9](#149-mounting-problems-as-relocatable-values)'s lift is field-by-field, so this list
-is closed: `guess`, `lower`, `upper` (same-shaped all-`Float64` NamedTuples),
+is closed: `guess`, `lower`, `upper` (same-named all-`Float64` NamedTuples),
 `condition` (the condition-valued function over decisions), `reads` (the
 declared read set), `residuals` (the residual function), and `tolerances` —
-an all-`Float64` NamedTuple, same-shaped as the residual function's return,
+an all-`Float64` NamedTuple, same-named as the residual function's return,
 carried *in the problem* because a relocated problem must carry its own
 convergence test (`at` passes it through untouched). The residual signature:
 
@@ -5594,10 +5624,15 @@ where any environment handles the condition math needs conventionally ride
 *receives* the environment, and never writes it ([§14.9](#149-mounting-problems-as-relocatable-values)).
 The returned NamedTuple's names are
 the equation names the report and the failure messages use; the service packs
-residuals and tolerances by field order. Shapes are checked at setup: the
-guess evaluation the service performs anyway observes the residual key set,
-and a `tolerances` mismatch — or any field-shape disagreement — is
-`TrimProblemInvalid` ([Appendix C](#appendix-c-the-diagnostic-kind-set)). Worked, the C172 cruise case reduced to
+residuals and tolerances by field order — `tolerances`' order, canonical for
+the r-side, each residual return reordered to it (`NamedTuple{keys(tolerances)}(r)`)
+before packing, so an equation list spelled in a different order inside the
+lambda pairs correctly and costs nothing. Names and types are checked at setup:
+the guess evaluation the service performs anyway observes the residual key set,
+and a `tolerances` key-set mismatch — or any field-type disagreement, on either
+side of the seam — is `TrimProblemInvalid` ([Appendix C](#appendix-c-the-diagnostic-kind-set)), with the offending
+field and the names or types in hand. Order is never a mismatch.
+Worked, the C172 cruise case reduced to
 its three-equation core (the real problem is the same shape with the full
 7-variable search; the θ-constraint elimination survives inside
 `trim_condition`):
@@ -5626,9 +5661,12 @@ the [§8.2](#82-the-stepper-seam) stepper precedent exactly (tiny needed core vs
 sharpened by the fact that [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s per-residual physical tolerances are a
 convergence test no external package spells natively — which is precisely
 why the *service*, not the backend, applies it. The backend contract
-is documented and value-passed: given an evaluation function (packed
-residual vector, optionally with Jacobian), packed guess and bounds, return
-solution, status and counts.
+is documented and value-passed: given an evaluation function (residual vector
+packed in `tolerances`' field order, optionally with Jacobian), guess and bounds
+packed in `guess`'s field order ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals): the declared side is canonical on
+both ends, and the service has canonicalized before packing), return
+solution, status and counts. The backend sees vectors and never names, so the
+solution it returns unpacks by the same order it was given.
 
 **The convergence verdict is the service's, uniformly.** `converged` means
 `all(abs.(rᵢ) .≤ tolᵢ)` — [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s per-residual box test in its own
@@ -5725,10 +5763,12 @@ stores then sit at the post-handler point, not the reported solution, and a
 expected *outcome* (envelope-sweep data: hitting the infeasible edge is
 information), per [§13](#13-error-discipline)'s exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
-[Appendix C](#appendix-c-the-diagnostic-kind-set) — guess/bounds shape disagreement, an unknown `reads` selector, a
+[Appendix C](#appendix-c-the-diagnostic-kind-set) — a guess/bounds key-set or field-type disagreement, an
+unknown `reads` selector, a
 `tolerances`/residual key-set mismatch observed at the setup guess evaluation:
-the offending field with the shapes or names in hand, collected, mirroring
-linearization's `TapResolution`).
+the offending field with the names or types in hand, collected, mirroring
+linearization's `TapResolution`); a permuted spelling is none of these
+([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)).
 
 **The AD obligation, scoped.** The default formulation requires `Dual`
 genericity of exactly: the continuous output-stage chains and `f`, plus the
@@ -6863,7 +6903,9 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 - `trim!(sim, problem; baseline, t0 = 0.0, backend) → TrimReport` —
   nonlinear least squares on the packed residuals with exact Dual
   Jacobians, against the problem's own `tolerances`
-  (`residuals(reads, d) → NamedTuple`, packed by field order — [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s
+  (`residuals(reads, d) → NamedTuple`, packed in `tolerances`' field order as
+  decisions pack in `guess`'s — names pair, order is the declared side's,
+  [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s
   closed seven-field problem); setup and commit both carry [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)'s slot-totality
   check; commit = `init!` with `override(baseline, solution)` —
   boundary zero anchored at `t0`, recordings cleared ([§10.6](#106-run-lifecycle-and-partial-advance)); resume-at-
@@ -7013,7 +7055,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | [§11.3](#113-visibility-the-contract-is-the-interface) | build (collected) |
 | `LocalConnected` | wire endpoints, the local cell named | [§11.3](#113-visibility-the-contract-is-the-interface) | build (collected) |
 | `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types` ∪ `local_types`) | [§11.3](#113-visibility-the-contract-is-the-interface), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w5 | build (fail-fast) |
-| `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed), simulation time | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) at probe; **runtime** as a `StepError` species |
+| `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed — order-insensitive, the return having been canonicalized first), simulation time | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) at probe; **runtime** as a `StepError` species |
 | `GuardForm` | component path, event name, observed probe return type, both admissible forms | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
 | `LocalizedGuardForm` | component path, event name — a localized event whose guard probes `Bool` (localization requires the sign form) | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
 | `BundleFieldError` | component path, function family, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function family) | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§13.2](#132-diagnostics-structured-values-one-carrier-exception) | build (fail-fast) at probe; **runtime** thereafter |
@@ -7039,7 +7081,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | [§14.2](#142-fragment-composition-locality-without-schema) | service |
 | `UninitializedSlots` | every uncovered root face, in declaration order | [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator) | service (collected), pre-write |
 | `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
-| `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
+| `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`event_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
@@ -7401,7 +7443,9 @@ non-nominal activations are lazy, with an opt-in exhaustive set for CI ([§12.4]
 
 **always-on conformance check** — the probe's comparison left permanently in
 place: one type test of a stage return against the declaration-derived
-expected `NamedTuple` at the table-write point, folding to zero instructions
+expected `NamedTuple` at the table-write point, preceded by a type-level
+reorder to that type's field order (the names pair; order carries no
+semantics), both folding to zero instructions
 when the return type is proven ([§12.5](#125-the-always-on-conformance-check)).
 
 **`Build`** — the artifact `build(world)` produces: wire list, face table with
