@@ -3612,7 +3612,8 @@ The inventory, and where each schema fact gets its authority:
   the activation scalar — while `init_m` and `init_z` pin wholesale, mirroring
   the discrete-producer rule. Declared `Float64` initial values embed as
   zero-partial constants under non-nominal activations, which is [§14.3](#143-resolution-flatten-validate-compile-once)'s rule
-  for condition writes applied to the defaults those conditions overlay.
+  for `Float64` condition leaves applied to the defaults those conditions
+  overlay.
   `init_x`'s walk presupposes [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s closed leaf vocabulary (scalars and
   `SArray`s at the common eltype), so Stratum A checks it ([§12.1](#121-three-strata)) and reports
   a failure in the didactic register: "`init_x` field `gear_count::Int` is not
@@ -5262,12 +5263,25 @@ indices from the activation; face chains from Stratum A — the destination).
 
 A valid list compiles to a plan: per leaf, a `Getter{P}` lens (the position
 tuple lifted to a type parameter — type-stable navigation of the fixed tree
-type), a destination offset, and a **converter baked now** (e.g. an authored
-`RQuat` value → the `SVector{4}` state leaf it initializes, through the
-type's ordinary `convert`/constructor methods; against a non-nominal
-activation's scratch, the `Float64 → Dual` zero-partial embedding —
-semantically exact for condition writes: "held at the operating point" *is*
-zero partials, [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) — a one-time boundary decision that leaves [§12.5](#125-the-always-on-conformance-check)'s
+type), a destination offset, and a **converter baked now**, *selected per
+leaf from that leaf's type in the resolved shape* — leaf types are shape
+facts, carried by the tree type along with the full nesting and every field
+name ([§14.4](#144-two-application-registers-over-one-plan)), so selection consults no runtime fact and stays a
+resolution-time bake. Two cases. A leaf **already at the activation's scalar
+type** is decision-descended — under a `Dual`-seeded evaluation of a
+type-stable `trim_condition(d)` every decision-dependent leaf is `Dual`-typed
+in the shape ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)) — and takes the type's ordinary `convert`/constructor
+methods *at that eltype*: an authored `RQuat` of `Dual`s → the `SVector{4}`
+state leaf at `Dual`, partials flowing through untouched, which is what makes
+the seeded decisions reach the sweep at all; at the nominal activation the
+same rule is the ordinary `Float64` conversion (an authored `RQuat` value →
+the `SVector{4}` state leaf it initializes). A plain **`Float64` leaf against
+a non-nominal activation's scratch** is a held constant and takes the
+`Float64 → Dual` zero-partial embedding — semantically exact there, and
+exactly there: "held at the operating point" *is* zero partials, the whole of
+a linearization operating-point condition, authored decision-free
+([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)). The
+selection is a one-time boundary decision that leaves [§12.5](#125-the-always-on-conformance-check)'s
 nominal exact-match doctrine for table cells untouched. Converters run here
 and in `capture`'s gather ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) — the write paths — never on state views
 ([§7.1](#71-continuous-state-structured-immutable-flat-backing)). Overlay
@@ -5524,7 +5538,11 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   thousands of evaluations, no per-equation diagnostics) because Jacobians
   through the mutating `f_ode!` chain and the assignment math were out of
   reach. Here the `Dual` activation seeds the decision variables through
-  the `T`-generic assignment, sweep and `f` — [§12.6](#126-stopped-sim-services-as-stratum-c-clients)'s "open option," now
+  the `T`-generic assignment, sweep and `f`; the seeds survive the condition
+  write boundary because [§14.3](#143-resolution-flatten-validate-compile-once) selects the baked converter per leaf from the
+  shape — a decision-descended leaf is `Dual`-typed there and takes the
+  structural conversion, the zero-partial embedding staying on the held
+  `Float64` leaves — [§12.6](#126-stopped-sim-services-as-stratum-c-clients)'s "open option," now
   the *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians
   (trust-region/Levenberg–Marquardt register), quadratic convergence
   (~5–15 evaluations), per-residual physical tolerances, and failure
