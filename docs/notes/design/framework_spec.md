@@ -5552,14 +5552,20 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   `Float64` leaves — [§12.6](#126-stopped-sim-services-as-stratum-c-clients)'s "open option," now
   the *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians
   (trust-region/Levenberg–Marquardt register), quadratic convergence
-  (~5–15 evaluations), per-residual physical tolerances, and failure
-  reports naming the unbalanced equations with magnitudes. Non-squareness
+  (~5–15 evaluations), per-residual physical tolerances — the convergence
+  verdict itself service-owned and backend-independent
+  ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)) —
+  and failure reports naming the unbalanced equations with magnitudes. Non-squareness
   degrades gracefully (redundant actuation → weighted/minimum-norm LS;
   infeasible demands → converged nonzero residual identifying the
   impossible balance), and $\partial r / \partial d$ at the solution is free flight-physics
   data (control effectiveness) cross-checking linearization. The
   derivative-free scalar path survives as the fallback: the service squares
-  the residuals — today's algorithm as the degenerate case.
+  *and normalizes* the residuals against the tolerances
+  ($\sum (r_i/\mathit{tol}_i)^2$ at `stopval = 1`,
+  [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)),
+  which is where the hand-scaled absolute threshold is repaired — today's
+  algorithm as the degenerate case.
 - **Recorded, not built**: closed-loop sampled-data trim (append
   $g(z) - z = 0$ residuals via a nondestructive scratch evaluation of `g` —
   structurally impossible under FlightCore's mutating `f_disc!`), and
@@ -5618,13 +5624,42 @@ Levenberg–Marquardt: for decision dimensions ~10 with exact Jacobians, the
 core (damping loop, small linear solve, convergence test) is ~100 lines —
 the [§8.2](#82-the-stepper-seam) stepper precedent exactly (tiny needed core vs. heavy dependency),
 sharpened by the fact that [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s per-residual physical tolerances are a
-convergence test no external package spells natively. The backend contract
+convergence test no external package spells natively — which is precisely
+why the *service*, not the backend, applies it. The backend contract
 is documented and value-passed: given an evaluation function (packed
-residual vector, optionally with Jacobian), packed guess, bounds and
-tolerances, return solution, status and counts. `NLoptBackend(:LN_BOBYQA)`
-lives in a package extension, squares the residuals and ignores the
-Jacobian — today's algorithm one keyword away — and the framework core
-carries zero optimizer dependencies. Box bounds are honored by step
+residual vector, optionally with Jacobian), packed guess and bounds, return
+solution, status and counts.
+
+**The convergence verdict is the service's, uniformly.** `converged` means
+`all(abs.(rᵢ) .≤ tolᵢ)` — [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s per-residual box test in its own
+physical units — evaluated **by the service at the backend's returned
+point**, one residual evaluation, noise against the solve that produced it.
+That verdict, and nothing else, gates the commit and fills
+`TrimReport.converged`; the backend's returned `status` is recorded in the
+report as diagnostic data and is authoritative over nothing.
+
+**The tolerance translation is the service's too**, per register. In the
+least-squares register the tolerances *are* the stopping criterion: they
+feed the per-residual test directly, LM's damping loop testing exactly what
+the service will re-test. For the derivative-free scalar fallback —
+`NLoptBackend(:LN_BOBYQA)` in a package extension, ignoring the Jacobian,
+today's algorithm one keyword away, with the framework core carrying zero
+optimizer dependencies — the service squares *and normalizes*: the objective
+minimized is $\sum_i (r_i/\mathit{tol}_i)^2$ with `stopval = 1`,
+dimensionless where FlightCore's threshold was hand-scaled and absolute
+([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)), and a well-scaled valley where a raw $\|r\|^2$ sums forces
+against moments. The two criteria cannot disagree in the dangerous
+direction: $\sum_i (r_i/\mathit{tol}_i)^2 \le 1$ implies every
+$(r_i/\mathit{tol}_i)^2 \le 1$, so the `stopval` sphere is *inscribed* in
+the tolerance box and a fallback stopping at `stopval` necessarily passes
+the service's box test. The converse disagreement — a backend stopping
+early and reporting an optimistic status — is caught by the re-check, which
+remains the single authority. What is *not* claimed is point identity:
+different backends may land on different solutions, an algorithmic
+difference and a legitimate one. What is eliminated is per-backend meanings
+of `converged`.
+
+Box bounds are honored by step
 projection, and a decision variable saturated *at the solution* is flagged
 in the report ("converged with `elevator` at its upper bound" — the classic
 CG-limit diagnostic, today inferable only from mysterious residuals).
@@ -5653,7 +5688,9 @@ always committable, so `TrimReport` carries no committed flag and the
 no-throw doctrine needs no exception. Iterations rewrite only the
 problem's write-set via the compiled plan; an LM evaluation is one
 Dual-seeded sweep yielding `r` (value parts) and `J` (partials) together.
-No convergence → no commit → the sim is bit-for-bit untouched, including
+No convergence — the service's box test failing at the returned point,
+whatever status the backend attached to it — → no commit → the sim is
+bit-for-bit untouched, including
 "never initialized" — today's warn-but-assign is structurally impossible. The
 same structure covers an interrupt: Ctrl-C during a long solve unwinds an
 ordinary Julia call operating on per-invocation scratch stores, no commit has
@@ -5674,9 +5711,13 @@ shape; fly-then-retrim keeps continuity explicitly — `capture` returns
 spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
 
 **The report, not an exception.** `trim!` returns a structured
-`TrimReport`: converged flag, solution NamedTuple (guess-shaped —
-warm-startable), final residuals with tolerances, iteration/evaluation
-counts, saturated-bounds list, and the commit's fired events (component
+`TrimReport`: the `converged` flag — the service's own box test at the
+returned point, never a backend's opinion — solution NamedTuple
+(guess-shaped — warm-startable), final residuals with tolerances (the very
+numbers the verdict is read off), the backend's returned status together
+with its iteration/evaluation counts (diagnostic throughout: informative
+about *how* the solve went, decisive about nothing),
+saturated-bounds list, and the commit's fired events (component
 paths and event names, empty when boundary zero ran quiet — [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions); a
 non-empty set also raises `TrimCommitEvents`, [Appendix C](#appendix-c-the-diagnostic-kind-set): the committed
 stores then sit at the post-handler point, not the reported solution, and a
@@ -6826,7 +6867,10 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   closed seven-field problem); setup and commit both carry [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)'s slot-totality
   check; commit = `init!` with `override(baseline, solution)` —
   boundary zero anchored at `t0`, recordings cleared ([§10.6](#106-run-lifecycle-and-partial-advance)); resume-at-
-  time = `capture`'s returned `t` as `t0`; non-convergence reports, never
+  time = `capture`'s returned `t` as `t0`; `converged` = the service's
+  per-residual box test at the backend's returned point, backend-independent
+  and the commit's gate, with the backend's status and counts recorded
+  diagnostically; non-convergence reports, never
   throws ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)).
 - `capture(sim) → (condition, t)` — full-store gather including root slots;
   warm restart = capture → tweak → apply ([§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults), [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)).
