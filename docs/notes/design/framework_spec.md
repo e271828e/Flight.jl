@@ -598,7 +598,9 @@ against the now-consistent signal table. Note the systemic consequence: *evaluat
 the RHS means running the sweep* — there is no incremental `f`-only re-evaluation.
 Implicit solvers, linearization and trim already work this way (seed `x`, run the
 composite), so nothing is lost; [§8.3](#83-signal-table-consistency-is-a-boundary-property)/[§8.4](#84-localization-mechanics) restate it as a property of the
-execution model (RHS evaluations and guard probes alike run the sweep).
+execution model (RHS evaluations and guard probes alike run the *interior* sweep,
+the continuous-only variant of [§8.5](#85-multi-rate-tick-scheduling) — discrete entries are absent from it by
+construction, so discrete cells hold across the step).
 
 **Step-boundary semantics.** At each boundary: integrate → project → boundary sweep →
 evaluate **all guards once** against that sweep → for each fired event, in declaration
@@ -1310,8 +1312,8 @@ load-bearing for the whole axis):
 
 ### 8.3 Signal-table consistency is a boundary property
 
-During a step, RK stages evaluate the sweep at internal stage states — the signal
-table is transiently **integrator scratch**. The boundary sweep in the [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) sequence
+During a step, RK stages evaluate the interior sweep ([§8.5](#85-multi-rate-tick-scheduling)) at internal
+stage states — the signal table is transiently **integrator scratch**. The boundary sweep in the [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) sequence
 is what restores consistency at each accepted boundary. The rule, binding for the periphery ([§9](#9-runtime-periphery-the-data-plane)):
 **external readers (GUI, logging, network output) observe the signal table only at
 step boundaries.** Mid-step contents carry no meaning.
@@ -1329,9 +1331,11 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
   order below the discrete solution, the standard pairing, and the event time can
   only ever be as accurate as the interpolant, so nothing more expensive is worth
   probing.
-- **Probes run the sweep.** Guards read `y`, so evaluating a guard at an interpolated
-  state means writing $\hat{x}(\theta)$ into the state buffer and running the sweep — the same
-  rule as the RHS. One sweep per probe.
+- **Probes run the interior sweep.** Guards read `y`, so evaluating a guard at an interpolated
+  state means writing $\hat{x}(\theta)$ into the state buffer and running the interior sweep — the same
+  rule as the RHS ([§8.5](#85-multi-rate-tick-scheduling)): a probe is a mid-step evaluation, so discrete cells hold
+  their tick values through localization and a guard reading a sampled output sees
+  what the controller is holding. One interior sweep per probe.
 - **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
   acceptable fallback). The observed not-holding/holding bracket *is* an unconditional
   convergence certificate. Newton/AD localization is rejected: guards are guaranteed C⁰, not C¹
@@ -1457,9 +1461,38 @@ generality nothing demonstrated wants.
 run only at its own ticks; its cells hold in between (ZOH, stated in sweep terms). The
 alternative — re-running its stages at every boundary — would let outputs drift
 between ticks as fresh continuous inputs flow in, silently un-sampling a sampled-data
-controller. Implementation consequence, recorded: the boundary sweep is not one fixed
-list — discrete stage entries are gated by tick counters, so different boundaries run
-different subsets of the schedule.
+controller. Delivering that hold takes **two statically distinct sweep variants,
+compiled from one entry list** — discreteness is a build-time fact, so the split is
+static, not a runtime test (row 147):
+
+- The **interior sweep** walks *continuous entries only*. RK stage evaluations
+  ([§8.3](#83-signal-table-consistency-is-a-boundary-property)) and localization guard probes ([§8.4](#84-localization-mechanics)) run this variant, so the ZOH holds
+  mid-step **by construction**: discrete entries are not gated out at runtime, they
+  are absent from the walk at compile time, and the hot path carries no gating test
+  at all. Counter-modulo gating alone cannot deliver it — at divisor 1 (the common
+  $n = K = 1$ configuration) the test admits every discrete entry at every
+  evaluation, so an `h_zu` would re-run against interpolated `u` at each interior
+  stage and the `f` reading its cell would integrate a continuously re-sampled
+  controller: exactly the un-sampling this rule forbids, and invisible — such a run
+  is as type-stable, allocation-free and replayable as the correct one.
+- The **boundary sweep** walks the full list, with discrete entries gated by counter
+  modulo against the boundary's tick index. It is the variant the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) macro-sequence
+  runs, and it is not one fixed list: different boundaries run different subsets of
+  the schedule.
+
+The split applies to **both sweep blocks**: discrete `h_z` entries are absent from the
+interior `h_x` walk exactly as discrete `h_zu` entries are absent from the interior
+`h_xu` walk. The arity distinction that carries it into the phase-body surface —
+zero-arg interior, tick-indexed boundary — is [§12.7](#127-the-compiled-executor)'s.
+
+**The due set is a property of the boundary,** not of the sweep call: computed once
+for the boundary and reused by every re-sweep of its quiescence iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)), a
+due component being at its tick instant for the whole boundary rather than for one
+round of it. At a frame top it is the counter-modulo image of the frame index. At a
+`t*` boundary it is **empty** — the tick counter has not advanced there, no component
+is at a tick instant, and a modulo test against the unadvanced index would wrongly
+re-admit the previous frame's due set. At boundary zero it is **everything**: `t₀` is
+a grid point of every divisor and no earlier tick exists for a ZOH to hold ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)).
 
 **Simultaneous ticks are already well-defined** by settled machinery: all due
 components run their output stages in topological order within the sweep, then all due
@@ -1490,8 +1523,10 @@ decisions made once at the root. Absolute-first declaration was rejected: it wel
 deployment rates into reusable definitions, and replicating relative structure with a
 shared base-period variable does not compose across independently authored assemblies
 (parameter-threading ceremony, cf. [§4.4](#44-function-valued-signals-environment-access)). At build, all scoping compiles away to **one
-absolute tick divisor per discrete component**; the executor gates entries by counter
-modulo. Recorded limitations: a child cannot tick faster than its scope ($K \ge 1$) —
+absolute tick divisor per discrete component**; the boundary sweep gates entries by
+counter modulo against the boundary's tick index (above), the interior sweep having
+no discrete entries to gate. Recorded limitations: a child cannot tick faster than
+its scope ($K \ge 1$) —
 soft, since assembly multipliers are declaration sugar and factors can be refactored
 onto siblings; and no phase offsets in the first cut (no demonstrated use).
 
@@ -1604,7 +1639,8 @@ scratch: predicates holding in the newly applied state fire again at the new
 resolve asymmetrically:
 
 - *Events → ticks: handled by machinery already in place.* Due discrete components'
-  output stages (`h_z`/`h_zu`) are gated *into* the sweep ([§8.5](#85-multi-rate-tick-scheduling)), so every
+  output stages (`h_z`/`h_zu`) are gated *into* the boundary sweep against a due set
+  fixed for the whole iteration ([§8.5](#85-multi-rate-tick-scheduling)), so every
   iteration round refreshes them for free — same `z` (their `g` has not run), post-transition inputs. At
   quiescence, their published outputs reflect the settled boundary instant, which is
   exactly what "sampling at t" should mean for a logically-instantaneous cascade.
@@ -4458,7 +4494,8 @@ would allocate, and [§7.5](#75-allocation-policy-a-scoped-invariant)'s canary r
 so any model inference regression announces itself) would die with the
 invariant. An entry carries what selects code — component type, stage — in
 type parameters, and what is plain data — tick divisor, layout offsets — in
-fields; gating compiles to an integer test inside the specialized body.
+fields; gating compiles to an integer test inside the specialized *boundary*
+body, the interior bodies holding no discrete entries to test ([§8.5](#85-multi-rate-tick-scheduling)).
 
 **Phase bodies are the outer decomposition, and they are semantically
 forced.** The boundary sweep's `h_x` block is order-free by definition (the
@@ -4466,14 +4503,23 @@ no-feedthrough stage reads no `u`); the `h_xu` block, with due discrete
 stages gated in, is the only topologically ordered one; the `f` block — the
 RHS body the stepper calls per stage evaluation — and the `g` block are
 order-free with disjoint writes; guards and handlers are their own small
-callables inside the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) iteration. These bodies run at different times
-and communicate only through the stores and the table, so the seams cost
+callables inside the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) iteration. **Each sweep block compiles in two
+arities off one entry list** ([§8.5](#85-multi-rate-tick-scheduling)'s interior/boundary split): the zero-arg
+`sweep_hx()`/`sweep_hxu()` are the interior variants, over continuous entries
+only — which is what makes `@ballocated(sweep_hxu()) == 0` a well-defined
+measurement *of the interior path*, rather than of whichever tick phase the
+simulation happens to be sitting in — while `sweep_hx(tick)`/`sweep_hxu(tick)`
+are the boundary variants, gating their discrete entries by modulo against the
+passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147,
+amending row 116). These bodies run at different times and communicate only
+through the stores and the table, so the seams cost
 nothing — no values cross them. Two doors this structure opens for free,
 recorded not committed: deterministic parallel evaluation of the order-free
 blocks (disjoint writes, and no floating-point reductions to reorder — [§6.2](#62-aggregation-explicit-summing-junctions)
 made every sum an ordered junction entry), and finer recompilation
 granularity (editing a discrete component invalidates the boundary body, not
-the RHS body).
+the RHS body — literal under the two-arity split, discrete entries existing
+only in the boundary variants).
 
 **Chunking bounds the compile cost.** Within a large block the tuple splits
 into chunks behind non-inlined but statically-typed function barriers.
@@ -4518,9 +4564,9 @@ tuple's type has exactly one consumer: the unrolled walk.
 **The phase bodies are the [§7.5](#75-allocation-policy-a-scoped-invariant) measurement seam.** `phase_bodies(sim)`
 returns the compiled bodies of the nominal activation as named callables
 bound over the simulation's own buffers: the four blocks (`rhs` — the `f`
-block — `sweep_hx`, `sweep_hxu`, and `ticks`, which takes the tick index its
-entries gate on), plus the per-event guards and handlers and the
-per-component `project` callables, keyed by the model's own roster. One
+block — `sweep_hx` and `sweep_hxu`, each in both arities, and `ticks`, which
+takes the tick index its entries gate on), plus the per-event guards and
+handlers and the per-component `project` callables, keyed by the model's own roster. One
 promise, in the diagnostic register ([§13.5](#135-termination-is-a-state-not-an-exception)): **these are the bodies the loop
 runs** — not re-derivations, which is what makes the measurement honest, and
 why each callable carries the real in-loop argument types by construction
@@ -4528,7 +4574,9 @@ why each callable carries the real in-loop argument types by construction
 per-component tests cannot discharge the invariant: they never call the
 executor whose contribution the claim quantifies over). CI is
 warm-then-assert over the roster — one call compiles, then
-`@ballocated(body()) == 0` — at per-body granularity, so a documented [§7.5](#75-allocation-policy-a-scoped-invariant)
+`@ballocated(body()) == 0` — at per-body granularity, each sweep arity asserted
+in its own right (the interior call bare, the boundary call at a due index), so
+a documented [§7.5](#75-allocation-policy-a-scoped-invariant)
 tolerance loosens exactly one assertion; this is the successor of the
 migration suite's `@ballocated f_ode!`/`f_step!`/`f_periodic!` idiom and the
 seam the [§16](#16-open-axes) FlightCore comparison measures through. Publication is not a
@@ -6792,7 +6840,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   accessor of the harness and REPL registers ([§10.6](#106-run-lifecycle-and-partial-advance)).
 - `phase_bodies(sim) → named callables` — the compiled phase bodies of the
   nominal activation, bound over the simulation's own buffers: the four
-  blocks (`rhs`, `sweep_hx`, `sweep_hxu`, `ticks` — the last takes the tick
+  blocks (`rhs`, `sweep_hx`, `sweep_hxu`, `ticks` — the sweeps in both
+  arities, zero-arg interior and tick-indexed boundary; `ticks` takes the tick
   index) plus per-event guards/handlers and per-component `project`, keyed
   by the model's roster. The [§7.5](#75-allocation-policy-a-scoped-invariant) allocation seam: warm, then
   `@ballocated(body()) == 0` per body; diagnostic register, the one promise
@@ -7155,9 +7204,14 @@ wiring edges plus intra-component feedthrough: all stage-1 functions in any
 order, stage 2 in topological order, then `f`. The hot loop runs a flat list of
 `(component, stage)` entries, with zero runtime graph logic ([§5.1](#51-the-scheduling-problem)).
 
-**sweep** — one execution of that schedule against the current state, with due
-discrete stages gated in. Mid-step sweeps are integrator scratch; the boundary
-sweep restores table consistency, and the event phase re-runs whole sweeps
+**sweep** — one execution of that schedule against the current state, in one of
+two statically distinct variants compiled from the same entry list: the
+**interior sweep** walks continuous entries only — what RK stage evaluations and
+localization guard probes run, so discrete cells hold ZOH mid-step by
+construction — and the **boundary sweep** walks the full list, with the
+boundary's due discrete entries gated in by counter modulo. Mid-step sweeps are
+integrator scratch; the boundary sweep restores table consistency, and the event
+phase re-runs whole boundary sweeps, against that boundary's fixed due set,
 until quiescence ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.3](#83-signal-table-consistency-is-a-boundary-property), [§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
 
 ### D.4 Time and events
@@ -7184,8 +7238,11 @@ continuous step and fixed at `Simulation` construction; every discrete
 component's period is an integer multiple of it ([§8.5](#85-multi-rate-tick-scheduling)).
 
 **due** — a discrete component is due at a boundary when its compiled absolute
-divisor admits it; due components' output stages are gated into the sweep and
-their `g` updates run after quiescence ([§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+divisor admits that boundary's tick index; due components' output stages are
+gated into the *boundary* sweep (never the interior one) and their `g` updates
+run after quiescence. The due set is a property of the boundary, fixed for its
+whole event iteration: the modulo image of the frame index at a frame top, empty
+at `t*`, everything at boundary zero ([§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
 
 **edge semantics / holding** — an event fires on a not-holding → holding
 transition of its predicate, never on a bare sign change; the opposite
@@ -7245,8 +7302,8 @@ final bracket, structurally strictly later than `tₙ`. A full boundary runs
 there, but no ticks are due and no staged inputs are drained ([§8.4](#84-localization-mechanics)).
 
 **tick** — an instant at which a discrete component's stages and update run,
-gated by counter modulo against the harmonic grid; different boundaries
-therefore run different subsets of the schedule ([§8.5](#85-multi-rate-tick-scheduling)).
+gated by counter modulo against the harmonic grid inside the boundary sweep;
+different boundaries therefore run different subsets of the schedule ([§8.5](#85-multi-rate-tick-scheduling)).
 
 **tier** — the continuous or discrete side of the hybrid formalism, read off a
 leaf's declaration shape (`DeclarationOnWrongTier` names a violation) ([§11.2](#112-the-declaration-inventory),
@@ -7297,7 +7354,8 @@ the authored value at apply time ([§14.3](#143-resolution-flatten-validate-comp
 
 **measurement seam / phase bodies** — `phase_bodies(sim)` returns the compiled
 bodies of the nominal activation bound over the simulation's own buffers
-(`rhs`, `sweep_hx`, `sweep_hxu`, `ticks`, plus per-event guards and handlers
+(`rhs`, `sweep_hx`, `sweep_hxu` — the sweeps in both arities, zero-arg interior
+and tick-indexed boundary — `ticks`, plus per-event guards and handlers
 and per-component `project`). Its one promise is identity with what the loop
 runs, which is what makes [§7.5](#75-allocation-policy-a-scoped-invariant)'s allocation assertions honest ([§12.7](#127-the-compiled-executor)).
 
