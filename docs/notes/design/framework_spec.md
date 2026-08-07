@@ -5743,12 +5743,29 @@ core (damping loop, small linear solve, convergence test) is ~100 lines —
 the [§8.2](#82-the-stepper-seam) stepper precedent exactly (tiny needed core vs. heavy dependency),
 sharpened by the fact that [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s per-residual physical tolerances are a
 convergence test no external package spells natively — which is precisely
-why the *service*, not the backend, applies it. The backend contract
-is documented and value-passed: given an evaluation function (residual vector
-packed in `tolerances`' field order, optionally with Jacobian), guess and bounds
-packed in `guess`'s field order ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals): the declared side is canonical on
-both ends, and the service has canonicalized before packing), return
-solution, status and counts. The backend sees vectors and never names, so the
+why the *service*, not the backend, applies it. The backend contract is a
+**pinned signature**, value-passed — one required method per backend:
+
+```julia
+solve(backend, eval!, d0, lower, upper, tol) -> (; d, status, nevals, niters)
+```
+
+`eval!(r, J, d)` is in-place and always fills `r`, the residual vector packed
+in `tolerances`' field order. It fills `J` **iff `J !== nothing`**: the
+Jacobian is requested by argument, so a Jacobian-free backend simply always
+passes `nothing` and there is still exactly one evaluation method to
+implement. `d0`, `lower` and `upper` are packed `Vector{Float64}` in `guess`'s
+field order ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals): the declared side is canonical on both ends, and the
+service has canonicalized before packing), with `±Inf` meaning unbounded — a
+backend that ignores bounds ignores two vectors, not a missing argument.
+`tol` is a `Vector{Float64}` in `tolerances`' field order: data the backend
+*may* stop on (that is the service's per-register translation, below) and
+decisive of nothing. Returned: `d`, the solution; `status::Symbol`, from a
+deliberately **open** set, recorded verbatim in the report — the verdict is
+the service's, so a closed enum would buy nothing and would launder foreign
+solvers' vocabularies back into per-backend meaning; and `nevals`/`niters`,
+diagnostic counts. The name `solve` is subject to the [§16](#16-open-axes) naming audit like
+every other API spelling. The backend sees vectors and never names, so the
 solution it returns unpacks by the same order it was given.
 
 **The convergence verdict is the service's, uniformly.** `converged` means
@@ -5763,8 +5780,8 @@ report as diagnostic data and is authoritative over nothing.
 least-squares register the tolerances *are* the stopping criterion: they
 feed the per-residual test directly, LM's damping loop testing exactly what
 the service will re-test. For the derivative-free scalar fallback —
-`NLoptBackend(:LN_BOBYQA)` in a package extension, ignoring the Jacobian,
-today's algorithm one keyword away, with the framework core carrying zero
+`NLoptBackend(:LN_BOBYQA)` in a package extension, passing `nothing` for the
+Jacobian, today's algorithm one keyword away, with the framework core carrying zero
 optimizer dependencies — the service squares *and normalizes*: the objective
 minimized is $\sum_i (r_i/\mathit{tol}_i)^2$ with `stopval = 1`,
 dimensionless where FlightCore's threshold was hand-scaled and absolute
@@ -7016,7 +7033,11 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   time = `capture`'s returned `t` as `t0`; `converged` = the service's
   per-residual box test at the backend's returned point, backend-independent
   and the commit's gate, with the backend's status and counts recorded
-  diagnostically; non-convergence reports, never
+  diagnostically; the backend seam a pinned one-method signature,
+  `solve(backend, eval!, d0, lower, upper, tol) → (; d, status, nevals, niters)`
+  — in-place `eval!(r, J, d)` filling `J` only when it is not `nothing`,
+  packed vectors in the declared orders, `status` an open `Symbol` recorded
+  verbatim; non-convergence reports, never
   throws ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)).
 - `capture(sim) → (condition, t)` — full-store gather including root slots;
   warm restart = capture → tweak → apply ([§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults), [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)).
