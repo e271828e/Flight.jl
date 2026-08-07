@@ -4905,6 +4905,23 @@ comparisons are false — so no declared condition will catch them. A loop-level
 naming the offending component's state block and the boundary. It catches
 diverging models generally, not just post-terminal ones.
 
+*Placement is the whole value.* The sweep is the boundary's **first act** —
+immediately after integrate returns, before `project` and before the boundary
+sweep. Run there, `NonfiniteState` names the component whose own block
+diverged. Run later, the NaN has already propagated: it reaches an innocent
+downstream component through the ordinary signal path and surfaces as that
+component's lookup-table `DomainError` or an `InexactError` in its
+conversion — [§11.4](#114-failure-walkthroughs-the-error-locality-grounding)'s error-locality inversion, designed out of the build
+tier and quietly reintroduced at runtime. One `isfinite` pass over a flat
+buffer is cheap enough that placement, not cost, decides.
+
+*Scope: `ẋ` does not participate.* A nonfinite derivative contaminates its own
+state block's step result within that very step, so the `x` check at the next
+boundary is the same detection with identical component attribution — the
+`ẋ` sweep would report nothing new, one boundary earlier. And `ẋ` buffers are
+integrator scratch: written per stage, meaningful only inside a step, and not
+boundary-consistent in the sense the check is stated over.
+
 **Domain separation.** Device-side user code — loop bodies and mappings run
 on the device task ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)) — fails in the device's own domain, and in
 two classes: a genuine bug takes the per-device crash path (liveness
