@@ -5505,6 +5505,16 @@ parity is exact, not approximate. Piece by piece:
   ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report), [Appendix C](#appendix-c-the-diagnostic-kind-set)) — a handler that fires at commit moves the
   committed stores off the solved point, and saying nothing would be
   warn-but-assign relocated.
+  A commit-fired handler is not the only mover, and the second one is
+  unconditional: boundary zero's *first* act is `project`, so the committed
+  `x` is `project(x*)`, not the solver's `x*` — an attitude quaternion
+  renormalized by a few ulps is the canonical case. Legitimate, wanted, and
+  usually invisible in the residuals; but the point the stores sit at is no
+  longer the point the verdict was read at, and the doctrine is the same for
+  both movers. So is the remedy: the `TrimReport` carries the
+  committed-state residuals beside the solved-point ones, and a converged
+  solve whose committed-state residuals fail the box test raises
+  `TrimCommitResiduals` ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)) — the move made visible rather than silent.
 
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
@@ -5790,15 +5800,28 @@ spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
 **The report, not an exception.** `trim!` returns a structured
 `TrimReport`: the `converged` flag — the service's own box test at the
 returned point, never a backend's opinion — solution NamedTuple
-(guess-shaped — warm-startable), final residuals with tolerances (the very
-numbers the verdict is read off), the backend's returned status together
+(guess-shaped — warm-startable), the **solved-point residuals** with their
+tolerances (the very numbers the verdict is read off, gathered at the
+backend's returned point), the **committed-state residuals** (the same
+residuals re-gathered from the boundary-zero world after the commit — nearly
+free, since that boundary's sweep has already run and the residuals'
+declared reads need only gather from it: the numbers describing the state
+the simulation is actually *in*, which is the point a `capture`-defaulted
+`linearize` reads), the backend's returned status together
 with its iteration/evaluation counts (diagnostic throughout: informative
 about *how* the solve went, decisive about nothing),
 saturated-bounds list, and the commit's fired events (component
 paths and event names, empty when boundary zero ran quiet — [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions); a
 non-empty set also raises `TrimCommitEvents`, [Appendix C](#appendix-c-the-diagnostic-kind-set): the committed
 stores then sit at the post-handler point, not the reported solution, and a
-`capture`-defaulted `linearize` ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) reads that point). Non-convergence never throws — it is an
+`capture`-defaulted `linearize` ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) reads that point).
+The two residual sets are what make the moved point auditable: a converged
+solve whose *committed-state* residuals violate the box test raises
+`TrimCommitResiduals` ([Appendix C](#appendix-c-the-diagnostic-kind-set)), naming the offending residuals with
+their committed values and tolerances — the move (`project`, or a
+commit-fired handler, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) surfaced rather than left silent. The verdict
+itself is not re-litigated: it gated the commit, at the solved point, and
+row 150's numbers stand as reported. Non-convergence never throws — it is an
 expected *outcome* (envelope-sweep data: hitting the infeasible edge is
 information), per [§13](#13-error-discipline)'s exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
@@ -7122,6 +7145,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
+| `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`event_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
 
