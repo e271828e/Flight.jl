@@ -1281,6 +1281,16 @@ a narrow internal interface (the **stepper seam**). Its contract:
   one-step method restarts from a new state for free; multistep methods would need
   history-rebuild machinery after every handler and are excluded.
 
+**The seam is never entered empty.** A model with no continuous state at all is
+legal — nothing in [§11.2](#112-the-declaration-inventory) requires an `x` block of anyone — and the framework
+short-circuits rather than pushing the corner down the seam: with an empty `x`,
+integrate degenerates to advancing `t` to the next boundary, and the stepper is
+simply not called. No backend ever faces `N = 0`, and no backend contract has to
+say what it would do there. This finishes structurally what [§8.1](#81-loop-ownership-the-framework-owns-the-simulation-loop) argues — the
+dummy-`[0.0]` tax it charges to FlightCore is gone at the root, not just the
+buffer but the step over it. Everything else about such a model is ordinary: the
+boundary machinery — sweeps, events, ticks — runs unchanged.
+
 First cut ships **in-house fixed-step RK4 and Heun** over the flat state buffer:
 ~a hundred lines, trivially zero-allocation (auditable for the [§7.5](#75-allocation-policy-a-scoped-invariant) CI invariant),
 trivially `T`-generic — though genericity is not even required of the stepper, since
@@ -4629,7 +4639,14 @@ returns the compiled bodies of the nominal activation as named callables
 bound over the simulation's own buffers: the four blocks (`rhs` — the `f`
 block — `sweep_hx` and `sweep_hxu`, each in both arities, and `ticks`, which
 takes the tick index its entries gate on), plus the per-event guards and
-handlers and the per-component `project` callables, keyed by the model's own roster. One
+handlers and the per-component `project` callables, keyed by the model's own roster.
+The four-body roster is fixed and total: the accessor returns all of it
+always, whatever the model happens to declare. A model with no discrete
+components, no events or no continuous state at all still gets every body;
+the empty ones are legal, compile to no-ops, and their `@ballocated`
+assertion passes vacuously — which is the point, because consumers then
+iterate the roster uniformly, with no existence checks and no per-model
+branching in the measurement code. One
 promise, in the diagnostic register ([§13.5](#135-termination-is-a-state-not-an-exception)): **these are the bodies the loop
 runs** — not re-derivations, which is what makes the measurement honest, and
 why each callable carries the real in-loop argument types by construction
@@ -5831,6 +5848,14 @@ unknown `reads` selector, a
 the offending field with the names or types in hand, collected, mirroring
 linearization's `TapResolution`); a permuted spelling is none of these
 ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)).
+An *empty* one is none of them either: `TrimProblem(guess = (;), …)` is
+legal, not `TrimProblemInvalid`. With zero decision variables the solver is
+bypassed outright — nothing to pack, no seeded activation, no backend call —
+and the service simply evaluates the residuals once at the baseline, the
+ordinary box test deciding `converged` and the commit as usual. The
+degenerate problem is the "is this operating point an equilibrium?" probe:
+evaluate this condition's equations and report, useful in its own right and
+free.
 
 **The AD obligation, scoped.** The default formulation requires `Dual`
 genericity of exactly: the continuous output-stage chains and `f`, plus the
