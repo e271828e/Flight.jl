@@ -603,21 +603,20 @@ the continuous-only variant of [§8.5](#85-multi-rate-tick-scheduling) — discr
 construction, so discrete cells hold across the step).
 
 **Step-boundary semantics.** At each boundary: integrate → project → boundary sweep →
-evaluate **all guards once** against that sweep → for each fired event, in declaration
-order: `handler → project → auto-publish → re-run the component's output stages`.
-Auto-publication is repeated because auto-published cells belong to no stage ([§12.5](#125-the-always-on-conformance-check)):
-the framework rewrites the firing component's auto-published cells from the
-just-latched state stores at their usual stage-1 position. The per-event re-decode
-keeps `y` fully fresh — auto-published ports included — for any subsequent handler of
-the *same* component (sequential composition, no lost updates) and leaves the signal
-table post-transition-consistent for whatever else the boundary does (discrete ticks,
-logging). Events are rare and the re-run touches one component, so the cost is noise.
-Across components, all guards and handlers read the same boundary snapshot (plus their
-own component's refreshed ports); one component's transition reaches others through
-the next sweep (delivered by binding time — handler-phase `u` gathers materialize at
-round start, `y` binds live; mechanism and order in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). Newly-enabled guards fire within the *same* boundary: the
+evaluate **all guards once** against that sweep → fire the eligible events, **at most
+one per component per round** (declaration order picking among a component's
+simultaneously-eligible events), each firing being `handler → project`. The signal
+table is written **only by sweeps**: a transition reaches the table — everyone's ports,
+the firing component's own included — at the next round's re-sweep, and the round that
+detects quiescence leaves the table post-transition-consistent for whatever else the
+boundary does (discrete ticks, logging). Hence the epoch rule: **a handler executes
+against exactly the world its guard fired on** — own `y`, foreign `u`, own `x`/`m`
+alike are the firing round's sweep, so `y = h(x)` holds at every handler entry.
+Same-component sequential composition happens *across* rounds, each later event
+re-decided against the post-transition sweep rather than fired on a stale premise.
+Newly-enabled guards fire within the *same* boundary: the
 sweep → guards → handlers phase iterates to quiescence, with each event firing at
-most once per boundary (settled in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+most once per boundary and each component firing at most once per round (settled in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
 
 **Departure from the orthodox formalism, stated openly.** The textbook form is
 $\dot{x} = f(x, u)$, $y = g(x, u)$; this design's `f` receives the orthodox arguments
@@ -1558,9 +1557,9 @@ absolute rate — it does not exist until composition.
 ### 8.6 Event iteration at boundaries: to quiescence, once per event
 
 Resolves the question deferred in [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries). At each boundary, the event phase **iterates**:
-rounds of *(re-run the boundary sweep → evaluate guards → fire newly-fired events in
-declaration order, each with its per-event re-decode)* until a round fires nothing,
-under the rule that **each declared event fires at most once per boundary**.
+rounds of *(re-run the boundary sweep → evaluate all guards → fire the eligible
+events, at most one per component, each `handler → project`)* until a round fires
+nothing, under the rule that **each declared event fires at most once per boundary**.
 
 **Why iterate.** Under a single pass, a cascade of N logically-simultaneous
 transitions (supervisor FSM → subordinate FSM → …) completes in N steps: latency N·h,
@@ -1574,45 +1573,62 @@ h-dependent — that is the *resolution* at which a physical crossing is noticed
 cascade delay would have been structure the framework inserts between transitions the
 model declares simultaneous.)
 
-**Why a full re-sweep per round.** The per-event re-decode refreshes only the
-transitioning component's own ports; downstream stage-2 chains reading them stay
-stale. A round therefore re-runs the whole gated schedule. Sweeps are microseconds
-and rounds beyond the first require an actual cascade, so the cost is noise.
+**Why a full re-sweep per round.** A transition reaches the signal table *only*
+through a sweep: a handler writes its component's state stores and nothing else, so
+neither the transitioning component's own ports nor the downstream stage-2 chains
+reading them have moved. A round therefore re-runs the whole gated schedule. Sweeps
+are microseconds and rounds beyond the first require an actual cascade, so the cost
+is noise.
 
-**Within-round visibility: round-start `u`, live `y`, order inert.** [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)'s
-cross-component claim — all guards and handlers read the same boundary
-snapshot, plus their own component's refreshed ports — is delivered by
-*binding time*, not by copying. After a round's guards are evaluated, the
-framework materializes the `u` gathers of every fired component **before any
-handler runs** (the executor builds the same args bundle it always builds,
-merely earlier), and the per-event re-decode reuses that same round-start
-`u`. Because cells hold references to immutable values, loading the
-references early *is* the capture — the only mid-round table writers are the
-re-decodes, confined to the firing components' own cells, and the
-pre-materialized bundles are beyond their reach: no shadow table, no
-allocation. `y` stays bound live: it gathers own cells only, disjoint from
-`u`'s foreign set, so a later event of the same component sees its own
-refreshed ports (handler returns are latched per-event, before `project` and
-before the next fired event runs) while foreign transitions stay invisible
-until the next round's re-sweep. `u` binds round-start uniformly — even for
-a port contrived to be wired from the component's own stage-1 output; the
-freshness rule is about `y` only. Consequence: cross-component handler order
-within a round is **semantically unobservable** (bundles carry no foreign
-state, and foreign reads are round-start), so the execution order — executor
-component order, declaration order within a component — is fixed only to
-keep the [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) cursor and the diagnostics stream deterministic, never
-something a trajectory depends on. Rejected: live-table reads under that
-canonical order (deterministic, but model semantics would then depend on the
-executor's schedule order — a rewiring that permutes it silently changes
-trajectories, the same structure-the-framework-inserts class this section
-already rejects); a table copy per firing round (identical semantics, paying
-an allocation the pre-materialization makes unnecessary). The trade,
-recorded openly: a handler cannot opt into seeing a same-round foreign
-transition — same-instant sequential coupling across components is a
+**Within-round visibility: one writer, one epoch.** The signal table has a
+single writer: **sweeps**. A handler writes nothing to it — it returns
+transitions, the framework latches them into the component's state stores,
+and `project` normalizes them; auto-publication is a sweep act like any
+other stage-1 write ([§12.5](#125-the-always-on-conformance-check)). Nothing moves the table mid-round.
+Hence the epoch rule, which is the whole of this section's content:
+**a handler executes against exactly the world its guard fired on** — own
+`y`, foreign `u`, own `x`/`m` are all the firing round's sweep, so
+`y = h(x)` holds at every handler entry, with no bundle straddling two
+epochs. Serialization is what delivers it: a component's state stores are
+written only by its own handlers, and it fires **at most one event per
+round**, so no same-round writer precedes any handler's entry.
+
+A component's other eligible events are not lost, only *blocked*: each is
+re-decided in the next round against the post-transition sweep. Declaration
+order is therefore a **priority with re-decision** rather than a
+simultaneity — an event whose premise the earlier transition falsified
+simply does not fire, which under a within-round sequence it would have done
+on the stale premise. Across components, handler order within a round is
+**semantically unobservable** for the stronger reason that there is no
+delivering mechanism at all: nothing writes the table mid-round, so there is
+nothing for order to observe. The execution order — executor component
+order, declaration order within a component — is fixed only to keep the
+[§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) cursor and the diagnostics stream deterministic, never
+something a trajectory depends on. The natural single-pass executor, building
+each handler's bundle at dispatch from the live table, is exactly correct:
+no pre-materialization, no staging pass, no carrier — no shadow table, no
+allocation, trivially.
+
+The trade, recorded openly: a handler cannot opt into seeing a same-round
+foreign transition — same-instant sequential coupling across components is a
 cascade, one round per link, deterministic; coupling tighter than that
 belongs inside one component, where declaration order gives exact sequencing
-(the synchronous-languages position: a micro-step sees the pre-state,
-effects appear at the next micro-step).
+across rounds (the synchronous-languages position: a micro-step sees the
+pre-state, effects appear at the next micro-step). The cost of serializing
+same-component firings is one extra intra-boundary sweep per event so
+serialized — microseconds, on the rare boundary that fires at all. Rejected
+shapes: the per-event re-decode with a frozen round-start `u` obtained by
+pre-materializing the fired components' gathers (the prior design of record,
+rows 16/100/152 — two freshness classes in one bundle, whose delivery needed
+a two-pass staging structure, buying only same-round multi-handler own-`y`
+freshness that serialization provides free); live-table reads under the
+canonical execution order (deterministic, but model semantics would then
+depend on the executor's schedule order — a rewiring that permutes it
+silently changes trajectories, the same structure-the-framework-inserts
+class this section already rejects); a table copy per firing round
+(identical semantics, paying an allocation for nothing); handlers stripped
+of their own `y` (makes the incoherence unwritable, but keeps a two-epoch
+bundle and the fire-on-falsified-premise hole).
 
 **Why once-per-event rather than a round cap.** Termination becomes structural —
 rounds are bounded by the number of declared events, with no arbitrary K knob — and a
@@ -6720,12 +6736,12 @@ For component authors:
   zero sets every prior to not-holding, so a predicate already holding in
   the authored state fires at `t₀`. The opposite crossing direction is a
   second event with the negated guard.
-- **Handler-phase visibility** ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). Your `u` is the boundary's
-  world, materialized at round start: same-round foreign transitions are
-  invisible and arrive through the next round's re-sweep, one round per
-  causal link. Your `y` is your own fresh decode, and your `x`/`m` reflect
-  earlier events of your own component in declaration order. Coupling
-  tighter than one round belongs inside one component.
+- **Handler-phase visibility** ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). A handler executes
+  against exactly the world its guard fired on: own `y`, foreign `u` and own
+  `x`/`m` are all the firing round's sweep, and a component fires at most one
+  event per round — later own events are re-decided against the next round's
+  sweep, one round per causal link, within and across components alike. The
+  table is written only by sweeps.
 - **Stage totality** ([§12.3](#123-probing-and-input-synthesis); [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor), [§13.5](#135-termination-is-a-state-not-an-exception)). Stage code is total over
   type-valid inputs: the probe evaluates every user function against values
   chosen for their types alone, and a value-level throw is a build failure
