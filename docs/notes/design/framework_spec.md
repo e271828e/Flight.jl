@@ -1620,23 +1620,43 @@ livelock (two FSMs toggling each other) resolves deterministically into "each fi
 once, quiescence, re-fire next boundary," i.e. degrades to boundary granularity instead
 of burning a budget and erroring. The cost: an event legitimately re-enabled within
 the same boundary waits one step — accepted at the same granularity boundary detection accepts
-physical re-crossings, and flagged when it occurs (a runtime warning, [§13.2](#132-diagnostics-structured-values-one-carrier-exception)).
+physical re-crossings, and flagged when it occurs (a runtime warning, `EventDeferred`,
+[§13.2](#132-diagnostics-structured-values-one-carrier-exception); the re-arm edge that triggers it is defined below).
 
 **Guard priors and firing semantics.** "Newly-fired" means precisely this:
 an event fires at a boundary iff its predicate ([§2.1](#21-events-two-detection-policies): the `Bool` form true, or
 `σ ≥ 0`) is observed holding in some iteration round, its **prior** — the
 previous boundary's quiescent sample — was not-holding, and it has not yet
-fired this boundary. The prior lives in **loop state, per event**, updated
-at each boundary's quiescence from the final post-iteration samples. It is
-detection bookkeeping, not model memory — correctly *not* in `z`: not
-captured, not traced, reconstructed deterministically. A predicate that holds
-and *keeps* holding fires once, at the boundary where it first held — sticky
-flags do not re-fire every boundary. **Boundary zero establishes every prior
+fired this boundary. The per-event **loop state** that decides this is three
+registers, and all three are named normatively: the **prior**; a **`fired`
+flag**, the once-per-event rule's register, set when the event fires and
+cleared at the boundary's end; and a within-boundary **`re-arm` flag**, set
+when a round observes the event already fired *and* its guard not-holding.
+The re-arm flag is what makes deferral observable. `EventDeferred`
+([§13.2](#132-diagnostics-structured-values-one-carrier-exception), [Appendix C](#appendix-c-the-diagnostic-kind-set)) emits when a round observes `fired ∧ re-armed ∧
+holding` — a genuine intra-boundary falling-then-rising edge, an event
+legitimately re-enabled within the boundary and held back by the
+once-per-event rule — at most once per event per boundary. The blessed
+sticky case warns nothing: an event that fires and *keeps* holding, with no
+not-holding sample in between, never sets the re-arm flag, so it never emits.
+
+The prior is updated at each boundary's quiescence from the final
+post-iteration samples, **with one exception: a deferred event's prior is
+recorded not-holding** — the intra-boundary re-arm edge survives the
+boundary, so the deferred event genuinely fires at the next one and
+"waits one step" is true by construction. (Under the bare rule the quiescent
+holding sample would swallow the edge: prior holding, so no new firing, and
+the deferral would never resolve.) All three registers are detection
+bookkeeping, not model memory — correctly *not* in `z`: not captured, not
+traced, reconstructed deterministically; the cost is two `Bool`s per event
+beyond the prior. A predicate that holds and *keeps* holding fires once, at
+the boundary where it first held — sticky flags do not re-fire every
+boundary. **Boundary zero establishes every prior
 as not-holding**, so a predicate already holding in the authored state
 fires at `t₀` — [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)'s behavior, derived rather than asserted —
-and a warm restart (`init!` re-runs boundary zero, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) resets the priors from
-scratch: predicates holding in the newly applied state fire again at the new
-`t₀`.
+and a warm restart (`init!` re-runs boundary zero, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) resets all three
+registers from scratch: predicates holding in the newly applied state fire
+again at the new `t₀`.
 
 **Ticks stay outside the iteration, after quiescence.** The two possible couplings
 resolve asymmetrically:
@@ -7411,7 +7431,8 @@ holding = `σ ≥ 0`) ([§2.1](#21-events-two-detection-policies)). Not to be co
 value that sets a build's state ([§D.8](#d8-stopped-sim-services-and-the-condition-algebra)).
 
 **prior** — the per-event stored sample of its predicate at the previous
-boundary's quiescence, held in loop state and never in `z`; "newly fired"
+boundary's quiescence (a deferred event's prior is recorded not-holding, so
+the deferral resolves at the next boundary), held in loop state and never in `z`; "newly fired"
 is defined against it, and boundary zero establishes every prior as
 not-holding ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
 
