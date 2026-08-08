@@ -3473,6 +3473,20 @@ submodule is *not* an alternative — `using Flight.Declarations` would carry
 the identical silent-shadowing semantics, per-name `import` being the only
 extension register the language provides.
 
+**The same trap has a local-scope sibling** (row 164): written inside a `let`,
+a function body or a `@testset`, `h_x(::MyComp, (; x)) = …` does not add a
+method to the global `h_x` — it binds a *new local function* of that name.
+Calls within the block resolve to it and look correct; the generic function the
+build dispatches on never learns of the component, which therefore reads as one
+declaring nothing at all. The shadowing check above cannot reach this case —
+there is no parent-module binding to compare, the shadow being a local binding
+that disappears with its block — so the mitigation is at the other end: **a
+component that declares nothing and defines no stage is rejected at build
+time**, an inert component being unwritable on purpose. That check costs a line
+and catches the misspelled-declaration family with it. Test code is the
+realistic victim (a fixture component defined inside its own `@testset`), and
+the authoring rule is one line: declarations live at module top level.
+
 **The schema-authority principle.** Declarations *define* the model's structure;
 evaluation *checks* conformance against them — never the reverse. The build probes
 user functions with real values (no reliance on compiler inference), compares

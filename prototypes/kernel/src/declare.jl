@@ -1,0 +1,70 @@
+# The declaration layer (§11.1, §11.2): a plain-Julia trait layer. Declarations
+# are ordinary functions of the *instance*, written at concrete `Float64`; the
+# framework's activation walk (§7.2) retypes them. No macros, no stage tags.
+#
+# Increment 2 covers the continuous tier only. Modes, `init_z`, `local_types`,
+# `workspace` and `events` are declaration entries this file deliberately does
+# not have yet.
+
+# --- what an author declares --------------------------------------------------
+
+"""Continuous state, by value; leaves drawn from §7.1's closed vocabulary."""
+init_x(::Any) = NamedTuple()
+
+"""Input faces: name => concrete type."""
+input_types(::Any) = NamedTuple()
+
+"""
+Output ports: name => concrete type. One declaration for both stages — there
+are no stage tags anywhere (§11.2); which stage produces a port is *discovered*
+by the build probe (§12.3), and the declaration is what the probe checks
+against.
+"""
+output_types(::Any) = NamedTuple()
+
+# --- what an author defines (the §5.2 signatures) -----------------------------
+# Every stage takes the component and exactly one NamedTuple bundle of views,
+# destructured by name: `h_xu(c::Plant, (; x, u)) = ...`. The framework's call
+# is one fixed shape; the bundle law (below) decides what the tuple carries.
+#
+# A component defines the stages it needs. `has_stage` is how the build asks,
+# and it is a question about method existence, not a declaration the author
+# repeats — the definition site is the single source of truth.
+
+function h_x end
+function h_xu end
+function f end
+
+has_stage(fn, c) = hasmethod(fn, Tuple{typeof(c),NamedTuple})
+
+# --- the bundle law (§5.2) ----------------------------------------------------
+# A name appears in a component's bundle iff the corresponding store or fact
+# exists for that component. Undeclared stores are *absent*, never
+# `nothing`-filled, so a body destructuring what it does not own fails at the
+# destructuring rather than reading a filler.
+
+"""Bundle field names for `fn` on component `c`, given its discovered stage-1 ports."""
+function bundle_names(fn, c, stage1_ports::Tuple)
+    names = Symbol[]
+    !isempty(init_x(c)) && push!(names, :x)
+    if fn === h_xu || fn === f
+        !isempty(input_types(c)) && push!(names, :u)
+    end
+    if fn === h_xu
+        !isempty(stage1_ports) && push!(names, :y_x)
+    elseif fn === f
+        !isempty(output_types(c)) && push!(names, :y)
+    end
+    push!(names, :t)
+    tuple(names...)
+end
+
+# --- probe values (§12.3) -----------------------------------------------------
+# Root slots are the one terminal with no producer; the build synthesizes their
+# values here. Overridable per type — that is the seam a constrained type uses
+# to state a valid default.
+
+probe_value(::Type{T}) where {T<:Real} = zero(T)
+probe_value(::Type{Bool}) = false
+probe_value(::Type{P}) where {P<:StaticArray} = zero(P)
+probe_value(::Type{P}) where {P} = P()
