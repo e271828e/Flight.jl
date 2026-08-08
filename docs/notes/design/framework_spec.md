@@ -4776,7 +4776,12 @@ through the published framework status ([§9.2](#92-outbound-snapshot-publicatio
 diagnostics and the [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) liveness heartbeats, which ride in the same cells
 — never collected, since there is
 no collection to join. Nothing in row 84's argument applies to it: that decision is
-about what the *build* warns on. The committed runtime warnings, in one place:
+about what the *build* warns on. A *service* warning (`TrimCommitEvents`,
+`TrimCommitResiduals` — [Appendix C](#appendix-c-the-diagnostic-kind-set)) is
+neither stream: a synchronous per-call annotation, emitted once at a
+stopped-sim service call's return beside the value it returns, its payload
+duplicated as plain report fields — no carrier cell, no collection, no rate
+limit to arrange. The committed runtime warnings, in one place:
 
 - **chattering / localization-budget exhaustion** ([§8.4](#84-localization-mechanics)) — a localized event
   whose bracketing budget runs out at a boundary;
@@ -7143,6 +7148,11 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
   source that can repeat within a frame — and where the source itself fires
   once. The
   *build* warning severity exists and its set is currently empty (row 84).
+- **warning (service)** — raised by a stopped-sim service call that
+  *completed*: emitted at the call site through the standard logging backend,
+  beside the returned value, never thrown, part of no collection; no rate
+  limit — each kind fires at most once per call, and its payload is drawn from
+  the report the call returns ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)).
 
 **Declaration and wiring** (Stratum A):
 
