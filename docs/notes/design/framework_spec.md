@@ -2449,7 +2449,7 @@ init!(dev)                                   # its own bracket, pre-spawn (§10.
 task = Threads.@spawn try
     loop(dev, handle)
 catch e
-    report(DeviceCrash, dev, e)              # §10.4(6): sim continues, device absent
+    report!(DeviceCrash, dev, e)             # §10.4(6): sim continues, device absent
 finally
     shutdown!(dev)                           # any exit path: OS resources released
     mark_dead!(...)                          # heartbeat only — claims stay, §9.3
@@ -2509,7 +2509,7 @@ function loop(dev::UDPInput, handle)             # source-driven, data-dependent
             stage!(handle, map_input(datum, binding(handle)))
         catch e
             is_datum_error(dev, e) || rethrow()  # a bug → wrapper → DeviceCrash
-            report(handle, MalformedDatum(e))    # garbage → visible, bounded, alive
+            report!(handle, MalformedDatum(e))   # garbage → visible, bounded, alive
         end
     end
 end
@@ -2662,7 +2662,7 @@ stays pure.
 **Bad datum versus bug: two classes, two fates.** A datum that cannot be
 mapped for environmental reasons — a truncated datagram, malformed JSON, an
 out-of-range field — is tolerated *in the loop body*: catch, stage nothing,
-`report(handle, MalformedDatum(cause))`, continue — bounded by the device's
+`report!(handle, MalformedDatum(cause))`, continue — bounded by the device's
 own diagnostic cell ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)'s ring and suppressed counts, [§13.2](#132-diagnostics-structured-values-one-carrier-exception)'s
 stream), visible next to a live heartbeat. Any other exception propagates,
 and the wrapper turns it into `DeviceCrash` ([§10.4](#104-shutdown-protocol)). The classification is
@@ -2671,7 +2671,7 @@ the author's — only they know their parser — exactly as FlightCore's
 author-owned loop is that no framework per-iteration catch site exists, so
 the framework's contribution is the diagnostic channel, not the catch (a
 marked exception type with no framework consumer would be vestigial and is
-not provided). `report(handle, ...)` writes device-attributed runtime
+not provided). `report!(handle, ...)` writes device-attributed runtime
 warnings into that device's diagnostic cell — the [§13.2](#132-diagnostics-structured-values-one-carrier-exception) stream's
 single-writer entry point ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) — and nothing more; it is not a general
 user-diagnostics channel. Tolerating everything hides bugs as "device
@@ -2780,7 +2780,7 @@ The runtime warning stream ([§13.2](#132-diagnostics-structured-values-one-carr
 a third, and they cross the same task boundaries: they are written by the
 device tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
 at staging ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), `MalformedDatum` from the author's loop body via
-`report(handle, …)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) — and by the loop itself (`ChatteringBudget`,
+`report!(handle, …)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) — and by the loop itself (`ChatteringBudget`,
 `EventDeferred`, `DebtReanchor`), and read by the loop, which folds them into
 the published framework status ([§9.2](#92-outbound-snapshot-publication)) and hence into every snapshot. An
 unspecified structure with those writers is exactly the arbitrary shared
@@ -3093,7 +3093,7 @@ for entry in roster                       # attachment order, calling task
         init!(entry.device)
     catch e
         shutdown!(entry.device)           # release, unconditionally (§9.6)
-        report(DeviceCrash, entry.device, e)
+        report!(DeviceCrash, entry.device, e)
         mark_dead!(entry)                 # from boundary zero; no task is spawned
         entry.should_abort && stop!(control)
     end
@@ -4798,7 +4798,7 @@ limit to arrange. The committed runtime warnings, in one place:
   `EntryTypeMismatch` (a value unconvertible to its
   slot's declared type, rejected at staging for every writer);
 - **a tolerated device-side datum failure** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)):
-  `MalformedDatum` — emitted by the author's loop via `report(handle, …)`
+  `MalformedDatum` — emitted by the author's loop via `report!(handle, …)`
   into the device's own cell ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)), the `InputMappingError` successor;
 - **staging discarded during replay** ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)): `ReplayDiscardedStaging` —
   a live batch found staged while the trace feeds the drain;
@@ -6859,7 +6859,7 @@ For periphery authors and consumers:
   assuming initialization completed. The converse is a burden you do *not*
   carry: `init!` owes no cleanup of its own.
 - **Bad datum vs. bug** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)). Catch what your parser can throw,
-  `report(handle, MalformedDatum(cause))`, stage nothing, continue; let
+  `report!(handle, MalformedDatum(cause))`, stage nothing, continue; let
   everything else propagate — the wrapper makes it `DeviceCrash`.
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
@@ -7004,7 +7004,7 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   try/catch/finally wrapper, voluntary exit = return ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§10.4](#104-shutdown-protocol)).
 - The device handle — one type, capabilities not taxonomy: `running`,
   `latest`, `wait_next_snapshot` ([§10.3](#103-the-next-snapshot-wait)), `stage!`, `binding`, `gather`,
-  `report` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
+  `report!` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
 
 **Condition algebra** ([§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)–[§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
 
@@ -7237,7 +7237,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§10.4](#104-shutdown-protocol) | warning (runtime) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§10.4](#104-shutdown-protocol), [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
-| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
+| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
 | `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | [§7.3](#73-discrete-state-modes-and-workspace) | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§10.4](#104-shutdown-protocol)) | [Appendix B](#appendix-b-api-synopsis-the-entry-points), [§13.5](#135-termination-is-a-state-not-an-exception) | warning (runtime), at run start |
@@ -7660,7 +7660,7 @@ leaf walk, never declared ([§7.2](#72-numeric-genericity-eltype)).
 
 **bad datum** — a datum unmappable for environmental reasons (truncated
 datagram, malformed JSON, out-of-range field): tolerated *in the loop body* —
-catch, stage nothing, `report(handle, MalformedDatum(cause))`, continue —
+catch, stage nothing, `report!(handle, MalformedDatum(cause))`, continue —
 while any other exception propagates and becomes `DeviceCrash`. The
 classification is the device author's ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
 
