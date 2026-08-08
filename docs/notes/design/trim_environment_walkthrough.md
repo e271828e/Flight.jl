@@ -255,6 +255,7 @@ component, handle rebuilt at value level for the condition math.
 
 ```julia
 world = design_world(ac)                  #aircraft + atmosphere + terrain (§14.9)
+sim   = Simulation(world; h = 0.02)
 
 T_sl, p_sl, wind = 288.15, 101325.0, WindVector(-10.0, 0.0, 0.0)
 
@@ -297,7 +298,7 @@ safety argument, and the next section is about what happens when it lapses.
 handle *is* the slot value.
 
 ```julia
-sim = Simulation(ac)          #the `atm`/`trn` faces are unconnected → root slots
+sim = Simulation(ac; h = 0.02)  #the `atm`/`trn` faces are unconnected → root slots
 
 atm = ISAField(; T_sl = 288.15, p_sl = 101325.0, wind = WindVector(-10.0, 0.0, 0.0))
 trn = HorizontalTerrainField(; elevation = 0.0)
@@ -371,7 +372,7 @@ trim!(sim, at("aircraft", cruise); baseline)
 under this formulation.
 
 ```julia
-sim = Simulation(ac)
+sim = Simulation(ac; h = 0.02)
 atm = ISAField(; T_sl = 288.15, p_sl = 101325.0, wind = WindVector(-10.0, 0.0, 0.0))
 baseline = override(ready_for_taxi(ac),
                     condition("atm" => atm, "trn" => HorizontalTerrainField()))

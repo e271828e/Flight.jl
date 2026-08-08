@@ -1,13 +1,13 @@
 # The inbound periphery, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster) (staging, claims, drain), [§9.7](framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract) (GUI write path),
+`framework_spec.md` [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster) (slots, claims, the roster freeze), [§9.4](framework_spec.md#94-inbound-per-device-staging-representation-and-the-drain) (staging and the drain), [§9.7](framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract) (GUI write path),
 [§10.6](framework_spec.md#106-run-lifecycle-and-partial-advance) (harness cell) and decision rows 44, 93, 96, 106, 107. Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
 for the roster freeze (rows 106–107). If this document and the spec ever
 disagree, the spec wins.*
 
-Everything in [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster) answers one question: **how do things outside the loop
+Everything in [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster)–[§9.4](framework_spec.md#94-inbound-per-device-staging-representation-and-the-drain) answers one question: **how do things outside the loop
 feed values into a simulation that owns its data exclusively?** FlightCore's
 answer was a lock around the live model. This design's answer is a small
 pipeline of immutable handoffs, configured entirely while the simulation is
@@ -22,7 +22,7 @@ The root assembly exports input faces ([§11.6](framework_spec.md#116-paths-wiri
 component inside the model produces. Say our aircraft's root exports four:
 
 ```julia
-input_faces(build)  # ("throttle", "elevator", "flaps", "brake") — all Float64 here
+input_faces(world)  # ["throttle", "elevator", "flaps", "brake"] — all Float64 here
 ```
 
 A **root input slot** is the storage backing one such face: a source cell of
@@ -63,11 +63,15 @@ end
 
 **Attaching** (`attach!(sim, device, binding)`) is: validate the binding's
 face names against the root contract (unknown face → `AttachUnknownFace`),
-register the **claims**, compile the staging shape ([§3](#3-batches-and-staging-cells-how-a-write-is-proposed)), add the entry.
+admit through [§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s four-part ordered check — **identity** (`AlreadyAttached`),
+**affinity** (at most one `needs_calling_task` holder, `CallerTaskConflict`),
+**interactivity** (at most one `interactive` device, `InteractiveConflict`),
+**claims** (face exclusivity, `ClaimConflict`) — ordered so a failing later
+check always names two *distinct* devices, then compile the staging shape
+([§3](#3-batches-and-staging-cells-how-a-write-is-proposed)), add the entry.
 A **claim** is exclusive ownership of a face: one writer per slot at any
-time, a second claimant is a `ClaimConflict` at attach, and `detach!`
-releases the claims. The claim set is derived from the **binding** — the
-declarative table that also drives the mapping:
+time, and `detach!` releases the claims. The claim set is derived from the
+**binding** — the declarative table that also drives the mapping:
 
 ```julia
 joystick_binding = (stick_y  = (face = "elevator", expo = 0.6),
@@ -137,7 +141,7 @@ last, [§5](#5-registers-modes-of-use-not-more-machinery)):
 for entry in roster                                    # frame top, loop task
     batch = @atomicswap entry.cell.pending = nothing   # indivisible take
     batch === nothing && continue                      # nothing staged: fine
-    scatter!(slots, entry, batch)                      # no checks — see §6.2
+    scatter!(slots, entry, batch)                      # no checks — see §6
     record_in_trace!(frame, entry.id, batch)
 end
 ```
@@ -175,7 +179,12 @@ register). There are two:
   complement of the union of all claims, computed rather than staked, and
   every bit as static for the run as a claim set. It has its own compiled
   positional shape and scatter, over the unclaimed set, recompiled at each
-  stopped-sim `attach!`/`detach!`.
+  stopped-sim `attach!`/`detach!`. Residency here is declared, not granted: a
+  binding elects the derived surface with the `interactive(b)` marker
+  ([§9.6](framework_spec.md#96-devices-one-authoring-contract-no-taxonomy)), and at most one interactive device sits on a roster beside the
+  always-present harness cell — a second candidate is an `InteractiveConflict`
+  at attach ([§9.3](framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster)). A second interactive front end therefore has a
+  spelling; the shipped GUI is just the resident.
 
 The one sequencing rule: among interactive writers the harness cell drains
 **last** — the explicit hand of code beats a widget interaction. Sequencing

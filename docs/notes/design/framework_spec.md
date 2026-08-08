@@ -4031,7 +4031,7 @@ function passthrough(asm, child_path::AbstractString;
     names = input_faces(child)            # keys(input_types(c)) for a leaf,
                                           # input entries of exports(c) for an assembly
     isempty(except) || isempty(only) ||
-        declaration_error(child_path, :both_selectors)  # exclusivity enforced, not documented
+        declaration_error(child_path, :both_given)  # exclusivity enforced, not documented
     unknown = setdiff((except..., only...), names)
     isempty(unknown) || declaration_error(child_path, unknown, names)  # list in hand
     wanted = isempty(only) ? setdiff(names, except) : only
@@ -4509,7 +4509,7 @@ return type is a build error naming both admissible forms. So is a localized eve
 whose guard probes `Bool`: localization brackets a root, and the `Bool` form
 offers none — return `x.ω - eng.ω_idle`, not `x.ω > eng.ω_idle`.
 
-**Failure payload:** component path, stage, field-level diff (missing /
+**Failure payload:** component path, function, field-level diff (missing /
 unexpected / per-field expected-vs-observed), simulation time. Deliberately
 absent: the source branch (values carry no provenance; the diff identifies
 it). The always-on input trace makes every such failure **reproducible by

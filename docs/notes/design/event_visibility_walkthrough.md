@@ -123,7 +123,7 @@ boundary.
 2. *Guards, all at once.* Both hold, both priors were not-holding → fired
    set `{Battery.ovld, Avionics.cap}`. They belong to different components,
    so both fire this round.
-3. *Battery fires* (canonical order — see [§4.4](framework_spec.md#44-function-valued-signals-environment-access); it doesn't matter): the
+3. *Battery fires* (canonical order — see [§4](#4-why-cross-component-order-dissolves); it doesn't matter): the
    handler returns `(; m = (; m..., tripped = true))`, the framework latches
    it into the mode store, `project` normalizes. The table is untouched:
    `battery/bus_voltage` still holds `24.0`.
