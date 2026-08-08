@@ -33,7 +33,8 @@ include(joinpath(@__DIR__, "slugs.jl"))
 const DESIGN = normpath(joinpath(@__DIR__, ".."))
 const SPEC = "framework_spec.md"
 
-const COMPANIONS = ["event_visibility_walkthrough.md",
+const COMPANIONS = ["framework_extensions.md",
+                    "event_visibility_walkthrough.md",
                     "inbound_periphery_walkthrough.md",
                     "trim_environment_walkthrough.md"]
 
