@@ -6723,11 +6723,23 @@ Still to be settled:
   renames (`faces` → `claims`, `selectors` → `reads`, row 146) then applied the
   convention's **semantic axis** — right register, wrong noun: both were correctly
   bare-noun declarations but named their *content*, where the `exports` precedent
-  names the *consequence* the declaration has. Two residuals are flagged
-  for the sweep and deliberately not renamed now: `input_faces`/`output_faces`
+  names the *consequence* the declaration has. Five items are flagged
+  for the sweep and deliberately not settled now: `input_faces`/`output_faces`
   (noun accessors punning on the `_types` declarations, mitigated by being
-  framework-facing) and `workspace` (a declaration whose bare noun reads as an
-  accessor — every candidate replacement is clunkier, so lean keep). The
+  framework-facing); `workspace` (a declaration whose bare noun reads as an
+  accessor — every candidate replacement is clunkier, so lean keep); `loop`
+  ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s device contract — a
+  mutating task body spelled as a bare noun among its verb-`!` siblings
+  `init!`/`shutdown!`/`unblock!`, with `run!` taken and the "loop body" prose
+  entrenched, so it needs the audit's whole-surface view); the bare-noun
+  accessor family `trace(sim)`, `latest(sim)`, `binding(handle)`,
+  `phase_bodies(sim)` (value selectors outside register (2)'s `get_` rule,
+  `trace` the sharpest — the constructor kill-switch `trace = false` and the
+  post-run accessor `trace(sim)` are one name in two senses, the overload
+  pattern rows 122/144 retire); and whether register (1) needs an explicit
+  exemption for markers (`interactive`) and predicate traits
+  (`needs_calling_task`) — boundary cases drawn after row 144's list was fixed,
+  not defects. The
   **[§12.7](#127-the-compiled-executor) executor compile-cost re-measurement** runs on
   the real vehicle skeleton — early, before the executor's shape hardens.
   Residuals: the `q_sf` home ([§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load) — aircraft design,
