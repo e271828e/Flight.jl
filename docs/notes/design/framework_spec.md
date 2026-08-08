@@ -4570,6 +4570,22 @@ type parameters, and what is plain data — tick divisor, layout offsets — in
 fields; gating compiles to an integer test inside the specialized *boundary*
 body, the interior bodies holding no discrete entries to test ([§8.5](#85-multi-rate-tick-scheduling)).
 
+**Cells are stored per element type, not per cell.** The signal table is one
+contiguous buffer per element type — [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s construction pointed at signals
+rather than state — and a cell address is a build-time offset into it, carried
+in an entry *field* with the port type as the address's own parameter; gathers
+reconstruct and scatters flatten through the same leaf walk, so the closed
+vocabulary earns its keep twice. This is the entry rule above paying rent: two
+instances of one component type then differ only in field values, share an
+entry type, and compile to **one** body — where a store enumerating every cell
+in its own type, addressed by index in the type domain, compiles one body per
+instance and grows the store type with the model. Measured rather than argued
+(row 162, `prototypes/cellstore_bench`): at 400 identical instances the two
+representations cost 1.1 s and 56 s of cold compile at equal zero allocation,
+and on the 8-partial `Dual` activation the per-element-type store's compile
+cost *saturates* — bounded by chunk-type count, not model size — where the
+type-domain one keeps climbing.
+
 **Phase bodies are the outer decomposition, and they are semantically
 forced.** The boundary sweep's `h_x` block is order-free by definition (the
 no-feedthrough stage reads no `u`); the `h_xu` block, with due discrete
