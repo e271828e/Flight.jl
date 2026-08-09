@@ -1,8 +1,9 @@
 module Sim
 
 using Reexport, StructArrays
-using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProblem, ODEIntegrator
-using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt, init as init_integrator
+using OrdinaryDiffEqCore: OrdinaryDiffEqAlgorithm, ODEIntegrator
+using SciMLBase: SciMLBase, ODEProblem
+using SciMLBase: step!, reinit!, add_tstop!, get_proposed_dt, init as init_integrator
 using OrdinaryDiffEqLowOrderRK: RK4, Heun
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 using RecursiveArrayTools: VectorOfArray
@@ -351,11 +352,11 @@ function get_next_periodic_tstop(integrator)
 end
 
 
-####################### OrdinaryDiffEqCore extensions ##############################
+####################### SciMLBase extensions ###################################
 
-OrdinaryDiffEqCore.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
+SciMLBase.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
-OrdinaryDiffEqCore.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
+SciMLBase.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
 function init!(sim::Simulation, init_args...; init_kwargs...)
 
@@ -375,9 +376,9 @@ function init!(sim::Simulation, init_args...; init_kwargs...)
     #initialize the integrator with the Model's initial x. within the
     #integrator's reinit! f_cb_save and f_ode_wrapper! are called, in that order
     if has_x(mdl)
-        OrdinaryDiffEqCore.reinit!(integrator, mdl.x)
+        SciMLBase.reinit!(integrator, mdl.x)
     else
-        OrdinaryDiffEqCore.reinit!(integrator)
+        SciMLBase.reinit!(integrator)
     end
 
     return nothing
