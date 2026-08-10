@@ -861,6 +861,31 @@ hierarchy rules; [§6.2](#62-aggregation-explicit-summing-junctions) gives the a
   in the path-resolution primitive itself (`resolve`, [§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)), which walks
   declared field types alongside instances.
 - Paths are validated at build time; renames break loudly.
+- **Two clauses type-check a wire** ([§11.2](#112-the-declaration-inventory)). The **nominal bound check** is the
+  standing rule, stated over declaration evaluations: the producer's declaration
+  at `Float64` must be `<:` the consumer's entry at `Float64` — one uniform rule,
+  degenerating to exact equality for a concrete entry, violated as
+  `WireTypeMismatch`. Beside it, and **for a continuous consumer only**, the
+  **walk-compatibility clause**: a walking producer leaf (the producer declared
+  `T` there) requires a `T` entry, while a pinned producer leaf satisfies either,
+  frozen values embedding upward under any activation. Both sides are declaration
+  functions of `T`, so the clause is decided in Stratum A by evaluating them at a
+  marker scalar — declaration reading, no user stage code ([§12.1](#121-three-strata)) — and a
+  violation is `WalkingFaceAtFrozenEntry`, naming both endpoints, the leaf and
+  both declared leaf types, with both remedies in the message: declare the entry
+  `T` if the consumer promotes, or feed it from a non-walking source if the freeze
+  is genuine. **The tier scope is load-bearing, not tidiness.** A discrete consumer
+  takes the bound check alone, because its stages read exclusively at real ticks
+  in the nominal world — a `Dual`-carrying cell exists only inside activations the
+  discrete tier never runs in ([§12.4](#124-activations-executable-sets-laziness-caching)) — so a continuous producer feeding a
+  discrete consumer is unconditionally legal; unscoped, the clause would reject
+  every sensor → controller wire in the design. The clause is also what gives the
+  two contract sides their **failure asymmetry**: the input-side forgotten-`T` —
+  the habitual `Float64` written at an entry whose consumer really promotes —
+  fails at the *first nominal build*, at the wire, with both endpoints named,
+  because an input has a build-time counterparty; the output side has none, so its
+  forgotten-`T` lurks (loudly, never silently) until the first `Dual` activation
+  ([§11.2](#112-the-declaration-inventory)).
 - Fan-out is free (one producer, many consumers). The converse is strict: every
   input port takes **exactly one** connection, no exceptions (aggregation is
   junctions, [§6.2](#62-aggregation-explicit-summing-junctions)). The rule spans levels: an input fed both inside a sub-assembly
@@ -897,17 +922,18 @@ identity-element opt-outs. Every input port takes exactly one connection, everyw
 ```julia
 struct SumJunction{W, N} end        #type constructor, arity; library-provided
 
-input_types(::SumJunction{W, N}) where {W, N} =
-    NamedTuple{ntuple(i -> Symbol(:in, i), N)}(ntuple(_ -> W{Float64}, N))
+input_types(::SumJunction{W, N}, ::Type{T}) where {W, N, T <: Real} =
+    NamedTuple{ntuple(i -> Symbol(:in, i), N)}(ntuple(_ -> W{T}, N))
 output_types(::SumJunction{W, N}, ::Type{T}) where {W, N, T <: Real} = (; Σ = W{T})
 h_xu(::SumJunction, (; u)) = (; Σ = +(u...))
 ```
 
 (The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`;
-UnionAlls are legal type parameters — so `input_types` derives its entries from it
-at the `Float64` nominal face, while `output_types`, being a continuous
-producer's, applies it to the activation scalar and so re-types the output cell
-per activation ([§11.2](#112-the-declaration-inventory)). This is the same
+UnionAlls are legal type parameters — so both contracts derive their entries from
+it by applying it to the activation scalar: the junction is a continuous leaf, so
+its `input_types` entries are the tolerant `W{T}` a promoting consumer writes
+(walking, frozen and root-slot contributors all admissible behind them) while
+`output_types` re-types the output cell per activation ([§11.2](#112-the-declaration-inventory)). This is the same
 arity-via-computed-contracts pattern [§13.7](#137-tooling-consequences-provenance-and-the-component-library) commits to for `Or{N}`.)
 
 Wired at an ownership boundary, the junction is ordinary structure — with
@@ -938,7 +964,7 @@ connections(::Systems) = (
   (float non-associativity) — deterministic per configuration and under author
   control, which is strictly more explicit than a framework-canonical order.
 - For the handful of real sites, a **named site-specific junction**
-  (`input_types(::VehicleWrenchSum) = (aero = …, ldg = …, pwp = …)`) documents the
+  (`input_types(::VehicleWrenchSum, ::Type{T}) where {T <: Real} = (aero = …, ldg = …, pwp = …)`) documents the
   contributor set better than generated slots, at the price of hard-coding it into a
   type; the generic positional form remains the tool for configuration-variable
   sites. Both are plain components; the framework is not involved.
@@ -996,7 +1022,7 @@ and identity-element opt-outs — and it was abandoned (rows 7 and 37): the use-
 census never grew beyond the three Newton–Euler aggregations in one library
 assembly; the mandatory typed declarations of [§11](#11-the-declaration-layer-components-and-assemblies) make junction mistakes loud,
 dissolving the original "positional ceremony" objection; and `Reduce` was the
-declaration vocabulary's last remaining wrapper — killing it leaves `input_types()` as bare
+declaration vocabulary's last remaining wrapper — killing it leaves `input_types` as bare
 types with zero framework vocabulary and retires the canonical-fold and
 identity-element rules wholesale.
 
@@ -1176,7 +1202,7 @@ live example pattern).
   allocation**: the well-known method *is*
   the allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
   c.n, c.n), x̂ = Vector{T}(undef, c.n))` on the continuous tier, plain
-  `workspace(::C)` on the discrete (the `output_types` tier split) — called
+  `workspace(::C)` on the discrete (the contract declarations' tier split) — called
   once per activation and once per scratch-store set ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)), sizes from the
   instance, eltypes from the activation. The `T`-signature was never in doubt
   here — `workspace` is the by-allocation register, so the method is an
@@ -3583,7 +3609,7 @@ execution, conformance by comparison.
 declarations — `input_types`, `output_types`, `events`, and the
 shapes of `init_x`/`init_m`/`init_z` — must be determined by the component's
 **type**, its type parameters included, and never by its field *values*. The
-value-discarding signature (`input_types(::Engine)`) is the visible form of the
+value-discarding signature (`input_types(::Engine, ::Type{T})`) is the visible form of the
 rule, and the idiom for a contract that genuinely varies is the type parameter,
 not the field: `SumJunction{Wrench, 3}` ([§6.2](#62-aggregation-explicit-summing-junctions)), `Or{N}` ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)) — arity is spelled
 in the type, at the price [§6.2](#62-aggregation-explicit-summing-junctions) states openly. The reason is [§12.7](#127-the-compiled-executor)'s entry typing: a
@@ -3613,9 +3639,9 @@ end
 init_x(::Engine) = (ω = 0.0,)
 init_m(::Engine) = (phase = off,)                    # off | starting | running
 
-#input contract: bare NamedTuple of types at their Float64 faces
-input_types(::Engine) = (throttle = Float64, starter = Bool,
-                         fuel_available = Bool, M_load = Float64)
+#input contract: continuous tier ⇒ the T-form; each entry states what may arrive
+input_types(::Engine, ::Type{T}) where {T <: Real} =
+    (throttle = T, starter = Bool, fuel_available = Bool, M_load = T)
 
 #output contract = the public interface (§11.3); continuous tier ⇒ the T-form, participation per leaf
 output_types(::Engine, ::Type{T}) where {T <: Real} = (M_shaft = T, P = T, ω = T)
@@ -3679,55 +3705,105 @@ The inventory, and where each schema fact gets its authority:
   signature would record no choice its author could make, and partials enter
   through per-invocation seeding, never through initialization; a *by-type*
   declaration is a function of the activation scalar, which is why
-  `output_types` takes it on the continuous tier; a *by-allocation* declaration
+  `input_types` and `output_types` both take it on the continuous tier; a *by-allocation* declaration
   takes the scalar too, `workspace(c, T)` being the standing precedent (row 77).
   The criterion, not uniformity, is the rule: a `T` in a signature means a choice
   was made there.
 
-#### `input_types(::C)`
+#### `input_types(::C, ::Type{T})` — continuous; `input_types(::C)` — discrete
 
-- **`input_types(::C)`**: a bare `NamedTuple` of types — zero framework vocabulary, no
-  wrapper types (the last candidate, `Reduce`, died with reduce-ports, [§6.2](#62-aggregation-explicit-summing-junctions)). Entries
-  are **face constraints, not cell types**: each states a bound on the
-  producer's *nominal* face, checked at wiring time as `producer_face <: entry` —
-  one uniform rule, which for a concrete entry degenerates to exact equality,
-  concrete types being final. Abstract entries state **structural
-  substitutability** — several concrete producer types admissible behind one
-  stable face, [§4.4](#44-function-valued-signals-environment-access)'s field handles being the demonstrated client
-  (`terrain = AbstractTerrainField`). They are never needed for eltype
-  genericity: an eltype-generic producer's nominal face is concrete by
-  construction, so `SVector{3, Float64}` wires to it as-is. (Names-only
-  contracts were rejected — they lose the wiring-time type error and standalone
-  checkability.) Inputs are the component's *requirements*: [§6.1](#61-connections-and-hierarchy)'s
+- **`input_types`**: a bare `NamedTuple` of types — zero framework vocabulary, no
+  wrapper types (the last candidate, `Reduce`, died with reduce-ports, [§6.2](#62-aggregation-explicit-summing-junctions)). On
+  **continuous consumers the two-argument form is mandated**, on **discrete
+  consumers the plain one**: the same tier mandate `output_types` carries, class
+  read off declaration shape and the form fixed by the class ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)), either
+  violation `TierSignatureMismatch`. Entries remain **face bounds, not cell
+  types**, and the reading is **permissive** (row 167): an entry states, per leaf,
+  what the consumer *allows* to arrive there.
+  - **`T`, alone or as a type parameter** (`SVector{3, T}`, `RQuat{T}`) — the leaf
+    is **tolerant**: the activation scalar and a frozen `Float64` are both lawful
+    arrivals, so a walking producer, a frozen discrete producer and a root slot
+    are all admissible behind it and substitution stays intact. This is what a
+    promoting consumer writes, and it is the overwhelmingly common case.
+  - **`Float64`** — the leaf **demands frozen**: this input must never carry
+    partials. That is the **FFI door** — a component whose internals cannot
+    propagate `Dual`s (an opaque wrapper, a C table, a hand-rolled solver)
+    declares it, its AD-incompatibility becomes schema-visible instead of
+    folklore, and the failure moves from a `MethodError` inside user math at the
+    first `Dual` probe to a named wiring error at build ([§6.1](#61-connections-and-hierarchy)).
+  - **`Int`/`Bool`/enum leaves and abstract reference-typed entries** as they
+    always were. Abstract entries state **structural substitutability** — several
+    concrete producer types admissible behind one stable face, [§4.4](#44-function-valued-signals-environment-access)'s field
+    handles being the demonstrated client (`terrain = AbstractTerrainField`) — and
+    are spelled without `T`, being references rather than numbers. They are still
+    never the tool for eltype genericity: that is exactly what a `T` entry is, a
+    promoting consumer writing `SVector{3, T}` rather than an abstract bound.
+
+  (Names-only contracts were rejected — they lose the wiring-time type error and
+  standalone checkability.) Inputs are the component's *requirements*: [§6.1](#61-connections-and-hierarchy)'s
   unconnected-input error, over-wiring detection and did-you-mean typo messages
-  are only definable against them. Because entries are bounds, nothing is ever
-  "overwritten": cell types are single-sourced from the producer side per
-  activation ([§12.1](#121-three-strata)), and a `Dual`-carrying cell behind a `Float64` entry is
-  the design working, not a promise broken. The code-level complement is the
-  **genericity obligation** — whatever scalars the wiring delivers, the
-  consumer's math promotes — checked by the `Dual` probe, never declared:
-  **declarations record choices; obligations are checked.** A per-leaf
-  genericity marking would be a constant function across components — zero
-  information (killing the envelope reading of symmetric `T`; the *predictive*
-  reading is impossible outright: an input's activation type depends on
-  who feeds it — a continuous producer delivers `Dual` under a `Dual`
-  activation, a gated-off discrete producer `Float64` — so a symmetric
-  declaration would force the consumer to state its producer's tier and break
-  substitution behind the same face). **Root slots are the one place an entry
-  types a cell**: produced by no component, a slot has only the consumer
-  declaration to take a type from, and only a *tight* bound determines one — a
-  face surfacing as a root slot must resolve to a concrete declaration (staging
-  cells, the trace header and `probe_value` all need it; abstract-at-root is a
-  build error, and `AbstractAtRoot` names the remedy with the face: wire a
-  concrete producer — in a test rig, a stub child, [§13.7](#137-tooling-consequences-provenance-and-the-component-library)). Under fan-out the slot type is the unique concrete declaration
-  among its consumers — two different concrete declarations remain an error —
-  and abstract co-consumers are checked against it.
+  are only definable against them.
+
+  **Two clauses check a wire** ([§6.1](#61-connections-and-hierarchy)). The **nominal bound check** is unchanged in
+  force, now stated over evaluations: the producer's declaration at `Float64` must
+  be `<:` the entry at `Float64` — one uniform rule, degenerating to exact
+  equality for a concrete entry, concrete types being final. Beside it sits the
+  **tier-scoped walk-compatibility clause**: for a *continuous* consumer, a
+  walking producer leaf (the producer declared `T` there) requires a `T` entry,
+  while a pinned producer leaf satisfies either, frozen values embedding upward.
+  Both sides are declaration functions of `T`, so the clause is decidable in
+  Stratum A by evaluating them at a marker scalar — no user stage code runs
+  ([§12.1](#121-three-strata)) — and a violation is `WalkingFaceAtFrozenEntry`. **Discrete consumers
+  take the bound check only**, and that scope is load-bearing rather than tidy: a
+  discrete stage reads exclusively at real ticks in the nominal world, a
+  `Dual`-carrying cell existing only inside activations discrete stages never run
+  in ([§12.4](#124-activations-executable-sets-laziness-caching)), so continuous → discrete wires are unconditionally legal — unscoped,
+  the clause would reject the entire sensor → controller pattern.
+
+  Because entries are bounds, nothing is ever "overwritten": cell types are
+  single-sourced from the producer side per activation ([§12.1](#121-three-strata)), and a
+  `Dual`-carrying cell behind a `T` entry is the design working, not a promise
+  broken. The code-level complement is the **genericity obligation** — whatever
+  scalars the wiring delivers, the consumer's math promotes — still checked by the
+  `Dual` probe and never declared, now **scoped to the `T`-entries**: a
+  `Float64`-entry input imposes no such obligation, that being its point. So
+  **declarations record choices; obligations are checked** — the `T` entry records
+  the tolerance choice, the probe checks the promotion.
+
+  **The two readings that stay rejected, and the one that escapes them** (rows 33,
+  167). The *predictive* reading — the entry saying what *will* arrive — is
+  impossible outright: an input's activation type depends on who feeds it (a
+  continuous producer delivers `Dual` under a `Dual` activation, a gated-off
+  discrete producer `Float64`), so a predictive declaration would force the
+  consumer to state its producer's tier and break substitution behind the same
+  face. The *envelope* reading — the entry as a promise to promote — is a
+  universal obligation every component owes anyway, hence a constant function
+  across components and zero information. The permissive reading is neither: it
+  predicts nothing, and it is not constant, pinned entries being rare but real.
+  That third reading is what the original adjudication never had on the table, and
+  it is what makes the `T` carry information here.
+
+  **Root slots are the one place an entry types a cell**: produced by no
+  component, a slot has only the consumer declaration to take a type from. The
+  **slot type** is the entry evaluated at `Float64`, and only a *tight* bound
+  determines one — a face surfacing as a root slot must resolve to a concrete
+  declaration (staging cells, the trace header and `probe_value` all need it;
+  abstract-at-root is a build error, and `AbstractAtRoot` names the remedy with
+  the face: wire a concrete producer — in a test rig, a stub child, [§13.7](#137-tooling-consequences-provenance-and-the-component-library)). Under
+  fan-out the slot type is the unique concrete declaration among its consumers —
+  two different concrete declarations remain an error — and abstract co-consumers
+  are checked against it. The **slot cells** at an activation follow it by
+  evaluating that same entry at the activation's `T`, which makes **seedability
+  schema-visible**: a `T`-entry slot is a lawful linearization `B`-matrix tap, and
+  a `Float64`-entry slot is *declaredly* unseedable ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)).
 
 #### `output_types(::C, ::Type{T})` — continuous; `output_types(::C)` — discrete
 
 - **`output_types`**: the public port contract, declared **by type** — same
-  species as `input_types`, and the one contract whose signature carries the
-  activation scalar. On **continuous producers the two-argument form is
+  species as `input_types`, and carrying the activation scalar in its signature on
+  the same terms, but read **literally** where the input side is read permissively:
+  an entry states what the cell *carries*, not what it tolerates. On
+  **continuous producers the two-argument form is
   mandated**: `output_types(::Engine, ::Type{T}) where {T <: Real} =
   (M_shaft = T, P = T, ω = T)`. On **discrete producers the plain form is
   mandated**, and it *is* the wholesale pinning of the discrete exemption
@@ -4065,12 +4141,14 @@ rather than a silence that fails later and elsewhere.
 Reading which declarations exist is reading declarations — the same move as
 [§11.3](#113-visibility-the-contract-is-the-interface)'s visibility-by-declaration-site, not [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s banned
 inference-by-evaluation. Class also **mandates the shape of the contract
-signatures** rather than merely being read from them (row 166): a continuous
-leaf's `output_types` must take the two-argument form
-`output_types(::C, ::Type{T}) where {T <: Real}`, a discrete leaf's the plain
+signatures** rather than merely being read from them (rows 166, 167): **both**
+contract declarations follow the tier — a continuous leaf's `input_types` and
+`output_types` must take the two-argument form
+`input_types(::C, ::Type{T}) where {T <: Real}`,
+`output_types(::C, ::Type{T}) where {T <: Real}`, a discrete leaf's both the plain
 one-argument form, and either violation — a continuous declaration missing the
 `T`-form, a discrete declaration carrying one — is `TierSignatureMismatch`
-([Appendix C](#appendix-c-the-diagnostic-kind-set)), reported with the component path, the declaration, the tier its
+([Appendix C](#appendix-c-the-diagnostic-kind-set)), reported with the component path, the declaration at fault, the tier its
 other declarations announce and the form found versus the form mandated. The
 check is Stratum A and collected: declaration shape is read, nothing is
 evaluated. So the tier fact is spelled in the signature *and* fixed by the
@@ -4213,7 +4291,7 @@ function passthrough(asm, child_path::AbstractString;
                      except::Tuple = (), only::Tuple = ())  # mutually exclusive
 
     child = resolve(asm, child_path)      # getfield walk along "/" segments
-    names = input_faces(child)            # keys(input_types(c)) for a leaf,
+    names = input_faces(child)            # the leaf's input_types keys,
                                           # input entries of exports(c) for an assembly
     isempty(except) || isempty(only) ||
         declaration_error(child_path, :both_given)  # exclusivity enforced, not documented
@@ -4367,8 +4445,14 @@ organized as three strata:
   `output_types`, `init_*` values, `events`), bottom-up face
   derivation, then global wiring resolution to absolute leaf terminals:
   one-writer-per-input, typo did-you-mean against the destination's input
-  list, the wiring bound check at nominal faces (`producer_face <: entry`,
-  [§11.2](#112-the-declaration-inventory) — equality the concrete degenerate; abstract-at-root detected here),
+  list, the two wiring type clauses ([§6.1](#61-connections-and-hierarchy), [§11.2](#112-the-declaration-inventory)) — the **bound check** at
+  nominal faces (the producer's declaration at `Float64` `<:` the entry at
+  `Float64`, equality the concrete degenerate; abstract-at-root detected here)
+  and, for continuous consumers, the **walk-compatibility clause**, decided by
+  evaluating both declarations at a marker scalar and comparing per leaf
+  (`WalkingFaceAtFrozenEntry`) — which stays inside this stratum's charter
+  because both sides are declaration functions of `T`: declarations are
+  evaluated, no user stage code runs —
   the whole-tree obligation
   check, root slots falling out as the root's exported input faces, and [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s
   closed leaf vocabulary checked on every `init_x` (the walk in [§11.2](#112-the-declaration-inventory) rests on
@@ -4482,7 +4566,8 @@ names the face and the type, and asks for one of the two fixes ("no
 `probe_value` for `Ranged{Float64, -1, 1}` at face `pilot.elevator_axis` —
 define `probe_value(::Type{Ranged{Float64, -1, 1}})` or a zero-argument
 constructor"). Synthesis never meets an abstract type:
-root slots are concrete by [§11.2](#112-the-declaration-inventory)'s tight-bound rule, and abstract entries only
+root slots are concrete by [§11.2](#112-the-declaration-inventory)'s tight-bound rule (the slot type is the consuming
+entry evaluated at `Float64`), and abstract entries only
 occur on component-fed inputs, which the probe sources from upstream products.
 Physically silly values are acceptable by
 construction: the probe checks types, and return types that depend on input
@@ -4547,7 +4632,9 @@ An **activation at `T`** re-runs Stratum C with a different scalar:
 producer-fed cells re-typed by *evaluating* the producing component's output
 declaration at `T` ([§11.2](#112-the-declaration-inventory) — a continuous producer's two-argument
 declaration called at the scalar, a discrete producer's plain declaration
-pinning), root-slot cells by the leaf walk over the consumer declaration and the
+pinning), root-slot cells by *evaluating* the consuming `input_types` entry at
+`T` ([§11.2](#112-the-declaration-inventory)'s permissive entries — a `T` entry follows the activation, a
+`Float64` entry stays frozen) and the
 state type by the walk over `init_x`'s, table and
 state buffers re-laid-out, workspace allocators re-invoked at `T` (re-invoked,
 not introduced — the first invocation precedes the Stratum B probes,
@@ -5108,8 +5195,8 @@ The [§11.8](#118-computed-exports-and-generic-boundaries) sketch's primitives, 
       `ReadBindingUnresolved` with did-you-mean.
   Which register a client resolves under is internal framework fact, never
   user-facing API — the same status as [§14.4](#144-two-application-registers-over-one-plan)'s two `apply!` registers.
-- `input_faces(c)` / `output_faces(c) → Vector{String}` — the keys of
-  `input_types(c)` (stringified) for a leaf; the input/output entries of
+- `input_faces(c)` / `output_faces(c) → Vector{String}` — the stringified keys of
+  a leaf's `input_types` (the key set is `T`-independent); the input/output entries of
   `exports(c)` for an assembly. Declaration order is preserved: deterministic
   printouts, stable diagnostics.
 - `resolve_terminal(asm, path) → (component, name)` — splits a terminal
@@ -6285,12 +6372,17 @@ entry (chunked internally). Value parts give `ẋ₀`, `y₀`; partials give
 `A`, `B`, `C`, `D` simultaneously, exact to machine precision — replacing
 four `FiniteDiff` jacobians, their step-size heuristics and ~4n perturbed
 evaluations. Unseeded states sit constant at the operating point, and so do
-unseeded slots (root-slot cells follow the activation scalar via [§11.2](#112-the-declaration-inventory)'s
-leaf walk over their concrete declarations; the condition apply embeds
+unseeded slots (a root-slot cell follows the activation scalar by *evaluating*
+its consuming `input_types` entry at that scalar, [§11.2](#112-the-declaration-inventory); the condition apply embeds
 their `Float64` values as zero-partial constants); the discrete tier is
 frozen with zero partials — precisely "linearize with `z` held" ([§11.2](#112-the-declaration-inventory)).
-Differentiation participation is a per-invocation *seeding* fact, never a
-typing fact — one register for `x` and slots alike.
+Differentiation participation is a per-invocation *seeding* fact for every
+slot the schema leaves seedable — one register for `x` and slots alike — with
+one declared exception now visible in the schema: a slot whose entry is
+declared `Float64` is **declaredly unseedable**, its cell frozen at every
+activation, so selecting it as a `B`-matrix tap is rejected at tap resolution
+with the offending entry in hand rather than silently yielding a zero column
+(row 167).
 
 **A pure query, and the shape of `capture`.** Linearization is the first
 service with no commit and no boundary zero: scratch buffers only, nothing
@@ -6353,21 +6445,26 @@ linearization of the full loop (digital design on the exact discretized
 plant instead of continuous linearization + Tustin).
 
 **Delivered, and what is still only recorded: declarative non-participation.**
-The output half of this door is **built** (row 166): a continuous producer's
-declaration is per-leaf, so "this port is frozen under differentiation" has a
-spelling — declare the leaf `Float64` and strip with `ForwardDiff.value` inside
-the stage ([§11.2](#112-the-declaration-inventory), [§12.5](#125-the-always-on-conformance-check)). An opaque wrapper (an FMU, a C aerodynamic table)
-and a deliberately severed coupling can therefore both say so in the schema
-instead of showing up in Jacobians as unexplained zero rows, and the
-conformance check holds them to it at every activation. What remains recorded
-only is the *tooling* built on that visibility, plus the slot side: pinned-face
-validation by the tap declaration (selecting a declared-frozen output =
-warning), a feedthrough-graph lint (a frozen output fed by participating inputs
-names the severed coupling), and forbid-seeding slot markers rejected at tap
-resolution — the last of which stays speculative for its original reason, an
-unseeded slot already *being* a held parameter, so the marking would be pure
-protection rather than semantics. Additive when a consumer shows up, no flag
-day; until then the declared pin and the visible zero row suffice.
+**Both halves of this door are now built.** The output half (row 166): a
+continuous producer's declaration is per-leaf, so "this port is frozen under
+differentiation" has a spelling — declare the leaf `Float64` and strip with
+`ForwardDiff.value` inside the stage ([§11.2](#112-the-declaration-inventory), [§12.5](#125-the-always-on-conformance-check)). An opaque wrapper (an FMU,
+a C aerodynamic table) and a deliberately severed coupling can therefore both
+say so in the schema instead of showing up in Jacobians as unexplained zero
+rows, and the conformance check holds them to it at every activation. The input
+half (row 167): a consumer's entries are per-leaf too, so a `Float64` entry
+declares "never hand me partials" — the AD-incompatible component's own
+statement, enforced at the wire ([§6.1](#61-connections-and-hierarchy)) — and, at a root slot, *is* the
+forbid-seeding marker this section once recorded as speculative. The marker
+therefore exists, and it carries semantics rather than mere protection: it types
+the slot cell at every activation — so an unseeded slot is a *choice* where a
+`Float64`-entry slot is a *declaration* — and tap resolution rejects the latter
+with the offending entry in hand instead of returning a silent zero column. What
+stays recorded is only the remaining **tooling** over that visibility:
+pinned-face validation by the tap declaration (selecting a declared-frozen
+output = warning) and a feedthrough-graph lint (a frozen output fed by
+participating inputs names the severed coupling). Additive when a consumer shows
+up, no flag day; until then the declared pins and the visible zero rows suffice.
 
 ---
 
@@ -6815,9 +6912,9 @@ struct IMUIntegrals <: AbstractComponent
 end
 init_x(::IMUIntegrals) = (Θ = zeros(SVector{3}), q = SVector{4}(1.0, 0, 0, 0),
                           Υ = zeros(SVector{3}), V = zeros(SVector{3}))
-input_types(::IMUIntegrals) = (q_eb = RQuat{Float64}, r_eb_e = SVector{3,Float64},
-                          ω_eb_b = SVector{3,Float64}, a_ib_b = SVector{3,Float64},
-                          α_ib_b = SVector{3,Float64})
+input_types(::IMUIntegrals, ::Type{T}) where {T <: Real} =
+    (q_eb = RQuat{T}, r_eb_e = SVector{3,T},
+     ω_eb_b = SVector{3,T}, a_ib_b = SVector{3,T}, α_ib_b = SVector{3,T})
 output_types(::IMUIntegrals, ::Type{T}) where {T <: Real} =
     (Θ = SVector{3,T}, q = SVector{4,T},                        # auto-published state
      Υ = SVector{3,T}, V = SVector{3,T},
@@ -6833,8 +6930,8 @@ project(imu::IMUIntegrals, x) = (; x..., q = normalize(x.q))   # SVector normali
 struct IMUSampler <: AbstractComponent end
 init_z(::IMUSampler) = (Θ = zeros(SVector{3}), q = SVector{4}(1.0, 0, 0, 0),
                         Υ = zeros(SVector{3}), V = zeros(SVector{3}))
-input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = SVector{4,Float64},
-                         Υ = SVector{3,Float64}, V = SVector{3,Float64})
+input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = SVector{4,Float64},  # discrete class: plain
+                         Υ = SVector{3,Float64}, V = SVector{3,Float64})       # form, bound check only
 output_types(::IMUSampler) = (sample = IMUSample,)   # discrete class: cells pin (frozen-exact)
 
 function h_zu(s::IMUSampler, (; z, u, Δt))
@@ -7182,7 +7279,7 @@ lifecycle:
 **Authoring** — what a component or assembly defines ([§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)–[§11.7](#117-rate-scopes)):
 
 - Continuous leaf: `init_x`/`init_m` (by value), `workspace(::C, ::Type{T})`
-  (by allocation), `input_types` and
+  (by allocation), `input_types(::C, ::Type{T})` and
   `output_types(::C, ::Type{T})` (by type),
   `events` — stages `h_x`, `h_xu`, `f`, guard/handler pairs
   (`Event(guard, handler; localize)`), `project`.
@@ -7461,6 +7558,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1](#61-connections-and-hierarchy), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w2 | build (collected) |
 | `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / export entry) | [§6.1](#61-connections-and-hierarchy), [§11.8](#118-computed-exports-and-generic-boundaries) | build (collected) |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1](#61-connections-and-hierarchy), [§11.2](#112-the-declaration-inventory), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w4 | build (collected) |
+| `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1](#61-connections-and-hierarchy), [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | [§6.1](#61-connections-and-hierarchy), [§13.3](#133-build-primitives-resolve-and-the-face-list-accessors) | build (collected) |
 | `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, [§13.7](#137-tooling-consequences-provenance-and-the-component-library)) | [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations | [§11.2](#112-the-declaration-inventory) | build (collected) |
@@ -7472,7 +7570,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `ClassMixed` | component path, the `connections` declaration and the offending leaf declarations | [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
 | `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
-| `TierSignatureMismatch` | component path, the declaration (`output_types`), the leaf's tier, the signature form found versus the form mandated (two-argument `(::C, ::Type{T})` on the continuous tier, plain `(::C)` on the discrete) | [§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
+| `TierSignatureMismatch` | component path, the declaration at fault (`input_types` or `output_types`), the leaf's tier, the signature form found versus the form mandated (two-argument `(::C, ::Type{T})` on the continuous tier, plain `(::C)` on the discrete) | [§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
 | `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | [§11.6](#116-paths-wiring-and-exports) | build (collected) |
 | `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | [§11.6](#116-paths-wiring-and-exports) | build (collected) |
 | `FaceDirectionConflict` | assembly path, face name, its internal endpoints, derived directions | [§11.6](#116-paths-wiring-and-exports) | build (collected) |
@@ -7587,9 +7685,12 @@ components, contributing them as children path-named `"field/1"` or
 `project`; any facet may be empty, so a state-free instance is an FSM ([§3.1](#31-continuous-component-the-hybrid-primitive)).
 
 **contract** — a component's declared interface: `input_types` (its
-requirements) and `output_types` (its public ports). Declared in
+requirements, read permissively — what each entry *allows* to arrive) and
+`output_types` (its public ports, read literally — what each cell *carries*).
+Both take the two-argument `T`-form on the continuous tier and the plain form on
+the discrete one. Declared in
 `output_types` = public, returned in `w` = private by construction, returned in
-`y` and declared nowhere = build error ([§11.3](#113-visibility-the-contract-is-the-interface)).
+`y` and declared nowhere = build error ([§11.2](#112-the-declaration-inventory), [§11.3](#113-visibility-the-contract-is-the-interface)).
 
 **declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_m`/`init_z`, `workspace`,
@@ -7879,7 +7980,8 @@ localized*.
 
 **activation** — a re-run of Stratum C at a given scalar type `T`: cells
 re-typed (producer-fed ones by evaluating the producer's output declaration at
-`T`, root slots and the state type by the leaf walk), buffers re-laid-out,
+`T`, root slots by evaluating the consuming `input_types` entry at `T`, the
+state type by the leaf walk), buffers re-laid-out,
 workspace allocators re-invoked, probe chain re-run. Structure and schedule are `T`-independent;
 non-nominal activations are lazy, with an opt-in exhaustive set for CI ([§12.4](#124-activations-executable-sets-laziness-caching)).
 
@@ -7911,11 +8013,12 @@ plain data in fields ([§12.7](#127-the-compiled-executor)).
 
 **leaf walk** — the framework's derivation of per-activation types from a
 declared nominal type: real leaves and `Real` type parameters follow the
-activation scalar, everything else pins. It survives on the **state** side (the
-`init_x`-derived type; `init_m`/`init_z` pin wholesale) and on root-slot cells;
-**output cells are not walked** — they come from evaluating the producer's
-`output_types` at the activation scalar, participation authored per leaf (row
-166) ([§11.2](#112-the-declaration-inventory); applied in [§12.1](#121-three-strata)'s
+activation scalar, everything else pins. It survives on the **state** side alone
+(the `init_x`-derived type; `init_m`/`init_z` pin wholesale). **Cells are not
+walked**: an output cell comes from evaluating the producer's `output_types` at
+the activation scalar (row 166) and a root-slot cell from evaluating the
+consuming `input_types` entry at it (row 167), participation and tolerance
+authored per leaf in both ([§11.2](#112-the-declaration-inventory); applied in [§12.1](#121-three-strata)'s
 Stratum C).
 
 **lens (`Getter`)** — the compiled navigation step of a condition entry: its
@@ -7963,8 +8066,9 @@ produced any error-severity diagnostic throws before the next begins ([§12.1](#
 **walked / pinned / exempt** — the eltype-genericity classes: walked
 payload/value types follow the activation scalar, pinned parameters and
 definitions stay `Float64`, and the discrete side is exempt. Enforced by the
-leaf walk on the state side and stated per leaf in a continuous producer's
-output declaration on the cell side ([§7.2](#72-numeric-genericity-eltype), [§11.2](#112-the-declaration-inventory)).
+leaf walk on the state side and stated per leaf in a continuous leaf's contract
+declarations on the cell side — `output_types` for what a producer's cells
+carry, `input_types` for what a consumer's entries tolerate ([§7.2](#72-numeric-genericity-eltype), [§11.2](#112-the-declaration-inventory)).
 
 ### D.6 Runtime periphery
 
