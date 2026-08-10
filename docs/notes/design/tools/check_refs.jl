@@ -35,7 +35,9 @@ const COMPANIONS = ["framework_decisions.md",
                     "framework_extensions.md",
                     "event_visibility_walkthrough.md",
                     "inbound_periphery_walkthrough.md",
-                    "trim_environment_walkthrough.md"]
+                    "trim_environment_walkthrough.md",
+                    "frozen_discrete_walkthrough.md",
+                    "draft_amendments_2026-08-10.md"]
 
 # The companions that cite their own numbered sections (see the advisory above).
 const SELF_CITING = ["event_visibility_walkthrough.md",
