@@ -3797,6 +3797,25 @@ The inventory, and where each schema fact gets its authority:
   schema-visible**: a `T`-entry slot is a lawful linearization `B`-matrix tap, and
   a `Float64`-entry slot is *declaredly* unseedable ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)).
 
+  **Fan-out combines tolerance by a meet, not by agreement** (row 168). Two
+  consumers of one slot may agree at nominal and still differ in tolerance —
+  `SVector{3, T}` and `SVector{3, Float64}` both evaluate to
+  `SVector{3, Float64}`, so the slot *type* is unambiguous while the entries
+  disagree about partials. That mixture is a legitimate model rather than a
+  mistake: a command consumed by a promoting aerodynamics leaf and by an
+  AD-opaque table is the FFI door in use, and the only remedies an error could
+  offer are duplicating the slot or lying in a declaration. The slot therefore
+  takes the **meet** — pinned at every activation if *any* consumer's entry
+  pins, following the scalar only when every consumer tolerates. The direction
+  is forced by embedding: a pinned slot cell feeds a `T` entry lawfully (frozen
+  values embed upward as zero-partial constants, [§12.5](#125-the-always-on-conformance-check)), whereas a
+  `Dual`-carrying cell arriving at a `Float64` entry is precisely what that
+  entry forbids — so the meet is the only assignment satisfying every consumer
+  at once, the mirror of [§6.1](#61-connections-and-hierarchy)'s walk-compatibility clause on the producer side.
+  What the mixture costs is stated where it is paid: such a slot is unseedable,
+  and a tap selecting it is rejected naming the *pinning consumer* rather than
+  the face alone ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)).
+
 #### `output_types(::C, ::Type{T})` — continuous; `output_types(::C)` — discrete
 
 - **`output_types`**: the public port contract, declared **by type** — same
@@ -6382,7 +6401,11 @@ one declared exception now visible in the schema: a slot whose entry is
 declared `Float64` is **declaredly unseedable**, its cell frozen at every
 activation, so selecting it as a `B`-matrix tap is rejected at tap resolution
 with the offending entry in hand rather than silently yielding a zero column
-(row 167).
+(row 167). Under fan-out the rejection names the **pinning consumer**, not
+the face alone: a slot is unseedable whenever any one of its consumers demands
+frozen ([§11.2](#112-the-declaration-inventory)'s meet, row 168), and the author's next move — promote that leaf
+to a tolerant entry, or route the tap around it — depends on knowing which leaf
+froze the slot.
 
 **A pure query, and the shape of `capture`.** Linearization is the first
 service with no commit and no boundary zero: scratch buffers only, nothing
@@ -7561,7 +7584,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1](#61-connections-and-hierarchy), [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | [§6.1](#61-connections-and-hierarchy), [§13.3](#133-build-primitives-resolve-and-the-face-list-accessors) | build (collected) |
 | `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, [§13.7](#137-tooling-consequences-provenance-and-the-component-library)) | [§11.2](#112-the-declaration-inventory) | build (collected) |
-| `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations | [§11.2](#112-the-declaration-inventory) | build (collected) |
+| `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — [§11.2](#112-the-declaration-inventory)'s meet) | [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | [§7.1](#71-continuous-state-structured-immutable-flat-backing), [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `StoreWithoutUpdate` | component path, store (`x`/`z`), the missing function (`f`/`g`); shadowing note when the parent module defines its own `f`/`g` ([§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)) | [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | [§11.2](#112-the-declaration-inventory) | build (collected) |
@@ -7612,7 +7635,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2](#142-fragment-composition-locality-without-schema) | service (collected) |
 | `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | [§14.2](#142-fragment-composition-locality-without-schema) | service |
 | `UninitializedSlots` | every uncovered root face, in declaration order | [§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator) | service (collected), pre-write |
-| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
+| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates; for a declaredly-unseedable slot, the pinning consumer's path and its `input_types` entry | [§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
