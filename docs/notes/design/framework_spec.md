@@ -331,8 +331,9 @@ no wire, log or panel sees it; the scheduler does (the feedthrough graph and
 stage membership change, [§12.1](#121-three-strata)).
 
 **Visibility.** Which ports exist at all is a declaration-layer decision: the output
-contract *is* the public interface, and stage-function results outside it are private
-intermediates declared via `local_types` — non-connectable, presentation-filtered, see [§11.3](#113-visibility-the-contract-is-the-interface). (A presentational
+contract *is* the public interface, and stage-function results outside it never enter the
+table at all — they ride the stage's `w` return down to the component's own later
+functions, private by construction, see [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§11.3](#113-visibility-the-contract-is-the-interface). (A presentational
 *unlisted* flag — skipped in logs and GUI but still connectable — was rejected: it
 pretends privacy without enforcing it, and its motivating case, RNG state feeding the
 component's own update, dissolves entirely once the update function reads `z`
@@ -345,7 +346,8 @@ directly. Row 16.)
   reader — the next stage, `f`/`g`, guards, wired consumers, snapshot capture —
   gathers views from cells. The component's aggregate `y` is the merge of its
   stage products (`merge(y_x, y_xu)`; `merge(y_z, y_zu)` on the discrete tier) —
-  declared ports and `local_types` cells alike, since both are stage products —
+  declared ports only, a stage's private intermediates riding its `w` return rather
+  than the table ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) —
   *semantically* but virtual *physically*: reconstructed per call from cells (field
   loads, register-level, zero cost for isbits), never stored as an object. Name
   collisions across a component's stages are a build error.
@@ -451,17 +453,19 @@ in the design:
 ```julia
 # continuous component — maximal legal view set of each bundle in comments
 y_x      = h_x(comp, args)          # x, m, t [, ws] — no-feedthrough stage
-y_xu     = h_xu(comp, args)         # x, m, u, y_x, t [, ws]
-ẋ        = f(comp, args)            # x, m, y, u, t [, ws]
+y_xu     = h_xu(comp, args)         # x, m, u, y_x, w, t [, ws]
+ẋ        = f(comp, args)            # x, m, y, u, w, t [, ws]
 
 # discrete component
 y_z      = h_z(comp, args)          # z, t, Δt [, ws]
-y_zu     = h_zu(comp, args)         # z, u, y_z, t, Δt [, ws]
-z⁺       = g(comp, args)            # z, y, u, t, Δt [, ws]
+y_zu     = h_zu(comp, args)         # z, u, y_z, w, t, Δt [, ws]
+z⁺       = g(comp, args)            # z, y, u, w, t, Δt [, ws]
+
+# every output stage returns y or (y, w) — the return and one-hop laws below
 
 # event system (continuous side only) — same fresh table, same state views:
-σ        = guard(comp, args)        # x, m, y, u, t [, ws] — Bool or scalar sign value (§2.1)
-(; x, m) = handler(comp, args)      # x, m, y, u, t [, ws] — keys by the return law below (§12.5)
+σ        = guard(comp, args)        # x, m, y, u, w, t [, ws] — Bool or scalar sign value (§2.1)
+(; x, m) = handler(comp, args)      # x, m, y, u, w, t [, ws] — keys by the return law below (§12.5)
 x⁺       = project(comp, x)         # manifold projection; positional (below)
 ```
 
@@ -484,8 +488,9 @@ out, nothing to select.
 corresponding store or fact exists for that component**: `x`/`m`/`z`/`ws` iff
 declared (`init_x`, `init_m`, `init_z`, `workspace`), `u` iff the function family
 may see inputs **and** the component declares `input_types`, `y` iff the
-component produces any table cell at all (`output_types` ∪ `local_types` ∪
-auto-published), `y_x`/`y_z` iff stage-1 ports exist, `t` always, `Δt` on the
+component produces any table cell at all (`output_types` ∪ auto-published),
+`y_x`/`y_z` iff stage-1 ports exist, `w` iff the stage that hands it down
+returned one (the one-hop law below), `t` always, `Δt` on the
 discrete tier only. Undeclared stores are *absent*, never `nothing`-filled:
 destructuring a field that is not a thing for you fails at the probe inside the
 [§13.2](#132-diagnostics-structured-values-one-carrier-exception) framing diagnostic, with did-you-mean against the legal field set ("`f`
@@ -506,6 +511,42 @@ destructuring narrows further to actual reads — a three-level funnel (stage
 name ⊇ bundle ⊇ reads) worth teaching once, because a stateless component
 legitimately writes `h_xu` while owning neither `x` nor `m`.
 
+**The stage return law.** An output stage returns either its port NamedTuple
+alone, `y`, or the pair `(y, w)`. `y` scatters into the component's declared
+cells as always; `w` is a NamedTuple of **private intermediates** —
+`isbits` leaves, no cell, no name in any contract, nothing to wire, list or
+filter ([§11.3](#113-visibility-the-contract-is-the-interface)). A `nothing` in either slot is a probe error: the pair is a
+`Tuple{NamedTuple, NamedTuple}` and padding forms do not exist, for the reason
+the handler return law gives below. An empty `y = (;)` *is* legal, so the
+**port-less stage** — one whose entire product is `w` — falls out of the
+general law instead of needing a rule of its own: stages are discovered by
+method existence and stage membership is a partition of the declared ports
+that may perfectly well be empty. What is not legal is a stage that produces
+neither ports nor `w`: a bare `(;)` computes nothing any consumer can read, and
+is a `DeadStage` build error at the probe ([§12.3](#123-probing-and-input-synthesis)) — [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s
+inert-component check in the stage register.
+
+**The one-hop law.** `w` travels exactly one hop, to the next function that
+could want it, and no further. `h_x`'s `w` flows to `h_xu` if the component
+defines one, and otherwise to the downstream set — `f`, guards and handlers;
+`h_xu`'s `w` flows to the downstream set. The discrete tier mirrors it exactly
+(`h_z` → `h_zu` → `g`), and that is the last time it is said. **Nothing flows
+implicitly past its hop**: forwarding a stage-1 intermediate through stage 2 is
+an explicit re-return, `(y, (; w..., extra))`, which costs a line and says in
+the source that the value crosses — the alternative, a silent pass-through on a
+bare `y`, would be the design's one invisible dataflow. Presence in a bundle
+follows the producing stage's return under the bundle law: a bare-`y` producer
+hands down no `w` key at all, so a consumer destructuring one meets the [§13.2](#132-diagnostics-structured-values-one-carrier-exception)
+framing diagnostic naming its legal field set, exactly as for an undeclared
+store. `w` is never persisted: the executor hands it down as an ordinary SSA
+value **inside one fused pass** — a step fuses the sweep with `f`, an event
+round fuses the sweep with its guards and fired handlers ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)) — so freshness
+is a property of the construction rather than a rule anyone can violate, and
+round fusion is thereby a design constraint on the executor, not an
+optimization it may decline ([§12.7](#127-the-compiled-executor)). `w`'s types are probe-observed and its
+conformance regime is [§11.3](#113-visibility-the-contract-is-the-interface)'s; the handler return law below is untouched by
+any of this — handlers *receive* `w` and return stores.
+
 **The handler return law.** The same rule governs the return side. A handler
 returns a NamedTuple carrying the stores it writes: a key is present **iff**
 the corresponding store exists on the component **and** the handler updates
@@ -523,8 +564,9 @@ directions ([§12.5](#125-the-always-on-conformance-check)).
 
 The views themselves are unchanged in meaning: own state (`x`, `m` from the
 flat buffer and mode stores; `z` from its store), own published signals (`y`,
-gathered from own table cells — `local_types` cells included alongside declared
-ports, locals existing precisely for this own-later-consumption read, [§11.2](#112-the-declaration-inventory)),
+gathered from own table cells — the declared ports, [§11.2](#112-the-declaration-inventory)), own private
+intermediates (`w`, handed down by the producing stage rather than gathered from
+anywhere — the one bundle field with no home at all),
 inputs (`u`, gathered from foreign cells
 through the wiring's name binding), the clock (`t`, and `Δt` — see [§8.5](#85-multi-rate-tick-scheduling)), and
 scratch (`ws`, [§7.3](#73-discrete-state-modes-and-workspace)). The signal table holds only *produced* signals, never
@@ -562,15 +604,23 @@ and the step-size disambiguation).
   cannot see: its bundle carries no `u`, so "no feedthrough" is unfalsifiable,
   and that structural guarantee is what its ports contribute to the schedule
   (they break would-be loops). It exists when the component has state-derived
-  ports or shared state-derived intermediates for stage 2; otherwise it is
-  simply absent. **A declared output that matches a state, mode or `z` field by
+  ports, or shared state-derived intermediates to hand down its `w` return
+  ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)); otherwise it is
+  simply absent — and a stage that would produce neither is the `DeadStage`
+  error, an empty stage being unwritable on purpose. Guidance rather than law:
+  when the component also defines `h_xu`, a `w`-only `h_x` earns nothing — fold
+  the intermediates into `h_xu`, which runs exactly once per sweep just as `h_x`
+  does. The port-less `h_x` earns its keep where there is no `h_xu` at all,
+  its no-`u` bundle being the honest spelling of "these intermediates do not
+  depend on inputs". **A declared output that matches a state, mode or `z` field by
   name and type, and that no stage produces, is auto-published** by the framework
   from the state stores at stage-1 position ([§11.3](#113-visibility-the-contract-is-the-interface)) — on the discrete tier the
   match is against `init_z` and the publication position is `h_z` — publication driven by the
   public contract, rather than the blanket identity publication of state that
   row 16 rejected.
 - **`h_xu`/`h_zu` receives all wired inputs plus `y_x`/`y_z`** — its own
-  stage-1 results, so shared intermediates are computed once, not re-derived —
+  stage-1 ports, and with them stage 1's `w`, so shared intermediates are
+  computed once, not re-derived, whether or not they are interface —
   plus the state views; conservatively, every stage-2 output is presumed
   dependent on every wired input.
 - **`f` and `g` run after the sweep**, when the full signal table — including the
@@ -678,7 +728,9 @@ tracer labels **artificial**. Two remedies, in this order:
   producing stage, one consumer): **one struct-valued bundle port** — a
   `StrutGeometry`-shaped value — not N loose ports. The bundle type is then contract,
   a real cost but a bounded and honest one. No visibility register is added for the
-  orphaned intermediates: rows 34 and 55 (`unlisted`, `Private(T)`) stay closed.
+  orphaned intermediates: rows 34 and 55 (`unlisted`, `Private(T)`) stay closed, and
+  the `w` channel ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) is no exit either — it hands values between one
+  component's own functions, and there is nothing for a wire to carry.
 
 The build diagnostic offers both exits explicitly ("cycle through `systems/aero` is
 artificial at port level — split the component, or narrow the neighbor's contract",
@@ -1920,9 +1972,12 @@ takes at frame top ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)). 
 status referencing an accumulator its writers are still filling would be a
 snapshot whose contents change after publication.
 
-The captured table includes the component-local cells (`local_types`, [§11.3](#113-visibility-the-contract-is-the-interface)) — the copy is
-mechanical, and they serve the author's own debug panels; presentation layers (log
-export, GUI listings) filter to the public contract by default. **It also includes
+The captured table is the whole table — declared ports and auto-published fields,
+every one of them public ([§11.3](#113-visibility-the-contract-is-the-interface)), so no presentation layer has anything to
+filter. Private intermediates are not in it, never having been cells at all
+([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)); the inspection path for one is **promotion to a declared output** — a line
+in `output_types` and the value appears in the snapshot, the log, the GUI and the
+wiring alike, its visibility an authored fact like every other. **It also includes
 the root slots** ([§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)): slots are source cells of the
 table, not state stores, so they ride along — and this is load-bearing, not
 incidental: the [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract) peek's else-snapshot fallback is what an idle live widget
@@ -2024,17 +2079,18 @@ which is also what defines the hint when `t_end = Inf`.
 
 **Output-device bindings are snapshot bindings.** An output device (telemetry, the XPlane visualizer, disk
 streaming) consumes snapshots via [§10.3](#103-the-next-snapshot-wait) and addresses what it reads with
-[§14.4](#144-two-application-registers-over-one-plan)'s selectors — any cell, the diagnostic register admitting `get_local`
-entries and deep paths — resolved at attach against the `Build` with
+[§14.4](#144-two-application-registers-over-one-plan)'s selectors — any cell, the diagnostic register admitting deep
+paths — resolved at attach against the `Build` with
 did-you-mean and compiled to one gather (the output half of [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s binding
 interface), so `map_output` receives a labeled
 NamedTuple rather than performing its own path lookups ([§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)'s obligation: a
 substitution that breaks a binding fails at attach, not with silent garbage
 UDP). This is **diagnostic observation** ([§13.5](#135-termination-is-a-state-not-an-exception)):
 human-facing, no effect on run semantics — the same register as the log
-retaining the full table and the GUI's deep-reading panels; local cells are
-accessible (the [§11.3](#113-visibility-the-contract-is-the-interface) presentation filter is a default, not a wall — explicit
-naming is intent). **A binding chooses its register**: a deep path is the
+retaining the full table and the GUI's deep-reading panels; every cell is
+reachable, the table being public throughout ([§11.3](#113-visibility-the-contract-is-the-interface)), and an intermediate a
+device wants to stream is one promoted to a declared output. **A binding chooses
+its register**: a deep path is the
 *inspection* register — zero promises, free access, right for looking at
 *this* build; an exported output face (spelled `get_face(name)`, [§14.4](#144-two-application-registers-over-one-plan)) is
 the *integration* register — named,
@@ -3448,8 +3504,7 @@ component module therefore opens with
 
 ```julia
 import Flight: init_x, init_m, init_z, workspace, input_types, output_types,
-    local_types, events, h_x, h_xu, h_z, h_zu, f, g, project, connections,
-    exports, rates
+    events, h_x, h_xu, h_z, h_zu, f, g, project, connections, exports, rates
 ```
 
 because `using Flight` alone is a silent trap: `f(eng::Engine, …) = …` after a
@@ -3501,7 +3556,7 @@ diagnostic); and annotations have nowhere to live. Types by declaration, values 
 execution, conformance by comparison.
 
 **Contracts are functions of the type, not of the instance.** A leaf's contract
-declarations — `input_types`, `output_types`, `local_types`, `events`, and the
+declarations — `input_types`, `output_types`, `events`, and the
 shapes of `init_x`/`init_m`/`init_z` — must be determined by the component's
 **type**, its type parameters included, and never by its field *values*. The
 value-discarding signature (`input_types(::Engine)`) is the visible form of the
@@ -3685,27 +3740,6 @@ The inventory, and where each schema fact gets its authority:
   "`init_x` field `q_nb::RQuat` is not a state leaf — declare the
   `SVector{4}` backing and cast where rotation semantics are wanted ([§7.1](#71-continuous-state-structured-immutable-flat-backing))".
 
-#### `local_types(::C)`
-
-- **`local_types(::C)`** (concrete nominal types, same species and leaf walk as
-  `output_types`): the component-local
-  intermediates — fields a stage returns for the component's *own* later
-  consumption (`f`, guards, the author's debug panels) that are not interface.
-  `local_types(::C) = (q_dyn = Float64,)` reads exactly like `output_types`,
-  and its cells follow the same tier-dependent leaf walk under non-nominal
-  activations, with the same embedding guarantee ([§12.5](#125-the-always-on-conformance-check)) at parametrized
-  leaves. **Strict**: a
-  returned field declared in neither `output_types` nor `local_types` is a build error
-  with did-you-mean ([§11.4](#114-failure-walkthroughs-the-error-locality-grounding) walkthrough 5). Unlike `output_types` — which any
-  component that publishes must declare, publicity never being implicit — an
-  empty `local_types` is the framework default — absence hides nothing, because
-  strictness catches every undeclared return. No auto-publication: a `local`
-  naming a state field that no stage produces is simply an error (auto-pub is
-  interface sugar, and local cells are not interface). The scope these are local
-  *to* is the component, not a function: computed in one stage, read by the
-  component's own consumers, invisible outside — cross-stage table cells, not
-  the workspace (`workspace` remains the within-call scratch, [§7.3](#73-discrete-state-modes-and-workspace)).
-
 #### `events(::C)`
 
 - **`events(::C)`**: an ordered, named collection of guard/handler pairs, detection
@@ -3771,43 +3805,81 @@ The inventory, and where each schema fact gets its authority:
 
 ### 11.3 Visibility: the contract is the interface
 
-**Declared in `output_types` = public; declared in `local_types` = private intermediate;
-declared in neither = build error; absent `output_types()` = no outputs** —
-visibility by declaration *site*, the same move as
-class-by-declaration-shape. Ports in the contract are connectable, GUI-listed and
-log-exported. `local_types` entries occupy table cells (they must survive from their
-computing stage to `f`/guards, and they serve the author's own debug panels via
-the snapshot, [§9.2](#92-outbound-snapshot-publication)), but they are non-connectable — a build error, not a
-discouraged convention — and presentation-filtered by default. Publicity is
+**Declared in `output_types` = public; returned in `w` = private *by
+construction*; returned in `y` and declared nowhere = build error; absent
+`output_types()` = no outputs** — visibility by *where the value goes*, the
+same move as class-by-declaration-shape. Ports in the contract are connectable,
+GUI-listed, snapshot-carried and log-exported; the table is public throughout,
+every cell a declared port or an auto-published one, so nothing anywhere needs
+a presentation filter. Private intermediates are not filtered, they are simply
+not there: `w` is handed from stage to consumer as a value ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)'s one-hop
+law), with no cell, no name in a contract and nothing for a wire, a listing or
+a log to reach. The inspection path for an intermediate is **promotion**: one
+line in `output_types` makes it public, checked and visible everywhere at once
+(row 165 — FlightCore's precedent, where an intermediate was inspected by
+putting it in the `Model` output and no other way). Publicity is
 never implicit: even the minimal component writes
 `output_types(::LowPassFilter) = (x = Float64,)`, one line, in
 exchange for "public" always meaning someone wrote it down.
 
-- **Conformance**: a declared port or local must be produced — by exactly one
-  stage, or (ports only) by **auto-publication** for declared names matching
+- **Conformance**: a declared port must be produced — by exactly one
+  stage, or by **auto-publication** for declared names matching
   state, mode or `z` fields that no stage produces ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)). Stage membership is
-  derived over `output_types` ∪ `local_types` jointly ([§12.1](#121-three-strata)). Declared-but-unproduced
-  and produced-by-two-stages are build errors, as is an `output_types`/`local_types`
-  name collision; a declared port matching neither a stage product nor a state
+  derived over `output_types` alone ([§12.1](#121-three-strata)). Declared-but-unproduced
+  and produced-by-two-stages are build errors; a declared port matching neither
+  a stage product nor a state
   field errors with both lists in hand ("not produced by any stage and not a
-  state field"). A *returned* field declared nowhere is a build error at probe
-  with did-you-mean against `output_types` ∪ `local_types` (under an observation-based
-  rule it would silently define a new private cell instead — the
+  state field"). A *returned port field* declared nowhere is a build error at probe
+  with did-you-mean against `output_types` (under an observation-based
+  rule it would silently define a new cell instead — the
   return-side analogue of [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) walkthrough 1). The forgotten-branch
   walkthrough holds: a declared `P` missing from the taken branch's
   return fails at probe; missing from an *untaken* branch, it fails loudly at
   that branch's first execution via the always-on check.
+- **`w`'s regime is probe-observed, and that is sound precisely because `w` is
+  not a cell.** A cell needs a fixed type per activation, which only a
+  declaration can supply; a value flowing between two functions in one fused
+  pass has no type contract to violate, and mixed branches are handled exactly
+  by promotion. So the probe takes `w` as it finds it: it checks that the
+  second return slot is a `NamedTuple` at all, and it checks the *consumer's*
+  reads against the observed field set, a destructured name that is not there
+  failing inside [§13.2](#132-diagnostics-structured-values-one-carrier-exception)'s framing diagnostic with did-you-mean from the
+  actual fields. That is weaker than a declaration-backed message — it can say
+  "`f` of `Foo` reads `w.q_dny`; the producing stage returned `q_dyn`" but
+  cannot say which spelling was intended — and it is located, name-shaped and
+  costs no declaration.
 - **Branch-shape rule**: stage returns must have the same `NamedTuple` shape on
   every branch — which Julia's type-stability discipline already demands for
   performance; the framework merely makes it a stated rule with a good error.
-- **Schema authority is total**: every field a stage returns is declared somewhere,
-  and the always-on check's expected type is fully declaration-derived — return
-  typos cannot silently define new cells, and every table cell traces to an
-  authored fact. Protection against silently dropped partials rests on the
+  `w` is inside the rule: a stage whose `w` changes shape between branches is
+  as broken as one whose `y` does.
+- **The always-on check covers `w` at the nominal activation only.** Beside the
+  `y` test ([§12.5](#125-the-always-on-conformance-check)) sits one baked `isa` against the type the *nominal probe
+  observed* — folding to nothing while the stage is stable, and converting the
+  unintended-branch-divergence class, which otherwise announces itself only as
+  an allocation in somebody's benchmark, into a loud located field-naming error
+  at the divergent branch's first execution. The blame text says what it
+  honestly knows: "expected what the nominal probe observed". This complements
+  [§7.5](#75-allocation-policy-a-scoped-invariant)'s canary — the canary detects, this localizes. **Non-nominal
+  activations run no `w` check at all**, and deliberately: there is no
+  declaration to anchor a branch-independent expectation, no store whose typing
+  the check would be protecting, and a strict probe-observed expectation would
+  fire on the legal constant-branch idiom (the one-probe-point argument, which
+  is exactly what kills observation authority for cells). Correctness needs no
+  guard there: a `Float64` in `w` under a `Dual` activation is an honest
+  zero-partial constant by the embedding guarantee ([§12.5](#125-the-always-on-conformance-check)), and its
+  downstream promotion is exact. Walking the nominal observation to synthesize
+  non-nominal expectations was rejected as machinery kept alive for a check
+  that catches nothing the nominal one misses.
+- **Schema authority is total over the table**: every *cell* traces to an
+  authored declaration, the always-on check's expected type for `y` is fully
+  declaration-derived, and return typos cannot silently define new cells.
+  Protection against silently dropped partials rests on the
   embedding guarantee — promotion is airtight, so an observed `Float64` is a true
-  constant, [§12.5](#125-the-always-on-conformance-check). Probe-observed expected types are rejected on two grounds:
-  authority inversion, and the fact that one probe point cannot speak for
-  branch-dependent types.
+  constant, [§12.5](#125-the-always-on-conformance-check). Probe-observed expected types remain rejected *for
+  cells* on two grounds — authority inversion, and the fact that one probe
+  point cannot speak for branch-dependent types — and neither ground reaches
+  `w`, which declares nothing and types nothing.
 - **What this rules out**: the `unlisted` flag ([§4.2](#42-consumers-see-ports-not-stages)) — presentational
   hiding of connectable ports — and its satellite-function representation; the
   RNG-state case that motivated it needs *nothing* here (`g` reads `z` directly,
@@ -3815,11 +3887,12 @@ exchange for "public" always meaning someone wrote it down.
   driven by the contract replaces publication of everything with hiding
   annotations on top. **Probe-observed private cells** and the
   `Private(T)` fallback are rejected alongside — the former by the
-  authority-inversion argument above, the latter as obviated by `local_types` (a
+  authority-inversion argument above, the latter as obviated by `w` (a
   wrapper inside `output_types` would break "declared = public" and introduce the
-  layer's first wrapper type; a separate declaration encodes visibility by site
-  instead). So is the opt-in variant with a `Float64`-under-`Dual` diagnostic —
-  it legislates an ambiguity that strictness dissolves. Rows 34 and 55.
+  layer's first wrapper type, where the return channel encodes privacy by
+  where the value travels, with no declaration to write at all). So is the
+  opt-in variant with a `Float64`-under-`Dual` diagnostic —
+  it legislates an ambiguity that strictness dissolves. Rows 34, 55 and 165.
 
 ### 11.4 Failure walkthroughs (the error-locality grounding)
 
@@ -3840,12 +3913,23 @@ the failure surfaced inside *correct* code, later, or never):
 4. **Type mismatch** (a `Float64` fraction wired into a `Bool` input): wiring-time
    error naming both endpoints and both faces — vs. a `MethodError` deep inside
    user math.
-5. **Typo'd return field** (`q_dny = ...` for a declared local `q_dyn`):
-   probe error with did-you-mean against `output_types` ∪ `local_types`, plus the
-   unproduced-`q_dyn` error with both lists in hand — vs. the typo silently
-   *defining* a new private cell under observation-authority, with the intended
-   name's absence surfacing later as a missing-field error inside correct
-   `f`/guard code (the return-side twin of walkthrough 1).
+5. **Typo'd return field**, in its two registers. A typo'd *port*
+   (`P_shft = ...` for a declared `P_shaft`) keeps the full strength of the
+   declaration: a probe error with did-you-mean against `output_types`, plus
+   the unproduced-`P_shaft` error with both the stage-product and state-field
+   lists in hand — vs. the typo silently *defining* a new cell under
+   observation-authority, with the intended name's absence surfacing later as a
+   missing-field error inside correct `f`/guard code (the return-side twin of
+   walkthrough 1). A typo *inside* `w` (`q_dny` where the consumer reads
+   `q_dyn`) has no declaration to be checked against and surfaces one hop
+   later, at the consumer, as [§13.2](#132-diagnostics-structured-values-one-carrier-exception)'s framing diagnostic carrying the
+   producing stage's observed field set ("`f` of `Foo` reads `w.q_dyn`; the
+   stage returned `q_dny`") — weaker than declaration-backed, since the
+   framework cannot know which of the two spellings was meant, but located at
+   the pair of lines that disagree and still name-shaped. That is the price of
+   the private channel, paid where no interface is at stake, and the remedy for
+   an intermediate worth stronger checking is the one [§11.3](#113-visibility-the-contract-is-the-interface) names: declare it
+   an output.
 
 ### 11.5 Assembly declaration: type-based, class by declaration shape
 
@@ -3898,7 +3982,7 @@ Class is instead declared by *which* well-known declarations a type defines:
 `connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
 precedent) makes an **assembly**; any leaf declaration makes a **primitive** —
 `init_x`/`init_m`/`init_z`, `workspace`,
-`input_types`/`output_types`/`local_types`, `events`, or any stage, `f`, `g` or
+`input_types`/`output_types`, `events`, or any stage, `f`, `g` or
 `project` method. The rule is total: a `<: AbstractComponent` type declaring
 neither family has no class to read, and is a build error naming both families
 rather than a silence that fails later and elsewhere.
@@ -4193,7 +4277,7 @@ organized as three strata:
   executes (`exports`/`passthrough` bodies are declaration code, [§11.8](#118-computed-exports-and-generic-boundaries)). Tree walk
   from the root instance: components by path, class read off
   declaration shape ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)), leaf contract collection (`input_types`,
-  `output_types`, `local_types`, `init_*` values, `events`), bottom-up face
+  `output_types`, `init_*` values, `events`), bottom-up face
   derivation, then global wiring resolution to absolute leaf terminals:
   one-writer-per-input, typo did-you-mean against the destination's input
   list, the wiring bound check at nominal faces (`producer_face <: entry`,
@@ -4211,14 +4295,17 @@ organized as three strata:
   workspace allocation at the probing scalar (sound this early: the allocator
   reads only the instance and the scalar, row 77 — no layout dependence),
   stage-1 probes at `Float64` on `init_x`/`init_m`/`init_z` values (well-founded — the
-  no-feedthrough stage takes no inputs), port classification (stage-1 /
-  auto-published / stage-2 remainder), feedthrough graph from wires carrying
+  no-feedthrough stage takes no inputs), port classification over
+  `output_types` alone (stage-1 /
+  auto-published / stage-2 remainder — a stage's `w` classifies nothing, being
+  no part of the contract, [§11.3](#113-visibility-the-contract-is-the-interface)), feedthrough graph from wires carrying
   stage-2 ports, topological order, [§5.5](#55-algebraic-loop-policy-reject-at-build-time) cycle rejection. The output is
   structural: names only, `T`-independent, branch-protected by the
   branch-shape rule plus the always-on check ([§12.5](#125-the-always-on-conformance-check)).
 - **Stratum C — activation, parametric in `T`.** Everything type-shaped:
-  declared producer types (`output_types`/`local_types`) leaf-walked at the
-  activation's `T` to type the cells, the probe chain run in topo order, observed compared against
+  declared producer types (`output_types`) leaf-walked at the
+  activation's `T` to type the cells, the probe chain run in topo order —
+  threading each stage's `w` to its one-hop consumers ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§12.3](#123-probing-and-input-synthesis)) — observed compared against
   declared, flat `x` buffer and table laid out. The nominal `Float64`
   activation runs at build; other activations re-run *only this stratum*
   ([§12.4](#124-activations-executable-sets-laziness-caching)).
@@ -4276,7 +4363,17 @@ remains the completeness backstop.
 **Probe argument sourcing.** `x`/`m`/`z` come from `init_*` declarations
 (declared by value); `y_x`/`y_z` from the stage-1 probes; wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
-topological order. The bundle law's two remaining fields ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)): `t` is
+topological order. **`w` threads through the probe in stage order**, by the
+[§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws) one-hop law: the `h_x` probe's second return slot enters `h_xu`'s probe
+bundle if the component defines one, otherwise the downstream bundles, and the
+`w` that survives the last output stage enters the `f`, guard and handler
+probes — so every consumer is probed against the same value it will receive at
+run time. Three checks ride the same pass: the return's shape (a stage
+returning something other than a `NamedTuple` or a `NamedTuple` pair fails
+here, `nothing` in either slot included), the consumer's `w` reads against the
+observed field set ([§11.3](#113-visibility-the-contract-is-the-interface)'s did-you-mean, through the [§13.2](#132-diagnostics-structured-values-one-carrier-exception) framing
+diagnostic), and the dead-stage rule — a stage returning bare `(;)`, neither
+ports nor `w`, is `DeadStage`, fail-fast. The bundle law's two remaining fields ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)): `t` is
 probe-scoped `0.0` — deployment binds no clock and `t₀` post-dates even
 deployment ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)), so like `Δt` below it is a fabricated, probe-scoped
 value; `ws` comes from invoking the component's `workspace` allocator at the
@@ -4431,8 +4528,8 @@ schema-authority bargain's second clause ("at first execution otherwise",
 At the point where the executor stores a stage return into the table, it holds
 the complete expected return type at this activation — the declared types of the
 names *this stage* produces, as fixed by Stratum B's stage classification: one
-concrete `NamedTuple` type per (component, stage), drawn from `output_types` and
-`local_types` alike. Auto-published names belong to no stage's expected type;
+concrete `NamedTuple` type per (component, stage), drawn from `output_types`.
+Auto-published names belong to no stage's expected type;
 the framework writes those cells itself. The executor canonicalizes the
 observed return to that type's field order by a type-level reorder
 (`NamedTuple{names(Expected)}(y2)`) and performs a single
@@ -4444,7 +4541,7 @@ on the divergent one at its first execution. (Type-unstable-but-conformant
 code pays nanoseconds on top of the dynamic dispatch it already bought.)
 
 **The names are the pairing; field order carries no semantics.** `Expected`'s
-order is an internal fact — derived from `output_types` ∪ `local_types`,
+order is an internal fact — derived from `output_types`,
 stage-filtered, auto-published names removed, an order no single declaration
 shows the author — and the author never reproduces it: a return spelling the
 right names at the right types conforms in any order, `(; P = M*ω, M_shaft = M)`
@@ -4488,6 +4585,25 @@ occasionally legitimate (deliberately frozen couplings, opaque non-Julia
 wrappers), invisible to the schema, and equally invisible to a strict
 exact-match rule when applied mid-expression, so the leniency costs nothing.
 Schema-visible freezing is a recorded door ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)).
+
+**`w` is checked at the nominal activation, and nowhere else.** A stage that
+returns the `(y, w)` pair ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) gets a second baked `isa` beside the first,
+against the type the **nominal probe observed** — no declaration exists to draw
+an expectation from, and none is wanted, `w` being a value in flight rather
+than a cell to type. It folds exactly as its sibling does when the stage is
+stable, and when it does not fold it earns its nanoseconds: the branch that
+quietly returns a `w` of a different shape is otherwise invisible until it
+shows up as an allocation in someone's benchmark, and here it is a located
+error naming the offending field at that branch's first execution. The message
+cites its authority honestly — expected *what the nominal probe observed*, not
+what anybody declared. Under **non-nominal activations the `w` test is
+absent**: with no declaration there is no branch-independent anchor, there is
+no cell whose typing the check would protect, and a probe-observed expectation
+would reject the constant-branch idiom that [§11.2](#112-the-declaration-inventory) keeps legal on the
+output side. Nothing is lost in correctness — a `Float64` arriving in `w` under
+a `Dual` activation is a true zero-partial constant by the embedding guarantee
+above, and promotion at its first use with a `Dual` operand is exact. The
+reasoning is [§11.3](#113-visibility-the-contract-is-the-interface)'s, recorded in row 165.
 
 **Uniform across all probed functions.** `f` checks against `X`'s own shape
 at the activation's `T` ([§7.1](#71-continuous-state-structured-immutable-flat-backing): a scalar leaf expects a `T`, an `SArray` leaf
@@ -4614,9 +4730,15 @@ measurement *of the interior path*, rather than of whichever tick phase the
 simulation happens to be sitting in — while `sweep_hx(tick)`/`sweep_hxu(tick)`
 are the boundary variants, gating their discrete entries by modulo against the
 passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147,
-amending row 116). These bodies run at different times and communicate only
-through the stores and the table, so the seams cost
-nothing — no values cross them. Two doors this structure opens for free,
+amending row 116). Across passes these bodies communicate only
+through the stores and the table, so the seams between passes cost
+nothing — no values cross them. **Within** a pass one kind of value does: a
+stage's `w` ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) is handed to its one-hop consumers as an ordinary SSA
+argument, across block and chunk seams alike, never through storage. That is
+what makes the fusion a design constraint rather than an optimization: a step's
+sweep and its `f` block compile into one pass, and an event round's sweep, its
+guards and its fired handlers into another ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)), because that is the scope
+over which a private intermediate is fresh by construction. Two doors this structure opens for free,
 recorded not committed: deterministic parallel evaluation of the order-free
 blocks (disjoint writes, and no floating-point reductions to reorder — [§6.2](#62-aggregation-explicit-summing-junctions)
 made every sum an ordered junction entry), and finer recompilation
@@ -4726,7 +4848,7 @@ sites are split into their two populations:
 
 - **Declarative checks over collected structure** — unconnected inputs,
   two-producers, wire typos and type mismatches, face-name uniqueness,
-  `output_types`/`local_types`/state-field consistency, `rates` validation. Each is a
+  `output_types`/state-field consistency, `rates` validation. Each is a
   pass over a list; the whole-tree obligation check literally computes *the
   set of* inputs whose obligation chain never terminates. Reporting every
   violation is the natural output of the pass — truncating to the first would
@@ -5448,19 +5570,20 @@ Which register a service uses is internal, never user-facing API.
 
 **The read-selector family is closed**: `get_state(path, field[, i])`,
 `get_deriv(path, field[, i])`, `get_output(path, field[, i])`,
-`get_local(path, field[, i])`, `get_slot(face)`, `get_face(name)` — one
+`get_slot(face)`, `get_face(name)` — one
 address space for every reader of the model. The names carry a deliberate
 `get_` prefix: a selector is a *deferred read* — a value describing the read
 the compiled gather will perform — and the prefix both names that action and
-keeps six short common nouns out of the namespace user declarations share
-with domain code (a bare `local(path, field)` would not even parse — `local`
-is a reserved word). `get_local` addresses the component-local cells
-(`local_types`, [§11.3](#113-visibility-the-contract-is-the-interface)); `get_face` addresses a root-exported output face —
+keeps five short common nouns out of the namespace user declarations share
+with domain code. There is no selector for a component's private
+intermediates, and cannot be: they are values in flight, not cells anything
+could address ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)), so a reader that wants one is a component that should
+declare it an output ([§11.3](#113-visibility-the-contract-is-the-interface)). `get_face` addresses a root-exported output face —
 [§9.2](#92-outbound-snapshot-publication)'s *integration* register, previously recommended but unspellable in
 the family.
 
 **A selector resolves against a source, before any client policy applies.**
-The table selectors — `get_output`, `get_local`, `get_slot`, `get_face` —
+The table selectors — `get_output`, `get_slot`, `get_face` —
 resolve against a *table source*: a boundary snapshot, or the scratch tables
 a service evaluation instantiates ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)) — the axis separates
 table-borne values from store-borne ones, not snapshots from services. The
@@ -5482,12 +5605,12 @@ policy rides on top — row 83's registers restated as a resolver property:
   chains exactly as [§14.9](#149-mounting-problems-as-relocatable-values)'s mounting resolves slot faces — the read
   side mirroring the write side — so an equilibrium equation reaching
   behind a generically-held child binds the curated face register instead
-  of a path the locality law forbids. `get_local` is
-  rejected at resolution — a service evaluation needing a private
-  intermediate is the signal to export it ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)).
+  of a path the locality law forbids. A service evaluation needing a private
+  intermediate has one remedy, and it is the same at every register: the
+  component exports it ([§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)).
 - **Diagnostic readers** (output-device bindings, GUI panels, log
-  inspection) admit the whole family, within the source rule: deep paths,
-  `get_local` cells and `get_face` names alike, with the store selectors
+  inspection) admit the whole family, within the source rule: deep paths
+  and `get_face` names alike, with the store selectors
   reaching only the diagnostic clients that actually hold stores (`capture`,
   post-run inspection) — a snapshot-bound reader is barred from them by
   source, not by client.
@@ -5669,8 +5792,8 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   `output_types`), `get_slot` and `get_face` a root input and output face
   (validated against the root face lists). The path selectors reach only
   through [§6.1](#61-connections-and-hierarchy)'s locality scopes; an equilibrium equation crossing a
-  generic seam reads a face. `local_types` are
-  not addressable (no `get_local` in `reads`, [§14.4](#144-two-application-registers-over-one-plan)) —
+  generic seam reads a face. A component's private intermediates are
+  not addressable at all ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§14.4](#144-two-application-registers-over-one-plan)) —
   a trim evaluation needing one is a signal the component should export it —
   and a derivative wanted across a contract boundary takes the same remedy:
   publish it as an ordinary output port computed in `h_xu` ([§7.4](#74-the-fused-evaluation-lineage-prior-art-and-how-we-got-here) step 2's
@@ -6928,11 +7051,11 @@ lifecycle:
 **Authoring** — what a component or assembly defines ([§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)–[§11.7](#117-rate-scopes)):
 
 - Continuous leaf: `init_x`/`init_m` (by value), `workspace(::C, ::Type{T})`
-  (by allocation), `input_types`/`output_types`/`local_types` (by type),
+  (by allocation), `input_types`/`output_types` (by type),
   `events` — stages `h_x`, `h_xu`, `f`, guard/handler pairs
   (`Event(guard, handler; localize)`), `project`.
 - Discrete leaf: `init_z`, `workspace(::C)`,
-  `input_types`/`output_types`/`local_types` — stages `h_z`, `h_zu`, `g`.
+  `input_types`/`output_types` — stages `h_z`, `h_zu`, `g`.
 - Assembly: `connections` (mandatory — the class marker), `exports`, `rates`.
 - Shipped conditions: `condition(::C; kw)` fragment functions ([§14.2](#142-fragment-composition-locality-without-schema)).
 
@@ -6942,21 +7065,23 @@ destructure less at will):
 | function | bundle fields |
 |---|---|
 | `h_x` | `x, m, t [, ws]` |
-| `h_xu` | `x, m, u, y_x, t [, ws]` |
-| `f` | `x, m, y, u, t [, ws]` |
+| `h_xu` | `x, m, u, y_x, w, t [, ws]` |
+| `f` | `x, m, y, u, w, t [, ws]` |
 | `h_z` | `z, t, Δt [, ws]` |
-| `h_zu` | `z, u, y_z, t, Δt [, ws]` |
-| `g` | `z, y, u, t, Δt [, ws]` |
-| guard / handler | `x, m, y, u, t [, ws]` |
+| `h_zu` | `z, u, y_z, w, t, Δt [, ws]` |
+| `g` | `z, y, u, w, t, Δt [, ws]` |
+| guard / handler | `x, m, y, u, w, t [, ws]` |
 | `project` | positional `(comp, x)` — no bundle |
 
 Table footnotes, from the bundle law ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) — the sets above are maximal, and
 each field is present only if it exists for the component: `u` iff the function
 family may see inputs **and** the component declares `input_types`; `y` iff the
-component produces any table cell (`output_types` ∪ `local_types` ∪
+component produces any table cell (`output_types` ∪
 auto-published); `x`/`m`/`z`/`ws` iff declared; `y_x`/`y_z` iff stage-1 ports
-exist; `Δt` on the discrete tier only. Returns: a stage returns a NamedTuple of
-port values ([§4.3](#43-table-mechanics-and-port-granularity)); `f` returns the layout image of `X` ([§7.1](#71-continuous-state-structured-immutable-flat-backing)); a **handler
+exist; `w` iff the stage handing it down returned one ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)'s one-hop law);
+`Δt` on the discrete tier only. Returns: a stage returns a NamedTuple of
+port values, or the pair `(y, w)` adding its private intermediates
+([§4.3](#43-table-mechanics-and-port-granularity), [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)); `f` returns the layout image of `X` ([§7.1](#71-continuous-state-structured-immutable-flat-backing)); a **handler
 returns `(; x, m)` with each key present iff that store exists and the handler
 updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)'s return law — no padding, `x` complete, `m` partial).
 
@@ -7228,10 +7353,9 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 |---|---|---|---|
 | `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | [§5.5](#55-algebraic-loop-policy-reject-at-build-time), [§5.6](#56-diagnostics-feedthrough-tracing) | build (collected) |
 | `ProducedByTwoStages` | component path, port name, both stage names | [§4.3](#43-table-mechanics-and-port-granularity), [§11.3](#113-visibility-the-contract-is-the-interface) | build (collected) |
-| `ContractNameCollision` | component path, the name declared in both `output_types` and `local_types` | [§11.3](#113-visibility-the-contract-is-the-interface) | build (collected) |
 | `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | [§11.3](#113-visibility-the-contract-is-the-interface) | build (collected) |
-| `LocalConnected` | wire endpoints, the local cell named | [§11.3](#113-visibility-the-contract-is-the-interface) | build (collected) |
-| `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types` ∪ `local_types`) | [§11.3](#113-visibility-the-contract-is-the-interface), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w5 | build (fail-fast) |
+| `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types`) | [§11.3](#113-visibility-the-contract-is-the-interface), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w5 | build (fail-fast) |
+| `DeadStage` | component path, stage — a stage method returning bare `(;)`, producing neither ports nor `w` | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§12.3](#123-probing-and-input-synthesis) | build (fail-fast) at probe |
 | `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed — order-insensitive, the return having been canonicalized first), simulation time | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) at probe; **runtime** as a `StepError` species |
 | `GuardForm` | component path, event name, observed probe return type, both admissible forms | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
 | `LocalizedGuardForm` | component path, event name — a localized event whose guard probes `Bool` (localization requires the sign form) | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
@@ -7331,12 +7455,12 @@ components, contributing them as children path-named `"field/1"` or
 
 **contract** — a component's declared interface: `input_types` (its
 requirements) and `output_types` (its public ports). Declared in
-`output_types` = public, in `local_types` = private intermediate, in neither =
-build error ([§11.3](#113-visibility-the-contract-is-the-interface)).
+`output_types` = public, returned in `w` = private by construction, returned in
+`y` and declared nowhere = build error ([§11.3](#113-visibility-the-contract-is-the-interface)).
 
 **declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_m`/`init_z`, `workspace`,
-`input_types`/`output_types`/`local_types`, `events`, the stages, `f`/`g`/
+`input_types`/`output_types`, `events`, the stages, `f`/`g`/
 `project`, and `connections`/`exports`/`rates` — each declared in a stated
 register of authority: by value, by type, by allocation ([§11.2](#112-the-declaration-inventory)).
 
@@ -7397,8 +7521,9 @@ receives beside the component itself. Under the bundle law a name is present
 stores are absent, never `nothing`-filled ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)).
 
 **cell** — one concretely-typed entry of the signal table, one per output port
-and per `local_types` entry of the flattened model, written by its producing
-stage and read by every gatherer ([§4.1](#41-immutable-value-semantics)). Bare "cell" is only this — see
+of the flattened model, written by its producing
+stage and read by every gatherer ([§4.1](#41-immutable-value-semantics)). Every cell is public, private
+intermediates never being cells ([§11.3](#113-visibility-the-contract-is-the-interface)). Bare "cell" is only this — see
 *staging cell* ([§D.6](#d6-runtime-periphery)) and *store*.
 
 **constant source** — an ordinary library component with no inputs and no
@@ -7430,10 +7555,6 @@ references, never as mutable caches ([§4.4](#44-function-valued-signals-environ
 immutability *plus frozen references* (`isbits` is the common case, not the
 rule): no aliasing, safe concurrent reads, and a definite per-cell freshness
 tied to the producer's schedule position ([§4.1](#41-immutable-value-semantics)).
-
-**locals** — `local_types` entries: component-local intermediates occupying
-table cells for the component's own later consumption (`f`, guards, its debug
-panels), non-connectable and presentation-filtered by default ([§11.3](#113-visibility-the-contract-is-the-interface)).
 
 **one home per datum** — buffer for `x`, stores for `z`/`m`, table for
 produced signals; no store mirrors another, and the table never holds
@@ -7476,6 +7597,14 @@ which [§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defau
 **view** — a zero-copy reconstruction of a store handed to a function through
 its bundle; it materializes in the caller's frame for the duration of the call
 and is value-identical on re-materialization within a sweep ([§7.1](#71-continuous-state-structured-immutable-flat-backing), [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)).
+
+**`w` (private intermediates)** — the optional second slot of an output stage's
+return, `(y, w)`: an `isbits`-leaf NamedTuple of values the component computes
+for its own later use. Private by construction — no cell, no contract entry,
+nothing to wire, list, filter or address — travelling exactly one hop by
+[§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)'s law, SSA-passed within a fused pass, probe-observed in type and
+checked at the nominal activation only ([§11.3](#113-visibility-the-contract-is-the-interface), [§12.5](#125-the-always-on-conformance-check)). The inspection path
+for one is promotion to a declared output.
 
 ### D.3 Evaluation and scheduling
 
@@ -7823,7 +7952,7 @@ recomputation. The clock is the criterion — wall-clock interactions are
 devices ([§10.5](#105-scripts-and-the-mid-run-mutation-doctrine)).
 
 **selector (read-selector family)** — the closed set of deferred reads
-`get_state`/`get_deriv`/`get_output`/`get_local`/`get_slot`/`get_face`, each
+`get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`, each
 resolving against a source (table sources — a boundary snapshot or a service
 evaluation's scratch tables — vs. live stores) before any client policy
 applies ([§14.4](#144-two-application-registers-over-one-plan)).
@@ -7837,7 +7966,7 @@ and load-bearing in another; the shipped GUI attaches with `true` ([§9.6](#96-d
 [§10.4](#104-shutdown-protocol)).
 
 **snapshot** — the immutable per-boundary publication: boundary-consistent
-signal table (local cells and root slots included), `t`, boundary index and
+signal table (root slots included), `t`, boundary index and
 framework status. It deliberately carries no state stores — the state
 trajectory is derived data ([§9.2](#92-outbound-snapshot-publication)).
 
