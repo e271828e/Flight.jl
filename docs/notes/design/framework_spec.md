@@ -283,7 +283,7 @@ semantics under another name.
 
 ### 3.3 Assembly
 
-Pure composition: submodels + connections + exported ports. **No dynamics of its own.**
+Pure composition: submodels + child connections + boundary faces. **No dynamics of its own.**
 Hybridness emerges at the assembly level (an aircraft = continuous vehicle parts +
 discrete avionics parts). The two-leaf split held under its strongest
 counterexample — a strapdown IMU's periodically-reset integrators land on two
@@ -372,7 +372,14 @@ directly. Row 16.)
 - **Write-side corollary** (from [§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)): **bundle what is written
   together.** The port is the atomic unit of the entire periphery — one cell, one
   root slot, one staged write, one device claim ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), one trace address, one
-  GUI liveness verdict ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)). Data written by different external writers, or at
+  GUI liveness verdict ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)). A component's **ports** are its signal
+  endpoints — one cell, one producer. Its **faces** are the names those ports wear
+  on the component's boundary: for a leaf the two coincide; for an assembly every
+  face aliases an interior port through its boundary declarations
+  ([§11.6](#116-paths-wiring-and-faces)) and never creates an endpoint. The
+  distinction is kind-blind — wiring and the periphery address a child's faces
+  without knowing whether it is primitive or composite.
+  Data written by different external writers, or at
   different cadences, must not share a port: pilot commands are scalar faces under
   a namespace prefix, and the convenient bundle is assembled *downstream*, inside
   the graph, by an ordinary component (single producer, consumed together — legal
@@ -3977,8 +3984,9 @@ The inventory, and where each schema fact gets its authority:
   alone decide — which is what makes a stateless `h_xu` component tier-
   transparent library material ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)). Members of both families, or of neither,
   are the [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) class errors. **The root of a build is an assembly:** root slots
-  are the root's exported input faces ([§6.1](#61-connections-and-hierarchy), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)) and only assemblies declare
-  `exports` ([§11.6](#116-paths-wiring-and-faces)), so a primitive root has no faces and every input it declares
+  are the root's input faces declared through `input_connections` ([§6.1](#61-connections-and-hierarchy), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), and only
+  assemblies declare boundary connections ([§11.6](#116-paths-wiring-and-faces)), so a primitive root has no root
+  slots — its faces are just its own port names — and every input it declares
   is an unconnected-input error. Exercising a leaf alone is what [§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s
   component test rig is for — it supplies the one-child assembly.
 
