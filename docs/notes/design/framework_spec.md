@@ -7770,6 +7770,14 @@ slot (`AbstractAtRoot`) ([§11.2](#112-the-declaration-inventory)).
 dynamics of its own; flattened away for scheduling, retained as the
 navigation hierarchy and as declaration-level rate scopes ([§3.3](#33-assembly), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)).
 
+**auto-published port** — a declared output that matches a state or mode field
+by name and type and that no stage produces: the framework publishes it from
+the store at stage-1 position (`h_x`, either tier; the match is against
+`init_x`, plus `init_m` on the continuous tier). Contract-driven — row 16
+rejected blanket identity publication of state — a framework write, never a
+probe product, and excluded from the stage-1 hand-down `y_x` ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§11.3](#113-visibility-the-contract-is-the-interface),
+[§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), row 169).
+
 **class** — a component's primitive-vs-assembly status, read off *which*
 well-known declarations its type defines: `child_connections` ⇒ assembly, any leaf
 declaration ⇒ primitive, neither ⇒ `ClassUnreadable` ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)). Not to be
