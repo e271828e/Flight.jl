@@ -50,7 +50,7 @@ Increment 3 and beyond: the discrete tier (`z`, `h_z`/`h_zu`/`g`, modes,
 workspace), multi-rate tick scheduling and the boundary sweep's gating (the
 one-arg phase-body arity exists and is exercised, but gates nothing yet), events
 (guards, handlers, `project`, localization), hierarchy and assemblies, computed
-exports, auto-published ports, §12.5's always-on conformance check, §13.2's
+connections, auto-published ports, §12.5's always-on conformance check, §13.2's
 diagnostic framing (build errors here are a plain `BuildError` with a good
 message, not the structured carrier), and the entire runtime periphery.
 

@@ -18,7 +18,7 @@ the story.
 
 ## 1. Slots and faces: *what* can be written
 
-The root assembly exports input faces ([§11.6](framework_spec.md#116-paths-wiring-and-exports)) — named, typed inputs that no
+The root assembly exports input faces ([§11.6](framework_spec.md#116-paths-wiring-and-faces)) — named, typed inputs that no
 component inside the model produces. Say our aircraft's root exports four:
 
 ```julia

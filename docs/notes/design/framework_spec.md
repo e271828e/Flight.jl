@@ -67,9 +67,9 @@
     - [11.3 Visibility: the contract is the interface](#113-visibility-the-contract-is-the-interface)
     - [11.4 Failure walkthroughs (the error-locality grounding)](#114-failure-walkthroughs-the-error-locality-grounding)
     - [11.5 Assembly declaration: type-based, class by declaration shape](#115-assembly-declaration-type-based-class-by-declaration-shape)
-    - [11.6 Paths, wiring and exports](#116-paths-wiring-and-exports)
+    - [11.6 Paths, wiring and faces](#116-paths-wiring-and-faces)
     - [11.7 Rate scopes](#117-rate-scopes)
-    - [11.8 Computed exports and generic boundaries](#118-computed-exports-and-generic-boundaries)
+    - [11.8 Computed connections and generic boundaries](#118-computed-connections-and-generic-boundaries)
   - [12. The build pipeline](#12-the-build-pipeline)
     - [12.1 Three strata](#121-three-strata)
     - [12.2 The `Build` artifact](#122-the-build-artifact)
@@ -742,7 +742,7 @@ tracer labels **artificial**. Two remedies, in this order:
 The build diagnostic offers both exits explicitly ("cycle through `systems/aero` is
 artificial at port level — split the component, or narrow the neighbor's contract",
 with the offending stage `h_xu` carried as a separate payload field rather than dotted
-onto the path, [§11.6](#116-paths-wiring-and-exports)/[§13.2](#132-diagnostics-structured-values-one-carrier-exception)). The split is rare, and the ladder is what earns the word
+onto the path, [§11.6](#116-paths-wiring-and-faces)/[§13.2](#132-diagnostics-structured-values-one-carrier-exception)). The split is rare, and the ladder is what earns the word
 rather than asserting it: the two-stage split dissolves the common shapes and the
 contract re-factoring absorbs the false wires, leaving the split for cycles whose
 halves really are one component's own work. One consequence of stage-2 conservatism
@@ -753,7 +753,7 @@ integrator-shaped and have none, and the remedy, if ever needed, is the same lad
 ### 5.5 Algebraic loop policy: reject at build time
 
 A genuine cycle in the instantaneous dependency graph is a **build error** with a
-diagnostic naming the full path in the canonical slash form of [§11.6](#116-paths-wiring-and-exports)
+diagnostic naming the full path in the canonical slash form of [§11.6](#116-paths-wiring-and-faces)
 (`aero/F → dyn/a → aero/α̇ → aero/F`). The user breaks
 it explicitly: insert dynamics (the α-filter idiom — already standard practice in the
 domain and in the current C172 model), insert an explicit unit delay ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s
@@ -785,7 +785,7 @@ downstream cone, so it over-reports, while a single DFS back edge under-reports 
 one edge of a possibly large tangle. The stalled subgraph is instead decomposed
 into **strongly connected components**, and each nontrivial SCC names one cyclic
 cluster exactly: one diagnostic, its members and the wires among them, presented
-as one readable loop in [§11.6](#116-paths-wiring-and-exports)'s canonical slash form
+as one readable loop in [§11.6](#116-paths-wiring-and-faces)'s canonical slash form
 (`aero/F → dyn/a → aero/α̇ → aero/F`).
 
 **Classification is schedule-free.** It runs inside Stratum B's failure path,
@@ -861,7 +861,7 @@ hierarchy rules; [§6.2](#62-aggregation-explicit-summing-junctions) gives the a
   the re-export ceremony where it is ceremony, and preserves substitutability where the
   boundary is load-bearing. Operationally: a path may traverse any chain of
   concretely-typed fields and stops at the first generically-held child, whose
-  exported faces are the only things addressable beyond that point — a rule about
+  faces are the only things addressable beyond that point — a rule about
   the *declaration's* knowledge, not the build's (a deep path into a generic child
   is forbidden even where the concrete instantiation would resolve it, because it
   hard-codes one implementation and breaks on substitution). Enforcement lives
@@ -913,10 +913,10 @@ hierarchy rules; [§6.2](#62-aggregation-explicit-summing-junctions) gives the a
   (no silent defaults). **The check is a whole-tree property, not a
   per-declaration one**: within a single assembly declaration an unfed child input
   is simply *awaiting a claim from above* — a sibling wire, an ancestor's deep
-  route, or an `exports` entry handing the obligation up one level ([§11.6](#116-paths-wiring-and-exports)). The
+  route, or an `input_connections` entry handing the obligation up one level ([§11.6](#116-paths-wiring-and-faces)). The
   error fires at the root build for any input whose obligation chain never
   terminates. The one legitimate terminus fed by no component is the root
-  assembly's own exported input face — a root slot ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+  assembly's own input face — a root slot ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
 
 ### 6.2 Aggregation: explicit summing junctions
 
@@ -948,7 +948,7 @@ Wired at an ownership boundary, the junction is ordinary structure — with
 ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)):
 
 ```julia
-connections(::Systems) = (
+child_connections(::Systems) = (
     "aero/wrench" => "wr_sum/in1",
     "pwp/wrench"  => "wr_sum/in2",
     "ldg/wrench"  => "wr_sum/in3",
@@ -1651,7 +1651,7 @@ backward-difference coefficients, a LeadLag's Tustin transform — run in
 `comp.Δt`, after FlightCore's `mdl.Δt`, is the natural-looking alternative,
 and it is impossible here, not merely inconvenient: `comp`
 is the author's own immutable struct, and two fields holding the same
-immutable value are `===`-identical — the [§11.6](#116-paths-wiring-and-exports) argument — while carrying
+immutable value are `===`-identical — the [§11.6](#116-paths-wiring-and-faces) argument — while carrying
 different `rates` keys, so the period is a fact about the *schedule
 position*, with nothing on the instance to hang a property on. The value must
 arrive through the call; the bundle field is where.) Author rule: **never
@@ -2157,7 +2157,7 @@ quantity is a deliberate lie, not a drift).
 ### 9.3 Inbound: root input slots, claims and the frozen roster
 
 **The write surface is root input slots** — and a root slot *is* the root
-assembly's exported input face ([§11.6](#116-paths-wiring-and-exports)): routed inward to consumers, produced by no
+assembly's own input face, declared through `input_connections` ([§11.6](#116-paths-wiring-and-faces)): routed inward to consumers, produced by no
 component, fed by the parent's wire at every non-root level — and at the root
 there is no parent. (A root slot is usefully read as the output face of the
 one producer the build never sees — the periphery and the services: slot
@@ -2166,7 +2166,7 @@ its completeness obligation.) No dedicated vocabulary survives (`add_input!` in 
 sketches is dead). Slots are sources to the build-time scheduler, constants within
 a frame, and the *only* thing the periphery may write (the GUI reaches them
 through [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)'s resolution; control commands are not writes, [§10.1](#101-control-plane)); devices,
-mappings, the trace and the GUI write path address them by **face name** ([§11.6](#116-paths-wiring-and-exports)):
+mappings, the trace and the GUI write path address them by **face name** ([§11.6](#116-paths-wiring-and-faces)):
 structural slash paths never cross the periphery's *write* boundary — the write
 side speaks the root contract's names only. (The read side chooses per
 binding: slash paths in the inspection register, face names in the
@@ -2793,7 +2793,7 @@ Every input port has exactly one source ([§6.1](#61-connections-and-hierarchy))
   GUI's own staging cell;
 - **component-driven → read-only rendering**: displays the driven value from the
   snapshot, visually distinct, with the source as provenance ("driven by
-  `avionics/throttle_cmd`" — the canonical slash form of [§11.6](#116-paths-wiring-and-exports)).
+  `avionics/throttle_cmd`" — the canonical slash form of [§11.6](#116-paths-wiring-and-faces)).
 
 This retires FlightCore's dead-slider convention (the `Cessna172Xv1` throttle: the
 engine panel's slider visually live, silently overwritten by the avionics every
@@ -2807,7 +2807,7 @@ GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
 
 **Liveness is a derived property, and resolution is transitive.** A widget
-is live iff its port's feed chain — walked through wires and exports across *all*
+is live iff its port's feed chain — walked through wires and boundary connections across *all*
 levels, not just the local assembly — terminates in a root slot, *and* that slot
 is unclaimed in the run's frozen surface partition ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) exclusivity) — that
 unclaimed complement being precisely the GUI's own write surface, which its
@@ -3524,7 +3524,7 @@ remove); replay ending `stopped` (kills all three workflows above).
 
 How an author spells a component: where the structural facts live, what the build
 takes as authoritative, and what is checked against what. [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)–[§11.4](#114-failure-walkthroughs-the-error-locality-grounding) cover the
-component side; [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)–[§11.8](#118-computed-exports-and-generic-boundaries) the assembly side; the build pipeline is [§12](#12-the-build-pipeline) and the
+component side; [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)–[§11.8](#118-computed-connections-and-generic-boundaries) the assembly side; the build pipeline is [§12](#12-the-build-pipeline) and the
 stopped-sim service spellings are [§14](#14-stopped-sim-services). Concrete syntax below is near-final in shape
 but still illustrative in spelling. The sketches (`sketch_decoder.jl`,
 `sketch_io.jl`) are written against this layer and the services spellings.
@@ -3557,7 +3557,8 @@ component module therefore opens with
 
 ```julia
 import Flight: init_x, init_m, init_z, workspace, input_types, output_types,
-    events, h_x, h_xu, h_z, h_zu, f, g, project, connections, exports, rates
+    events, h_x, h_xu, h_z, h_zu, f, g, project, child_connections,
+    input_connections, output_connections, rates
 ```
 
 because `using Flight` alone is a silent trap: `f(eng::Engine, …) = …` after a
@@ -3977,7 +3978,7 @@ The inventory, and where each schema fact gets its authority:
   transparent library material ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)). Members of both families, or of neither,
   are the [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) class errors. **The root of a build is an assembly:** root slots
   are the root's exported input faces ([§6.1](#61-connections-and-hierarchy), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)) and only assemblies declare
-  `exports` ([§11.6](#116-paths-wiring-and-exports)), so a primitive root has no faces and every input it declares
+  `exports` ([§11.6](#116-paths-wiring-and-faces)), so a primitive root has no faces and every input it declares
   is an unconnected-input error. Exercising a leaf alone is what [§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s
   component test rig is for — it supplies the one-child assembly.
 
@@ -4115,15 +4116,17 @@ An assembly is a plain struct: fields whose type is `<: AbstractComponent` are i
 children (field names = path segments), all other fields are inert parameters;
 substitutability and variants use ordinary parametric fields — exactly today's
 `Cessna172X{K, A}` shape. Alongside it, well-known declarations:
-`connections(::A)` (mandatory, even when empty), `exports(::A)`, `rates(::A)`.
+`child_connections(::A)` (mandatory, even when empty), `input_connections(::A)`,
+`output_connections(::A)`, `rates(::A)`.
 
 **Container children.** A field whose type is a `Tuple` or
 `NamedTuple` with *every* element `<: AbstractComponent` contributes its
 elements as children, path-named `"field/1"…"field/N"` (tuples) or
 `"field/key"` (NamedTuples), declaration order governing layout. Containers
-are **transparent grouping, not assemblies**: no contract, no `connections`,
+are **transparent grouping, not assemblies**: no contract, no `child_connections`,
 no rate scope, no existence beyond the path segment — the elements are
-children *of the parent*, whose `connections`/`exports`/`rates` address them
+children *of the parent*, whose `child_connections`/`input_connections`/
+`output_connections`/`rates` address them
 by element name; anything wanting its own wiring or faces declares itself an
 assembly. The payoff is parametric composition: `struct Formation{NT <:
 NamedTuple}; aircraft::NT; … end` holds any roster — size, names, mixed
@@ -4137,7 +4140,7 @@ zero-component = inert parameter data); containers of containers are
 rejected in the first cut (deeper grouping is what assemblies are for);
 empty containers are legal (zero children — parametric code needs no special
 case); abstract element types follow the same concreteness discipline as
-plain fields (directly concrete or via type-parameter bounds, [§11.8](#118-computed-exports-and-generic-boundaries)'s
+plain fields (directly concrete or via type-parameter bounds, [§11.8](#118-computed-connections-and-generic-boundaries)'s
 generic holding). `rates` needs no rule change: element names are immediate
 child names, hence legal keys; the bare field name is sugar for a uniform
 `K` across all elements.
@@ -4157,7 +4160,7 @@ must accept a primitive `PistonEngine` and a composite turbofan assembly alike),
 and [§11.3](#113-visibility-the-contract-is-the-interface) says class is an implementation detail behind the contract — encoding it
 in public type identity is exactly what contract visibility exists to prevent.
 Class is instead declared by *which* well-known declarations a type defines:
-`connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
+`child_connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
 precedent) makes an **assembly**; any leaf declaration makes a **primitive** —
 `init_x`/`init_m`/`init_z`, `workspace`,
 `input_types`/`output_types`, `events`, or any stage, `f`, `g` or
@@ -4181,13 +4184,13 @@ evaluated. So the tier fact is spelled in the signature *and* fixed by the
 class, the two kept in agreement by a check rather than by convention — which
 is what makes the whole-signature forgotten-`T` bug (row 79's worst case, when
 the plain form silently *was* the tier marker) unwritable. Error
-taxonomy: `connections` plus `init_x`/stages on one type is a build error
+taxonomy: `child_connections` plus `init_x`/stages on one type is a build error
 (assemblies have no state of their own — [§8.5](#85-multi-rate-tick-scheduling)'s no-atomic-assemblies at
 declaration time); the neither-family error sharpens into a did-you-mean when the
 type has component-typed fields ("holds components but declares no
-`connections`").
+`child_connections`").
 
-### 11.6 Paths, wiring and exports
+### 11.6 Paths, wiring and faces
 
 **Paths are slash-separated strings** — `"systems/ldg/left/trn"` — relative to the
 assembly being declared, no leading slash; one canonical form, shared verbatim by
@@ -4200,18 +4203,21 @@ tuples of symbols (structure without readability); dotted paths (a false
 Julia-property affordance — the last segment is a contract port, not a field;
 slashes say "named tree", which is the true model).
 
-**`connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
+**`child_connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
 pairs, strictly child-port → child-port; [§6.1](#61-connections-and-hierarchy)'s rules apply (one wire per input,
 deep paths through concretely-typed fields only, stopping at a generic child's
-faces). **`exports(::A)`** is the assembly's face declaration, spelled exactly
-like `connections` — an ordered collection of pairs, face name => internal
-endpoint path — or a tuple of paths for an input face routed to several
-internal endpoints (fan-out through the boundary)
-(`"trn" => ("systems/ldg/left/trn", …)`). **Face names are arbitrary strings with
+faces). The assembly's **boundary** is declared by two further methods, one per
+direction. **`input_connections(::A)`** is an ordered collection of pairs, face
+name => internal endpoint path — or a tuple of paths for an input face routed to
+several internal endpoints (fan-out through the boundary)
+(`"trn" => ("systems/ldg/left/trn", …)`). **`output_connections(::A)`** runs the
+other way, internal source path => face name
+(`"aircraft/pose" => "view_pose"`), so that its pairs, like every other pair in
+the three declarations, read along the flow. **Face names are arbitrary strings with
 two build-checked invariants: no `/` (reserved for structural paths) and
-uniqueness within the assembly's face set** — every other naming choice
+uniqueness across the union of the two boundary declarations' face names** — every other naming choice
 (separators, grouping prefixes like `"pilot.throttle_axis"`) is author
-convention, not framework law; the `passthrough` helper's defaults ([§11.8](#118-computed-exports-and-generic-boundaries)) document the
+convention, not framework law; the `input_passthrough` helper's defaults ([§11.8](#118-computed-connections-and-generic-boundaries)) document the
 house style without legislating it. The two-notation rule this rests on is directional —
 structure vs. contract, not read vs. write: **slash is structure** (endpoint
 paths walking real children and ports; the inspection register's snapshot and
@@ -4221,9 +4227,17 @@ face names exclusively ([§9.3](#93-inbound-root-input-slots-claims-and-the-froz
 wants meaning that outlives the build: integration bindings ([§9.2](#92-outbound-snapshot-publication)'s
 `get_face`) and load-bearing service reads ([§14.4](#144-two-application-registers-over-one-plan)).
 Pairs-of-strings rather than a NamedTuple also removes the `var"..."` noise that
-non-identifier names would force. Direction is derived from the endpoints
-(wired-to-inputs = input face, wired-from-one-output = output face; mixed or
-multi-source entries are build errors). Face *types and tiers* are derived from
+non-identifier names would force.
+
+One invariant spans all three declarations: every pair's arrow points the way the
+signal flows — the left side is a producer or entry point, the right side a
+consumer — and every right side is fed exactly once. **Direction is therefore
+declared by the method**, not inferred: the resolved endpoints only *cross-check*
+it, and an entry whose endpoint resolves to a port of the wrong direction is a
+build error naming the method, the entry and the resolved port's actual direction.
+A mixed entry is no longer expressible, so that error class disappears with the
+single list that made it possible; two entries producing the same output face
+remain the ordinary two-producers error. Face *types and tiers* are derived from
 the internal endpoints — [§11.2](#112-the-declaration-inventory)'s blessed derivation-from-declarations — and the
 derivation is forced, not merely convenient: an assembly is tier-neutral (it
 exports continuous-sourced and discrete-sourced ports side by side), so
@@ -4233,19 +4247,20 @@ producer's own declaration, evaluated at the activation scalar on the
 continuous tier and pinned on the discrete). Rejected spellings: routing values under the leaf names
 `input_types`/`output_types` (a name-level pun — a discrete leaf's exact signature with
 alien value semantics, killing [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)'s name-level class split); leaf-style *typed*
-faces plus face wires inside `connections` (the tier problem above, plus
+faces plus face wires inside `child_connections` (the tier problem above, plus
 face/child namespace collisions and the weakest class marker); routing-as-wires
 with derived types and no face list (facehood implicit in wiring — publicity is
 never implicit, [§11.3](#113-visibility-the-contract-is-the-interface)).
 
-**Root slots fall out with no vocabulary**: at every non-root level an exported
-input face is fed by the parent's wire; at the root there is no parent, and the
+**Root slots fall out with no vocabulary**: at every non-root level an input face
+declared through `input_connections` is fed by the parent's wire; at the root there
+is no parent, and the
 face *is* the write surface ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)). [§6.1](#61-connections-and-hierarchy)'s whole-tree obligation model states the
 complementary error rule. An assembly never declares its external connections —
 those live in the parent that instantiates it, exactly as a leaf's do.
 
 **A worked assembly.** [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s IMU, spelled in full — a mixed-tier assembly
-exercising paths, exports and rates together:
+exercising paths, faces and rates together:
 
 ```julia
 struct IMU <: AbstractComponent
@@ -4254,30 +4269,34 @@ struct IMU <: AbstractComponent
     errors::IMUErrorModel      # discrete — scale/bias/noise on the sample
 end
 
-connections(::IMU) = (
+child_connections(::IMU) = (
     "integrals/Θ" => "sampler/Θ", "integrals/q" => "sampler/q",
     "integrals/Υ" => "sampler/Υ", "integrals/V" => "sampler/V",
     "sampler/sample" => "errors/sample",
 )
 
-exports(imu::IMU) = (
-    "sample"      => "sampler/sample",            # ideal increments
-    "sample_meas" => "errors/sample_meas",        # measured increments (the error
+input_connections(imu::IMU) = (
+    input_passthrough(imu, "integrals")...,       # kinematic-truth inputs pass through
+)
+
+output_connections(::IMU) = (
+    "sampler/sample"     => "sample",             # ideal increments
+    "errors/sample_meas" => "sample_meas",        # measured increments (the error
                                                   # model's output port)
-    passthrough(imu, "integrals")...,             # kinematic-truth inputs pass through
 )
 
 rates(::IMU) = (sampler = 1, errors = 1)
 ```
 
-Two spellings worth reading closely: `passthrough` enumerates the child's **input**
-faces and nothing else ([§11.8](#118-computed-exports-and-generic-boundaries) — it is inputs-only by definition, so the
-pass-through of the integrals' kinematic-truth inputs (`q_eb`, `r_eb_e`,
-`ω_eb_b`, `a_ib_b`, `α_ib_b`, [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)) takes no direction argument);
-and the measured-increment face re-exports `errors/sample_meas`, the error
+Two spellings worth reading closely: `input_passthrough` enumerates the child's
+**input** faces and nothing else ([§11.8](#118-computed-connections-and-generic-boundaries)), which is why the pass-through of the
+integrals' kinematic-truth inputs (`q_eb`, `r_eb_e`, `ω_eb_b`, `a_ib_b`,
+`α_ib_b`, [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)) is a bare splat with nothing to say about direction;
+and the measured-increment face sources `errors/sample_meas`, the error
 model's *output* port, not the `errors/sample` input the sampler already
-feeds — re-exporting a wired input face would be the two-producers error of
-[§11.8](#118-computed-exports-and-generic-boundaries), and would derive as an input face besides.
+feeds — listing `errors/sample` in `output_connections` would fail the direction
+cross-check, and listing it in `input_connections` while it is wired is the
+two-producers error of [§11.8](#118-computed-connections-and-generic-boundaries).
 
 Three facts the example carries: the assembly is tier-neutral — every face's
 type and tier derive from its internal endpoint, and a `rates` key on
@@ -4285,7 +4304,7 @@ type and tier derive from its internal endpoint, and a `rates` key on
 discrete children default to `K = 1` anyway, so this `rates` declaration is
 declaratory — their absolute rate arrives from the enclosing scope at
 deployment ([§11.7](#117-rate-scopes)); and [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s latch-back wire, where the integrals consume
-the sampler's published latch, joins `connections` as one more ordinary pair.
+the sampler's published latch, joins `child_connections` as one more ordinary pair.
 
 ### 11.7 Rate scopes
 
@@ -4304,21 +4323,22 @@ paths, dispatch and the child's contract as seen by wiring) and makes a
 per-instance value of what [§8.5](#85-multi-rate-tick-scheduling)'s own rationale calls intrinsic to the design,
 i.e. a fact about the assembly type.
 
-### 11.8 Computed exports and generic boundaries
+### 11.8 Computed connections and generic boundaries
 
-`exports` is an ordinary function evaluated at build against the concrete
-instance, so it may *compute* entries from child contracts — derivation from
+`input_connections` and `output_connections` are ordinary functions evaluated at
+build against the concrete
+instance, so they may *compute* entries from child contracts — derivation from
 declarations, [§11.2](#112-the-declaration-inventory)-blessed. The framework helper, sketched:
 
 ```julia
-function passthrough(asm, child_path::AbstractString;
+function input_passthrough(asm, child_path::AbstractString;
                      prefix::AbstractString = child_path,   # "" → no prefixing
                      sep::AbstractString = ".",
                      except::Tuple = (), only::Tuple = ())  # mutually exclusive
 
     child = resolve(asm, child_path)      # getfield walk along "/" segments
     names = input_faces(child)            # the leaf's input_types keys,
-                                          # input entries of exports(c) for an assembly
+                                          # entries of input_connections(c) for an assembly
     isempty(except) || isempty(only) ||
         declaration_error(child_path, :both_given)  # exclusivity enforced, not documented
     unknown = setdiff((except..., only...), names)
@@ -4328,46 +4348,53 @@ function passthrough(asm, child_path::AbstractString;
     return Tuple(label(n) => string(child_path, "/", n) for n in wanted)
 end
 
-exports(w::World) = (
-    passthrough(w, "aircraft"; except = ("atm", "trn"))...,   # "aircraft.pilot.throttle_axis"
-    passthrough(w, "atmosphere"; prefix = "env", sep = "_")..., # "env_wind_N"
-    "view_pose" => "aircraft/pose",                      # explicit entries mix freely
+input_connections(w::World) = (
+    input_passthrough(w, "aircraft"; except = ("atm", "trn"))...,   # "aircraft.pilot.throttle_axis"
+    input_passthrough(w, "atmosphere"; prefix = "env", sep = "_")..., # "env_wind_N"
+)
+
+output_connections(w::World) = (
+    "aircraft/pose" => "view_pose",
 )
 ```
 
-The child is named by path, never passed as an instance ([§11.6](#116-paths-wiring-and-exports)'s `===` problem);
-a face name containing dots is a legal final path segment on the right side
-precisely because slash is the only structural separator. `resolve` and
-`input_faces` are build-pipeline primitives needed anyway — `passthrough` is a thin
+The child is named by path, never passed as an instance ([§11.6](#116-paths-wiring-and-faces)'s `===` problem);
+a face name containing dots is a legal final path segment on the internal-endpoint
+side precisely because slash is the only structural separator, and computed entries mix
+freely with hand-written ones in either declaration. `resolve` and
+`input_faces` are build-pipeline primitives needed anyway — `input_passthrough` is a thin
 composition, which is what keeps it sugar rather than machinery; no `rename` hook
-because `exports` is ordinary code (map over the pairs); normative signatures
+because the boundary declarations are ordinary code (map over the pairs); normative signatures
 for both primitives in [§13.3](#133-build-primitives-resolve-and-the-face-list-accessors). Every error stays
 first-class: an `except` face the assembly then fails to wire is an ordinary
-unconnected input; a face both wired and re-exported is a two-producers error;
+unconnected input; a face both wired and passed through is a two-producers error;
 `except`/`only` naming a nonexistent face errors with the child's face list in
 hand; a `prefix = ""` collision is caught by the build's uniqueness check like any
-hand-written duplicate. The effective export list is plain printable data — the
+hand-written duplicate. The effective face list is plain printable data — the
 inspectable contract of this instantiation. What computation does *not* do is
 auto-bubble: the author wrote down "every input face of this child that I don't
 feed, I expose under this prefix" — explicit at the type level, evaluated at
 build.
 
-**`passthrough` is inputs-only, by definition.** It reads `input_faces(child)`, and
-`except`/`only` filter *face names* within that set — there is no direction
-argument, and none is implied: the helper exists for the pass-through case,
-where an assembly hands a child's unfed requirements up one level. Computed
-*output* re-export — a `direction` keyword, or the predicate selection [§13.7](#137-tooling-consequences-provenance-and-the-component-library)
+**The name carries the direction.** `input_passthrough` reads
+`input_faces(child)` and `except`/`only` filter *face names* within that set;
+the helper exists for the pass-through case, where an assembly hands a child's
+unfed requirements up one level. Computed *output* re-export — a sibling
+`output_passthrough` splatted into `output_connections`, with the predicate
+selection [§13.7](#137-tooling-consequences-provenance-and-the-component-library)
 records for `except`/`only` — is a **guarded addition**: plausibly wanted by the
 conventional-surface work ([§9.2](#92-outbound-snapshot-publication), [§16](#16-open-axes)) and by test rigs, cheap to add, and not
 adopted here, because every output face in the worked assemblies is an explicit
-pair and no consumer has yet demonstrated the computed form.
+pair and no consumer has yet demonstrated the computed form. It could not be a
+keyword on one helper in any case: after the boundary split a single call cannot
+emit entries into two different declarations.
 
 **One authored list, two declarations.** The `World` example's two-entry
 `except` understates the real shape. Every level of a realistic tree is a
 generic seam, and an assembly that feeds some of a child's input faces while
 passing the rest up must name the fed ones in `except` — at C172X scale, four
 seams and roughly ten names at the innermost one, restating in each `except`
-tuple the wire list sitting in the same assembly's `connections`. That is
+tuple the wire list sitting in the same assembly's `child_connections`. That is
 [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s
 "structure kept in two artifacts" (row 39), the shape this design refuses
 elsewhere. It needs no vocabulary: declaration bodies are ordinary code
@@ -4390,35 +4417,35 @@ fed_faces(feeds, child) = Tuple(chopprefix(dst, child * "/")
                                 for (_, dst) in feeds
                                 if startswith(dst, child * "/"))
 
-connections(::Systems) = (
+child_connections(::Systems) = (
     (("act/" * src) => dst for (src, dst) in ACT_FEEDS)...,
     "aero/wrench" => "wr_sum/in1",               # non-feed wires unchanged
     …
 )
 
-exports(s::Systems) = (
-    passthrough(s, "aero"; except = fed_faces(ACT_FEEDS, "aero"))...,
-    passthrough(s, "ldg";  except = fed_faces(ACT_FEEDS, "ldg"))...,
+input_connections(s::Systems) = (
+    input_passthrough(s, "aero"; except = fed_faces(ACT_FEEDS, "aero"))...,
+    input_passthrough(s, "ldg";  except = fed_faces(ACT_FEEDS, "ldg"))...,
     …
 )
 ```
 
 Adding an actuator channel is then one edit: the new pair simultaneously
-creates the wire and removes the face from the export surface. The two
+creates the wire and removes the face from the input face surface. The two
 declarations cannot drift, because neither holds the shared names — both are
 projections of the authored list, so the drift class is removed rather than
 detected. Every misspelling stays loud: a mistyped destination is an
 unknown-face error with the child's face list in hand, whether the wire or
 the `except` entry meets it first. One honest asymmetry: a pair *omitted*
 from the list is not an error but a structural change — the face leaves the
-`except` set and joins the export surface, ultimately a root slot for
+`except` set and joins the input face surface, ultimately a root slot for
 conditions to cover
 ([§14.6](#146-slot-totality-the-missing-value-error-and-the-override-combinator)).
 What the idiom preserves, and the helper below surrenders, is that the feed
 statement exists to be reviewed: an omission is legible in one authored
 artifact, not defined away as the complement of the wire list.
 
-**The line not to cross** is deriving `except` from `connections` itself — a
+**The line not to cross** is deriving `except` from `child_connections` itself — a
 helper spelled `except = fed(s, "aero")`, reading the assembly's own wire
 list. That is auto-bubbling under another name (row 43): the author's explicit
 statement of which faces are fed would vanish, so a *forgotten* wire would no
@@ -4432,7 +4459,7 @@ inverted. The single source must be **authored data, never inferred
 structure**.
 
 **Generic holding = imposed contract.** A parent holding a child generically
-constrains it exactly through the faces its wires and exports reference: build a
+constrains it exactly through the faces its wires and boundary connections reference: build a
 `World` whose concrete aircraft lacks a referenced face and the error names the
 `World` entry — build-time structural typing, no new vocabulary (a formal
 required-faces declaration on domain abstract types remains possible sugar).
@@ -4456,16 +4483,17 @@ results carried past failures are violation lists from pure checks.
 ### 12.1 Three strata
 
 Three ordering constraints are forced by settled decisions: face derivation is
-**bottom-up** (an assembly's `exports` evaluates against child contracts,
-[§11.8](#118-computed-exports-and-generic-boundaries)); the unconnected-input obligation check and cross-level two-producers
+**bottom-up** (an assembly's boundary connections evaluate against child contracts,
+[§11.8](#118-computed-connections-and-generic-boundaries)); the unconnected-input obligation check and cross-level two-producers
 detection are **global** — decidable only at the root, after every assembly's
-wires and exports are in hand ([§6.1](#61-connections-and-hierarchy)); and stage membership is **derived by
+wires and faces are in hand ([§6.1](#61-connections-and-hierarchy)); and stage membership is **derived by
 probing** the stage-1 functions ([§11.2](#112-the-declaration-inventory)), so evaluation interleaves with graph construction at
 exactly one blessed spot. The pipeline is therefore inherently heterogeneous,
 organized as three strata:
 
 - **Stratum A — structure.** Pure declaration reading; no user stage code
-  executes (`exports`/`passthrough` bodies are declaration code, [§11.8](#118-computed-exports-and-generic-boundaries)). Tree walk
+  executes (`input_connections`/`output_connections`/`input_passthrough` bodies are
+  declaration code, [§11.8](#118-computed-connections-and-generic-boundaries)). Tree walk
   from the root instance: components by path, class read off
   declaration shape ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)), leaf contract collection (`input_types`,
   `output_types`, `init_*` values, `events`), bottom-up face
@@ -4480,7 +4508,7 @@ organized as three strata:
   because both sides are declaration functions of `T`: declarations are
   evaluated, no user stage code runs —
   the whole-tree obligation
-  check, root slots falling out as the root's exported input faces, and [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s
+  check, root slots falling out as the root's input faces, and [§7.1](#71-continuous-state-structured-immutable-flat-backing)'s
   closed leaf vocabulary checked on every `init_x` (the walk in [§11.2](#112-the-declaration-inventory) rests on
   it). Also here: [§11.2](#112-the-declaration-inventory)'s declaration-completeness rules (a store without its
   update, an event missing a guard or handler method, a leaf mixing tier
@@ -4531,7 +4559,7 @@ two entry points, not one: `Simulation(build::Build; ...)` accepts the
 artifact directly, and `Simulation(world; ...)` is *defined as*
 `Simulation(build(world); ...)` — the build CI checked, an acceptance test
 targeted or a face-provenance table was printed from is the one deployed,
-never an assumed-equal reconstruction (computed `exports` bodies are ordinary
+never an assumed-equal reconstruction (computed boundary-connection bodies are ordinary
 user code re-evaluated on every build, so equality between two builds of the
 same world is an assumption the factorization removes). Deployment binding
 still happens only at `Simulation` construction, whichever entry point runs.
@@ -4541,7 +4569,7 @@ concurrently** — true by construction once buffers are single-owner ([§12.4](
 is shared. The one mutable thing on the artifact is the lazily populated
 activation cache, whose insertion [§12.4](#124-activations-executable-sets-laziness-caching) makes torn-state-free.
 The `Build` is the
-inspectable contract of the instantiation [§11.8](#118-computed-exports-and-generic-boundaries) gestures at — wire list, face
+inspectable contract of the instantiation [§11.8](#118-computed-connections-and-generic-boundaries) gestures at — wire list, face
 table, schedule, root slots as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
 `attach!` validates device bindings against it. Rejected: build living only
@@ -5083,9 +5111,9 @@ sites are split into their two populations:
   be extra work — and these failures cluster in practice (a freshly written
   assembly has five unwired inputs; a renamed port breaks three wires).
   **These passes collect:** each returns its full violation list.
-- **User-code evaluation** — `exports` bodies (Stratum A), the stage-1 probes
+- **User-code evaluation** — boundary-connection bodies (Stratum A), the stage-1 probes
   (B), the probe chain (C). When user code throws there is no meaningful
-  rest-of-collection: a failed `exports` leaves the parent's face derivation
+  rest-of-collection: a failed `input_connections` leaves the parent's face derivation
   undefined; a failed stage-2 probe starves every downstream probe of its wired
   inputs (probe values flow topologically, [§12.3](#123-probing-and-input-synthesis)). Continuing past these
   requires genuine compiler machinery — poisoned nodes, cascade suppression,
@@ -5195,7 +5223,7 @@ limit to arrange. The committed runtime warnings, in one place:
 
 ### 13.3 Build primitives: `resolve` and the face-list accessors
 
-The [§11.8](#118-computed-exports-and-generic-boundaries) sketch's primitives, made normative:
+The [§11.8](#118-computed-connections-and-generic-boundaries) sketch's primitives, made normative:
 
 - `resolve(asm, path::String) → AbstractComponent` — the getfield walk along
   `/`-segments. Its one non-obvious duty is enforcing [§6.1](#61-connections-and-hierarchy)'s generic-boundary
@@ -5224,12 +5252,12 @@ The [§11.8](#118-computed-exports-and-generic-boundaries) sketch's primitives, 
   Which register a client resolves under is internal framework fact, never
   user-facing API — the same status as [§14.4](#144-two-application-registers-over-one-plan)'s two `apply!` registers.
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — the stringified keys of
-  a leaf's `input_types` (the key set is `T`-independent); the input/output entries of
-  `exports(c)` for an assembly. Declaration order is preserved: deterministic
+  a leaf's `input_types` (the key set is `T`-independent); the entries of
+  `input_connections(c)` / `output_connections(c)` for an assembly. Declaration order is preserved: deterministic
   printouts, stable diagnostics.
 - `resolve_terminal(asm, path) → (component, name)` — splits a terminal
   path's final segment (unambiguous: face names may contain dots, never
-  slashes, [§11.6](#116-paths-wiring-and-exports)) and resolves the prefix through `resolve`. First-class
+  slashes, [§11.6](#116-paths-wiring-and-faces)) and resolves the prefix through `resolve`. First-class
   because five clients share it across the three registers — wiring
   resolution (structural); condition addressing ([§14.3](#143-resolution-flatten-validate-compile-once)) and tap
   resolution ([§14.10](#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)) (load-bearing); device-binding validation ([§9.2](#92-outbound-snapshot-publication))
@@ -5334,8 +5362,8 @@ declared machinery:
   owning boundary in one visible block ([§6.1](#61-connections-and-hierarchy)): `Ldg` ORs its three legs through
   a junction ([§6.2](#62-aggregation-explicit-summing-junctions)'s ownership idiom, [§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s library) and exports one `damaged`
   face; intermediate assemblies are untouched. Each *generic* seam costs one
-  export entry — and that hop is the substitutability contract doing its job,
-  not plumbing ([§11.8](#118-computed-exports-and-generic-boundaries)'s imposed contract).
+  output connection entry — and that hop is the substitutability contract doing its job,
+  not plumbing ([§11.8](#118-computed-connections-and-generic-boundaries)'s imposed contract).
 - **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
   names root-exported `Bool` output faces, OR-combined, validated against the
   `Build`, recorded in the run metadata (the trace header's deployment block,
@@ -5472,11 +5500,11 @@ boundary.
 
 ### 13.7 Tooling consequences: provenance and the component library
 
-Computed exports gain protagonism under this section — termination chains are
+Computed boundary connections gain protagonism under this section — termination chains are
 their second structural customer after generic-boundary contracts — and two
 commitments, a library and an idiom follow:
 
-- **The `passthrough` helper family grows deliberately.** Predicate-based selection
+- **The `input_passthrough` helper family grows deliberately.** Predicate-based selection
   (an `endswith`-style filter alongside `except`/`only`) is a natural
   extension: still explicit at the declaration site, still evaluated at
   build, still printable — the blessed side of the auto-bubbling line, where
@@ -5535,8 +5563,8 @@ commitments, a library and an idiom follow:
   keeps the block from drifting into a back-door input default. A
   migration-phase deliverable.
 - **The component test rig** is the library's companion idiom: a one-child
-  assembly whose `exports` surface the child's entire input face set —
-  `passthrough(rig, "child")` verbatim ([§11.8](#118-computed-exports-and-generic-boundaries)) — so any component can be built
+  assembly whose `input_connections` surface the child's entire input face set —
+  `input_passthrough(rig, "child")` verbatim ([§11.8](#118-computed-connections-and-generic-boundaries)) — so any component can be built
   and simulated in isolation: every input becomes a root slot fed by
   ordinary conditions and devices, and every output is observable in the
   snapshot table. One qualification, from [§11.2](#112-the-declaration-inventory)'s root-slot rule: an
@@ -5544,7 +5572,7 @@ commitments, a library and an idiom follow:
   surface as a root slot — abstract-at-root is a build error — so the rig
   satisfies it *inside* the rig: a concrete stub child (a
   `SampleTerrainField` provider) wired to the face, and the concrete
-  remainder exported via `passthrough(rig, "strut"; except = ("terrain",))`. That
+  remainder exposed via `input_passthrough(rig, "strut"; except = ("terrain",))`. That
   stub child is typically just a `Constant` holding the test handle — the
   source block's first shipped instance — with bespoke stubs remaining
   ordinary components wherever the double must compute something.
@@ -5598,7 +5626,7 @@ operation is illegal in the current lifecycle state," distinct from
 
 A condition may specify: continuous state fields (`x`), modes (`m`,
 continuous components only, [§3.2](#32-periodic-discrete-component)) and discrete state (`z`) — addressed by
-[§11.6](#116-paths-wiring-and-exports) slash path plus field name — and root
+[§11.6](#116-paths-wiring-and-faces) slash path plus field name — and root
 input slots, addressed by face. Never outputs (derived data) and never
 workspace (scratch). Entries are validated in the [§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast) collecting register: full
 list, violations collected, one `BuildError`.
@@ -5617,14 +5645,14 @@ the same gather the trace header already needs. One mechanism, two uses.
 **The mirror-tree spelling was rejected** (nested NamedTuples shaped like the
 assembly): the same information, but a second spelling of structure that must
 be zipped against the real one, ragged under partial specification, and
-outside the path vocabulary that `connections`, diagnostics and the `Build`'s
+outside the path vocabulary that `child_connections`, diagnostics and the `Build`'s
 provenance tables already speak.
 
 **Doctrine.** This does not reopen [§13.5](#135-termination-is-a-state-not-an-exception)'s observation-by-path rejection:
 that was *runtime* coupling — a root-authored predicate reaching through
 generic seams it does not own, breaking on substitution. A condition is a
 *design-time statement about a concrete build*, authored in the same register
-as `connections` (which also speaks paths, about children its author owns).
+as `child_connections` (which also speaks paths, about children its author owns).
 [§14.2](#142-fragment-composition-locality-without-schema)'s composition law makes the parallel exact.
 
 **Pre-sweep doctrine.** Condition writes precede the first sweep by
@@ -5702,13 +5730,13 @@ internally-wired input has no slot and writing it is meaningless (the first
 sweep overwrites), and unexported stays unpokeable for init exactly as for
 the GUI ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract), [§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)).
 
-**The locality law** is [§6.1](#61-connections-and-hierarchy)'s, third instance (connections, computed exports,
+**The locality law** is [§6.1](#61-connections-and-hierarchy)'s, third instance (child connections, computed boundary connections,
 now conditions): each level speaks its own fields, its declared children's
 names, and its own faces; delegation by dispatch at every genericity seam;
 deep `at` paths legitimate exactly where deep connections are — within an
 owned concrete subtree. Absolute paths exist only in the flattened entry
 list, a *compiled derivative* of the composition, as slot offsets are of
-`connections`. Substituting a component invalidates precisely the fragments
+`child_connections`. Substituting a component invalidates precisely the fragments
 its owner shipped, nothing else. Enforcement status is also [§6.1](#61-connections-and-hierarchy)'s: convention
 (ownership is a fact about who maintains the code, not build-visible),
 available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
@@ -6748,7 +6776,7 @@ forced by this cast):
   claiming, liveness and trace provenance — the port is the periphery's atomic
   unit ([§4.3](#43-table-mechanics-and-port-granularity) write-side corollary). The routing convenience the bundle bought in
   FlightCore's argument-threading world is provided here by the namespace prefix
-  and `passthrough` ([§11.8](#118-computed-exports-and-generic-boundaries)); the struct reappears legitimately downstream, assembled
+  and `input_passthrough` ([§11.8](#118-computed-connections-and-generic-boundaries)); the struct reappears legitimately downstream, assembled
   in-model by a single producer.
 
 #### Surface walkthrough
@@ -6760,13 +6788,13 @@ forced by this cast):
   `HorizontalTerrain`'s elevation is a plain field (parameter), its surface type
   an input port: the parameter/port split FlightCore kept implicit in
   `U()`-vs-field convention is now the declaration itself. The aircraft's
-  `exports` block carries the `pilot.*` face group in one place, deep routes
+  `input_connections` block carries the `pilot.*` face group in one place, deep routes
   spanning avionics *and* systems — today's mapping writes flaps/brakes directly
   into `act`, bypassing avionics; that bypass becomes a declared route.
 - `Simulation(world; algorithm = RK4(), h = 0.02, n = 1, t_end = 1000)` — `n`
   binds `Δt_base = n·h` ([§8.5](#85-multi-rate-tick-scheduling); default 1: base tick every step). The entire
   build pipeline runs here: class resolution, path validation, face derivation
-  (computed exports expanded, printable), two-producers/unconnected checks,
+  (computed boundary connections expanded, printable), two-producers/unconnected checks,
   topological sort, probe passes, rate compilation, flat layout, slot table.
 - `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services ([§14](#14-stopped-sim-services);
   trim is its own service, `trim!(sim, problem; baseline, ...)`, whose commit
@@ -7125,18 +7153,22 @@ Still to be settled:
   `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
   rather than call every day. Its criterion is the **four-register naming
   convention** (row 144): declarations the author defines and the framework
-  calls are bare nouns or `init_*`/`_types` (`connections`, `exports`,
+  calls are bare nouns or `init_*`/`_types` (`child_connections`,
+  `input_connections`/`output_connections`,
   `events`, `input_types`, `workspace`, the stage letters, [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s `claims(b)`);
   value selectors called against `reads` and snapshots carry `get_`
   ([§14.4](#144-two-application-registers-over-one-plan)); lifecycle and mutating actions are verbs, `!` when they mutate;
   build primitives ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)) are plain verbs. A name in the wrong register is a
   rename candidate on that ground alone — which is what the `passthrough`
-  rename ([§11.8](#118-computed-exports-and-generic-boundaries)) already applied, retiring a caller-side helper that wore
+  rename ([§11.8](#118-computed-connections-and-generic-boundaries), now `input_passthrough`, row 171) already applied, retiring a caller-side helper that wore
   declaration dress and collided with `get_face`; the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding-method
   renames (`faces` → `claims`, `selectors` → `reads`, row 146) then applied the
   convention's **semantic axis** — right register, wrong noun: both were correctly
-  bare-noun declarations but named their *content*, where the `exports` precedent
-  names the *consequence* the declaration has. Five items are flagged
+  bare-noun declarations but named their *content*, where `claims` and `reads`
+  name the *consequence* the declaration has. (That axis's earlier exemplar was
+  `exports`, retired by row 170's split; the `*_connections` family that replaced
+  it names content deliberately, for authoring transparency — a recorded choice,
+  not register drift.) Five items are flagged
   for the sweep and deliberately not settled now: `input_faces`/`output_faces`
   (noun accessors punning on the `_types` declarations, mitigated by being
   framework-facing); `workspace` (a declaration whose bare noun reads as an
@@ -7317,7 +7349,8 @@ lifecycle:
   (`Event(guard, handler; localize)`), `project`.
 - Discrete leaf: `init_z`, `workspace(::C)`,
   `input_types`/`output_types` — stages `h_z`, `h_zu`, `g`.
-- Assembly: `connections` (mandatory — the class marker), `exports`, `rates`.
+- Assembly: `child_connections` (mandatory — the class marker),
+  `input_connections`, `output_connections`, `rates`.
 - Shipped conditions: `condition(::C; kw)` fragment functions ([§14.2](#142-fragment-composition-locality-without-schema)).
 
 Bundle contents by function family (the maximal legal sets, [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws) — signatures
@@ -7359,8 +7392,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   segments, enforcing [§6.1](#61-connections-and-hierarchy)'s generic-boundary rule at the primitive ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
   face names ([§13.3](#133-build-primitives-resolve-and-the-face-list-accessors)).
-- `passthrough(asm, path; prefix, sep, except, only)` — the declaration-site
-  helper for computed exports ([§11.8](#118-computed-exports-and-generic-boundaries)).
+- `input_passthrough(asm, path; prefix, sep, except, only)` — the declaration-site
+  helper for computed input connections ([§11.8](#118-computed-connections-and-generic-boundaries)).
 
 **Deployment.**
 
@@ -7561,7 +7594,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 
 - **build (collected)** — a diagnostic from a declarative pass, collected with its
   siblings and thrown as one `BuildError` at the stratum barrier ([§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast));
-- **build (fail-fast)** — raised while *user code* runs (an `exports` body, a
+- **build (fail-fast)** — raised while *user code* runs (a boundary-connection body, a
   probe); the first one aborts the phase ([§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast));
 - **service** — raised by a stopped-sim service, or by
   `attach!`/`Simulation`/`run!` validating against the `Build`; collected into one
@@ -7589,7 +7622,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 |---|---|---|---|
 | `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1](#61-connections-and-hierarchy), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w1 | build (collected) |
 | `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1](#61-connections-and-hierarchy), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w2 | build (collected) |
-| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / export entry) | [§6.1](#61-connections-and-hierarchy), [§11.8](#118-computed-exports-and-generic-boundaries) | build (collected) |
+| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / boundary connection entry) | [§6.1](#61-connections-and-hierarchy), [§11.8](#118-computed-connections-and-generic-boundaries) | build (collected) |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1](#61-connections-and-hierarchy), [§11.2](#112-the-declaration-inventory), [§11.4](#114-failure-walkthroughs-the-error-locality-grounding) w4 | build (collected) |
 | `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1](#61-connections-and-hierarchy), [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | [§6.1](#61-connections-and-hierarchy), [§13.3](#133-build-primitives-resolve-and-the-face-list-accessors) | build (collected) |
@@ -7600,14 +7633,14 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `PrimitiveAtRoot` | root path, component type | [§11.2](#112-the-declaration-inventory) | build (collected) |
 | `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions ([§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)) | [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
-| `ClassMixed` | component path, the `connections` declaration and the offending leaf declarations | [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
+| `ClassMixed` | component path, the `child_connections` declaration and the offending leaf declarations | [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
 | `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
 | `TierSignatureMismatch` | component path, the declaration at fault (`input_types` or `output_types`), the leaf's tier, the signature form found versus the form mandated (two-argument `(::C, ::Type{T})` on the continuous tier, plain `(::C)` on the discrete) | [§11.2](#112-the-declaration-inventory), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) | build (collected) |
-| `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | [§11.6](#116-paths-wiring-and-exports) | build (collected) |
-| `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | [§11.6](#116-paths-wiring-and-exports) | build (collected) |
-| `FaceDirectionConflict` | assembly path, face name, its internal endpoints, derived directions | [§11.6](#116-paths-wiring-and-exports) | build (collected) |
-| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | [§11.8](#118-computed-exports-and-generic-boundaries) | build (collected) |
+| `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | [§11.6](#116-paths-wiring-and-faces) | build (collected) |
+| `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | [§11.6](#116-paths-wiring-and-faces) | build (collected) |
+| `FaceDirectionConflict` | assembly path, the declaring method, the offending entry, the resolved port's actual direction | [§11.6](#116-paths-wiring-and-faces) | build (collected) |
+| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | [§11.8](#118-computed-connections-and-generic-boundaries) | build (collected) |
 | `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | [§8.5](#85-multi-rate-tick-scheduling), [§11.7](#117-rate-scopes) | build (collected) |
 | `MissingProbeValue` | face name, type | [§12.3](#123-probing-and-input-synthesis) | build (collected) |
 
@@ -7694,12 +7727,13 @@ needed for eltype genericity, and illegal where the face surfaces as a root
 slot (`AbstractAtRoot`) ([§11.2](#112-the-declaration-inventory)).
 
 **assembly** — pure composition: component-typed fields as children, plus
-`connections` (mandatory, the class marker), `exports` and `rates`, with no
+`child_connections` (mandatory, the class marker), `input_connections`,
+`output_connections` and `rates`, with no
 dynamics of its own; flattened away for scheduling, retained as the
 navigation hierarchy and as declaration-level rate scopes ([§3.3](#33-assembly), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)).
 
 **class** — a component's primitive-vs-assembly status, read off *which*
-well-known declarations its type defines: `connections` ⇒ assembly, any leaf
+well-known declarations its type defines: `child_connections` ⇒ assembly, any leaf
 declaration ⇒ primitive, neither ⇒ `ClassUnreadable` ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)). Not to be
 confused with *tier* (continuous vs. discrete, [§D.4](#d4-time-and-events)) or with a diagnostic
 *kind* ([§D.9](#d9-error-discipline-and-diagnostics)).
@@ -7711,7 +7745,7 @@ interchangeably for the non-assembly classes ([§3](#3-component-taxonomy)).
 **container children** — a `Tuple`/`NamedTuple` field whose elements are all
 components, contributing them as children path-named `"field/1"` or
 `"field/key"`. Transparent grouping, not an assembly: no contract, no
-`connections`, no rate scope ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)).
+`child_connections`, no rate scope ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)).
 
 **continuous component** — the hybrid primitive: continuous state `x`, modes
 `m`, flow `f`, two output stages, events (guards + handlers) and optional
@@ -7728,7 +7762,7 @@ the discrete one. Declared in
 **declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_m`/`init_z`, `workspace`,
 `input_types`/`output_types`, `events`, the stages, `f`/`g`/
-`project`, and `connections`/`exports`/`rates` — each declared in a stated
+`project`, and `child_connections`/`input_connections`/`output_connections`/`rates` — each declared in a stated
 register of authority: by value, by type, by allocation ([§11.2](#112-the-declaration-inventory)).
 
 **function family** — which bundle fields a given function may legally
@@ -7738,9 +7772,9 @@ receive: `h_x`/`h_xu`/`h_z`/`h_zu`/`f`/`g`/guard/handler/`project`, with
 Not a diagnostic *kind* ([§D.9](#d9-error-discipline-and-diagnostics)).
 
 **generic holding** — a parent holding a child through a non-concrete field
-type; the child is opaque below its exported faces, and the wires and exports
+type; the child is opaque below its faces, and the wires and boundary connections
 referencing those faces *are* the imposed contract, checked per instantiation
-([§11.8](#118-computed-exports-and-generic-boundaries), [§6.1](#61-connections-and-hierarchy)).
+([§11.8](#118-computed-connections-and-generic-boundaries), [§6.1](#61-connections-and-hierarchy)).
 
 **hybrid causal system** — what the framework simulates: continuous flow with
 algebraic outputs, multi-rate periodic discrete dynamics, zero-crossing
@@ -7802,11 +7836,14 @@ abstract face. Its value is instance data, never a default ([§13.7](#137-toolin
 input entry ([§11.2](#112-the-declaration-inventory)), executor entry ([§12.7](#127-the-compiled-executor)), roster entry ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), batch entry
 ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)) and condition entry ([§14.3](#143-resolution-flatten-validate-compile-once)), each a different thing.
 
-**face** — a name in an assembly's `exports` contract: an opaque token with
+**face** — the name a port wears on its component's boundary: for a leaf the
+port's own name, for an assembly a name declared in `input_connections` or
+`output_connections`, aliasing an interior port. An opaque token with
 two build-checked invariants (no `/`, unique within the assembly), its type
-and direction derived from its internal endpoint. The periphery's write side
+derived from its internal endpoint and its direction declared by the method
+that names it. The periphery's write side
 speaks face names only; the read side speaks them wherever it wants contract
-rather than structure ([§11.6](#116-paths-wiring-and-exports), [§9.2](#92-outbound-snapshot-publication), [§14.4](#144-two-application-registers-over-one-plan)).
+rather than structure ([§11.6](#116-paths-wiring-and-faces), [§9.2](#92-outbound-snapshot-publication), [§14.4](#144-two-application-registers-over-one-plan)).
 
 **feedthrough** — an instantaneous input→output dependence. **Structural
 feedthrough** is this design's version: fixed by which stage produces a port
@@ -7837,9 +7874,9 @@ produced signal of the flattened model; consumers gather views from it, and
 its consistency is a boundary property, transiently integrator scratch within
 a step ([§4.1](#41-immutable-value-semantics), [§8.3](#83-signal-table-consistency-is-a-boundary-property)).
 
-**slot** — a root input slot: the root assembly's exported input face,
+**slot** — a root input slot: the root assembly's own input face,
 produced by no component, constant within a frame, and the only thing the
-periphery may write ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§11.6](#116-paths-wiring-and-exports)).
+periphery may write ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§11.6](#116-paths-wiring-and-faces)).
 
 **staging cell** — the per-device atomic holding place where a device's pending
 write batch waits between drains; mutated frame by frame, hence outside the
@@ -8501,5 +8538,5 @@ standard component library is the standing ergonomics one ([§13.7](#137-tooling
 
 **worked (example)** — a full spelling of a mechanism against a real artifact,
 carried in the spec rather than left to the reader: the worked assembly of
-[§11.6](#116-paths-wiring-and-exports), the worked C172 cruise problem of [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), and [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s IMU as the
+[§11.6](#116-paths-wiring-and-faces), the worked C172 cruise problem of [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), and [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s IMU as the
 boundary-sampling example [Appendix A](#appendix-a-taught-contracts-the-author-facing-index) points at.

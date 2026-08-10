@@ -431,17 +431,20 @@ makes a `NamedTuple` field contribute its elements as path-named children, and
 declarations are ordinary functions of the *instance*, free to read its fields:
 
 ```julia
-struct Group{C <: NamedTuple, W, E} <: AbstractComponent
+struct Group{C <: NamedTuple, W, I, O} <: AbstractComponent
     children::C      # component-typed elements → children by the container rule
     wires::W         # inert parameter data
-    exported::E
+    inputs::I
+    outputs::O
 end
-connections(g::Group) = g.wires
-exports(g::Group)     = g.exported
+child_connections(g::Group)  = g.wires
+input_connections(g::Group)  = g.inputs
+output_connections(g::Group) = g.outputs
 
 world = Group(
     (; plant = Plant(), ctrl = PID(kp = 2.0)),
     (("ctrl/u", "plant/u"), ("plant/y", "ctrl/y")),
+    (;),
     (;),
 )
 ```
