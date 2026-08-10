@@ -491,7 +491,14 @@ may see inputs **and** the component declares `input_types`, `y` iff the
 component produces any table cell at all (`output_types` ∪ auto-published),
 `y_x`/`y_z` iff stage-1 ports exist, `w` iff the stage that hands it down
 returned one (the one-hop law below), `t` always, `Δt` on the
-discrete tier only. Undeclared stores are *absent*, never `nothing`-filled:
+discrete tier only. **`y_x`/`y_z` carry the stage-1 *return*, auto-published
+names excluded**: an auto-published port is the framework copying a state,
+mode or `z` field into a cell at stage-1 position ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)), and stage 2 already
+holds `x`/`m`/`z` directly, so carrying it in the hand-down would be transport
+for its own sake — [§7.4](#74-the-fused-evaluation-lineage-prior-art-and-how-we-got-here) step 4's rejected identity transport, in a bundle rather
+than a table. The rule is what [§12.3](#123-probing-and-input-synthesis) already sources: `y_x`/`y_z` come from the
+stage-1 probe's return, so a component whose only stage-1 ports are
+auto-published has no `y_x` in its stage-2 bundle at all (row 169). Undeclared stores are *absent*, never `nothing`-filled:
 destructuring a field that is not a thing for you fails at the probe inside the
 [§13.2](#132-diagnostics-structured-values-one-carrier-exception) framing diagnostic, with did-you-mean against the legal field set ("`f`
 of `Foo` destructures `m`, but `Foo` declares no `init_m`") — one law covering
@@ -4554,7 +4561,9 @@ marginal coverage is earliness, not completeness; the always-on check ([§12.5](
 remains the completeness backstop.
 
 **Probe argument sourcing.** `x`/`m`/`z` come from `init_*` declarations
-(declared by value); `y_x`/`y_z` from the stage-1 probes; wired inputs from
+(declared by value); `y_x`/`y_z` from the stage-1 probes' *returns* (an
+auto-published name is a framework write, never a probe product, so it is
+absent from the hand-down — [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)); wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
 topological order. **`w` threads through the probe in stage order**, by the
 [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws) one-hop law: the `h_x` probe's second return slot enters `h_xu`'s probe
@@ -7329,8 +7338,9 @@ Table footnotes, from the bundle law ([§5.2](#52-two-stage-outputs-signatures-b
 each field is present only if it exists for the component: `u` iff the function
 family may see inputs **and** the component declares `input_types`; `y` iff the
 component produces any table cell (`output_types` ∪
-auto-published); `x`/`m`/`z`/`ws` iff declared; `y_x`/`y_z` iff stage-1 ports
-exist; `w` iff the stage handing it down returned one ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)'s one-hop law);
+auto-published); `x`/`m`/`z`/`ws` iff declared; `y_x`/`y_z` iff the stage-1
+*return* is non-empty (auto-published names excluded — [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), row 169);
+`w` iff the stage handing it down returned one ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)'s one-hop law);
 `Δt` on the discrete tier only. Returns: a stage returns a NamedTuple of
 port values, or the pair `(y, w)` adding its private intermediates
 ([§4.3](#43-table-mechanics-and-port-granularity), [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)); `f` returns the layout image of `X` ([§7.1](#71-continuous-state-structured-immutable-flat-backing)); a **handler
