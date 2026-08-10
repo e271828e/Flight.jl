@@ -75,8 +75,9 @@ increasing effort:
    root — also the subject of section 2 of this document.
 4. **Continuous transport delay.** The engine reference supports delay blocks with
    interpolated history; we have only the discrete `UnitDelay` ([§5.5](framework_spec.md#55-algebraic-loop-policy-reject-at-build-time), [§13.7](framework_spec.md#137-tooling-consequences-provenance-and-the-component-library)). A
-   continuous transport delay is a *library component* with a ring buffer in `z` —
-   it strains the immutable-`z` and allocation-policy corners but touches no kernel.
+   continuous transport delay is a *library component* with a ring buffer in its
+   discrete state `x` —
+   it strains the immutable-state and allocation-policy corners but touches no kernel.
 5. **Enabled-subsystem behavior** (hold or reset states while a control signal is
    low). The pattern already exists as mode logic plus reset events — the
    `PIVector(; reset = true)` shape from [§16](framework_spec.md#16-open-axes). What is missing is only sugar for
@@ -303,7 +304,7 @@ simple fractions of their period.
 
 - *Boundary zero.* [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s "at boundary zero the due set is everything" refines to
   "everything with `Φ = 0`": an offset component's first tick is at `Φ·Δt_base`, and
-  until then its cells hold the values the build probe populated from `init_z`
+  until then its cells hold the values the build probe populated from `init_x`
   ([§12.3](framework_spec.md#123-probing-and-input-synthesis)) — a coherent ZOH story, since those are exactly the values a tick at
   `t₀⁻` would have produced. [§14.5](framework_spec.md#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)'s boundary-zero transitions and the trim
   read-back need a sentence each acknowledging offset components are not due there.
@@ -346,12 +347,12 @@ The two due sets are *disjoint at every boundary* — the designed effect of a
 half-period stagger. Boundary by boundary:
 
 - **t = 0**: due = {ctrl} (the amended boundary-zero rule). The sensors have never
-  ticked; ctrl reads their build-probed `init_z` cells for the first millisecond.
+  ticked; ctrl reads their build-probed `init_x` cells for the first millisecond.
 - **Odd ms**: due = {sensors}; ctrl's cells hold.
 - **Even ms, not multiples of 20**: due set empty — the boundary exists for events
   and frame structure only. These 1 kHz boundaries in a model whose fastest task is
   500 Hz are the overhead the offset-refined grid charges.
-- **Multiples of 20 ms**: due = {ctrl}, whose `h_zu` reads sensor cells written at
+- **Multiples of 20 ms**: due = {ctrl}, whose `h_xu` reads sensor cells written at
   the previous odd boundary — data exactly 1 ms old, every time, deterministically.
 
 **What the offset bought.** With `offset = 0`, sensors and ctrl coincide at every

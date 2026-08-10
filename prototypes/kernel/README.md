@@ -46,7 +46,8 @@ exponential), with a tolerance — never `==` (row 163).
 
 ## What is deliberately absent
 
-Increment 3 and beyond: the discrete tier (`z`, `h_z`/`h_zu`/`g`, modes,
+Increment 3 and beyond: the discrete tier (its own `x` store, `g`, the
+tick-gated `h_x`/`h_xu`, modes,
 workspace), multi-rate tick scheduling and the boundary sweep's gating (the
 one-arg phase-body arity exists and is exercised, but gates nothing yet), events
 (guards, handlers, `project`, localization), hierarchy and assemblies, computed
