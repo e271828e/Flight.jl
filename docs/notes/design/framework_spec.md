@@ -3996,17 +3996,18 @@ The inventory, and where each schema fact gets its authority:
   `init_m` and `events` are continuous-only (the event system is
   continuous-side only: [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§3.2](#32-periodic-discrete-component), [§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)),
   `workspace`'s arity splits the tiers (`(::C, ::Type{T})` versus `(::C)`), and
-  so does `output_types`' arity (row 166). Disagreement is
+  so do `output_types`' and `input_types`' arities (rows 166–167). Disagreement is
   `DeclarationOnWrongTier` ([Appendix C](#appendix-c-the-diagnostic-kind-set) — the offending
   declaration, with the tier the leaf's other declarations announce), surviving
   on a reduced member set with its job unchanged: declaring both `f` and `g`, or
   a `g` beside a two-argument `output_types`. The wrong-letter class — an `h_z`
   written on a continuous leaf — dies with the distinction it policed.
   A **stateless** leaf declares no store and no update law, so its tier is
-  decided by `output_types`' arity alone; and that arity is no mere marker — it
-  *is* the tier's cell semantics (row 166): the two-argument form declares cells
-  at the activation scalar, walking with it, where the plain form declares the
-  pinned discrete world. The tier-transparency point stands unchanged: a
+  decided by its contract arities — `output_types`, mandatory hence always the
+  decider, with `input_types`, where declared, agreeing; and the arity is no
+  mere marker — it *is* the tier's semantics (rows 166–167): the two-argument
+  forms declare cells and tolerances at the activation scalar, walking with it,
+  where the plain forms declare the pinned discrete world. The tier-transparency point stands unchanged: a
   stateless `h_xu` component is tier-transparent library material
   ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)). Members of both families, or of neither,
   are the [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) class errors. **The root of a build is an assembly:** root slots
