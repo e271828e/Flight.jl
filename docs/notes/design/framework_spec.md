@@ -1244,17 +1244,19 @@ live example pattern).
   as the `ws` bundle field ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) in every bundle-receiving function of the
   declaring component (`project` is positional and receives none),
   and **excluded from state semantics** — not snapshotted, not replayed, never a
-  condition target ([§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)), must carry no information between calls. Checkable:
-  in debug mode the framework **poisons the workspace before every call**, so
-  read-before-write of stale scratch detonates immediately. The poison is scoped
-  to what a store can carry: float-eltype stores get `NaN`, integer-eltype
-  stores get `typemin` (which detonates on first use as an index), and element
-  types with no sentinel — `Bool` flags, enums, opaque handles — are skipped,
-  the skip reported once per activation. Naming the skipped stores is the point:
-  a guarantee that is silently partial is exactly the anti-diagnostic pattern
-  [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract) rejects. Declared **by
-  allocation**: the well-known method *is*
-  the allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
+  condition target ([§14.1](#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)), must carry no information between calls. The framework
+  **never inspects or mutates a workspace** — the workspace is an opaque,
+  opt-in escape hatch from value semantics, used at the author's own risk, and
+  its rules are contract, not checks: at call entry, contents are unspecified
+  beyond the structure the allocator itself established (a plan or
+  factorization configured at allocation is valid from then on); scratch is
+  garbage until written this call; nothing a previous call left behind may be
+  relied upon. No poison is attempted: "poisonable scratch" is not well-defined
+  over the workspace's legitimate contents — a fill that recursed into a plan's
+  internal buffers would destroy it — and a partial guarantee, even a loudly
+  partial one, trains authors onto a safety net that may not be under them
+  (row 183). Declared **by allocation**: the well-known method *is* the
+  allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
   c.n, c.n), x̂ = Vector{T}(undef, c.n))` on the continuous tier, plain
   `workspace(::C)` on the discrete (the contract declarations' tier split) — called
   once per activation and once per scratch-store set ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)), sizes from the
@@ -1266,20 +1268,20 @@ live example pattern).
   where the author makes a choice with it. Nothing
   downstream derives from a workspace's type, and mistyped scratch detonates
   loudly at the `Dual` probe. The `undef` spelling is the
-  recommended idiom: it makes "contents are meaningless" visible in the
-  declaration, which is the register this store actually lives in — a
-  workspace is *not* memory, so declaration-by-initial-value ([§11.2](#112-the-declaration-inventory)) never
+  recommended idiom and the sole visible marker that contents are meaningless:
+  it puts that fact in the declaration, which is the register this store
+  actually lives in — a workspace is *not* memory, so
+  declaration-by-initial-value ([§11.2](#112-the-declaration-inventory)) never
   legitimately covered it, and none of the [§11.2](#112-the-declaration-inventory) arguments for authored values
   (condition overlay base, the probe-value barrier) applies to a store that
-  conditions exclude and the poison overwrites. Available on **both tiers**:
-  nothing in the contract is tier-specific, and a continuous workspace simply
-  joins the `T`-generic surface — under a `Dual` activation the allocator is
-  called at `Dual`, and the in-place math runs through Julia's generic
-  fallbacks (no BLAS; activations probe and linearize, they don't run
+  conditions exclude and whose contents at entry no one may rely on. Available
+  on **both tiers**: nothing in the contract is tier-specific, and a continuous
+  workspace simply joins the `T`-generic surface — under a `Dual` activation
+  the allocator is called at `Dual`, and the in-place math runs through Julia's
+  generic fallbacks (no BLAS; activations probe and linearize, they don't run
   marathons). The calls-per-boundary multiplicity of the continuous side (RK
   stages, localization probes, event re-sweeps) makes the no-information-between-
-  calls contract *more* load-bearing there, not less — which is the poison
-  check earning its keep, not a prohibition. (Rejected: `workspace_type`
+  calls contract *more* load-bearing there, not less. (Rejected: `workspace_type`
   returning types with framework instantiation — array types carry no
   dimensions, sizes live in runtime fields like `kf.n` which no zero-argument
   constructor can see, and hoisting sizes into type parameters lands on the
@@ -2170,7 +2172,7 @@ GUI has the honest remedy of being declared public (one auto-published cell per
 sweep). Post-run continuation reads the live stores directly; periodic full-state
 checkpoints (warm restart without replay-from-zero) are a guarded addition shaped as
 an opt-in log policy, and a dev-mode flag auto-publishing all state fields is a
-possible diagnostic kin to the NaN-poisoned workspace.
+possible future diagnostic.
 
 Logging dissolves into publication: the log is a vector of retained snapshot
 references — same objects, zero extra copies; the per-step `deepcopy` detour of the
@@ -4881,9 +4883,9 @@ an unwired-input default, [§6.1](#61-connections-and-hierarchy)'s banned concep
 root-only need; and it would need its own agreement rule for fan-out through an
 exported face, where the slot type already follows [§11.2](#112-the-declaration-inventory)'s rule — the unique
 concrete declaration among the consumers); NaN poison
-values (`Bool`/enums unpoisonable; probe values are meant to be read — poison
-guards illegitimate reads, [§7.3](#73-discrete-state-modes-and-workspace)); init-service values (the build is
-standalone; services post-date it).
+values (`Bool`/enums unpoisonable; probe values are meant to be read, so a
+sentinel that detonates on read has nothing legitimate to guard here);
+init-service values (the build is standalone; services post-date it).
 
 **Probe values are strictly probe-scoped.** Everything the probe writes is
 garbage once the build finishes; probe values never double as initial slot
@@ -5464,8 +5466,6 @@ limit to arrange. The committed runtime warnings, in one place:
   join timeout, abandoned by name rather than hanging `run!`;
 - **device crash** ([§10.4](#104-shutdown-protocol), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)) — a device task's failure caught by the
   framework wrapper, the sim continuing with the device absent;
-- **workspace poison skip** ([§7.3](#73-discrete-state-modes-and-workspace)) — once per activation, naming the stores
-  with no usable sentinel;
 - **unbounded run** ([Appendix B](#appendix-b-api-synopsis-the-entry-points)) — no finite `t_end`, no `stop_on` faces,
   `pace = Inf` at run start.
 
@@ -7667,7 +7667,7 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 - `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
   stop_on = (), localization_tol = 1e-6, localization_budget = 8,
   firing_budget = 4,
-  trace = true, log = true, log_every = 1, log_max = 65536, debug = false)` —
+  trace = true, log = true, log_every = 1, log_max = 65536)` —
   wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
   the `Build` overload takes the same deployment keywords and deploys an
   inspected artifact directly, [§12.2](#122-the-build-artifact)); `h` is required (a domain rate is not a
@@ -7699,8 +7699,7 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   whole run stays covered at coarsening density, the boundary-zero and terminal
   snapshots being retained unconditionally and outside the bound ([§9.2](#92-outbound-snapshot-publication)). Both
   are view policies, not trajectory-determining: neither enters the deployment
-  block, and replay neither records nor compares them. `debug`
-  gates the workspace poison ([§7.3](#73-discrete-state-modes-and-workspace)).
+  block, and replay neither records nor compares them.
 - `attach!(sim, dev::AbstractDevice, binding::AbstractBinding; should_abort = false)`
   — the roots are mandatory and the signature is the gate; **sides are declared**
   by the Bool traits `is_input`/`is_output` (framework defaults false on
@@ -7983,7 +7982,6 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
 | `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | warning (runtime), repeating source — rate-limited per writer ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)) |
 | `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
-| `PoisonSkip` | component path, the skipped workspace stores and their element types | [§7.3](#73-discrete-state-modes-and-workspace) | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§10.4](#104-shutdown-protocol)) | [Appendix B](#appendix-b-api-synopsis-the-entry-points), [§13.5](#135-termination-is-a-state-not-an-exception) | warning (runtime), at run start |
 
 ---
@@ -8099,7 +8097,8 @@ with no dependency annotations anywhere ([§5.2](#52-two-stage-outputs-signature
 **workspace** — component-declared mutable scratch, declared *by allocation*
 (`workspace(::C, ::Type{T})` continuous, `workspace(::C)` discrete), arriving
 as the `ws` bundle field; excluded from state semantics, never a condition
-target, and poisoned before every call in debug mode ([§7.3](#73-discrete-state-modes-and-workspace)).
+target, and never inspected or mutated by the framework — contents at call
+entry are unspecified ([§7.3](#73-discrete-state-modes-and-workspace)).
 
 ### D.2 Signals and data homes
 
@@ -8793,11 +8792,6 @@ kind plus payload, never on message text ([§13.2](#132-diagnostics-structured-v
 **payload** — the structured data a diagnostic carries beside its kind: paths
 and names as strings (never instances or model types), expected/observed port
 types, the list-in-hand, the severity ([§13.2](#132-diagnostics-structured-values-one-carrier-exception), [Appendix C](#appendix-c-the-diagnostic-kind-set)).
-
-**poison** — the debug-mode overwrite of a workspace before every call (`NaN`
-for float-eltype stores, `typemin` for integer ones) so read-before-write of
-stale scratch detonates immediately; stores with no sentinel are skipped and
-named once per activation (`PoisonSkip`) ([§7.3](#73-discrete-state-modes-and-workspace)).
 
 **`stop_on` / termination is a state** — graceful termination is model state,
 never an exception: detection is ordinary event machinery, publication an
