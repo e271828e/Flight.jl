@@ -187,12 +187,12 @@ The framework simulates **hybrid causal systems**, composed of:
 Both policies share one declaration (guard function + handler); only detection
 differs:
 
-- **Boundary-detected (default, cheap):** guards are checked for not-holding → holding edges
+- **Boundary-detected (cheap):** guards are checked for not-holding → holding edges
   against their priors ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)) at step boundaries
   only. No root-finding, no step rejection; the handler fires at the end of the step in
   which the edge was observed. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
-- **Localized (opt-in, per event):** localization of the crossing instant by root-finding,
+- **Localized (precise):** localization of the crossing instant by root-finding,
   for events where timing precision genuinely matters (mechanics in [§8.4](#84-localization-mechanics)). Runs
   identically in every execution mode: under real-time pacing the
   localization cost is absorbed as pacer debt like any other expensive frame
@@ -210,10 +210,36 @@ predicate transitions from
 not-holding to holding — edge semantics, uniform across both forms, with the
 prior bookkeeping stated in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event); the opposite crossing direction is
 declared as a second event with the negated guard (stall entry/exit as a
-pair). Boundary detection handles both forms; localization requires the
-continuous (sign) form. This matters in practice: most transitions in FlightPhysics mix
-input predicates with state thresholds (e.g. the piston engine's `starting → running`
-fires on `ω > ω_idle && fuel_available`).
+pair).
+
+**Detection policy is declared by the guard's return type,** not by a flag:
+a guard returning `Bool` is boundary-detected, a guard returning the nominal
+scalar — the continuous (sign) form — is localized. The build reads the policy
+off the probe it already runs ([§12.3](#123-probing-and-input-synthesis), nominal activation), so `Event(guard,
+handler)` carries no detection keyword (row 179). The form *is* the policy
+because localization brackets a root and only the sign form offers one; the
+illegal pairing is thereby unrepresentable rather than merely diagnosed.
+De-localizing is a one-line rewrite with no semantic cost: **cast the guard to
+its predicate** — return `σ ≥ 0` instead of `σ` — which is the definition
+above, hence the same predicate, the same edges, observed at boundary
+resolution.
+
+**Boundary detection is *exact* for guards over `u` and `m` alone.** Such a
+predicate is piecewise frame-constant: `u` steps only at the frame-top drain
+([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), `m` only through handlers, at boundaries. It cannot cross mid-step, so
+there is no interior instant for a root-finder to find and the boundary is not
+a resolution limit but the crossing itself. Localization is machinery that
+class has no use for.
+
+**Localizing a mixed predicate: the gate idiom.** This matters in practice:
+most transitions in FlightPhysics mix input predicates with state thresholds
+(e.g. the piston engine's `starting → running` fires on
+`ω > ω_idle && fuel_available`). The blessed spelling when such a transition
+wants localizing is the gate form `(gate) ? σ : -one(σ)` — the `Bool` factors
+ride the branch, the continuous factor rides the value. It is honest, not a
+trick to defeat the check: probes vary only θ, with `u` and `m` fixed through
+a localization ([§8.4](#84-localization-mechanics)), so the gates are constant over the bracket and σ
+restricted to it is the continuous atom, bracketable as such.
 
 ### 2.2 Exclusions (deliberate)
 
@@ -3785,11 +3811,11 @@ end
 
 f(eng::Engine, (; x, y, u)) = (ω = (y.M_shaft - u.M_load) / eng.J,)
 
-#events: ordered and named — order is load-bearing (§5.3, §8.6); detection policy by the `localize` flag
+#events: ordered and named — order is load-bearing (§5.3, §8.6); detection policy by the guard's return type (§2.1)
 events(::Engine) = (
-    start    = Event(start_guard, start_handler),                               # boundary-detected (default)
-    ignition = Event(ignition_guard, ignition_handler),                         # boundary-detected
-    flameout = Event(flameout_guard, flameout_handler; localize = true))        # localized
+    start    = Event(start_guard, start_handler),        # boundary-detected: Bool guard
+    ignition = Event(ignition_guard, ignition_handler),  # boundary-detected: Bool guard
+    flameout = Event(flameout_guard, flameout_handler))  # localized: sign-form guard
 start_guard(::Engine, (; m, u)) =                        #manual trigger: an input (§10.5)
     m.phase === off && u.starter
 start_handler(::Engine, _) = (; m = (; phase = starting))          #no `x` key: no reset
@@ -4043,9 +4069,10 @@ The inventory, and where each schema fact gets its authority:
 
 #### `events(::C)`
 
-- **`events(::C)`**: an ordered, named collection of guard/handler pairs, detection
-  policy set per event by the `localize` flag — `Event(guard, handler; localize = true)`
-  is localized, and the default `false` is boundary-detected ([§2.1](#21-events-two-detection-policies)). Order is semantics ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) declaration
+- **`events(::C)`**: an ordered, named collection of guard/handler pairs —
+  `Event(guard, handler)`, with no detection keyword: policy is declared by the
+  guard's return type, `Bool` boundary-detected and the nominal scalar localized
+  ([§2.1](#21-events-two-detection-policies)). Order is semantics ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) declaration
   order, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) once-per-event); nothing here is inferrable.
 
 #### No stage tags anywhere
@@ -5027,9 +5054,10 @@ in a flat buffer written back wholesale, while `m` may be partial because
 rather than a flat `isa Bool`: a `Bool`-form guard's probed return is `Bool`, a
 sign-form guard's is the nominal scalar — guards run only at the nominal
 activation (row 52), so no parametrized-leaf case arises here. Any other probed
-return type is a build error naming both admissible forms. So is a localized event
-whose guard probes `Bool`: localization brackets a root, and the `Bool` form
-offers none — return `x.ω - eng.ω_idle`, not `x.ω > eng.ω_idle`.
+return type is a build error naming both admissible forms. There is nothing
+further to check: the probed form *is* the detection policy ([§2.1](#21-events-two-detection-policies), row 179),
+so no form/policy mismatch can be declared, and the check that once policed one
+has no subject.
 
 **Failure payload:** component path, function, field-level diff (missing /
 unexpected / per-field expected-vs-observed), simulation time. Deliberately
@@ -5489,7 +5517,8 @@ abnormal**; graceful termination is model *state*, reaching the loop through
 declared machinery:
 
 - **Detection** is ordinary guard/handler/mode machinery. Declare the
-  predicate as a localized event if the stop should be localized — touchdown
+  predicate as a sign-form (hence localized) event if the stop should be
+  localized — touchdown
   overload is precisely a zero-crossing: the boundary is localized to the
   crossing, the handler sets `m.crashed`, and the snapshot at the crossing
   instant carries the touchdown state.
@@ -5540,8 +5569,8 @@ stop?" without its consumer reconstructing the answer from the clock. The
 interrupt is a tag on an ordinary stop, not a diagnostic kind of its own
 ([Appendix C](#appendix-c-the-diagnostic-kind-set) gains nothing here): nothing failed.
 
-Taught contract: **stop faces are sampled at completed boundaries; declare an
-event if you need the stop localized.** Both stop-flag shapes work without
+Taught contract: **stop faces are sampled at completed boundaries; declare a
+sign-form event if you need the stop localized.** Both stop-flag shapes work without
 framework latching — a handler-set `m` flag is sticky by nature, a transient
 stage-2 Bool is caught because the loop reacts to the first `true`. Compound
 stop logic composes in-model — a monitor component reading the relevant
@@ -7418,7 +7447,8 @@ For component authors:
   handlers, so a continuous edge-reset is same-boundary by construction.
 - **Guard predicates, edges and priors** ([§2.1](#21-events-two-detection-policies), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). A guard defines
   a predicate — a `Bool` form, or a sign value `σ` with
-  positive = holding. Events fire on not-holding → holding *edges* against per-event
+  positive = holding — and the form chosen *is* the detection policy: `Bool`
+  boundary-detected, sign localized. Events fire on not-holding → holding *edges* against per-event
   priors (the previous boundary's quiescent sample): a predicate that
   keeps holding fires once, at the boundary where it first held. Boundary
   zero sets every prior to not-holding, so a predicate already holding in
@@ -7437,7 +7467,7 @@ For component authors:
   `Bool` and `stop_on`; self-consistency asserts belong in tests; parameter
   validation belongs at instance construction, not inside a stage.
 - **Stop-face sampling** ([§13.5](#135-termination-is-a-state-not-an-exception)). Stop faces are read in completed-boundary
-  snapshots; declare a localized event if the stop needs localizing.
+  snapshots; declare a sign-form (localized) event if the stop needs localizing.
 
 For periphery authors and consumers:
 
@@ -7498,7 +7528,8 @@ lifecycle:
   (by allocation), `input_types(::C, ::Type{T})` and
   `output_types(::C, ::Type{T})` (by type),
   `events` — stages `h_x`, `h_xu`, `f`, guard/handler pairs
-  (`Event(guard, handler; localize)`), `project`.
+  (`Event(guard, handler)`; detection policy comes from the guard's return
+  type, [§2.1](#21-events-two-detection-policies)), `project`.
 - Discrete leaf: `init_x`, `workspace(::C)`,
   `input_types`/`output_types` — stages `h_x`, `h_xu`, `g`.
 - Assembly: `child_connections` (mandatory — the class marker),
@@ -7816,7 +7847,6 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `DeadStage` | component path, stage — a stage method returning bare `(;)`, producing neither ports nor `w` | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§12.3](#123-probing-and-input-synthesis) | build (fail-fast) at probe |
 | `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed — order-insensitive, the return having been canonicalized first), simulation time | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) at probe; **runtime** as a `StepError` species |
 | `GuardForm` | component path, event name, observed probe return type, both admissible forms | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
-| `LocalizedGuardForm` | component path, event name — a localized event whose guard probes `Bool` (localization requires the sign form) | [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
 | `BundleFieldError` | component path, function family, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function family) | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§13.2](#132-diagnostics-structured-values-one-carrier-exception) | build (fail-fast) at probe; **runtime** thereafter |
 | `HandlerReturnKey` | component path, event name, offending key, the legal set `{x, m}` narrowed to the stores that exist | [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws), [§12.5](#125-the-always-on-conformance-check) | build (fail-fast) |
 | `UserCodeFraming` | component path, which function, the probe context including synthesized inputs; the original exception as `cause` | [§13.2](#132-diagnostics-structured-values-one-carrier-exception) | build (fail-fast) |
@@ -8129,10 +8159,12 @@ and boundary zero are boundaries that are not frame tops ([§8.4](#84-localizati
 zero* ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§D.8](#d8-stopped-sim-services-and-the-condition-algebra)) is a hyponym — it is an ordinary boundary whose incoming
 transitions are authored rather than computed.
 
-**boundary-detected** — the default detection policy: guards are checked for
+**boundary-detected** — the detection policy a `Bool`-returning guard declares:
+guards are checked for
 not-holding → holding edges against their priors at step boundaries only, with
 no root-finding and no step rejection, the handler firing at the end of the
-step in which the edge was observed ([§2.1](#21-events-two-detection-policies)).
+step in which the edge was observed. Exact, not approximate, for guards over
+`u`/`m` alone — those predicates are piecewise frame-constant ([§2.1](#21-events-two-detection-policies)).
 
 **chattering / event budget** — the bounded per-step localization allowance,
 `event_budget`, a `Simulation` deployment keyword defaulting to 8;
@@ -8158,8 +8190,9 @@ crossing direction is declared as a second event with the negated guard ([§2.1]
 
 **guard** — the declared function defining an event's predicate, evaluated
 against the fresh boundary table and paired with a handler in an ordered,
-named `events` collection; its detection policy is set per event by the
-`localize` flag ([§2.1](#21-events-two-detection-policies), [§11.2](#112-the-declaration-inventory)).
+named `events` collection; its detection policy is declared by its return
+type — `Bool` boundary-detected, the nominal scalar localized ([§2.1](#21-events-two-detection-policies),
+[§11.2](#112-the-declaration-inventory)).
 
 **harmonic grid** — the rule that every discrete period is an integer multiple
 of `Δt_base`, itself an integer multiple of `h`, so ticks land only on step
@@ -8170,10 +8203,12 @@ boundaries; grid times are indexed from the frame count, never accumulated
 last completed step, from which localization probes read the states they sweep;
 invalidated at `t*`, where the handlers have made it a lie ([§8.4](#84-localization-mechanics)).
 
-**localized** — the opt-in per-event detection policy: the crossing instant is
+**localized** — the detection policy a sign-form guard declares: the crossing
+instant is
 bracketed by derivative-free root-finding over probe sweeps of interpolated
 states, to a bracket narrower than `localization_tol · h` (a deployment
-keyword, default `1e-6`). Requires the continuous (sign) guard form, and runs
+keyword, default `1e-6`). Only the sign form can declare it — the `Bool` form
+offers no root to bracket — and it runs
 identically paced or unpaced ([§2.1](#21-events-two-detection-policies), [§8.4](#84-localization-mechanics)).
 
 **once per event** — the rule bounding the boundary event iteration: each
