@@ -1886,8 +1886,10 @@ held.
 
 The prior is updated at each boundary's quiescence from the final
 post-iteration samples — unconditionally, with no exception: it is always an
-honest observation of the settled boundary, which is what lets
-[§8.4](#84-localization-mechanics)'s left-end argument rest on it. All three registers are detection
+honest observation of the settled boundary, which is what makes
+[§8.4](#84-localization-mechanics)'s θ = 0 discriminator conclusive — the frame-top drain is then the
+sole possible source of disagreement between the prior and the probed left
+end. All three registers are detection
 bookkeeping, not model memory — correctly *not* in any state store: not
 captured, not traced, reconstructed deterministically; the cost is one `Bool`
 and one small counter per event beyond the prior. **Boundary zero establishes
