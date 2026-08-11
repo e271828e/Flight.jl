@@ -2464,27 +2464,39 @@ extends [§8.7](#87-real-time-pacing)'s determinism end-to-end: replaying a reco
 staging fed from the recording, no devices or mappings present — reproduces the
 trajectory bit-identically.
 
-**Trace records match each batch's natural density.** An enumerated
-writer's positional batch is dense by nature — a complete writer's tuple
-has no `nothing`s, and even a sparse peer's is claim-narrow — so the trace
-retains it verbatim, zero-copy. A greedy writer's batch and the harness
-cell's are the opposite: a tuple as wide as the unclaimed surface carrying,
-typically, one edit — retained verbatim, its size would track surface width rather
-than information (at hundreds of unclaimed faces, render-rate dragging
-would inflate the trace past the two-orders-below-the-log budget that
-justifies trace-on-by-default, row 29). The drain therefore converts it on
-retention: scan the drained tuple, record (position ⇒ value) pairs for the
-non-`nothing` entries — an O(surface-width) scan and one small allocation,
-at most once per frame and only on frames such a writer was active in, inside the
-retention carve-out of [§7.5](#75-allocation-policy-a-scoped-invariant) that the log's per-boundary snapshot already
-occupies (the one qualified exception to retains-what-was-already-
-allocated, bought deliberately: trace size proportional to information at
-every world scale). The conversion site is the drain and not the staging
+**One record format: every batch is retained sparse.** At the drain, each
+drained cell is scanned and recorded as (position ⇒ value) pairs for its
+non-`nothing` entries, against the writer's face-name → position schema in
+the header (below) — an O(surface-width) scan and one small allocation per
+drained batch. The rule is uniform because the alternative is not
+statable any more: a claim's *width* is a fact about one binding, not about
+a class of writers — a greedy claim is enumerated and as wide as the root
+contract ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)) — so a density dichotomy could only be re-keyed on the
+claim source, which is precisely the distinction nothing downstream of
+attach is allowed to see. Uniformity is what the consumers get paid in: one
+record format at the trace's edge, no per-entry format flag, one decoder in
+the what-if register, in disk serialization and in human inspection, and one
+inverse conversion in replay — paid once, up front, off the loop
+([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). The conversion site is the drain and not the staging
 shim because the drained tuple is the *coalesced* truth — a shim-side
-sparse log would need its own merge. Sparse records are also
-self-describing against the header's schemas, which serves the what-if
-register, disk serialization and human inspection; replay pays the inverse
-conversion once, up front ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
+sparse log would need its own merge.
+
+**The costs are recorded rather than argued away.** On the wide writers the
+conversion is what keeps the trace honest: a tuple as wide as the unclaimed
+surface carrying one edit would otherwise make trace size track surface
+width rather than information (at hundreds of faces, render-rate dragging
+inflates the trace past the two-orders-below-the-log budget that justifies
+trace-on-by-default, row 29). On the dense component it costs **about 2×** —
+a position beside every value where the positional tuple carried the value
+alone — which changes no order of magnitude and leaves row 29's budget
+standing for every writer at once. The allocation is in-class with what
+[§7.5](#75-allocation-policy-a-scoped-invariant)'s retention carve-out already admits and smaller per boundary
+than the log's snapshot, the carve-out's standing occupant (the one
+qualified exception to retains-what-was-already-allocated). And the decision
+is **reversible as pure implementation**: the conversion is lossless in both
+directions, so verbatim retention could return as a per-entry storage
+optimization — under the same record semantics, the same header and the same
+replay path — if a marathon-session measurement ever asks for it.
 
 **The trace header captures the full initial state** `(x, m)` **plus the
 initial root-slot values** at `init!` — captured **after `apply!` and the slot
@@ -2519,8 +2531,8 @@ plain kill switch for memory-constrained marathon sessions). The asymmetry that
 decides the default: the trace is *primary* data and the log *derived* — given the
 initial state and the trace, the log is recomputable (that is what bit-identical
 replay means), while an untraced interactive session is unreproducible, permanently.
-The cost supports it: the trace retains batches the devices already allocated
-(plus the small sparse records of the wide-surface writers, above), at
+The cost supports it: the trace retains one small sparse record per drained
+batch (above), at
 drain-rate × device-count — tens of MB per hour worst case, two orders of magnitude
 below the snapshot log. No sampling, no rolling window (complexity without a
 customer).
@@ -3530,8 +3542,8 @@ Everything else is the loop as already specified:
   validated against the `Build` (store layout, slot faces) and the trace's
   batch entries against the root input-face list — attach-style, with
   did-you-mean (`ReplayHeaderMismatch`, `ReplayUnknownFace`, [Appendix C](#appendix-c-the-diagnostic-kind-set)).
-  The same pass pays the trace-record conversion in reverse: the sparse
-  records of the wide-surface writers ([§9.5](#95-inbound-the-input-trace)) are normalized to positional batches
+  The same pass pays the trace-record conversion in reverse: every writer's
+  sparse records ([§9.5](#95-inbound-the-input-trace)) are normalized to positional batches
   against the header's schemas, once, off the loop — replay has the whole
   trace in hand before frame 1 — so the replay drain applies compiled
   scatters exactly as the live drain does, and no face name is resolved
@@ -8428,12 +8440,11 @@ log is recomputable from the trace and never the reverse ([§9.5](#95-inbound-th
 position schema, and the deployment block — captured after `apply!` and the
 slot writes, before the boundary-zero sequence runs ([§9.5](#95-inbound-the-input-trace), [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)).
 
-**trace record density** — the rule that retained records match each batch's
-natural density: a claim-narrow positional batch is retained verbatim
-and zero-copy, while a wide mostly-`nothing` tuple — a greedy writer's or the
-harness cell's — is
-converted at the drain into (position ⇒ value) pairs, so trace size tracks
-information rather than surface width ([§9.5](#95-inbound-the-input-trace), row 107).
+**trace record** — the retained form of a drained batch, uniform for every
+writer: (position ⇒ value) pairs for the non-`nothing` entries, converted at
+the drain against the header's schema, so trace size tracks information
+rather than surface width and consumers meet one format and one replay path
+([§9.5](#95-inbound-the-input-trace), row 176).
 
 **what-if register** — replaying a trace against the same structure with
 changed parameters: deterministic re-driving of the recorded inputs through a
