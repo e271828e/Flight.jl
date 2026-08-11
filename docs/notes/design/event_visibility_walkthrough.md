@@ -1,7 +1,7 @@
 # Event visibility at a boundary, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) (step-boundary semantics), [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-once-per-event) (event iteration)
+`framework_spec.md` [§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) (step-boundary semantics), [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted) (event iteration)
 and decision row 154, which settled the visibility rule below (the table is
 written only by sweeps; a component fires at most one event per round) on
 2026-08-07, superseding the round-3 rule of rows 16/100/152. If this document
@@ -51,13 +51,14 @@ round's sweep left, because that is the only table there is.
 
 ## 3. The round, and who writes what
 
-At a step boundary the event phase iterates ([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-once-per-event)): rounds of
+At a step boundary the event phase iterates ([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted)): rounds of
 
 > re-run the boundary sweep → evaluate **all** guards once → fire the
 > eligible events, **at most one per component** → repeat until a round fires
 > nothing,
 
-with each declared event firing at most once per boundary, and declaration
+with each declared event firing at most `firing_budget` times per boundary
+([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted), default 4, eligibility read against its last-observed sample), and declaration
 order ([§11.2](framework_spec.md#112-the-declaration-inventory)) picking among a component's simultaneously-eligible events.
 Firing an event means `handler → project`. That is all.
 
@@ -81,7 +82,7 @@ table before B's handler runs, then whether B sees pre- or post-transition A
 would depend on *execution order* — and "declaration order" orders events
 only within one component. Cross-component order would fall to the build's
 executor order, a schedule artifact that rewiring silently permutes: model
-semantics leaking from a build detail, the same disease [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-once-per-event) diagnosed when
+semantics leaking from a build detail, the same disease [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted) diagnosed when
 it rejected the single-pass cascade.
 
 Under [§3](#3-the-round-and-who-writes-what) the hazard has no way to arise. A's transition reaches nothing

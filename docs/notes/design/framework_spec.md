@@ -41,7 +41,7 @@
     - [8.3 Signal-table consistency is a boundary property](#83-signal-table-consistency-is-a-boundary-property)
     - [8.4 Localization mechanics](#84-localization-mechanics)
     - [8.5 Multi-rate tick scheduling](#85-multi-rate-tick-scheduling)
-    - [8.6 Event iteration at boundaries: to quiescence, once per event](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)
+    - [8.6 Event iteration at boundaries: to quiescence, budgeted](#86-event-iteration-at-boundaries-to-quiescence-budgeted)
     - [8.7 Real-time pacing](#87-real-time-pacing)
   - [9. Runtime periphery: the data plane](#9-runtime-periphery-the-data-plane)
     - [9.1 No shared mutable model: staged writes, snapshot reads](#91-no-shared-mutable-model-staged-writes-snapshot-reads)
@@ -188,7 +188,7 @@ Both policies share one declaration (guard function + handler); only detection
 differs:
 
 - **Boundary-detected (cheap):** guards are checked for not-holding → holding edges
-  against their priors ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)) at step boundaries
+  against their priors ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)) at step boundaries
   only. No root-finding, no step rejection; the handler fires at the end of the step in
   which the edge was observed. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
@@ -208,7 +208,7 @@ continuous function with **positive = predicate holds** (normative; writing the
 guard's sign value `σ`, holding = `σ ≥ 0`). An event fires when its
 predicate transitions from
 not-holding to holding — edge semantics, uniform across both forms, with the
-prior bookkeeping stated in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event); the opposite crossing direction is
+prior bookkeeping stated in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted); the opposite crossing direction is
 declared as a second event with the negated guard (stall entry/exit as a
 pair).
 
@@ -587,7 +587,7 @@ hands down no `w` key at all, so a consumer destructuring one meets the [§13.2]
 framing diagnostic naming its legal field set, exactly as for an undeclared
 store. `w` is never persisted: the executor hands it down as an ordinary SSA
 value **inside one fused pass** — a step fuses the sweep with `f`, an event
-round fuses the sweep with its guards and fired handlers ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)) — so freshness
+round fuses the sweep with its guards and fired handlers ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)) — so freshness
 is a property of the construction rather than a rule anyone can violate, and
 round fusion is thereby a design constraint on the executor, not an
 optimization it may decline ([§12.7](#127-the-compiled-executor)). `w`'s types are probe-observed and its
@@ -718,8 +718,8 @@ alike are the firing round's sweep, so `y = h(x)` holds at every handler entry.
 Same-component sequential composition happens *across* rounds, each later event
 re-decided against the post-transition sweep rather than fired on a stale premise.
 Newly-enabled guards fire within the *same* boundary: the
-sweep → guards → handlers phase iterates to quiescence, with each event firing at
-most once per boundary and each component firing at most once per round (settled in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+sweep → guards → handlers phase iterates to quiescence, with each event firing under
+[§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)'s firing budget and each component firing at most once per round (settled in [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **Departure from the orthodox formalism, stated openly.** The textbook form is
 $\dot{x} = f(x, u)$, $y = g(x, u)$; this design's `f` receives the orthodox arguments
@@ -1478,7 +1478,7 @@ step boundaries.** Mid-step contents carry no meaning.
 ### 8.4 Localization mechanics
 
 Trigger: a localized event's predicate was not-holding at $t_n$'s quiescence (its
-prior, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)) and is holding at $t_{n+1}$ — the directional edge of [§2.1](#21-events-two-detection-policies), never a
+prior, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)) and is holding at $t_{n+1}$ — the directional edge of [§2.1](#21-events-two-detection-policies), never a
 bare sign change: a holding → not-holding transition neither fires nor localizes.
 
 - **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
@@ -1513,7 +1513,7 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
   `t*` with the remainder step targeting `tₙ₊₁` → re-check guards on the remainder,
   under a bounded per-step event budget with a chattering diagnostic. Multiple
   events localizing in one step fire at the *earliest* `t*` (ties fire
-  together at that boundary, declaration order within the iteration, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event));
+  together at that boundary, declaration order within the iteration, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted));
   later crossings re-localize on the remainder.
 - **Shared blind spot, documented:** an even number of crossings within one step
   returns the predicate to not-holding at the boundary, so no edge is observed —
@@ -1521,7 +1521,7 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
   machinery.
 
 **Budget exhaustion degrades; it does not throw.** The budget is
-`event_budget`, the second deployment keyword this section fixes: an integer
+`localization_budget`, the second deployment keyword this section fixes: an integer
 count of localizations permitted within one frame, defaulting to **8**. A
 legitimate multi-event frame — three landing-gear struts touching down inside
 one step — needs three or four; chattering needs tens; 8 bounds the pathology
@@ -1532,17 +1532,22 @@ iteration — boundary granularity for that frame — under a warning naming the
 chattering event and the localization count. The degradation is a function of
 the trajectory alone, never of wall clock, so row 80's pace-independence stands
 untouched and the run replays identically. A `StepError` would misclassify an
-expected modeling outcome as broken machinery ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)'s doctrine). This also
-makes the asymmetry with [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) principled: the once-per-event bound *there* is
-structural — quiescence terminates because each event fires at most once per
-boundary — whereas re-localization across a frame has no structural bound, so it
-takes a budget, whose exhaustion degrades exactly as that section's would.
+expected modeling outcome as broken machinery ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)'s doctrine). The same
+doctrine governs [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted): neither the boundary iteration nor cross-frame
+re-localization has a structural bound, so each takes a budget —
+`firing_budget` there, `localization_budget` here — and both degrade loudly
+rather than erroring, under a warning that names the offending event. They
+differ only in *what* exhaustion sheds: localization sheds root-finding
+precision, preserving every firing at boundary granularity, whereas the firing
+budget sheds firings, which is precisely what bounds the iteration.
 
 **Both constants are deployment, not implementation.** `localization_tol` and
-`event_budget` are `Simulation` keywords standing beside `h`, `n` and the
+`localization_budget` are `Simulation` keywords standing beside `h`, `n` and the
 algorithm ([§12.1](#121-three-strata), [Appendix B](#appendix-b-api-synopsis-the-entry-points)), validated with their siblings — a positive
 tolerance, an integer budget ≥ 1 — and collected into `DeploymentInvalid`
-([Appendix C](#appendix-c-the-diagnostic-kind-set)). They are grid-independent, so neither enters [§8.5](#85-multi-rate-tick-scheduling)'s
+([Appendix C](#appendix-c-the-diagnostic-kind-set)); [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)'s `firing_budget` stands beside them in every
+one of these lists — same validation, same `DeploymentInvalid`, same trace
+header, same replay comparison. They are grid-independent, so neither enters [§8.5](#85-multi-rate-tick-scheduling)'s
 harmonic-grid check. And being trajectory-determining they are **recorded**:
 they ride the trace header's deployment block and join the set replay compares
 up front, exactly as `h` and the algorithm do ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). The
@@ -1554,7 +1559,7 @@ localization outcomes.
 raw interpolated state — the same rule RK-stage RHS evaluations already live
 under, being equally off-manifold, so sweeps must tolerate near-manifold states
 and already do. Authority rests with the `t*` boundary: projection runs there,
-and the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) iteration's edge checks read the *projected* state. If projection
+and the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) iteration's edge checks read the *projected* state. If projection
 moves the state back across a guard, the event does not fire and the run has
 published one extra boundary — harmless, and deterministic and pace-independent
 like any other localization outcome (row 80). Per-probe projection is rejected:
@@ -1564,10 +1569,10 @@ drift far below the localization tolerance.
 **`t*` is a boundary, not a frame.** A *frame* is a grid step
 `[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), pacer
 deadlines ([§8.7](#87-real-time-pacing)), tick eligibility ([§8.5](#85-multi-rate-tick-scheduling)). A *boundary* is a published
-consistency point — where the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) macro-sequence completes and a snapshot
+consistency point — where the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence completes and a snapshot
 goes out. Every grid point is a boundary; `t*` and boundary zero ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) are
-boundaries that are not frame tops. At `t*` the full [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) event phase runs —
-[sweep → guards → handlers] iterated to quiescence, **once-per-event
+boundaries that are not frame tops. At `t*` the full [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) event phase runs —
+[sweep → guards → handlers] iterated to quiescence, **firing-budget
 accounting scoped to this boundary** (fresh again at `tₙ₊₁`, and at a second
 `t*` on the remainder) — and the settled state is **published**: snapshot,
 [§10.3](#103-the-next-snapshot-wait) boundary-counter increment, `stop_on` check ([§13.5](#135-termination-is-a-state-not-an-exception)) — a crash localized
@@ -1586,7 +1591,7 @@ frame-indexed — `t*` boundaries consume no inputs.
 **holding endpoint of its final bracket** — the smallest probed point where
 the predicate holds. Consequences: **`t* = tₙ` is structurally impossible**,
 not clamped away — localization only triggers when the predicate was
-not-holding at `tₙ`'s quiescence ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) priors), and the interpolant
+not-holding at `tₙ`'s quiescence ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) priors), and the interpolant
 reproduces the endpoint exactly (`x̂(0) = xₙ`, probe sweeps deterministic), so
 the bracket's left end stays strictly not-holding and the returned point is
 strictly later than the published, immutable `tₙ` (worst rounding:
@@ -1633,7 +1638,7 @@ static, not a runtime test (row 147):
   controller: exactly the un-sampling this rule forbids, and invisible — such a run
   is as type-stable, allocation-free and replayable as the correct one.
 - The **boundary sweep** walks the full list, with discrete entries gated by counter
-  modulo against the boundary's tick index. It is the variant the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) macro-sequence
+  modulo against the boundary's tick index. It is the variant the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence
   runs, and it is not one fixed list: different boundaries run different subsets of
   the schedule.
 
@@ -1643,7 +1648,7 @@ stage-2 walk. The arity distinction that carries it into the phase-body surface 
 zero-arg interior, tick-indexed boundary — is [§12.7](#127-the-compiled-executor)'s.
 
 **The due set is a property of the boundary,** not of the sweep call: computed once
-for the boundary and reused by every re-sweep of its quiescence iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)), a
+for the boundary and reused by every re-sweep of its quiescence iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)), a
 due component being at its tick instant for the whole boundary rather than for one
 round of it. At a frame top it is the counter-modulo image of the frame index. At a
 `t*` boundary it is **empty** — the tick counter has not advanced there, no component
@@ -1709,12 +1714,22 @@ Relative declaration structurally enforces the rule for the period
 itself: under scoped multipliers a component author *cannot* know their
 absolute rate — it does not exist until composition.
 
-### 8.6 Event iteration at boundaries: to quiescence, once per event
+### 8.6 Event iteration at boundaries: to quiescence, budgeted
 
 Resolves the question deferred in [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries). At each boundary, the event phase **iterates**:
 rounds of *(re-run the boundary sweep → evaluate all guards → fire the eligible
 events, at most one per component, each `handler → project`)* until a round fires
-nothing, under the rule that **each declared event fires at most once per boundary**.
+nothing, under the rule that **each declared event fires at most `firing_budget`
+times per boundary** — a `Simulation` deployment keyword, an integer ≥ 1
+defaulting to **4**. Eligibility within the boundary is an edge like any other,
+read against the event's **last-observed sample** rather than against the
+boundary's entry prior: the sample is initialized from the prior when the
+boundary opens and refreshed every round, so an event is eligible in a round
+when that round observes its predicate holding and the last observation before
+it was not-holding. A predicate that simply keeps holding therefore fires once;
+a predicate genuinely falsified and re-enabled inside the boundary — its effect
+reverted by another handler's cascade — fires again, at this boundary, against
+a fresh sweep (row 181).
 
 **Why iterate.** Under a single pass, a cascade of N logically-simultaneous
 transitions (supervisor FSM → subordinate FSM → …) completes in N steps: latency N·h,
@@ -1785,49 +1800,68 @@ class this section already rejects); a table copy per firing round
 of their own `y` (makes the incoherence unwritable, but keeps a two-epoch
 bundle and the fire-on-falsified-premise hole).
 
-**Why once-per-event rather than a round cap.** Termination becomes structural —
-rounds are bounded by the number of declared events, with no arbitrary K knob — and a
-livelock (two FSMs toggling each other) resolves deterministically into "each fired
-once, quiescence, re-fire next boundary," i.e. degrades to boundary granularity instead
-of burning a budget and erroring. The cost: an event legitimately re-enabled within
-the same boundary waits one step — accepted at the same granularity boundary detection accepts
-physical re-crossings, and flagged when it occurs (a runtime warning, `EventDeferred`,
-[§13.2](#132-diagnostics-structured-values-one-carrier-exception); the re-arm edge that triggers it is defined below).
+**Why a per-event budget.** A re-enabled event fires at its *true* boundary.
+The alternative this replaces — fire once, then defer the re-arm to the next
+boundary — put a logically-instantaneous cascade one step late, an `h`-artifact
+of exactly the class this section's iteration exists to abolish, and it bought
+that delay with a manufactured prior (below). Priors stay honest as a
+consequence: every prior is a sample actually taken, never a value recorded to
+make a rule work out. Termination is then budget-bounded rather than
+structural — at most `firing_budget · E` firings per boundary for `E` declared
+events, hence a bounded number of rounds, deterministically and independently
+of pace. A livelock (two FSMs toggling each other) no longer resolves silently:
+each toggler spends its budget, warns (below), and the run proceeds and replays
+identically — degradation, not an error, per [§8.4](#84-localization-mechanics)'s doctrine, which is
+also why a *round* cap is the wrong shape (row 20's rejected form, rescued here
+repaired): a per-round cap punishes collectively, aborting innocent cascades
+that happen to share the boundary with a chatterer and naming none of them,
+while a per-event budget names the actual chatterer in its warning and leaves
+every other event's iteration untouched. The trade is recorded openly: the
+elegance of structural termination is gone, and with it the arbitrary-K
+objection returns in `firing_budget`. What it bought back is the deferral
+machinery deleted entirely — the manufactured prior, the re-arm flag, the
+`EventDeferred` warning — the one-step artifact, and deferral's collapse of
+several intra-boundary re-arms into a single later firing.
 
 **Guard priors and firing semantics.** "Newly-fired" means precisely this:
-an event fires at a boundary iff its predicate ([§2.1](#21-events-two-detection-policies): the `Bool` form true, or
-`σ ≥ 0`) is observed holding in some iteration round, its **prior** — the
-previous boundary's quiescent sample — was not-holding, and it has not yet
-fired this boundary. The per-event **loop state** that decides this is three
-registers, and all three are named normatively: the **prior**; a **`fired`
-flag**, the once-per-event rule's register, set when the event fires and
-cleared at the boundary's end; and a within-boundary **`re-arm` flag**, set
-when a round observes the event already fired *and* its guard not-holding.
-The re-arm flag is what makes deferral observable. `EventDeferred`
-([§13.2](#132-diagnostics-structured-values-one-carrier-exception), [Appendix C](#appendix-c-the-diagnostic-kind-set)) emits when a round observes `fired ∧ re-armed ∧
-holding` — a genuine intra-boundary falling-then-rising edge, an event
-legitimately re-enabled within the boundary and held back by the
-once-per-event rule — at most once per event per boundary. The blessed
-sticky case warns nothing: an event that fires and *keeps* holding, with no
-not-holding sample in between, never sets the re-arm flag, so it never emits.
+an event fires in an iteration round iff its predicate ([§2.1](#21-events-two-detection-policies): the `Bool` form
+true, or `σ ≥ 0`) is observed holding in that round, the sample observed
+before it was not-holding, and the event's firing count for this boundary is
+below `firing_budget`. The per-event **loop state** that decides it is three
+registers, all named normatively: the **prior** — the previous boundary's
+quiescent sample, which is what the boundary's *first* round tests against;
+the **last-observed sample**, initialized from the prior when the boundary
+opens and overwritten by every round's evaluation, which is what every later
+round tests against; and the boundary's **firing count**, incremented at each
+firing and reset when the boundary ends. Sticky predicates need no special
+case: an event that fires and *keeps* holding presents no further
+not-holding → holding edge, so it fires once, at the boundary where it first
+held.
 
 The prior is updated at each boundary's quiescence from the final
-post-iteration samples, **with one exception: a deferred event's prior is
-recorded not-holding** — the intra-boundary re-arm edge survives the
-boundary, so the deferred event genuinely fires at the next one and
-"waits one step" is true by construction. (Under the bare rule the quiescent
-holding sample would swallow the edge: prior holding, so no new firing, and
-the deferral would never resolve.) All three registers are detection
-bookkeeping, not model memory — correctly *not* in any state store: not captured, not
-traced, reconstructed deterministically; the cost is two `Bool`s per event
-beyond the prior. A predicate that holds and *keeps* holding fires once, at
-the boundary where it first held — sticky flags do not re-fire every
-boundary. **Boundary zero establishes every prior
-as not-holding**, so a predicate already holding in the authored state
-fires at `t₀` — [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)'s behavior, derived rather than asserted —
+post-iteration samples — unconditionally, with no exception: it is always an
+honest observation of the settled boundary, which is what lets
+[§8.4](#84-localization-mechanics)'s left-end argument rest on it. All three registers are detection
+bookkeeping, not model memory — correctly *not* in any state store: not
+captured, not traced, reconstructed deterministically; the cost is one `Bool`
+and one small counter per event beyond the prior. **Boundary zero establishes
+every prior as not-holding**, so a predicate already holding in the authored
+state fires at `t₀` — [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)'s behavior, derived rather than asserted —
 and a warm restart (`init!` re-runs boundary zero, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) resets all three
 registers from scratch: predicates holding in the newly applied state fire
 again at the new `t₀`.
+
+**Budget exhaustion degrades; it does not throw.** When an event has fired
+`firing_budget` times at a boundary, its further edges there are **lost** for
+the remainder of that boundary — it is skipped by the eligibility test while
+every other event iterates normally — under a `FiringBudget` warning
+([§13.2](#132-diagnostics-structured-values-one-carrier-exception), [Appendix C](#appendix-c-the-diagnostic-kind-set)) carrying the component path, the event name, the
+boundary time and the exhausted budget beside the boundary's firing count,
+emitted at most once per event per boundary. The default of **4** is chosen
+the way [§8.4](#84-localization-mechanics)'s is: a legitimate re-enable is one or two firings deep, a
+toggling FSM pair chatters without bound, and 4 separates them without ever
+binding on a healthy model. Like every other degradation here it is a
+function of the trajectory alone, so the run replays identically.
 
 **Ticks stay outside the iteration, after quiescence.** The two possible couplings
 resolve asymmetrically:
@@ -1853,7 +1887,7 @@ The boundary macro-sequence, final form (boundary zero — initialization — is
 the same sequence with an empty integrate, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)):
 
 > integrate → project → **[sweep → guards → handlers]** iterated to quiescence
-> (once per event) → all due `g` updates → logging / I/O staging.
+> (under the firing budget) → all due `g` updates → logging / I/O staging.
 
 The mixed case — a continuous component's handler and its discrete observers' ticks
 landing on one boundary (engine `starting → running` under a 50 Hz FCS) — is decided
@@ -2052,7 +2086,7 @@ hands the same value to the calling task — [§10.6](#106-run-lifecycle-and-par
 Wait-free in both
 directions: a wedged reader cannot delay publication by a nanosecond; the loop cannot
 tear a reader's view. Publication happens only after the boundary sequence completes
-([§8.3](#83-signal-table-consistency-is-a-boundary-property) as extended by [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+([§8.3](#83-signal-table-consistency-is-a-boundary-property) as extended by [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **Binding rule: nothing reachable from a published snapshot is ever written again.**
 The table's immutable values ([§4.1](#41-immutable-value-semantics), [§7](#7-state-and-data-representation)) make the compiler enforce most of it; the
@@ -2540,7 +2574,7 @@ also carries **each writer's face-name → position schema** — the run's froze
 surface partition — since positional records are meaningless without it and
 replay does not reconstruct claims ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). And it carries the run's
 **deployment block**: `t₀`, `Δt_base`, `h`, `n`, the algorithm identifier,
-`localization_tol`, `event_budget` ([§8.4](#84-localization-mechanics))
+`localization_tol`, `localization_budget` ([§8.4](#84-localization-mechanics)), `firing_budget` ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted))
 and the effective `t_end`/`stop_on` pair, captured at the same instant as the
 stores. The trajectory depends on these exactly as it depends on the stores —
 [§12.1](#121-three-strata)'s deployment binding sits outside the `Build`, and `t₀` post-dates
@@ -3014,7 +3048,7 @@ a third, and they cross the same task boundaries: they are written by the
 device tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
 at staging ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)), `MalformedDatum` from the author's loop body via
 `report!(handle, …)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) — and by the loop itself (`ChatteringBudget`,
-`EventDeferred`, `DebtReanchor`), and read by the loop, which folds them into
+`FiringBudget`, `DebtReanchor`), and read by the loop, which folds them into
 the published framework status ([§9.2](#92-outbound-snapshot-publication)) and hence into every snapshot. An
 unspecified structure with those writers is exactly the arbitrary shared
 mutable state [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s two rules exist to eliminate, so it gets the mechanism
@@ -3640,14 +3674,15 @@ Everything else is the loop as already specified:
   identical build; the what-if register promises determinism, never
   reproduction.
   The header's deployment block ([§9.5](#95-inbound-the-input-trace)) validates in the same pass, on
-  the *structural* side of that line: the six trajectory-determining
-  parameters — `Δt_base`, `h`, `n`, the algorithm, `localization_tol` and
-  `event_budget` ([§8.4](#84-localization-mechanics)) —
+  the *structural* side of that line: the seven trajectory-determining
+  parameters — `Δt_base`, `h`, `n`, the algorithm, `localization_tol`,
+  `localization_budget` ([§8.4](#84-localization-mechanics)) and `firing_budget` ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)) —
   are compared against the target `Simulation`'s own deployment binding —
   mismatch is `ReplayHeaderMismatch` with a deployment-parameter
   discriminator, never a what-if, because a deployment change moves the
   times at which the frame-ordinal batches apply: different inputs, not a
-  modified model. The localization pair is compared for exactly the same
+  modified model. The event trio — the localization pair and `firing_budget` —
+  is compared for exactly the same
   reason the grid parameters are: it moves the trajectory, so a run that
   differs in it is not re-driving the recorded one. `t₀` is *applied*, not
   compared — replay stands in the
@@ -4073,7 +4108,7 @@ The inventory, and where each schema fact gets its authority:
   `Event(guard, handler)`, with no detection keyword: policy is declared by the
   guard's return type, `Bool` boundary-detected and the nominal scalar localized
   ([§2.1](#21-events-two-detection-policies)). Order is semantics ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) declaration
-  order, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) once-per-event); nothing here is inferrable.
+  order, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) priority with re-decision); nothing here is inferrable.
 
 #### No stage tags anywhere
 
@@ -4702,16 +4737,17 @@ organized as three strata:
   ([§12.4](#124-activations-executable-sets-laziness-caching)).
 
 Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm,
-`localization_tol`, `event_budget`, harmonic-grid
+`localization_tol`, `localization_budget`, `firing_budget`, harmonic-grid
 validation, tick schedule instantiation) sits after all three, at `Simulation`
 construction — nothing in A–C depends on it. Its validation is collected like
 its declarative siblings ([§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)): a nonpositive `h`, an `n < 1`, a
 harmonic-grid violation, an algorithm the stepper seam does not know, a
-nonpositive `localization_tol`, an `event_budget` that is not an integer ≥ 1
+nonpositive `localization_tol`, a `localization_budget` or a `firing_budget`
+that is not an integer ≥ 1
 are collected and reported as `DeploymentInvalid` ([Appendix C](#appendix-c-the-diagnostic-kind-set) — parameter,
-value, the violated constraint). The localization pair validates on its own
-terms only — grid-independent, so it takes no part in the harmonic-grid
-check ([§8.4](#84-localization-mechanics)).
+value, the violated constraint). The event parameters validate on their own
+terms only — grid-independent, so they take no part in the harmonic-grid
+check ([§8.4](#84-localization-mechanics), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 ### 12.2 The `Build` artifact
 
@@ -5142,7 +5178,7 @@ no-feedthrough stage reads no `u`); the `h_xu` block, with due discrete
 stages gated in, is the only topologically ordered one; the `f` block — the
 RHS body the stepper calls per stage evaluation — and the `g` block are
 order-free with disjoint writes; guards and handlers are their own small
-callables inside the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) iteration. **Each sweep block compiles in two
+callables inside the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) iteration. **Each sweep block compiles in two
 arities off one entry list** ([§8.5](#85-multi-rate-tick-scheduling)'s interior/boundary split): the zero-arg
 `sweep_hx()`/`sweep_hxu()` are the interior variants, over continuous entries
 only — which is what makes `@ballocated(sweep_hxu()) == 0` a well-defined
@@ -5157,7 +5193,7 @@ stage's `w` ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-l
 argument, across block and chunk seams alike, never through storage. That is
 what makes the fusion a design constraint rather than an optimization: a step's
 sweep and its `f` block compile into one pass, and an event round's sweep, its
-guards and its fired handlers into another ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)), because that is the scope
+guards and its fired handlers into another ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)), because that is the scope
 over which a private intermediate is fresh by construction. Two doors this structure opens for free,
 recorded not committed: deterministic parallel evaluation of the order-free
 blocks (disjoint writes, and no floating-point reductions to reorder — [§6.2](#62-aggregation-explicit-summing-junctions)
@@ -5357,8 +5393,8 @@ limit to arrange. The committed runtime warnings, in one place:
 
 - **chattering / localization-budget exhaustion** ([§8.4](#84-localization-mechanics)) — a localized event
   whose bracketing budget runs out at a boundary;
-- **event re-enabled within a boundary** ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)) — deferred to the next
-  boundary by the once-per-event rule;
+- **firing-budget exhaustion** ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)) — an event that has spent its
+  `firing_budget` at a boundary, its further edges there dropped;
 - **forgiven-debt re-anchor** ([§8.7](#87-real-time-pacing)) — the pacer abandoning accumulated debt
   and re-anchoring its schedule;
 - **the write-surface and entry violations** ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), all at staging — the
@@ -5701,7 +5737,7 @@ commitments, a library and an idiom follow:
   its output changes only at ticks — no tier-neutral class needed.
   `UnitDelay{V}` is a **discrete** leaf at `K = 1`: `init_x = (v = zero(V),)`,
   `h_x` publishing the stored value and `g` storing the incoming one — the
-  tier's native `z⁻¹` ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event), the shape [§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)'s `sat_out_0` hand-writes), no
+  tier's native `z⁻¹` ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted), the shape [§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)'s `sat_out_0` hand-writes), no
   framework support. Its tier semantics are the point and must be stated
   wherever the remedy is recommended: inserting one into a *continuous* loop
   moves that signal onto the discrete tier and inserts a `Δt_base`-scale ZOH
@@ -6061,7 +6097,7 @@ After `apply!` establishes stores at `t₀` — and the trace header captures
 them, together with the slot values, *before anything below runs* ([§9.5](#95-inbound-the-input-trace)'s
 capture placement; a post-sequence capture would hand replay
 already-transitioned state) — the init service completes the
-[§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) macro-sequence with an empty integrate — project → [sweep → guards →
+[§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence with an empty integrate — project → [sweep → guards →
 handlers]\* → due `g` updates → first snapshot — and that
 parity is exact, not approximate. Piece by piece:
 
@@ -6076,7 +6112,7 @@ parity is exact, not approximate. Piece by piece:
   hold. The `t₀` snapshot carries a fully populated table.
 - **Events run.** A condition landing a guard predicate in holding territory
   (an authored stall flag, a strut authored into contact) fires visibly at `t₀` rather
-  than one step later — grounded by the prior rule ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)):
+  than one step later — grounded by the prior rule ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)):
   boundary zero establishes every guard prior as not-holding. Suppression
   would delay the identical firings while hiding the diagnostic that the
   authored condition was not quiescent — [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)'s stage-on-interaction lesson
@@ -7046,7 +7082,7 @@ settled rules force a merged component's two halves to communicate exactly as tw
 siblings do: one home per datum ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)), `f` sees only the continuous
 state and `g` only the discrete one,
 and `x⁺` is decoded only at the owner's next tick (`g` runs last) — the very
-fact that makes ticks→events structurally impossible and terminates the boundary iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). Cross-tier
+fact that makes ticks→events structurally impossible and terminates the boundary iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)). Cross-tier
 influence inside the merged class still routes through published table cells, so
 the all-in-one component is an assembly of two primitives in a trench coat. Its
 costs, meanwhile, are real: a stage cannot run both every sweep *and* only at
@@ -7193,7 +7229,7 @@ obligation under trim, [§14.5](#145-boundary-zero-an-ordinary-boundary-with-aut
 correct only because a due tick samples the *completed* boundary: if `u.V` still
 held the previous boundary's decode it would equal `x.V` exactly (that is the
 value `g` latched), and sculling would vanish without an error anywhere. The
-guarantee is the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) macro-sequence, not a scheduling accident: integrate →
+guarantee is the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence, not a scheduling accident: integrate →
 project → sweep, with the due sampler's stages gated *into* that sweep ([§8.5](#85-multi-rate-tick-scheduling)) and
 the integrals arriving at stage-1 position (auto-published state, [§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)) — before
 any stage-2 function runs, regardless of topological placement. The rest of the
@@ -7207,7 +7243,7 @@ in their re-sweeps, so `g` and external readers see the settled boundary.
 **Author-knowledge note** (user observation, recorded as a documentation
 obligation): the clean implementation leans on the author *knowing* that "sampling
 at `t_k`" means post-integration, post-projection, stage-1-fresh state. That
-knowledge must be part of the framework's taught contract — [§8.5](#85-multi-rate-tick-scheduling)/[§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) semantics
+knowledge must be part of the framework's taught contract — [§8.5](#85-multi-rate-tick-scheduling)/[§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) semantics
 stated in component-author documentation with this IMU as the worked example — not
 internal lore. The failure mode of not knowing it is instructive: an author who
 distrusts the sweep order adds a defensive one-tick delay or re-derives the
@@ -7415,7 +7451,7 @@ For component authors:
   to produce the sweep's exact handle outside any sweep, and only the
   component's author can write that function without re-creating the
   drift class.
-- **Boundary sampling** ([§8.5](#85-multi-rate-tick-scheduling)/[§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event); worked example [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)). "Sampling at
+- **Boundary sampling** ([§8.5](#85-multi-rate-tick-scheduling)/[§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted); worked example [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)). "Sampling at
   `t_k`" means post-integration, post-projection, stage-1-fresh state: a
   due tick's gated stages run inside the boundary sweep and sample the
   *completed* boundary. Distrusting this — a defensive one-tick delay, a
@@ -7432,7 +7468,7 @@ For component authors:
   only in `g` reaches the outputs one tick late (the plant integrates a full
   step under the stale command). Both spellings are legal; they mean
   different things. The continuous tier has no such choice — next entry.
-- **A continuous component's state reset is an event** ([§3.1](#31-continuous-component-the-hybrid-primitive), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event), [§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)).
+- **A continuous component's state reset is an event** ([§3.1](#31-continuous-component-the-hybrid-primitive), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted), [§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)).
   Only handlers write `x`, so even a *commanded* reset — the condition
   arriving as an ordinary `Bool` input, weight-on-wheels being the shipped
   instance — is spelled as an event whose guard reads that input; the
@@ -7443,9 +7479,9 @@ For component authors:
   flow/jump split every hybrid tool converges on (Simulink applies its reset
   ports through zero-crossing events plus a solver restart; Modelica's
   `reinit` is syntactically legal only inside a `when`). And there is no
-  stale-output hazard to manage: [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) re-sweeps outputs to quiescence after
+  stale-output hazard to manage: [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) re-sweeps outputs to quiescence after
   handlers, so a continuous edge-reset is same-boundary by construction.
-- **Guard predicates, edges and priors** ([§2.1](#21-events-two-detection-policies), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). A guard defines
+- **Guard predicates, edges and priors** ([§2.1](#21-events-two-detection-policies), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)). A guard defines
   a predicate — a `Bool` form, or a sign value `σ` with
   positive = holding — and the form chosen *is* the detection policy: `Bool`
   boundary-detected, sign localized. Events fire on not-holding → holding *edges* against per-event
@@ -7454,7 +7490,7 @@ For component authors:
   zero sets every prior to not-holding, so a predicate already holding in
   the authored state fires at `t₀`. The opposite crossing direction is a
   second event with the negated guard.
-- **Handler-phase visibility** ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)). A handler executes
+- **Handler-phase visibility** ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)). A handler executes
   against exactly the world its guard fired on: own `y`, foreign `u` and own
   `x`/`m` are all the firing round's sweep, and a component fires at most one
   event per round — later own events are re-decided against the next round's
@@ -7581,7 +7617,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 **Deployment.**
 
 - `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
-  stop_on = (), localization_tol = 1e-6, event_budget = 8,
+  stop_on = (), localization_tol = 1e-6, localization_budget = 8,
+  firing_budget = 4,
   trace = true, log = true, log_every = 1, log_max = 65536, debug = false)` —
   wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
   the `Build` overload takes the same deployment keywords and deploys an
@@ -7598,8 +7635,12 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   **defaults**, overridable per run at `run!` ([§13.5](#135-termination-is-a-state-not-an-exception), [§10.6](#106-run-lifecycle-and-partial-advance)); a run ends
   at the first grid boundary reaching or exceeding `t_end`, whole frames only
   ([§10.4](#104-shutdown-protocol)). `localization_tol` is the root-finder's relative bracket-width
-  convergence test (`localization_tol · h`) and `event_budget` the per-frame
-  localization allowance ([§8.4](#84-localization-mechanics)): trajectory-determining like their siblings,
+  convergence test (`localization_tol · h`) and `localization_budget` the per-frame
+  localization allowance ([§8.4](#84-localization-mechanics)); `firing_budget` is the per-event,
+  per-boundary firing allowance of the event iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)), an integer
+  ≥ 1 whose exhaustion drops that event's further edges at that boundary under
+  a `FiringBudget` warning. All three are
+  trajectory-determining like their siblings,
   hence validated with them (`DeploymentInvalid`) and recorded in the
   deployment block, where replay compares them ([§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)). Recording:
   `trace` is the input trace's plain kill switch and `log` the snapshot log's,
@@ -7858,7 +7899,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | [§10.6](#106-run-lifecycle-and-partial-advance) | service |
 | `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§14](#14-stopped-sim-services) | service |
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5](#135-termination-is-a-state-not-an-exception) | service |
-| `DeploymentInvalid` | the deployment parameter (`h`, `n`, algorithm, `localization_tol`, `event_budget`, the harmonic-grid relation), the value in hand, the violated constraint | [§12.1](#121-three-strata) | service (collected) |
+| `DeploymentInvalid` | the deployment parameter (`h`, `n`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, the harmonic-grid relation), the value in hand, the violated constraint | [§12.1](#121-three-strata) | service (collected) |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
@@ -7874,7 +7915,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
-| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`event_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
+| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
 
 **Runtime:**
@@ -7883,8 +7924,8 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 |---|---|---|---|
 | `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization probe, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
 | `NonfiniteState` | component path, the offending state block, boundary time and index | [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor) | runtime |
-| `ChatteringBudget` | component path, event name, boundary time, the exhausted `event_budget` and the frame's localization count | [§8.4](#84-localization-mechanics) | warning (runtime) |
-| `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) | warning (runtime) |
+| `ChatteringBudget` | component path, event name, boundary time, the exhausted `localization_budget` and the frame's localization count | [§8.4](#84-localization-mechanics) | warning (runtime) |
+| `FiringBudget` | component path, event name, boundary time, the exhausted `firing_budget` and the boundary's firing count | [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | [§8.7](#87-real-time-pacing) | warning (runtime) |
 | `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value; the site (staging, or a stopped-sim attach's renormalization). Harness-register only — a device's out-of-surface entry is `OutOfClaimEntry` | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | warning (runtime) |
@@ -8149,11 +8190,11 @@ construction — and the **boundary sweep** walks the full list, with the
 boundary's due discrete entries gated in by counter modulo. Mid-step sweeps are
 integrator scratch; the boundary sweep restores table consistency, and the event
 phase re-runs whole boundary sweeps, against that boundary's fixed due set,
-until quiescence ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.3](#83-signal-table-consistency-is-a-boundary-property), [§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+until quiescence ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries), [§8.3](#83-signal-table-consistency-is-a-boundary-property), [§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 ### D.4 Time and events
 
-**boundary** — a published consistency point: where the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) macro-sequence
+**boundary** — a published consistency point: where the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence
 completes and a snapshot goes out. Every grid point is a boundary, but `t*`
 and boundary zero are boundaries that are not frame tops ([§8.4](#84-localization-mechanics)). *Boundary
 zero* ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§D.8](#d8-stopped-sim-services-and-the-condition-algebra)) is a hyponym — it is an ordinary boundary whose incoming
@@ -8166,10 +8207,10 @@ no root-finding and no step rejection, the handler firing at the end of the
 step in which the edge was observed. Exact, not approximate, for guards over
 `u`/`m` alone — those predicates are piecewise frame-constant ([§2.1](#21-events-two-detection-policies)).
 
-**chattering / event budget** — the bounded per-step localization allowance,
-`event_budget`, a `Simulation` deployment keyword defaulting to 8;
-exhaustion *degrades* rather than throws — localization stops for the rest of
-the frame and further crossings fire at the next boundary, under a
+**chattering / localization budget** — the bounded per-frame localization
+allowance, `localization_budget`, a `Simulation` deployment keyword defaulting
+to 8; exhaustion *degrades* rather than throws — localization stops for the
+rest of the frame and further crossings fire at the next boundary, under a
 `ChatteringBudget` warning naming the event ([§8.4](#84-localization-mechanics)).
 
 **`Δt_base`** — the base tick period, an integer multiple `n·h` of the
@@ -8181,12 +8222,20 @@ divisor admits that boundary's tick index; due components' output stages are
 gated into the *boundary* sweep (never the interior one) and their `g` updates
 run after quiescence. The due set is a property of the boundary, fixed for its
 whole event iteration: the modulo image of the frame index at a frame top, empty
-at `t*`, everything at boundary zero ([§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+at `t*`, everything at boundary zero ([§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **edge semantics / holding** — an event fires on a not-holding → holding
 transition of its predicate, never on a bare sign change; the opposite
 crossing direction is declared as a second event with the negated guard ([§2.1](#21-events-two-detection-policies),
-[§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+[§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
+
+**firing budget** — the rule bounding the boundary event iteration: each
+declared event fires at most `firing_budget` times per boundary (a
+`Simulation` deployment keyword, an integer ≥ 1 defaulting to 4), eligibility
+being a not-holding → holding edge on the event's last-observed sample. An
+event re-enabled within the boundary therefore fires *at* that boundary;
+exhaustion drops its further edges there under a `FiringBudget` warning
+([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **guard** — the declared function defining an event's predicate, evaluated
 against the fresh boundary table and paired with a handler in an ordered,
@@ -8211,11 +8260,6 @@ keyword, default `1e-6`). Only the sign form can declare it — the `Bool` form
 offers no root to bracket — and it runs
 identically paced or unpaced ([§2.1](#21-events-two-detection-policies), [§8.4](#84-localization-mechanics)).
 
-**once per event** — the rule bounding the boundary event iteration: each
-declared event fires at most once per boundary, which makes termination
-structural; an event legitimately re-enabled within the boundary waits one
-step, with an `EventDeferred` warning ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
-
 **pacing / pacer debt** — the pacer inserts waits between completed frames and
 never alters the boundary sequence; a frame exceeding its wall budget leaves
 **debt** that later frames repay, with excess forgiven by re-anchor plus
@@ -8227,18 +8271,19 @@ holding = `σ ≥ 0`) ([§2.1](#21-events-two-detection-policies)). Not to be co
 value that sets a build's state ([§D.8](#d8-stopped-sim-services-and-the-condition-algebra)).
 
 **prior** — the per-event stored sample of its predicate at the previous
-boundary's quiescence (a deferred event's prior is recorded not-holding, so
-the deferral resolves at the next boundary), held in loop state and never in a state store; "newly fired"
-is defined against it, and boundary zero establishes every prior as
-not-holding ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+boundary's quiescence, always an honest observation and never a manufactured
+one; held in loop state and never in a state store; "newly fired"
+is defined against it for the boundary's first round (later rounds test the
+last-observed sample), and boundary zero establishes every prior as
+not-holding ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **quiescence** — the fixed point of the boundary event phase: rounds of
 [sweep → guards → handlers] iterate until a round fires nothing, after which
-the priors are updated and due `g` updates run ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event)).
+the priors are updated and due `g` updates run ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **remainder step** — the integration from `t*` to the original grid target
 after a localized event, with `h′` derived at use; guards are re-checked on it
-under the event budget ([§8.4](#84-localization-mechanics)).
+under the localization budget ([§8.4](#84-localization-mechanics)).
 
 **`t*`** — the localized event time: the holding endpoint of the root-finder's
 final bracket, structurally strictly later than `tₙ`. A full boundary runs
@@ -8549,7 +8594,8 @@ faces and deployment block — up front, applying the header's `t₀`
 ([§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)).
 
 **run metadata** — the trace header's deployment block: `t₀`, `Δt_base`,
-`h`, `n`, the algorithm identifier, `localization_tol`, `event_budget` and the
+`h`, `n`, the algorithm identifier, `localization_tol`, `localization_budget`,
+`firing_budget` and the
 effective `t_end`/`stop_on`
 pair ([§9.5](#95-inbound-the-input-trace), [§13.5](#135-termination-is-a-state-not-an-exception)).
 
