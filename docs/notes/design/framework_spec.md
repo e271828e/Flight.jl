@@ -1480,11 +1480,53 @@ step boundaries.** Mid-step contents carry no meaning.
 Trigger: a localized event's predicate was not-holding at $t_n$'s quiescence (its
 prior, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)) and is holding at $t_{n+1}$ — the directional edge of [§2.1](#21-events-two-detection-policies), never a
 bare sign change: a holding → not-holding transition neither fires nor localizes.
+The trigger check runs against the **arrival sweep** at $t_{n+1}$ — the sweep
+that closes the integration step — and therefore *before* the due-gated
+boundary sweep refreshes any discrete cell. This makes explicit an ordering the
+ZOH clause below already forces (probes must see the values the frame actually
+held) and fixes the sequencing at the top: every `t*` firing precedes
+$t_{n+1}$'s boundary sequence entirely.
 
+- **The θ = 0 validation.** On trigger the *first* act is a probe at the left
+  end: write $x_n$ into the state buffer — already retained by the stepper for
+  the interpolant, so nothing new is kept — run one interior sweep, and
+  evaluate the guard to get $\sigma_0$. It runs before any interpolant cost
+  because $\hat{x}(0) = x_n$ identically, so no interpolant is needed to place
+  it, and it pays for itself twice over: it is also the **left bracket value**
+  the value-based root-finders need ($\sigma_1 = \sigma(t_{n+1})$ is retained
+  from the arrival evaluation; $\sigma_0$ was otherwise unsourced), and it
+  **discriminates the edge's cause**. The vocabulary: an **input epoch** is a
+  maximal span of constant `u`, delimited by frame-top drains ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)); within
+  an epoch a guard can change only through the trajectory, while at a seam it
+  can jump without crossing anything. `u` is the *only* thing that can differ
+  between the prior's evaluation context and this probe — `m` changes only via
+  handlers at boundaries and priors are sampled at quiescence, after them;
+  discrete cells ZOH-hold and the interior sweep excludes discrete entries
+  ([§8.5](#85-multi-rate-tick-scheduling)); `t = tₙ` exactly, by the indexed-grid rule below; and sweeps are
+  deterministic — so under [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)'s honest priors the frame-top drain is the
+  sole possible source of disagreement, which makes the discriminator
+  conclusive:
+  - $\sigma_0$ **not-holding** ⇒ a **trajectory-caused** edge: a genuine
+    in-frame crossing. Pay $\dot{x}_{n+1}$'s sweep, build the interpolant and
+    root-find on the bracket $(t_n, \sigma_0)$/$(t_{n+1}, \sigma_1)$.
+  - $\sigma_0$ **holding** ⇒ an **epoch-caused** edge: the drain flipped the
+    guard at the frame top, and σ holds at both ends, so no in-frame crossing
+    exists to find. The localization is **discarded** and the event fires
+    inside $t_{n+1}$'s ordinary iteration — mechanically, *not localizing is
+    the action*: fall through, and the boundary iteration detects and fires it
+    like any boundary-detected event. This path costs one interior sweep,
+    never $\dot{x}_{n+1}$ and never an interpolant, consumes no
+    `localization_budget`, and **warns nothing** — input timing is a frame
+    fact (the same doctrine that forbids draining at `t*`, below) and boundary
+    detection is *exact* for a `u`-caused edge ([§2.1](#21-events-two-detection-policies), row 179), so
+    boundary firing is the correct semantics rather than a degradation. It is
+    the left-end mirror of the `t* = tₙ₊₁` degeneracy below.
 - **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
   $\theta = (t - t_n)/h \in [0, 1]$, from $(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$;
   $\dot{x}_n$ is the step's first
-  stage, $\dot{x}_{n+1}$ costs one sweep, paid only on trigger. Uniform accuracy $O(h^4)$ — one
+  stage, $\dot{x}_{n+1}$ costs one sweep, paid only on a validated trigger — the
+  θ = 0 probe above precedes it, so an epoch-caused edge never pays it at all.
+  Uniform accuracy $O(h^4)$ — one
   order below the discrete solution, the standard pairing, and the event time can
   only ever be as accurate as the interpolant, so nothing more expensive is worth
   probing.
@@ -1511,7 +1553,7 @@ bare sign change: a holding → not-holding transition neither fires nor localiz
 - **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
   invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
   `t*` with the remainder step targeting `tₙ₊₁` → re-check guards on the remainder,
-  under a bounded per-step event budget with a chattering diagnostic. Multiple
+  under the per-frame localization budget with a chattering diagnostic. Multiple
   events localizing in one step fire at the *earliest* `t*` (ties fire
   together at that boundary, declaration order within the iteration, [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted));
   later crossings re-localize on the remainder.
@@ -1590,12 +1632,16 @@ frame-indexed — `t*` boundaries consume no inputs.
 **Endpoint policy and grid integrity.** The root-finder returns the
 **holding endpoint of its final bracket** — the smallest probed point where
 the predicate holds. Consequences: **`t* = tₙ` is structurally impossible**,
-not clamped away — localization only triggers when the predicate was
-not-holding at `tₙ`'s quiescence ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) priors), and the interpolant
-reproduces the endpoint exactly (`x̂(0) = xₙ`, probe sweeps deterministic), so
-the bracket's left end stays strictly not-holding and the returned point is
+not clamped away — and the argument now rests on **observation, not
+testimony**: root-finding is entered only after the θ = 0 validation above has
+*measured* `σ₀` not-holding under the frame's own `u`, so the bracket's left
+end is strictly not-holding by the same kind of evidence as its right end, and
+the returned point is
 strictly later than the published, immutable `tₙ` (worst rounding:
-`nextfloat(tₙ)`). And the guard observably *holds* at `t*`: handlers fire in
+`nextfloat(tₙ)`). This holds unconditionally, with no appeal to the prior and
+no residual epoch hole: the case where the prior's testimony and the frame's
+`u` disagree is exactly the epoch-caused edge, which never reaches the
+root-finder. And the guard observably *holds* at `t*`: handlers fire in
 states where their own predicate holds, and the post-fire prior records
 an actual observation rather than an assumption. **`t* = tₙ₊₁` exactly is
 legitimate** (a crossing at the grid point: `σ(tₙ₊₁) = 0` both triggers
@@ -8248,8 +8294,18 @@ of `Δt_base`, itself an integer multiple of `h`, so ticks land only on step
 boundaries; grid times are indexed from the frame count, never accumulated
 ([§8.5](#85-multi-rate-tick-scheduling), [§8.4](#84-localization-mechanics)).
 
+**input epoch** — a maximal span of constant `u`, delimited by the frame-top
+drains ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)). Within an epoch a guard changes only through the
+trajectory; at a seam it can jump without crossing. Hence the **θ = 0
+validation**: the first act of a triggered localization is a probe at `xₙ`
+under the frame's own `u`, whose `σ₀` both supplies the left bracket value and
+tells a *trajectory-caused* edge (root-find) from an *epoch-caused* one (no
+in-frame crossing exists — discard the localization and let the event fire in
+the boundary's ordinary iteration, no budget, no warning) ([§8.4](#84-localization-mechanics)).
+
 **interpolant** — the lazily built cubic Hermite continuous extension over the
 last completed step, from which localization probes read the states they sweep;
+built only after the θ = 0 validation confirms an in-frame crossing, and
 invalidated at `t*`, where the handlers have made it a lie ([§8.4](#84-localization-mechanics)).
 
 **localized** — the detection policy a sign-form guard declares: the crossing
