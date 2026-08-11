@@ -2223,8 +2223,9 @@ are static per run (the roster freeze below), enforcement runs entirely at
 performs no checks at all. **Every device's surface is its claim set**, and a
 claim set has two *sources*:
 
-- **Returned** — the binding enumerates the faces: `claims(b)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) is
-  called once at attach and what it names is staked. Static for the
+- **Returned** — the binding enumerates the faces: it declares
+  `is_input(b) = true`, `claims(b)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) is
+  called once at attach, and what it names is staked. Static for the
   attachment, exclusively its own (claims are disjoint by construction), and
   binding-bounded even where no one else is involved — a mapping that has
   drifted onto an unenumerated face is a diagnosable anomaly
@@ -2325,7 +2326,7 @@ between runs — stop, `detach!`, and either `init!` (fresh trajectory) or
 `replay!`-to-end then `run!` (continuation from the interrupted boundary,
 [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop)) — and the anomaly is exactly that: an anomaly, not a surface event.
 One deliberate asymmetry is on record as a **guarded addition**: a pure
-reader (a binding with no input half, [§9.6](#96-devices-one-authoring-contract-no-taxonomy) — a visualizer, a telemetry
+reader (a binding declaring `is_output` alone, [§9.6](#96-devices-one-authoring-contract-no-taxonomy) — a visualizer, a telemetry
 tap) claims nothing, so attaching one mid-run would move no writer's
 surface; a dynamic reader list (touching only [§10.3](#103-the-next-snapshot-wait) wakeups, the heartbeat
 and the shutdown join — never the drain) is cleanly severable from the
@@ -2568,8 +2569,11 @@ widgets ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)).
 
 #### The authoring contract: four functions, one optional, one trait
 
-**The authoring contract: four functions, one optional, one trait.** A device is a plain
-user type; the framework asks for
+**The authoring contract: four functions, one optional, one trait.** A device is a
+user type subtyping the framework's neutral root, `MyDevice <: AbstractDevice`
+— one mandatory word that costs nothing (the periphery has no competing
+hierarchy to inherit from) and buys `attach!`'s dispatch gate below; the
+framework asks for
 
 ```julia
 init!(dev)          # per-run resource acquisition — calling task, before spawn (§10.4)
@@ -2683,48 +2687,102 @@ unchanged).
 #### The binding: framework-legible by enumeration, opaque in its mappings
 
 **The binding: framework-legible by enumeration, opaque in its mappings.**
-A binding is a value whose type implements a small interface. The legible
+A binding is a value subtyping `AbstractBinding` — the second mandatory
+root — whose type declares which sides it has and enumerates what each side
+touches. The legible
 half is explicit methods returning data, called once at attach on the
 calling task; the opaque half is called per datum on the device task by the
 author's own loop:
 
 ```julia
-claims(b)              # input half:  the enumerated face set → the claim (§9.3)
-map_input(datum, b)    #              datum → face ⇒ value pairs — arbitrary user code
-reads(b)               # output half: §14.4 selectors → validated, compiled to one gather
-map_output(nt, b)      #              the gather's labeled NamedTuple → wire datum
-is_greedy(b)           # optional trait, default false: the claim is *computed* at attach
-                       # as the unclaimed complement instead of returned (§9.3, §9.4)
+struct T16000MBinding <: AbstractBinding    # the roots are mandatory: attach! dispatches
+    table::NamedTuple                       # on ::AbstractDevice, ::AbstractBinding
+end
+
+is_input(::T16000MBinding)  = true     # sides are *declared*, never inferred; the root
+is_output(::T16000MBinding) = false    # carries the false defaults, so silence = absent
+is_greedy(::T16000MBinding) = false    # the claim source within the input side (§9.3)
+
+claims(b::T16000MBinding)   = ...      # input side:  the enumerated face set → the claim
+map_input(datum, b)                    #              datum → face ⇒ value pairs — user code
+reads(b)                               # output side: §14.4 selectors → one compiled gather
+map_output(nt, b)                      #              the gather's NamedTuple → wire datum
 ```
 
 The framework needs no contract on the datum's shape: the datum travels
 only between `loop` and `map_input`, written by the same author, and the
-framework's structural knowledge comes entirely from the enumeration
-methods — everything enumerable validates at attach, everything opaque is
+framework's structural knowledge comes entirely from the declared traits and
+the enumeration methods — everything enumerable validates at attach,
+everything opaque is
 bounded at its runtime enforcement point (`map_input` by the staging
 checks, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain); `map_output` receives exactly the compiled gather's
-NamedTuple, and what it puts on the wire is the peer's business). Sides are
-detected by declaration shape — method presence, the [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) idiom, probed
-once at attach: `claims` defined — or `is_greedy(b) = true` — ⇒ input side,
-its claim staked; `reads` defined ⇒ output side, gather compiled; a write
-side plus `reads` ⇒ bidirectional; neither ⇒ attach-time error
-naming the halves. `is_greedy` selects the claim *source* within the input
-side, and a greedy binding therefore defines no `claims` — the framework
-computes the complement instead, so declaring both is an attach-time error
-naming both declarations — while greediness is orthogonal to `reads`: a
+NamedTuple, and what it puts on the wire is the peer's business).
+`map_input`/`map_output` are, precisely, **conventions of the author-owned
+loop idiom**: the framework never calls them, so they are taught
+([Appendix A](#appendix-a-taught-contracts-the-author-facing-index)) and never checked — a binding whose loop calls something else
+by another name is simply a binding with a different private helper.
+
+**Sides are declared; the obligations they create are enforced both ways.**
+`claims` and `reads` have **error-throwing fallbacks on the root**, so a
+declared side whose method was never written fails loudly at the attach
+point rather than degrading into silence, and the attach runs a
+**bidirectional conformance check** over the pair (trait, method):
+
+- `is_input && !is_greedy` ⇒ `claims(b)` is called once and its faces staked;
+  the fallback firing here means "you declared an input side and wrote no
+  enumeration".
+- `is_input && is_greedy` ⇒ the claim is computed ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), and a `claims`
+  method defined for this binding is an error: the two sources are
+  alternatives, not layers.
+- `is_output` ⇒ `reads(b)` is called and the gather compiled.
+- Neither side declared ⇒ attach-time error naming both traits: a binding
+  that touches nothing is a configuration mistake, not a degenerate.
+- `is_greedy` without `is_input` ⇒ error: greediness is a *source* within a
+  side, and a source without its side is meaningless.
+- A **specific** method of `claims` or `reads` defined for the binding type
+  while its trait reads false ⇒ error, the converse direction of the same
+  fact: a method written and never reached is exactly the drift the check
+  exists to catch. Detecting it is one `which` against the fallback method —
+  [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s reflection class (its shadowing check is an `isdefined`/`!==`
+  pair), run once at a stopped-sim service point, not inside any frame.
+
+Every violation in that list reports `BindingContractMismatch`
+([Appendix C](#appendix-c-the-diagnostic-kind-set)), naming the binding type, the trait, the method at fault and
+the direction (declared-but-missing, or defined-but-undeclared). **This is
+what closes the shadowing hole**: under detection-by-method-presence, a
+bidirectional binding whose `claims` was written without extending the
+framework's generic — [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s `using`-without-`import` trap, one level
+down — presented as output-only and degraded *silently*: the device
+attached, staked nothing, and wrote nothing, with every diagnostic pointing
+away from the missing import. With the side declared, the absent method has
+something to contradict.
+
+Greediness stays orthogonal to `reads`: a
 greedy front end may also drive a
 compiled output gather (legal, currently uninstantiated; the plausible
 customer is a narrow-wire interactive surface — a motorized control board
-whose detents must be driven back out). (`hasmethod` here is public, stable
-API at a stopped-sim service point — not row 74's internal-reflection
-seam.) The binding stays an `attach!` argument, never a device field: the
+whose detents must be driven back out). The binding stays an `attach!` argument, never a device field: the
 same `T16000M` binds differently per aircraft, and narrowing the binding
-narrows the claim ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)). Rejected: an abstract binding-type taxonomy
-(resurrects the kill one level down, and a bidirectional binding cannot be
-two types at once); a declared `sides(b)` trait (redundant with the methods
-that must exist anyway, one more thing to drift — a reason that does not
-reach `is_greedy` below, which selects a source no method could witness,
-its whole point being that no enumeration is written).
+narrows the claim ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+
+**Why the periphery gets roots where components have one.** [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) refuses
+a class supertype for two reasons, and neither reaches here: a component's
+single-inheritance slot is *already spoken for* by the domain hierarchies
+(`AbstractAircraft`, engine families), while a device's and a binding's are
+vacant — nothing else wants them; and a component's class is
+implementation detail behind its contract ([§11.3](#113-visibility-the-contract-is-the-interface)), while a binding's
+**sidedness is its public contract** — the one thing every consumer of it
+must know. Rejected, correspondingly: an abstract binding-type *taxonomy*
+encoding the sides (`AbstractInputBinding` and friends — a bidirectional
+binding cannot subtype two of them, the original objection, unchanged by the
+roots); optional roots left unenforced (a signal half the ecosystem skips is
+worse than none — the dispatch gate is the whole value); and a declared
+`sides(b)` trait returning the side set, whose rejection stands on its
+merits (redundant with methods that must exist anyway, one more thing to
+drift) but is **answered rather than repeated** by the design above:
+redundancy *with a cross-check* is drift detection, which is what the
+bidirectional check turns the traits into — the same fact stated twice, in
+two registers, with the framework paid to compare them.
 
 **`is_greedy` is a claim source, not a device class.** The class it used to
 justify — a *derived* surface elected by a marker, shared among the
@@ -2753,8 +2811,8 @@ rather than sharing it; the one thing still limited to a single holder is
 `needs_calling_task` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s affinity check), a property of the task
 topology, not of interactivity.
 
-**The shipped GUI binding is a greedy one.** It declares `is_greedy` and
-stakes the computed claim — everything unclaimed at the moment it attaches —
+**The shipped GUI binding is a greedy one.** It declares `is_input` and
+`is_greedy` and stakes the computed claim — everything unclaimed at the moment it attaches —
 defining no `claims` of its own; it declares no `reads` either, because its
 read path is the handle's primitive
 read — VSync-paced, it reads `latest` afresh each render ([§10.3](#103-the-next-snapshot-wait)) with an
@@ -2767,7 +2825,8 @@ web console, a remote panel) has both spellings available — attach with the
 greedy binding where the GUI would have been, or with explicit claims
 beside other front ends.
 
-**The empty enumeration is not a back door.** `claims(b) = ()` stays an
+**The empty enumeration is not a back door.** `is_input(b) = true` with
+`claims(b) = ()` stays an
 honest degenerate — a device that may write nothing, its writes
 still binding-bounded, so drift onto any face is `OutOfClaimEntry` — and
 there is no longer a privileged class for it to promote into: `claims`
@@ -7231,8 +7290,10 @@ Still to be settled:
   left unexported — with *unexported* the preferred disposition for
   extension-only surface: the declaration and stage family of [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s import
   list — the larger half of the question, on every component file's first
-  line, settled there — plus the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding interface `claims`/`map_input`/
-  `reads`/`map_output`/`is_greedy` and the device contract `init!`/`loop`/`shutdown!`/
+  line, settled there — plus the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding interface `claims`/`reads` and
+  the side traits `is_input`/`is_output`/`is_greedy` (with `map_input`/`map_output`
+  outside the question, being loop-idiom conventions the framework never calls)
+  and the device contract `init!`/`loop`/`shutdown!`/
   `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
   rather than call every day. Its criterion is the **four-register naming
   convention** (row 144): declarations the author defines and the framework
@@ -7398,6 +7459,13 @@ For periphery authors and consumers:
   you, so guard each release (`isopen`, a `nothing` handle) rather than
   assuming initialization completed. The converse is a burden you do *not*
   carry: `init!` owes no cleanup of its own.
+- **Binding traits are declarations, mappings are your own idiom** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
+  Keep `is_input`/`is_output`/`is_greedy` trivial — a literal, or a flag read
+  off a field fixed at the constructor call — because the framework calls them
+  once, at attach, and cross-checks each against the enumeration method it
+  implies. `map_input`/`map_output` are the other kind of thing: conventions of
+  the loop idiom, called only by your own `loop`, never by the framework — the
+  names are worth keeping for readers, and nothing enforces them.
 - **Bad datum vs. bug** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)). Catch what your parser can throw,
   `report!(handle, MalformedDatum(cause))`, stage nothing, continue; let
   everything else propagate — the wrapper makes it `DeviceCrash`.
@@ -7513,16 +7581,23 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   are view policies, not trajectory-determining: neither enters the deployment
   block, and replay neither records nor compares them. `debug`
   gates the workspace poison ([§7.3](#73-discrete-state-modes-and-workspace)).
-- `attach!(sim, device, binding; should_abort = false)` — sides by method presence ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)):
-  `claims(b)`/`map_input(datum, b)` is the input half (the enumerated face
+- `attach!(sim, dev::AbstractDevice, binding::AbstractBinding; should_abort = false)`
+  — the roots are mandatory and the signature is the gate; **sides are declared**
+  by the Bool traits `is_input`/`is_output` (framework defaults false on
+  `AbstractBinding`), with a conformance check at attach pairing each trait
+  against its method — error fallbacks for a declared side whose `claims`/`reads`
+  was never written, `which`-against-the-fallback for a method defined under a
+  false trait, both `BindingContractMismatch` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)):
+  `claims(b)`/`map_input(datum, b)` is the input side (the enumerated face
   set *is* the claim — what the device may write,
   not what it will — registered with exclusivity enforced, the staged
   shape and normalization shim compiled, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)); the trait
   `is_greedy(b) = true` switches the claim's *source* — the framework
   computes the unclaimed complement at attach instead of calling `claims`,
   everything downstream being identical, an empty remainder legal and
-  reported (`EmptyGreedyClaim`) ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); `reads(b)`/
-  `map_output(nt, b)` is the output half ([§14.4](#144-two-application-registers-over-one-plan) selectors validated and
+  reported (`EmptyGreedyClaim`), and `is_greedy` without `is_input` an error
+  ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); `reads(b)`/
+  `map_output(nt, b)` is the output side ([§14.4](#144-two-application-registers-over-one-plan) selectors validated and
   compiled to one gather, [§9.2](#92-outbound-snapshot-publication)); `TableBinding` is the shipped
   data-driven binding, the standard GUI binding the shipped greedy
   one ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)). A stopped-sim operation — legal in `built`,
@@ -7540,7 +7615,8 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   device's claims; stopped-sim only, like `attach!`. A loop body's
   voluntary exit or crash mid-run does *not* detach: the task dies, the
   claims persist to run end ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§10.4](#104-shutdown-protocol)).
-- The device contract — `init!(dev)` / `loop(dev, handle)` /
+- The device contract — `MyDevice <: AbstractDevice` plus `init!(dev)` /
+  `loop(dev, handle)` /
   `shutdown!(dev)` / optional `unblock!(dev)` / optional trait
   `needs_calling_task(dev) = false` ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s topology: at most one per
   roster, its loop body runs inline on the calling task): per-run `init!`
@@ -7758,6 +7834,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `ClaimConflict` | face name, claiming device id, incumbent device id | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root input face being claimed already | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy) | warning (service) |
+| `BindingContractMismatch` | the binding type, the trait and the method at fault, and the direction: a declared side whose enumeration method is missing (`is_input`/`is_output` true, the root's error fallback reached), or a `claims`/`reads` method defined under a false trait (detected by `which` against the fallback); `is_greedy` without `is_input`, and `claims` defined on a greedy binding, report here too | [§9.6](#96-devices-one-authoring-contract-no-taxonomy) | service |
 | `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding ([§14.4](#144-two-application-registers-over-one-plan)'s source rule) | [§9.2](#92-outbound-snapshot-publication), [§14.4](#144-two-application-registers-over-one-plan) | service |
 | `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | [§14.2](#142-fragment-composition-locality-without-schema), [§14.3](#143-resolution-flatten-validate-compile-once) | service (collected) |
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2](#142-fragment-composition-locality-without-schema) | service (collected) |
@@ -8250,11 +8327,14 @@ staging cell and applied whole at the next drain ([§9.4](#94-inbound-per-device
 this; error reporting *collects* ([§D.9](#d9-error-discipline-and-diagnostics)).
 
 **binding** — the value passed at `attach!` that makes a device
-framework-legible: `claims`/`map_input` on the input side, the trait
-`is_greedy` switching that side's claim source from returned to computed (the
-unclaimed complement, in place of `claims`),
-`reads`/`map_output` on the output side, all detected by method presence.
-Every input-side binding stakes a claim; `TableBinding` is the shipped
+framework-legible: a subtype of `AbstractBinding` declaring its sides by the
+Bool traits `is_input`/`is_output` (false by default on the root), with
+`is_greedy` switching the input side's claim source from returned to computed
+(the unclaimed complement, in place of `claims`). `claims` and `reads` carry
+error fallbacks on the root, and attach cross-checks each trait against its
+method in both directions (`BindingContractMismatch`); `map_input`/`map_output`
+are loop-idiom conventions the framework never calls. Every input-side binding
+stakes a claim; `TableBinding` is the shipped
 data-driven one ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)).
 
 **boundary counter** — the monotonic count of *published boundaries* carried
@@ -8287,7 +8367,8 @@ chain terminates in a root slot inside the GUI's own claim in the run's frozen
 surface partition; baked once at run start, with no per-port "GUI-controlled"
 marking anywhere ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)).
 
-**device** — any attached participant in the periphery, under one authoring
+**device** — any attached participant in the periphery: a subtype of
+`AbstractDevice` under one authoring
 contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
 `needs_calling_task`) and one handle; input-only and output-only are
 degenerate uses, and the GUI is an ordinary device ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
@@ -8310,6 +8391,12 @@ the signal table: [§8.7](#87-real-time-pacing)'s pacer diagnostics plus, per wr
 boundary's drained diagnostics (`recent`), the counts the ring refused
 (`suppressed`), the loop's cumulative per-writer × per-kind counters copied in
 (`totals`) and the liveness timestamp ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell), [§9.2](#92-outbound-snapshot-publication)).
+
+**greedy claim** — the claim a binding declaring `is_greedy` receives: the
+unclaimed complement computed by the framework at attach instead of returned
+by `claims`, ordinary in every respect afterwards; an empty remainder is legal
+and reported (`EmptyGreedyClaim`), and the shipped GUI binding is the shipped
+instance ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)).
 
 **harness cell** — the always-present staging cell of the harness register,
 written by `stage!(sim, "face" => value, …)` from the calling task itself:
