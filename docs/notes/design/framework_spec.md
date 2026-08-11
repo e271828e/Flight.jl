@@ -2545,7 +2545,8 @@ another — so with it clear a device's departure (loop body returning, crash, o
 a failed `init!`) is reported and the run continues without it, and with it set
 that departure also requests a sim stop ([§10.4](#104-shutdown-protocol)). The shipped GUI attaches with
 `should_abort = true` — closing the window is the interactive session's natural
-end — and `gui = true`'s standard attachment states that value ([Appendix B](#appendix-b-api-synopsis-the-entry-points)).
+end — and `gui = true`'s run-scoped attachment states that value ([§10.6](#106-run-lifecycle-and-partial-advance),
+[Appendix B](#appendix-b-api-synopsis-the-entry-points)).
 Input-only and output-only devices are degenerate uses, not
 framework classes; a bidirectional network peer is *one* device with one socket and one
 lifecycle, not two framework devices sharing state. The GUI is an ordinary device —
@@ -3210,6 +3211,11 @@ survives a stop is the roster entry: binding, claims, stable device id
 ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)); never a task, never a live resource — a device whose task died
 mid-run included, its entry indistinguishable at this point from any
 other's; `stopped` is where `detach!` removes it and releases its claims.
+**One roster change belongs to this tail**: a GUI attached by `run!`'s
+`gui = true` is detached here, releasing its computed claim ([§10.6](#106-run-lifecycle-and-partial-advance)'s
+run-scoped flag) — the only roster mutation the protocol itself performs, and
+it sits in the tail precisely so that (7)'s failure path takes it too, an
+everything-claim staked for one run never surviving into the next.
 The next `run!` re-runs device
 `init!` — resource acquisition is per-run; FlightCore's
 create-a-new-socket-each-`init!` in network.jl is the precedent — and spawns
@@ -3430,11 +3436,23 @@ survive; tasks and OS resources do not ([§9.1](#91-no-shared-mutable-model-stag
 teardown). Each `run!` re-initializes every rostered device and spawns its
 task; `attach!` while stopped only registers — the task appears at the next
 `run!`. Task topology follows the roster each time ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)): a GUI
-attached last run is still rostered, so the next `run!` renders it again —
-loop on a spawned task — whether or not `gui = true` is repeated. The
-flag is pure attach sugar, idempotent against the persistent roster: it
-attaches the standard GUI device only if none is rostered ([Appendix B](#appendix-b-api-synopsis-the-entry-points)),
-and never detaches — a GUI session ends by `detach!` while stopped.
+attached *by hand* is still rostered, so the next `run!` renders it again —
+loop on a spawned task — whether or not `gui = true` is repeated. **The flag
+itself is run-scoped**: at run entry it attaches the standard GUI device under
+the greedy binding, with `should_abort = true`, iff no GUI is rostered
+([Appendix B](#appendix-b-api-synopsis-the-entry-points)), and the run's shutdown tail detaches it again ([§10.4](#104-shutdown-protocol)) —
+so the roster a flagged run leaves behind is the roster it found, and a window
+on every run means the flag on every run. A *persistent* GUI session is
+spelled by hand — `attach!` while stopped, `detach!` when done — and against a
+hand-attached GUI the flag does nothing and detaches nothing, having attached
+nothing. What the scoping buys is the absence of a trap: the flag's GUI claims
+everything unclaimed at attach ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s computed source), and a claim of
+that shape must not outlive the run that asked for it — a joystick attached
+between two runs would otherwise meet a `ClaimConflict` against an
+everything-claim staked by a convenience argument nobody remembers passing.
+The accepted cost is a fresh device id per run for that GUI: ids exist to be
+read *across* roster changes, and each run's trace header carries its own
+schemas ([§9.5](#95-inbound-the-input-trace)), so nothing that reads a completed run is affected.
 Run policy is re-bindable per cycle: `t_end` and `stop_on` are `Simulation`
 defaults that `run!` may override for the run it starts ([§13.5](#135-termination-is-a-state-not-an-exception)), so a second
 run — or a `step!` register between two runs — can stop on a different clock
@@ -6864,8 +6882,10 @@ forced by this cast):
   claim set registered (second joystick on the same faces errors here). The
   Gladiator variant is the same table with different keys, zero shaping code —
   the duplication smell structurally gone.
-- `run!(sim; gui = true, pace = 1)` — derived liveness with zero configuration,
-  baked at run start against the frozen roster ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)):
+- `run!(sim; gui = true, pace = 1)` — a greedy claim over every unclaimed face
+  and liveness with zero configuration, both settled at run start against the
+  frozen roster ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster); the flag's attachment lasts exactly this run,
+  [§10.6](#106-run-lifecycle-and-partial-advance)):
   axis mirrors read-only (claimed, with provenance), mode/setpoint/mixture/
   payload/environment widgets live, actuator sliders read-only (component-fed).
   Unplug the joystick → its task exits, the mirrors stay read-only with the
@@ -7570,14 +7590,16 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 - `run!(sim; gui = false, pace = 1, margin = 0.002, t_end = <ctor value>,
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
   ([§8.7](#87-real-time-pacing)); the GUI an ordinary rostered device rendered on the calling task
-  ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)); `gui = true` is idempotent attach sugar — it attaches the
-  standard GUI device under the standard greedy binding, with
-  `should_abort = true`, **iff no GUI is already rostered**, so a
-  rostered GUI makes the flag a
-  no-op rather than an admission error, and it never
-  detaches; placement follows the roster, not the flag: a rostered GUI
-  moves the loop to a spawned task, on this run and every later one until
-  `detach!` ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§10.6](#106-run-lifecycle-and-partial-advance)); sugar
+  ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)); `gui = true` is **run-scoped attachment** — at run entry it
+  attaches the standard GUI device under the standard greedy binding, with
+  `should_abort = true`, **iff no GUI is already rostered**, and the shutdown
+  tail detaches it again ([§10.4](#104-shutdown-protocol)), the error path included, so a
+  hand-attached GUI makes the flag a
+  no-op rather than an admission error and nothing the flag did survives the
+  run; a persistent GUI session is spelled `attach!`/`detach!` by hand.
+  Placement follows the roster, not the flag: a rostered GUI
+  moves the loop to a spawned task for as long as it is rostered
+  ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§10.6](#106-run-lifecycle-and-partial-advance)); sugar
   never activates by default. `run!` blocks until the run ends; deviceless
   it is fully synchronous on the calling task; `init!` required first
   ([§10.6](#106-run-lifecycle-and-partial-advance)). `margin` is the single pacing
