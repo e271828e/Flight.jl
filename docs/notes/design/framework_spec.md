@@ -2220,44 +2220,49 @@ entry reaches a slot **iff the named face is inside the writer's surface**;
 anything else is discarded with a runtime warning ([§13.2](#132-diagnostics-structured-values-one-carrier-exception)). Because surfaces
 are static per run (the roster freeze below), enforcement runs entirely at
 *staging* — the earliest site, on the writer's own task — and the drain
-performs no checks at all. A surface arises in one of two ways:
+performs no checks at all. **Every device's surface is its claim set**, and a
+claim set has two *sources*:
 
-- **Enumerated** — an ordinary device's surface is its claim set: static for
-  the attachment, exclusively its own (claims are disjoint by construction),
-  and binding-bounded even where no one else is involved — a mapping that has
+- **Returned** — the binding enumerates the faces: `claims(b)` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)) is
+  called once at attach and what it names is staked. Static for the
+  attachment, exclusively its own (claims are disjoint by construction), and
+  binding-bounded even where no one else is involved — a mapping that has
   drifted onto an unenumerated face is a diagnosable anomaly
   (`OutOfClaimEntry`), never a silent write, claimed or not.
-- **Derived** — the **interactive register**'s surface (the GUI, [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract), and
-  `stage!` below) is the unclaimed face set: the complement of the union of
-  all claims, computed rather than staked, and *elected* by a binding that
-  declares [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s `interactive` marker instead of staking claims. Shared among the interactive
-  writers, it is re-derived only when the roster changes — a stopped-sim
-  event — so within any run it is as fixed as a claim set: an interactive
-  write to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming
-  the incumbent), and the one seam — a batch staged while stopped whose face
-  a subsequent `attach!` claims — is renormalized away at the attach itself
-  (below). [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)'s widget liveness is this surface made visible.
+- **Computed** — the binding declares [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s `is_greedy(b) = true` and the
+  framework computes the claim at attach: all root input faces minus the
+  union of the rostered claims, the unclaimed complement at that instant.
+  This is the shipped GUI's claim ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)) — everything unclaimed, without
+  configuration — and it is disjoint from every incumbent claim by
+  construction, so exclusivity validates trivially and nothing downstream
+  can tell the two sources apart.
 
-One rule, two surface classes. The GUI is not an exception
-but the resident of the second class — one device contract ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), two *binding*
-sides (enumerated vs. derived), one drain rule — and each side has its own
-declaration: `claims(b)` stakes the claim set, the marker `interactive(b)`
-elects the derived surface ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), so residency in the second class is
-something a binding declares and the framework checks, not a privilege the
-shipped GUI is granted — and a second interactive front end has a spelling.
-Opportunistic writing by
-autonomous devices does not exist: a device that wants a face enumerates it.
-Cross-writer races on one slot therefore cannot arise structurally (claimed
-faces have exclusivity; unclaimed faces admit only the interactive register),
-which is what keeps drain order a diagnostic fact (below) and lets a drained
-GUI value simply stay ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)). The interactive register also has a
-**task-free entry point**: `stage!(sim, "face" => value, ...)` stages a batch
-from the calling task itself — the harness/REPL write path ([§10.6](#106-run-lifecycle-and-partial-advance)) —
-drained, traced and surface-checked exactly as the GUI's. Among interactive
-writers the harness cell drains **last** — the explicit hand of code beats a
-widget interaction — sequencing within one register, not the cross-device
-conflict policy row 44 rejects; in practice the two rarely coexist, since
-during a GUI run the calling task renders ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)).
+One claim mechanism, two claim sources. The source is exhausted at the attach
+point: past it, validation, roster-entry storage, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)'s shape
+compilation, the drain, the trace and detach-releases-claims treat a computed
+claim exactly as a returned one, which is why the GUI is not an exception but
+an ordinary enumerated writer whose enumeration the framework performed.
+Opportunistic writing by autonomous devices does not exist: a device that
+wants a face enumerates it, and greediness is an explicit declaration, never a
+default. Cross-writer races on one slot therefore cannot arise structurally —
+every claim is exclusive, whatever its source — which is what keeps drain
+order a diagnostic fact (below) and lets a drained GUI value simply stay
+([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)).
+
+**One framework-owned remainder: the harness register.** Beside the roster
+sits a **task-free entry point** — `stage!(sim, "face" => value, ...)`, which
+stages a batch from the calling task itself, the harness/REPL write path
+([§10.6](#106-run-lifecycle-and-partial-advance)) — and its always-present cell, drained, traced and
+surface-checked exactly as any device's. Its surface is the one thing in the
+design that is *derived* rather than claimed: the unclaimed complement, the
+faces no rostered device speaks for, recomputed at every stopped-sim roster
+change and therefore as fixed within a run as any claim set. A `stage!` write
+to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming the
+incumbent), and the one seam — a batch staged while stopped whose face a
+subsequent `attach!` claims — is renormalized away at the attach itself
+(below). The harness cell drains **last**, by convention: with every surface
+disjoint the order is unobservable, so the rule exists to make the trace read
+the same way every time, not to arbitrate anything.
 
 **Slot initial values are owned by the init/trim services** ([§15.4](#154-the-interactive-c172x-demo-the-periphery-under-load)). Input declarations are bare types ([§11.2](#112-the-declaration-inventory)) and carry no defaults, but a
 slot unfed by any device must hold a defined value from the first frame (today's
@@ -2276,7 +2281,7 @@ services) — pause included: pause is a control-plane state *inside* a run
 ([§10.1](#101-control-plane)), and a surface that could move while paused would move mid-run. The roster —
 entries, claims, attachment order — is therefore a plain immutable value
 the loop reads once at `run!`, and the partition of the root face set into
-per-writer surfaces plus the interactive remainder is a static,
+per-writer surfaces plus the harness remainder is a static,
 inspectable fact of the run — printable before it starts, valid until it
 ends ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s provenance register). No republication machinery exists:
 no atomic roster reference, no per-frame acquire-load, no next-frame
@@ -2297,7 +2302,7 @@ while two instances of the same type (two joysticks) are two devices. The
 stable device id the trace, heartbeat and diagnostics speak is assigned
 at `attach!` — monotonic per `Simulation`, never reused — and lives
 exactly as long as the entry: across runs (roster persistence, [§10.6](#106-run-lifecycle-and-partial-advance)),
-until `detach!`. Admission is a four-part check at the attach point, in
+until `detach!`. Admission is a three-part check at the attach point, in
 order: **identity** — an already-rostered instance is rejected
 (`AlreadyAttached`, naming the entry and its binding), because rebinding
 has an explicit spelling — `detach!` then `attach!`, both legal at any
@@ -2305,10 +2310,7 @@ stopped-sim point — and either a silent no-op or a silent rebind would
 discard a binding the caller handed over; **affinity** — at most one
 rostered device may declare `needs_calling_task` ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)'s topology makes
 the calling task a single-slot resource; `CallerTaskConflict`, naming
-both devices); **interactivity** — at most one rostered device may
-declare `interactive`, the derived surface being shared rather than
-partitioned (`InteractiveConflict`, naming both devices, the same
-admission shape as affinity; [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); **claims** — face exclusivity (`ClaimConflict`), which by
+both devices); **claims** — face exclusivity (`ClaimConflict`), which by
 running after the identity check always names two *distinct* devices,
 never a device colliding with its own earlier attachment.
 
@@ -2374,17 +2376,19 @@ dynamism to one framework-owned conversion on the device task, at the
 boundary where wire-shaped data becomes system-shaped data. (Author-built
 total tuples were rejected as a padding form — ten explicit `nothing`s to
 say "one face touched" — the same disease row 74 and the handler return
-law refuse.) The **interactive register gets the same treatment**: under
-the roster freeze its derived surface is as static as any claim set, so it
-too is compiled to a positional shape — over the unclaimed face set,
-recompiled at each `attach!`/`detach!` (a stopped-sim point) — with the
-same shim, merge and scatter. This compilation is what [§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s
-`interactive(b)` marker asks for, exactly as `claims(b)` asks for the
-enumerated one — the derived side is declared, not special-cased — and the
-harness cell, always present, gets it unasked. One representation, one mechanism; the
+law refuse.) A **greedy entry needs no special treatment here**: its claim
+was computed at the attach point and is an ordinary claim set by the time
+shapes are compiled ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), so the GUI's cell is compiled exactly as a
+joystick's. The **harness cell gets the same treatment**: under the roster
+freeze its derived surface — the unclaimed complement — is as static as any
+claim set, so it too is compiled to a positional shape, recompiled at each
+`attach!`/`detach!` (a stopped-sim point), with the same shim, merge and
+scatter; always present, it gets the compilation unasked, and it is the one
+cell whose shape the framework derives rather than receives. One
+representation, one mechanism; the
 name-keyed dynamic path the mutable surface used to force does not exist,
 and no face name is ever resolved inside the loop's frame. The
-recompilation has one seam: a pending interactive batch staged *before* a
+recompilation has one seam: a pending harness batch staged *before* a
 stopped-sim `attach!` may hold the old shape, or name a face the new claim
 covers — the attach renormalizes it (reshape, discard newly-claimed faces
 with `ClaimedFaceEntry`), so the run always starts with cells matching the
@@ -2393,10 +2397,11 @@ run's schemas.
 **Diagnostic sites follow the compilation — all of them to staging.**
 Face-name validity, surface membership and value convertibility are all
 static facts of the run, so every check runs in `stage!`'s normalization,
-on the writer's own task: an enumerated writer's out-of-claim face has no
+on the writer's own task: a device's out-of-claim face has no
 position in the schema and is rejected (`OutOfClaimEntry` — an earlier,
-better-attributed site than the drain; same kind, same payload); an
-interactive write to a claimed face is rejected the same way
+better-attributed site than the drain; same kind, same payload — the GUI
+included, its claim being an ordinary one); a **harness** write to a claimed
+face is rejected the same way
 (`ClaimedFaceEntry`, naming the incumbent device); and a value that cannot
 convert to its slot's declared type is discarded with `EntryTypeMismatch`
 ([Appendix C](#appendix-c-the-diagnostic-kind-set)) at the same spot. Nothing remains at the drain: with surfaces
@@ -2462,15 +2467,15 @@ trajectory bit-identically.
 **Trace records match each batch's natural density.** An enumerated
 writer's positional batch is dense by nature — a complete writer's tuple
 has no `nothing`s, and even a sparse peer's is claim-narrow — so the trace
-retains it verbatim, zero-copy. The interactive register's batch is the
-opposite: a tuple as wide as the unclaimed surface carrying, typically,
-one edit — retained verbatim, its size would track surface width rather
+retains it verbatim, zero-copy. A greedy writer's batch and the harness
+cell's are the opposite: a tuple as wide as the unclaimed surface carrying,
+typically, one edit — retained verbatim, its size would track surface width rather
 than information (at hundreds of unclaimed faces, render-rate dragging
 would inflate the trace past the two-orders-below-the-log budget that
 justifies trace-on-by-default, row 29). The drain therefore converts it on
 retention: scan the drained tuple, record (position ⇒ value) pairs for the
 non-`nothing` entries — an O(surface-width) scan and one small allocation,
-at most once per frame and only on interactive-active frames, inside the
+at most once per frame and only on frames such a writer was active in, inside the
 retention carve-out of [§7.5](#75-allocation-policy-a-scoped-invariant) that the log's per-boundary snapshot already
 occupies (the one qualified exception to retains-what-was-already-
 allocated, bought deliberately: trace size proportional to information at
@@ -2515,7 +2520,7 @@ decides the default: the trace is *primary* data and the log *derived* — given
 initial state and the trace, the log is recomputable (that is what bit-identical
 replay means), while an untraced interactive session is unreproducible, permanently.
 The cost supports it: the trace retains batches the devices already allocated
-(plus the interactive register's small sparse records, above), at
+(plus the small sparse records of the wide-surface writers, above), at
 drain-rate × device-count — tens of MB per hour worst case, two orders of magnitude
 below the snapshot log. No sampling, no rolling window (complexity without a
 customer).
@@ -2675,9 +2680,8 @@ claims(b)              # input half:  the enumerated face set → the claim (§9
 map_input(datum, b)    #              datum → face ⇒ value pairs — arbitrary user code
 reads(b)               # output half: §14.4 selectors → validated, compiled to one gather
 map_output(nt, b)      #              the gather's labeled NamedTuple → wire datum
-interactive(b)         # optional marker, no return value used: the derived write side —
-                       # no claims staked, the unclaimed complement compiled instead
-                       # (§9.3, §9.4). At most one holder per roster (§9.3).
+is_greedy(b)           # optional trait, default false: the claim is *computed* at attach
+                       # as the unclaimed complement instead of returned (§9.3, §9.4)
 ```
 
 The framework needs no contract on the datum's shape: the datum travels
@@ -2688,15 +2692,14 @@ bounded at its runtime enforcement point (`map_input` by the staging
 checks, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain); `map_output` receives exactly the compiled gather's
 NamedTuple, and what it puts on the wire is the peer's business). Sides are
 detected by declaration shape — method presence, the [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) idiom, probed
-once at attach: `claims` defined ⇒ **enumerated** write side, claims staked;
-`interactive` defined ⇒ **derived** write side, no claims staked and
-[§9.4](#94-inbound-per-device-staging-representation-and-the-drain)'s positional staging shape compiled over the unclaimed face set
-instead; `reads` defined ⇒ output side, gather compiled; a write side
-plus `reads` ⇒ bidirectional; none of the three ⇒ attach-time error
-naming the halves. `claims` and `interactive` are **mutually exclusive** —
-a surface cannot be enumerated and derived at once, so declaring both is
-the same attach-time error, naming both declarations — while `interactive`
-is orthogonal to `reads`: an interactive front end may also drive a
+once at attach: `claims` defined — or `is_greedy(b) = true` — ⇒ input side,
+its claim staked; `reads` defined ⇒ output side, gather compiled; a write
+side plus `reads` ⇒ bidirectional; neither ⇒ attach-time error
+naming the halves. `is_greedy` selects the claim *source* within the input
+side, and a greedy binding therefore defines no `claims` — the framework
+computes the complement instead, so declaring both is an attach-time error
+naming both declarations — while greediness is orthogonal to `reads`: a
+greedy front end may also drive a
 compiled output gather (legal, currently uninstantiated; the plausible
 customer is a narrow-wire interactive surface — a motorized control board
 whose detents must be driven back out). (`hasmethod` here is public, stable
@@ -2707,56 +2710,64 @@ narrows the claim ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-ro
 (resurrects the kill one level down, and a bidirectional binding cannot be
 two types at once); a declared `sides(b)` trait (redundant with the methods
 that must exist anyway, one more thing to drift — a reason that does not
-reach the `interactive` marker below, which declares a side no method
-could witness).
+reach `is_greedy` below, which selects a source no method could witness,
+its whole point being that no enumeration is written).
 
-**The derived side is a declaration, and the marker is not the `sides(b)`
-trait reborn.** That rejection turns on redundancy: `claims` and `reads`
-must exist anyway, so a trait restating their presence is a second copy of
-a fact, free to drift from it. Nothing analogous exists for the derived
-side — its surface is *computed* from everyone else's claims, so the class
-has no method whose presence could be probed, and a marker is therefore not
-a redundant declaration but the only possible one. The other standing
-rejection is untouched: opportunistic writing to unclaimed faces "for any
-device" stays dead (row 44) — autonomous devices still enumerate, and the
-interactive register remains human-mediated, singleton-limited and
-staging-checked (`ClaimedFaceEntry` unchanged). The marker makes the
-privileged class visible and checkable, not open.
+**`is_greedy` is a claim source, not a device class.** The class it used to
+justify — a *derived* surface elected by a marker, shared among the
+writers that elected it — no longer exists: what the declaration buys is
+one computation at the attach point, after which the binding holds an
+ordinary claim set and every mechanism downstream ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s exclusivity
+and storage, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)'s shape, shim, merge, scatter and drain, [§9.5](#95-inbound-the-input-trace)'s
+trace, detach's release) is blind to where the set came from. The standing
+rejection is untouched by that: opportunistic writing to unclaimed faces
+"for any device" stays dead (row 44) — autonomous devices still enumerate,
+and a maximal surface is now something exactly one line of a binding asks
+for, in the open, checked like any other claim.
 
-**At most one interactive device per roster**, beside the always-present
-harness cell ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s `stage!` path). The admission shape and the error
-style are `needs_calling_task`'s: a fourth part of the attach-time check,
-in the same list, reported as `InteractiveConflict` naming both the
-rostered interactive device and the candidate, exactly as
-`CallerTaskConflict` names both affinity holders ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [Appendix C](#appendix-c-the-diagnostic-kind-set)). Two
-interactive devices would share one surface rather than partition it, which
-is the cross-writer arbitration row 44 refuses; the singleton also keeps
-intra-register drain order trivial — the interactive device, then the
-harness cell last ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s "the explicit hand of code beats a widget
-interaction", unchanged).
+**A second greedy attach stakes the empty remainder.** The complement is
+computed against the roster as it stands, so a greedy binding attached
+after another has already swallowed everything gets the empty claim — which
+is legal, being the honest may-write-nothing degenerate below, and useless,
+which is worth saying out loud: the attach succeeds and reports
+`EmptyGreedyClaim` ([Appendix C](#appendix-c-the-diagnostic-kind-set), a service warning naming the device and its
+binding), the one honest reading of "you asked for what is left and nothing
+was left". No singleton rule survives anywhere here. **Several interactive
+front ends may be rostered at once** — a web console claiming the autopilot
+faces beside a local GUI claiming the stick faces — because with explicit
+claims they are simply two enumerated devices, partitioning the surface
+rather than sharing it; the one thing still limited to a single holder is
+`needs_calling_task` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s affinity check), a property of the task
+topology, not of interactivity.
 
-**The shipped GUI binding is the class's sole shipped instance.** It
-declares `interactive` and nothing else: no `claims`, its surface being
-computed; no `reads`, because its read path is the handle's primitive
+**The shipped GUI binding is a greedy one.** It declares `is_greedy` and
+stakes the computed claim — everything unclaimed at the moment it attaches —
+defining no `claims` of its own; it declares no `reads` either, because its
+read path is the handle's primitive
 read — VSync-paced, it reads `latest` afresh each render ([§10.3](#103-the-next-snapshot-wait)) with an
 ad-hoc, render-time read set over the whole snapshot, the inspection
 register's shape ([§9.2](#92-outbound-snapshot-publication)) — so the compiled output gather has nothing to
-do for it. Every other interactive front end anyone might want (a web
-console, a remote panel) now has the same spelling: declare `interactive`,
-attach where the GUI would have been.
+do for it. The same GUI device type is equally attachable under a binding
+that returns explicit claims: greediness is the binding's declaration, not
+the device's nature. Every other interactive front end anyone might want (a
+web console, a remote panel) has both spellings available — attach with the
+greedy binding where the GUI would have been, or with explicit claims
+beside other front ends.
 
 **The empty enumeration is not a back door.** `claims(b) = ()` stays an
-honest degenerate — an enumerated device that may write nothing, its writes
-still binding-bounded, so drift onto any face is `OutOfClaimEntry` — and it
-never promotes into the interactive class: `claims` bodies are ordinary code
-([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)'s idiom, comprehensions included), so an enumeration that came back
-empty by accident must stay inert rather than silently acquire the
-register's maximal write surface. The most privileged classification is the
-hardest to enter by accident, and method presence is deliberate authorship.
-For the same reason `claims` never returns `nothing` or a sentinel to mean
-"derived": the enumeration contract has one meaning, and a dual-meaning
-return would be exactly the ambiguity the declaration vocabulary is built
-to refuse.
+honest degenerate — a device that may write nothing, its writes
+still binding-bounded, so drift onto any face is `OutOfClaimEntry` — and
+there is no longer a privileged class for it to promote into: `claims`
+bodies are ordinary code
+([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)'s idiom, comprehensions included), and an enumeration that came
+back empty by accident stays inert, exactly as written. The maximal surface
+is reachable only through the explicit `is_greedy(b) = true` declaration —
+the most privileged claim is the hardest to acquire by accident, and a
+declared trait is deliberate authorship. For the same reason `claims` never
+returns `nothing` or a sentinel to mean "compute it for me": the
+enumeration contract has one meaning, the trait carries the other, and a
+dual-meaning return would be exactly the ambiguity the declaration
+vocabulary is built to refuse.
 
 #### One shipped binding type; conditioning has an owner
 
@@ -2830,9 +2841,10 @@ GUI: read-only rendering is first-class, not an error state — the author of
 **Liveness is a derived property, and resolution is transitive.** A widget
 is live iff its port's feed chain — walked through wires and boundary connections across *all*
 levels, not just the local assembly — terminates in a root slot, *and* that slot
-is unclaimed in the run's frozen surface partition ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) exclusivity) — that
-unclaimed complement being precisely the GUI's own write surface, which its
-binding elects by declaring `interactive` and staking no claims ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), so
+lies **inside the GUI's own claim** in the run's frozen surface partition
+([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) exclusivity) — whether that claim was computed from the unclaimed
+complement under `is_greedy` or enumerated face by face by a partial-claims
+binding ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), so
 "live" reads as "inside the surface I declared for". Under
 the roster freeze, liveness is a static fact of the run: baked once, with the
 port resolution, when the run starts — never consulted against mutable claim
@@ -2873,10 +2885,10 @@ the intent.
 The alternative — active widgets staging on *every* render pass — lost its
 motivation to slot exclusivity ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)): stage-every-pass would exist to win every
 drain against a streaming device sharing the slot for the grab's duration ([§15.3](#153-torture-test-for-the-9-staging-shapes-filter-joystick-and-gui)'s
-drag phase), but a slot the GUI can write is by definition unclaimed, so once staged
+drag phase), but a slot the GUI can write is exclusively its own claim, so once staged
 and drained a value simply *stays*; there is nothing to reassert against. Nor is it
 worth keeping as insurance: if an
-anomalous writer ever touched an unclaimed slot through a framework defect, the
+anomalous writer ever touched a claimed slot through a framework defect, the
 slot visibly fighting is a diagnosable anomaly — continuous re-staging would mask
 the invariant violation at render rate. Side benefit: staging traffic (and trace
 noise) drops from render-rate-while-grabbed to actual edits. No
@@ -3384,7 +3396,7 @@ stopped-sim state (`initialized`, below), so `attach!` is legal there and
 does what it always does — registers ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)); the task appears at the next
 `run!`. The frame-top drain still runs — `step!` frames stay
 bit-identical to `run!` frames — and what it drains is the **harness
-cell**: `stage!(sim, "face" => value, ...)`, [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s interactive
+cell**: `stage!(sim, "face" => value, ...)`, [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s harness
 write path with the calling task as writer. Staged batches are ordinary
 batches — traced, so replay and bit-identity hold; applied at the next frame
 top; surface-checked like any writer's ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)). The read half is
@@ -3500,8 +3512,8 @@ Everything else is the loop as already specified:
   validated against the `Build` (store layout, slot faces) and the trace's
   batch entries against the root input-face list — attach-style, with
   did-you-mean (`ReplayHeaderMismatch`, `ReplayUnknownFace`, [Appendix C](#appendix-c-the-diagnostic-kind-set)).
-  The same pass pays the trace-record conversion in reverse: the interactive
-  register's sparse records ([§9.5](#95-inbound-the-input-trace)) are normalized to positional batches
+  The same pass pays the trace-record conversion in reverse: the sparse
+  records of the wide-surface writers ([§9.5](#95-inbound-the-input-trace)) are normalized to positional batches
   against the header's schemas, once, off the loop — replay has the whole
   trace in hand before frame 1 — so the replay drain applies compiled
   scatters exactly as the live drain does, and no face name is resolved
@@ -5235,7 +5247,7 @@ limit to arrange. The committed runtime warnings, in one place:
 - **the write-surface and entry violations** ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)), all at staging — the
   drain checks nothing: `OutOfClaimEntry` (an
   enumerated surface's binding drift — no position in
-  the attach-compiled schema), `ClaimedFaceEntry` (an interactive write to
+  the attach-compiled schema), `ClaimedFaceEntry` (a harness write to
   a face claimed in the run's frozen partition, naming the incumbent; also
   fired by the stopped-sim attach renormalizing a pending batch) and
   `EntryTypeMismatch` (a value unconvertible to its
@@ -6774,7 +6786,7 @@ surface, with each item's home:
   all writers, but moves behavior into the FCS).
 - **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
   masses, terrain surface enum, sea-level T/p, wind NED): ordinary component
-  inputs exported to root faces; GUI as the interactive register's writer via
+  inputs exported to root faces; the GUI writes them under its greedy claim via
   [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract); no machinery. The interactive surface is *not* one thing: pilot commands cluster
   under a prefix; environment knobs stay with their components' panels.
 - **The Xv1 actuator sliders**: FlightCore's dead sliders; resolved read-only by
@@ -7188,7 +7200,7 @@ Still to be settled:
   extension-only surface: the declaration and stage family of [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s import
   list — the larger half of the question, on every component file's first
   line, settled there — plus the [§9.6](#96-devices-one-authoring-contract-no-taxonomy) binding interface `claims`/`map_input`/
-  `reads`/`map_output`/`interactive` and the device contract `init!`/`loop`/`shutdown!`/
+  `reads`/`map_output`/`is_greedy` and the device contract `init!`/`loop`/`shutdown!`/
   `unblock!`/`needs_calling_task`, which authors extend by `import` or qualified name, `Base.show`-style,
   rather than call every day. Its criterion is the **four-register naming
   convention** (row 144): declarations the author defines and the framework
@@ -7221,8 +7233,8 @@ Still to be settled:
   `trace` the sharpest — the constructor kill-switch `trace = false` and the
   post-run accessor `trace(sim)` are one name in two senses, the overload
   pattern rows 122/144 retire); and whether register (1) needs an explicit
-  exemption for markers (`interactive`) and predicate traits
-  (`needs_calling_task`) — boundary cases drawn after row 144's list was fixed,
+  exemption for predicate traits (`is_greedy`, `needs_calling_task`) —
+  boundary cases drawn after row 144's list was fixed,
   not defects. The
   **[§12.7](#127-the-compiled-executor) executor compile-cost re-measurement** runs on
   the real vehicle skeleton — early, before the executor's shape hardens.
@@ -7360,8 +7372,9 @@ For periphery authors and consumers:
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
 - **Derived liveness** ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)). A widget is live iff its port's feed chain
-  terminates in a root slot unclaimed in the run's frozen partition; there
-  is no per-port marking, and unexported ports are unpokeable.
+  terminates in a root slot inside the GUI's own claim in the run's frozen
+  partition; there is no per-port marking, and unexported ports are
+  unpokeable.
 - **The two observation registers** ([§9.2](#92-outbound-snapshot-publication), [§13.5](#135-termination-is-a-state-not-an-exception)). A deep snapshot path is
   the *inspection* register: it sees everything and promises nothing
   across builds. An exported output face is the *integration* register:
@@ -7472,20 +7485,20 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   `claims(b)`/`map_input(datum, b)` is the input half (the enumerated face
   set *is* the claim — what the device may write,
   not what it will — registered with exclusivity enforced, the staged
-  shape and normalization shim compiled, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)); the marker `interactive(b)`
-  is the *derived* write side — no claims, the unclaimed complement
-  compiled instead, mutually exclusive with `claims` and orthogonal to
-  `reads` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); `reads(b)`/
+  shape and normalization shim compiled, [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)); the trait
+  `is_greedy(b) = true` switches the claim's *source* — the framework
+  computes the unclaimed complement at attach instead of calling `claims`,
+  everything downstream being identical, an empty remainder legal and
+  reported (`EmptyGreedyClaim`) ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy)); `reads(b)`/
   `map_output(nt, b)` is the output half ([§14.4](#144-two-application-registers-over-one-plan) selectors validated and
   compiled to one gather, [§9.2](#92-outbound-snapshot-publication)); `TableBinding` is the shipped
-  data-driven binding, the standard GUI binding the shipped interactive
+  data-driven binding, the standard GUI binding the shipped greedy
   one ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)). A stopped-sim operation — legal in `built`,
   `initialized` and `stopped`, an error while `running`
   (`ServiceLifecycle`, [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s roster freeze); admission checks identity
   (`AlreadyAttached` — one roster entry per instance, rebinding =
   `detach!` + `attach!`), calling-task affinity (`CallerTaskConflict` —
-  at most one holder), interactivity (`InteractiveConflict` — likewise at
-  most one holder) and claims (`ClaimConflict`), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster); registers
+  at most one holder) and claims (`ClaimConflict`), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster); registers
   only, the task appears at the next `run!`. `should_abort` is the
   per-attachment failure policy: set, the device's departure — loop body
   returning, crash, or a failed `init!` — also requests a sim stop; clear (the
@@ -7558,10 +7571,9 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
   ([§8.7](#87-real-time-pacing)); the GUI an ordinary rostered device rendered on the calling task
   ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)); `gui = true` is idempotent attach sugar — it attaches the
-  standard GUI device under the standard interactive binding, with
-  `should_abort = true`, **iff no
-  interactive device is already rostered** ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s singleton rule), so a
-  rostered GUI — or any other interactive front end — makes the flag a
+  standard GUI device under the standard greedy binding, with
+  `should_abort = true`, **iff no GUI is already rostered**, so a
+  rostered GUI makes the flag a
   no-op rather than an admission error, and it never
   detaches; placement follows the roster, not the flag: a rostered GUI
   moves the loop to a spawned task, on this run and every later one until
@@ -7585,7 +7597,7 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
   current boundary; a stepping session is deviceless — write via `stage!`,
   read via `latest` ([§10.6](#106-run-lifecycle-and-partial-advance)).
 - `stage!(sim, "face" => value, ...)` — task-free staging from the calling
-  task into [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s interactive write path (surface = the currently-unclaimed
+  task into [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)'s harness register (surface = the currently-unclaimed
   faces): traced, drained last at the next frame top, surface-checked exactly
   as the GUI's writes ([§10.6](#106-run-lifecycle-and-partial-advance)'s harness cell; legal under `run!` and
   `step!` alike).
@@ -7710,8 +7722,8 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
-| `InteractiveConflict` | both device ids — the rostered `interactive` holder and the candidate | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy) | service |
 | `ClaimConflict` | face name, claiming device id, incumbent device id | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
+| `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root input face being claimed already | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.6](#96-devices-one-authoring-contract-no-taxonomy) | warning (service) |
 | `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding ([§14.4](#144-two-application-registers-over-one-plan)'s source rule) | [§9.2](#92-outbound-snapshot-publication), [§14.4](#144-two-application-registers-over-one-plan) | service |
 | `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | [§14.2](#142-fragment-composition-locality-without-schema), [§14.3](#143-resolution-flatten-validate-compile-once) | service (collected) |
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2](#142-fragment-composition-locality-without-schema) | service (collected) |
@@ -7733,7 +7745,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted `event_budget` and the frame's localization count | [§8.4](#84-localization-mechanics) | warning (runtime) |
 | `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | [§8.6](#86-event-iteration-at-boundaries-to-quiescence-once-per-event) | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | [§8.7](#87-real-time-pacing) | warning (runtime) |
-| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness); the site (staging, or a stopped-sim attach's renormalization) | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract) | warning (runtime) |
+| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value; the site (staging, or a stopped-sim attach's renormalization). Harness-register only — a device's out-of-surface entry is `OutOfClaimEntry` | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain) | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count | [§10.2](#102-loop-scheduling-wait-primitive-yields-thread-budget) | warning (runtime), at `run!` |
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§10.4](#104-shutdown-protocol) | warning (runtime) |
@@ -8204,11 +8216,12 @@ staging cell and applied whole at the next drain ([§9.4](#94-inbound-per-device
 this; error reporting *collects* ([§D.9](#d9-error-discipline-and-diagnostics)).
 
 **binding** — the value passed at `attach!` that makes a device
-framework-legible: `claims`/`map_input` on the enumerated write side, the
-marker `interactive` on the derived one (mutually exclusive with `claims`),
+framework-legible: `claims`/`map_input` on the input side, the trait
+`is_greedy` switching that side's claim source from returned to computed (the
+unclaimed complement, in place of `claims`),
 `reads`/`map_output` on the output side, all detected by method presence.
-Enumerated bindings stake claims; `TableBinding` is the shipped data-driven
-one ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)).
+Every input-side binding stakes a claim; `TableBinding` is the shipped
+data-driven one ([§9.6](#96-devices-one-authoring-contract-no-taxonomy), [§9.4](#94-inbound-per-device-staging-representation-and-the-drain)).
 
 **boundary counter** — the monotonic count of *published boundaries* carried
 in the snapshot and mirrored in the loop state the wait predicate tests;
@@ -8220,10 +8233,11 @@ unattended register) unless a `needs_calling_task` device is rostered, in
 which case it runs that device's loop body inline and the loop moves to a
 spawned task ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads)).
 
-**claim** — the set of faces a device *may* write, registered at attach from
-its binding's enumeration and released at detach; claiming an already-claimed
-face is an attach-time error (`ClaimConflict`), and a broad claim costs GUI
-liveness ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+**claim** — the set of faces a device *may* write, registered at attach —
+either returned by its binding's `claims` or computed as the unclaimed
+complement under `is_greedy` — and released at detach; claiming an
+already-claimed face is an attach-time error (`ClaimConflict`), and a broad
+claim costs GUI liveness ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
 
 **coalescing** — the CAS merge keeping one pending batch per device:
 untouched faces survive, re-staged faces take the newest level (the per-face
@@ -8235,9 +8249,9 @@ loop's wait and pause states; structurally not staging, since a paused loop
 drains nothing ([§10.1](#101-control-plane)).
 
 **derived liveness** — the rule that a GUI widget is live iff its port's feed
-chain terminates in a root slot that is unclaimed in the run's frozen surface
-partition; baked once at run start, with no per-port "GUI-controlled" marking
-anywhere ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)).
+chain terminates in a root slot inside the GUI's own claim in the run's frozen
+surface partition; baked once at run start, with no per-port "GUI-controlled"
+marking anywhere ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)).
 
 **device** — any attached participant in the periphery, under one authoring
 contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
@@ -8263,17 +8277,16 @@ boundary's drained diagnostics (`recent`), the counts the ring refused
 (`suppressed`), the loop's cumulative per-writer × per-kind counters copied in
 (`totals`) and the liveness timestamp ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell), [§9.2](#92-outbound-snapshot-publication)).
 
-**harness cell** — the interactive-register staging path for the calling task
-itself, written by `stage!(sim, "face" => value, …)`: ordinary batches,
-traced and surface-checked, drained last among interactive writers ([§10.6](#106-run-lifecycle-and-partial-advance),
-[§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+**harness cell** — the always-present staging cell of the harness register,
+written by `stage!(sim, "face" => value, …)` from the calling task itself:
+ordinary batches, traced and surface-checked, drained last by convention
+([§10.6](#106-run-lifecycle-and-partial-advance), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
 
-**interactive register** — the shared writer set holding the *derived* write
-surface — the complement of the union of all claims, computed rather than
-staked — occupied by the harness cell and at most one device whose binding
-declares `interactive` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s marker and singleton rule; the shipped GUI
-is its only shipped instance), and re-derived only at stopped-sim roster
-changes ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+**harness register** — the framework-owned write path of the calling task —
+`stage!(sim, …)` and its cell — and the design's sole *derived* surface: the
+unclaimed complement, the faces no rostered device claims, recomputed at every
+stopped-sim roster change; a write to a claimed face is `ClaimedFaceEntry`
+([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§10.6](#106-run-lifecycle-and-partial-advance)).
 
 **`latest`** — the `@atomic` reference a published snapshot is release-stored
 into and readers acquire-load; `latest(sim)` hands the calling task the same
@@ -8343,11 +8356,12 @@ peek; held buttons do not re-stage, and no widget stages per render pass
 same loop, fully synchronous on the calling task, rethrowing after the
 shutdown tail so CI fails honestly ([§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§13.4](#134-runtime-failures-one-catch-site-an-execution-cursor)).
 
-**write surface** — the set of faces a writer's batch entries may reach:
-**enumerated** (a device's claim set, staked by `claims`) or **derived** (the
-interactive register's unclaimed complement, elected by the `interactive`
-marker, [§9.6](#96-devices-one-authoring-contract-no-taxonomy)). Static per run and enforced entirely at
-staging — `OutOfClaimEntry`, `ClaimedFaceEntry` ([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
+**write surface** — the set of faces a writer's batch entries may reach: a
+device's claim set, whether returned by `claims` or computed under
+`is_greedy` ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)), and for the harness register the derived
+unclaimed complement. Static per run and enforced entirely at
+staging — `OutOfClaimEntry` for a device, `ClaimedFaceEntry` for the harness
+([§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster)).
 
 ### D.7 Recording and replay
 
@@ -8393,8 +8407,9 @@ position schema, and the deployment block — captured after `apply!` and the
 slot writes, before the boundary-zero sequence runs ([§9.5](#95-inbound-the-input-trace), [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)).
 
 **trace record density** — the rule that retained records match each batch's
-natural density: an enumerated writer's positional batch is retained verbatim
-and zero-copy, while the interactive register's wide mostly-`nothing` tuple is
+natural density: a claim-narrow positional batch is retained verbatim
+and zero-copy, while a wide mostly-`nothing` tuple — a greedy writer's or the
+harness cell's — is
 converted at the drain into (position ⇒ value) pairs, so trace size tracks
 information rather than surface width ([§9.5](#95-inbound-the-input-trace), row 107).
 
