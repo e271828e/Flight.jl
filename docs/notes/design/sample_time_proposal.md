@@ -1,13 +1,21 @@
 # Sample-Time Extensions: A Worked Proposal
 
-**Status: non-normative.** This document is the worked sample-time proposal for the
-framework: the declaration surface, compilation pipeline, runtime representation and
-diagnostics for **phase offsets** and **absolute rate declarations**. It supersedes
-section 2 of the extensions charter (`framework_extensions.md`), which sketched the
-same territory before the pipeline was worked out. Nothing here is part of the
-framework specification (`framework_spec.md`, which wins on any conflict), nothing has
-decision-log rows, and per the guarded-additions rule none of it is built until a
-demonstrated need arrives. Everything below stays on the **static lattice**: tick
+**Status: non-normative companion; adopted into the spec.** This document is the
+worked sample-time proposal for the framework: the declaration surface, compilation
+pipeline, runtime representation and diagnostics for **phase offsets** and **absolute
+rate declarations**. It supersedes section 2 of the extensions charter
+(`framework_extensions.md`), which sketched the same territory before the pipeline was
+worked out. **Adopted 2026-08-12 as decision rows 185–187**, with the section 9
+amendments applied ([§8.5](framework_spec.md#85-multi-rate-tick-scheduling), [§11.7](framework_spec.md#117-rate-scopes), [§12.1](framework_spec.md#121-three-strata), [§12.2](framework_spec.md#122-the-build-artifact), [§12.7](framework_spec.md#127-the-compiled-executor), [§14.5](framework_spec.md#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](framework_spec.md#148-the-trim-service-solver-seam-scratch-stores-commit-and-report), Appendices B/C —
+the spec wins on any conflict) and two deltas from the proposal as written: the
+`ratespec` normalization of section 2 was **dropped** — the wrappers are the whole
+value vocabulary, a bare integer or bare quantity is a declaration error, and an
+unlisted discrete child defaults to `Relative(1)` (bare-value entries surviving in the
+examples below read as `Relative(K)`/`Absolute(q)` under the adopted surface) — and
+the declaring method was renamed `rates` → `sample_times` (this document is swept to
+match; quoted pre-adoption spec text keeps its original wording). What remains
+non-normative here is the exposition: the worked examples, timelines and derivations
+live only in this document. Everything below stays on the **static lattice**: tick
 instants remain build-time constants, and nothing from the closed tick-queue axis
 (`framework_extensions.md` section 1.4) is dragged in.
 
@@ -42,7 +50,7 @@ arithmetic the framework should do:
 
 ```julia
 # by hand: the common grid is 150 Hz, so...
-rates(::Aircraft) = (avionics = 3, nav = 5)
+sample_times(::Aircraft) = (avionics = 3, nav = 5)
 Simulation(world; Δt_base = 1//150, h = 1//150)
 ```
 
@@ -122,14 +130,14 @@ Design notes, each with its reason:
   Note `Hz(::Rational)` earns its keep here: `Hz(1//2)` is the honest spelling of
   0.5 Hz.
 - **Range validation belongs to Stratum A, not the constructors.** Constructor-side
-  checks give instant REPL feedback but fail the *evaluation* of a `rates` body with
+  checks give instant REPL feedback but fail the *evaluation* of a `sample_times` body with
   a raw exception, whereas Stratum A's charter ([§12.1](framework_spec.md#121-three-strata), [§13.1](framework_spec.md#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)) is to *collect*
-  declaration defects with path attribution ("`gnss` in `rates(::Sensors)`: phase 20
+  declaration defects with path attribution ("`gnss` in `sample_times(::Sensors)`: phase 20
   not in `0 ≤ Φ < K = 20`"). Today's `K ≥ 1` check already lives there. One
   validation site, collected diagnostics; the constructors are plain data carriers.
 - **Naming caveat, flagged and dismissed**: `Relative` and `Absolute` are generic
   adjectives to claim as exported names; `RelativeRate`/`AbsoluteRate` would be
-  clash-safer. But the short forms read beautifully inside a `rates` NamedTuple,
+  clash-safer. But the short forms read beautifully inside a `sample_times` NamedTuple,
   where their context is unambiguous. Cosmetic; decide at build time.
 
 ## 3. The composition law
@@ -188,10 +196,10 @@ principled rather than cosmetic:
 
 ## 4. Anchors: absolute declarations anywhere in the tree
 
-An absolute entry may appear in any scope's `rates`, not only the root's:
+An absolute entry may appear in any scope's `sample_times`, not only the root's:
 
 ```julia
-rates(::Avionics) = (computing = Relative(2), sensors = Absolute(Hz(500)))
+sample_times(::Avionics) = (computing = Relative(2), sensors = Absolute(Hz(500)))
 ```
 
 Call the `(T, τ)` pair such an entry establishes an **anchor**. The mechanics cost
@@ -231,7 +239,7 @@ authoring doctrine, one paragraph next to the declaration forms.
 
 **What this does not damage.** [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s structural argument for never caching
 `Δt`-derived coefficients survives fully intact, and in a satisfying way: the
-pinning happens in the *enclosing assembly's* `rates` — the same site where `K`
+pinning happens in the *enclosing assembly's* `sample_times` — the same site where `K`
 lives today. The component type itself remains rate-agnostic; its author still
 cannot know the rate, still consumes the bundle's `Δt`. What changes is only which
 register the parent's declaration uses. Nesting is likewise unproblematic — an
@@ -256,7 +264,7 @@ the runtime gate resolves every boundary flavor (5.5).
 
 Stratum A already does "rates validation and compilation of relative multipliers
 into absolute divisors — everything except binding `Δt_base`" ([§12.1](framework_spec.md#121-three-strata)). The proposal
-keeps that shape and enriches the fold. During the tree walk, each scope's `rates`
+keeps that shape and enriches the fold. During the tree walk, each scope's `sample_times`
 NamedTuple is read, normalized through `ratespec`, and validated per entry — `K ≥ 1`,
 `0 ≤ Φ < K`, `T > 0`, `0 ≤ τ < T`, keys matching the discrete/scope children — all
 collected with path attribution, per [§12.1](framework_spec.md#121-three-strata)'s usual register.
@@ -435,11 +443,11 @@ The sensor suite runs at a 0.002 s period with a 0.001 s offset; the control law
 0.02 s, offset 0:
 
 ```julia
-rates(::Vehicle) = (
+sample_times(::Vehicle) = (
     sensors = Absolute(Period(1//500), 1//1000),   # 0.002 s, offset 0.001 s
     ctrl    = Absolute(Period(1//50)),             # 0.02 s
 )
-rates(::Sensors) = (imu = 1, gnss = Relative(20, 3))
+sample_times(::Sensors) = (imu = 1, gnss = Relative(20, 3))
 ```
 
 Every discrete component here hangs from an anchor (`imu` and `gnss` under the
@@ -517,12 +525,12 @@ root-relative chain, a mid-tree anchor, a phased relative *under* an anchor, and
 nested anchor with an offset, all in one tree:
 
 ```julia
-rates(::Aircraft) = (avionics = Relative(1),)
-rates(::Avionics) = (computing = Relative(2), sensors = Absolute(Hz(500)))
-rates(::Sensors)  = (imu = Relative(2, 1), gnss = Absolute(Hz(10), 1//100))
+sample_times(::Aircraft) = (avionics = Relative(1),)
+sample_times(::Avionics) = (computing = Relative(2), sensors = Absolute(Hz(500)))
+sample_times(::Sensors)  = (imu = Relative(2, 1), gnss = Absolute(Hz(10), 1//100))
 ```
 
-(`vehicle` is continuous, appears in no `rates`, and none of this concerns it — it
+(`vehicle` is continuous, appears in no `sample_times`, and none of this concerns it — it
 lives in the interior sweep and integrates with `h`.)
 
 ### 7.1 Stratum A

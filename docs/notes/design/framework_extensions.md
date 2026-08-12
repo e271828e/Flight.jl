@@ -7,7 +7,8 @@ per the guarded-additions rule none of it is built until a demonstrated need arr
 What this document preserves is the *analysis*: where the current design sits relative
 to a general-purpose causal simulation engine, and which gaps are reachable through
 seams the spec deliberately left open. For the sample-time gaps, the worked proposal
-lives in its own companion, [`sample_time_proposal.md`](sample_time_proposal.md).
+lives in its own companion, [`sample_time_proposal.md`](sample_time_proposal.md)
+(adopted into the spec 2026-08-12, decision rows 185–187).
 
 Provenance: distilled from the gap-analysis discussion of 2026-08-08/09.
 

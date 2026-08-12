@@ -1685,8 +1685,8 @@ static, not a runtime test (row 147):
   stage and the `f` reading its cell would integrate a continuously re-sampled
   controller: exactly the un-sampling this rule forbids, and invisible — such a run
   is as type-stable, allocation-free and replayable as the correct one.
-- The **boundary sweep** walks the full list, with discrete entries gated by counter
-  modulo against the boundary's tick index. It is the variant the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence
+- The **boundary sweep** walks the full list, with discrete entries gated by
+  `(idx − Φ) % D` against the boundary's tick index. It is the variant the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence
   runs, and it is not one fixed list: different boundaries run different subsets of
   the schedule.
 
@@ -1698,17 +1698,34 @@ zero-arg interior, tick-indexed boundary — is [§12.7](#127-the-compiled-execu
 **The due set is a property of the boundary,** not of the sweep call: computed once
 for the boundary and reused by every re-sweep of its quiescence iteration ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)), a
 due component being at its tick instant for the whole boundary rather than for one
-round of it. At a frame top it is the counter-modulo image of the frame index. At a
+round of it. At a frame top it is the gate's image of the frame index. At a
 `t*` boundary it is **empty** — the tick counter has not advanced there, no component
 is at a tick instant, and a modulo test against the unadvanced index would wrongly
-re-admit the previous frame's due set. At boundary zero it is **everything**: `t₀` is
-a grid point of every divisor and no earlier tick exists for a ZOH to hold ([§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)).
+re-admit the previous frame's due set. At boundary zero it is **everything with
+`Φ = 0`**: at `idx = 0` the gate reads `(0 − Φ) % D == 0`, which by the canonical
+residue `0 ≤ Φ < D` holds iff `Φ = 0` — the rule is implemented by nothing, falling
+out of the ordinary gate. An offset component's first tick is at `Φ·Δt_base`; until
+then its cells hold the values the build probe populated ([§12.3](#123-probing-and-input-synthesis), [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)) — a coherent
+ZOH story, those being exactly what a tick at `t₀⁻` would have produced. In a
+phase-free model every `Φ` is 0, and "at boundary zero everything is due" is the
+degenerate case of the same identity.
 
 **Simultaneous ticks are already well-defined** by settled machinery: all due
 components run their output stages in topological order within the sweep, then all due
 `g` updates run after it, in any order — each `g` reads the table and writes only its
 own `x` store. The FCS cascade's intra-tick ordering is a sweep property, not an
 update-order property.
+
+**Coincident vs. staggered is a modeling decision with observable consequences.**
+Coincident ticks give a consumer fresh same-instant reads via topological order —
+the idealized synchronous-sampling picture; a phase stagger makes the same reads
+pipelined and deterministically aged, the structural expression of an acquisition
+pipeline's latency (no delay blocks), and a load-shaping tool under real-time
+pacing ([§8.7](#87-real-time-pacing): staggered stacks never share a frame, so worst-case frame cost is a
+`max`, not a sum). Both patterns — and how silently an offset edit rewires a
+coincidence structure — are worked in `sample_time_proposal.md`; the bound
+schedule and its hyperperiod chart ([§12.2](#122-the-build-artifact)) are how a user audits which one they
+actually have.
 
 **Assemblies: virtual for execution, rate scopes for declaration.** There are no
 atomic assemblies, and no opt-in variant. Execution atomicity coarsens the schedulable
@@ -1723,22 +1740,84 @@ whole-tree atomicity (children's `f_periodic!` called from the parent's, hence
 `Subsampled`'s parent-relative multipliers) was an artifact of call-tree execution,
 not a design requirement; the signal table dissolves it.
 
-**Rate declaration is relative, at composition.** A discrete component or sub-assembly
-is instantiated with an integer multiplier $K \ge 1$ (default 1) relative to its
-enclosing scope; multipliers compose multiplicatively down the tree; the root fixes
-`Δt_base` in seconds. Rationale: in a layered control architecture the *ratios* are
-intrinsic to the design and travel with the assembly type (inner loop at `K = 1`,
-outer loops at `K = 5`, whatever the deployment), while absolute rates are deployment
-decisions made once at the root. Absolute-first declaration was rejected: it welds
-deployment rates into reusable definitions, and replicating relative structure with a
-shared base-period variable does not compose across independently authored assemblies
-(parameter-threading ceremony, cf. [§4.4](#44-function-valued-signals-environment-access)). At build, all scoping compiles away to **one
-absolute tick divisor per discrete component**; the boundary sweep gates entries by
-counter modulo against the boundary's tick index (above), the interior sweep having
-no discrete entries to gate. Recorded limitations: a child cannot tick faster than
-its scope ($K \ge 1$) —
-soft, since assembly multipliers are declaration sugar and factors can be refactored
-onto siblings; and no phase offsets in the first cut (no demonstrated use).
+**Sample-time declaration: two registers, one concept.** A discrete component or
+sub-assembly is scheduled by a `sample_times` entry in its enclosing assembly
+([§11.7](#117-rate-scopes)), declaring one (period, phase) pair in one of two unit systems — the
+wrapper type names the unit system. `Relative(K, Φ = 0)` is the pair in *scope
+ticks*: fire on every `K`-th tick of the enclosing scope starting from its `Φ`-th,
+with `K ≥ 1` and `0 ≤ Φ < K` (so `K = 1` admits no stagger; two same-rate siblings
+are staggered by declaring the scope at twice their rate and
+`Relative(2, 0)`/`Relative(2, 1)`). `Absolute(q, τ = 0)` is the pair in *seconds*:
+tick instants `t = τ + k·T`, with `T = period(q) > 0` and `0 ≤ τ < T`. `q` is a
+quantity value, `Period(1//50)` or `Hz(50)` — a spelling choice normalized to the
+rational period at construction — and every period and offset is an exact
+`Rational{Int}`: grid derivation is GCD arithmetic, ill-defined over floats, and a
+float argument throws the teaching error naming the exact spelling
+(`Period(1//50)`; `Hz(1//2)` for 0.5 Hz). The wrappers are the whole vocabulary —
+a bare integer or bare quantity is a declaration error — and an unlisted discrete
+child defaults to `Relative(1)`: the common case costs nothing, and a multiplied
+or anchored child always appears explicitly. Validation (`K ≥ 1`, `0 ≤ Φ < K`,
+`T > 0`, `0 ≤ τ < T`, keys naming discrete or scope children) belongs to Stratum
+A, collected with path attribution ([§12.1](#121-three-strata), [§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)); the constructors are plain data
+carriers — constructor-side checks would fail the evaluation of a declaration body
+with a raw exception, against [§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)'s policy.
+
+**The relative register composes affinely and stays on the scope grid.** Relative
+declaration is the default register because in a layered control architecture the
+*ratios* are intrinsic to the design and travel with the assembly type (inner loop
+at `Relative(1)`, outer loops at `Relative(5)`, whatever the deployment); the
+convention that keeps `K ≥ 1` livable is that **a scope's base rate is its fastest
+relative member** (that member gets `K = 1`). Multipliers compose multiplicatively
+and phases affinely down the tree: under a scope compiled to divisor and phase
+`(D_s, Φ_s)` in base ticks, a child declared `Relative(K, φ)` compiles to
+`D = K·D_s`, `Φ = Φ_s + φ·D_s`. Composition preserves the canonical residue
+`0 ≤ Φ < D` (`sample_time_proposal.md` carries the one-line induction), so at
+build all scoping still compiles away to **one `(D, Φ)` pair per discrete
+component**, and the boundary sweep's gate is `(idx − Φ) % D == 0` against the
+boundary's tick index — one subtraction over the phase-free test, the lattice
+static, the interior sweep still holding no discrete entries to gate. Two
+structural properties confine grid cost to the other register: a relative phase
+selects among scope ticks that already exist, so it never refines the base grid;
+and it cannot place a tick *between* scope ticks — staggering off-grid means
+declaring the offset in seconds, or declaring the scope base finer than its
+fastest member so unused slots exist.
+
+**The absolute register anchors, and anchoring severs.** An `Absolute` entry may
+appear in any scope's `sample_times`, not only the root's; the `(T, τ)` pair it
+establishes is an **anchor**, and the child hangs from it — severed from the
+enclosing scope's grid, no relation to the scope's ticks remaining. Three
+corollaries: `K ≥ 1` reads "a child cannot tick faster than the scope it is
+*relative* to", so an anchored child may tick faster than its scope; the
+fastest-member convention counts relative members only; and phase relationships
+between an anchored child and its relative siblings are **deployment-emergent** —
+whether their ticks ever coincide depends on how the grid derivation works out,
+which is what the printable bound schedule ([§12.2](#122-the-build-artifact)) exists to answer. Relative
+children *of* an anchored subtree compose against the anchor exactly as against
+the root grid, and a nested anchor simply severs again ([§12.1](#121-three-strata)'s fold). Absolute
+periods and nonzero offsets jointly constrain the base grid — they join the
+deployment-time constraint pool ([§12.1](#121-three-strata)) — and this is the subtlety with teeth: an
+offset of `T/2` can cost a 2× finer grid, `T/1000` a 1000× one, and the cost is
+relational (against everything else declared), which is why attribution is the
+engine's job ([§12.2](#122-the-build-artifact)).
+
+**The doctrinal line moves, and sharpens.** Absolute-first declaration as the
+default register stays rejected — it welds deployment rates into reusable
+definitions, and replicating relative structure through a shared base-period
+variable does not compose across independently authored assemblies
+(parameter-threading ceremony, cf. [§4.4](#44-function-valued-signals-environment-access)). What mid-tree anchors legitimize is
+narrower: **an absolute declaration inside a library type is legitimate when the
+rate is a fact about the modeled system, not a preference about the simulation.**
+A GPS receiver emitting at 1 Hz, a bus schedule, an ADC pipeline's fixed
+conversion offset are as intrinsic to the assembly as its wiring, and forcing them
+to the root breaks encapsulation — the root would have to know device internals to
+re-declare them. "Run the controller at 400 Hz in this study" remains a deployment
+choice, and the existing idiom — the assembly exposes its multiplier as a
+constructor parameter — remains its answer; absolute pinning *from outside* a
+subtree's contract stays rejected as action at a distance. The framework cannot
+police the distinction; it is authoring doctrine, recorded here. Anchoring leaves
+the never-cache-`Δt` argument fully intact: the pinning happens in the enclosing
+assembly's `sample_times` — the same site where the multiplier lives — so the
+component type itself remains rate-agnostic and still consumes the bundle's `Δt`.
 
 **`Δt` has a single source of truth: the compiled schedule.** Each discrete
 component's effective period arrives read-only as the `Δt` field of every
@@ -1752,7 +1831,7 @@ backward-difference coefficients, a LeadLag's Tustin transform — run in
 and it is impossible here, not merely inconvenient: `comp`
 is the author's own immutable struct, and two fields holding the same
 immutable value are `===`-identical — the [§11.6](#116-paths-wiring-and-faces) argument — while carrying
-different `rates` keys, so the period is a fact about the *schedule
+different `sample_times` keys, so the period is a fact about the *schedule
 position*, with nothing on the instance to hang a property on. The value must
 arrive through the call; the bundle field is where.) Author rule: **never
 store `Δt`, or any `Δt`-derived coefficient, as a component parameter** —
@@ -1760,7 +1839,10 @@ recomputing derived coefficients per tick is a few arithmetic ops, and a
 cached copy is a second thing for gain-scheduling machinery to chase.
 Relative declaration structurally enforces the rule for the period
 itself: under scoped multipliers a component author *cannot* know their
-absolute rate — it does not exist until composition.
+absolute rate — it does not exist until composition. Phases change none of
+this: the bundle's `Δt` is still `D·Δt_base` — an offset shifts firing
+instants, never the period — so [§15.2](#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)'s discretized laws are unaffected by
+staggering.
 
 ### 8.6 Event iteration at boundaries: to quiescence, budgeted
 
@@ -3791,7 +3873,7 @@ component module therefore opens with
 ```julia
 import Flight: init_x, init_m, workspace, input_types, output_types,
     events, h_x, h_xu, f, g, project, child_connections,
-    input_connections, output_connections, rates
+    input_connections, output_connections, sample_times
 ```
 
 because `using Flight` alone is a silent trap: `f(eng::Engine, …) = …` after a
@@ -4365,7 +4447,7 @@ children (field names = path segments), all other fields are inert parameters;
 substitutability and variants use ordinary parametric fields — exactly today's
 `Cessna172X{K, A}` shape. Alongside it, well-known declarations:
 `child_connections(::A)` (mandatory, even when empty), `input_connections(::A)`,
-`output_connections(::A)`, `rates(::A)`.
+`output_connections(::A)`, `sample_times(::A)`.
 
 **Container children.** A field whose type is a `Tuple` or
 `NamedTuple` with *every* element `<: AbstractComponent` contributes its
@@ -4374,7 +4456,7 @@ elements as children, path-named `"field/1"…"field/N"` (tuples) or
 are **transparent grouping, not assemblies**: no contract, no `child_connections`,
 no rate scope, no existence beyond the path segment — the elements are
 children *of the parent*, whose `child_connections`/`input_connections`/
-`output_connections`/`rates` address them
+`output_connections`/`sample_times` address them
 by element name; anything wanting its own wiring or faces declares itself an
 assembly. The payoff is parametric composition: `struct Formation{NT <:
 NamedTuple}; aircraft::NT; … end` holds any roster — size, names, mixed
@@ -4389,9 +4471,9 @@ rejected in the first cut (deeper grouping is what assemblies are for);
 empty containers are legal (zero children — parametric code needs no special
 case); abstract element types follow the same concreteness discipline as
 plain fields (directly concrete or via type-parameter bounds, [§11.8](#118-computed-connections-and-generic-boundaries)'s
-generic holding). `rates` needs no rule change: element names are immediate
-child names, hence legal keys; the bare field name is sugar for a uniform
-`K` across all elements.
+generic holding). `sample_times` needs no rule change: element names are
+immediate child names, hence legal keys; the bare field name is sugar for a
+uniform declaration across all elements.
 
 **The builder is rejected** (`Assembly()` + `add!`/`connect!`): the type you dispatch on and the recipe that defines its structure
 become two artifacts with nothing tying them together — [§11.1](#111-position-a-declarative-trait-layer--plain-julia-no-macros)'s drift disease at
@@ -4548,7 +4630,7 @@ complementary error rule. An assembly never declares its external connections �
 those live in the parent that instantiates it, exactly as a leaf's do.
 
 **A worked assembly.** [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s IMU, spelled in full — a mixed-tier assembly
-exercising paths, faces and rates together:
+exercising paths, faces and sample times together:
 
 ```julia
 struct IMU <: AbstractComponent
@@ -4573,7 +4655,7 @@ output_connections(::IMU) = (
                                                   # model's output port)
 )
 
-rates(::IMU) = (sampler = 1, errors = 1)
+sample_times(::IMU) = (sampler = Relative(1), errors = Relative(1))
 ```
 
 Two spellings worth reading closely: `input_passthrough` enumerates the child's
@@ -4587,29 +4669,34 @@ cross-check, and listing it in `input_connections` while it is wired is the
 two-producers error of [§11.8](#118-computed-connections-and-generic-boundaries).
 
 Three facts the example carries: the assembly is tier-neutral — every face's
-type and tier derive from its internal endpoint, and a `rates` key on
+type and tier derive from its internal endpoint, and a `sample_times` key on
 `integrals`, the continuous child, would be a [§11.7](#117-rate-scopes) build error; the two
-discrete children default to `K = 1` anyway, so this `rates` declaration is
-declaratory — their absolute rate arrives from the enclosing scope at
-deployment ([§11.7](#117-rate-scopes)); and [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s latch-back wire, where the integrals consume
+discrete children default to `Relative(1)` anyway, so this `sample_times`
+declaration is declaratory — their absolute rate arrives from the enclosing
+scope at deployment ([§11.7](#117-rate-scopes)); and [§15.5](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)'s latch-back wire, where the integrals consume
 the sampler's published latch, joins `child_connections` as one more ordinary pair.
 
 ### 11.7 Rate scopes
 
-`rates(::A) = (fcs = 1, nav = 5)` — child name => integer multiplier $K \ge 1$,
-optional, unlisted children default to 1; [§8.5](#85-multi-rate-tick-scheduling) semantics unchanged (relative,
-composing multiplicatively down the tree, compiled to absolute divisors). Keys are
-**immediate child names only** — a deep key would edit another type's design from
-outside, and the composition rule guarantees you never need to. Container
-elements ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)) are immediate children, so `"aircraft/red"` is a legal key;
-the bare field name applies one `K` to every element. `K` on a
-continuous child is a build error ([§8.5](#85-multi-rate-tick-scheduling)'s Δt-on-continuous error at declaration
-time). `Δt_base`, `h` and `n` appear in no declaration — they are deployment
-decisions fixed at `Simulation` construction. Rejected: `K` carried on the child
-instance, FlightCore-`Subsampled`-style — it wraps the field type (polluting
-paths, dispatch and the child's contract as seen by wiring) and makes a
-per-instance value of what [§8.5](#85-multi-rate-tick-scheduling)'s own rationale calls intrinsic to the design,
-i.e. a fact about the assembly type.
+`sample_times(::A) = (nav = Relative(5), gnss = Absolute(Hz(10)))` — child name =>
+`Relative` or `Absolute` declaration ([§8.5](#85-multi-rate-tick-scheduling)'s two registers: relative entries
+composing affinely down the tree, absolute entries anchoring; all compiled to one
+`(D, Φ)` pair per discrete component). The wrappers are the whole value
+vocabulary — a bare integer or bare quantity is a declaration error. The
+declaration is optional, and so is any given key: an unlisted discrete child
+defaults to `Relative(1)`, so only multiplied, phased or anchored children need
+appear. Keys are **immediate child names only** — a deep key would edit another
+type's design from outside, and the composition rule guarantees you never need
+to. Container elements ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)) are immediate children, so `"aircraft/red"` is a
+legal key; the bare field name applies one declaration to every element. A
+`sample_times` key on a continuous child is a build error ([§8.5](#85-multi-rate-tick-scheduling)'s
+Δt-on-continuous error at declaration time). `Δt_base`, `h` and `n` appear in no
+declaration — they are deployment decisions fixed at `Simulation` construction
+([§12.1](#121-three-strata)'s three sources for `Δt_base`). Rejected: the declaration carried on the
+child instance, FlightCore-`Subsampled`-style — it wraps the field type
+(polluting paths, dispatch and the child's contract as seen by wiring) and makes
+a per-instance value of what [§8.5](#85-multi-rate-tick-scheduling)'s own rationale calls a fact about the assembly
+type: a design ratio, or a modeled device's intrinsic rate.
 
 ### 11.8 Computed connections and generic boundaries
 
@@ -4802,9 +4889,20 @@ organized as three strata:
   update, an event missing a guard or handler method, a leaf mixing tier
   families, a contract signature whose form contradicts the leaf's tier
   ([§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)), a primitive at the root), and
-  `rates` validation and compilation of relative multipliers into
-  absolute divisors — everything except binding `Δt_base`, which is
-  deployment.
+  `sample_times` validation — per-entry validity ([§8.5](#85-multi-rate-tick-scheduling)'s constraints:
+  wrapper-typed values, `K ≥ 1`, `0 ≤ Φ < K`, `T > 0`, `0 ≤ τ < T`, keys
+  naming discrete or scope children) collected with path attribution — and
+  compilation into **`(anchor, m, c)` triples**: each discrete component's
+  divisor and phase in its anchor's tick units. The fold: the root scope
+  seeds `(A₀, 1, 0)`, anchor 0 being the base grid itself — `(T, τ) =
+  (Δt_base, 0)`, symbolic until deployment; a `Relative(K, φ)` child under
+  scope `(a, mₛ, cₛ)` compiles to `(a, K·mₛ, cₛ + φ·mₛ)` — [§8.5](#85-multi-rate-tick-scheduling)'s affine law
+  in anchor-tick units; an `Absolute(q, τ)` child **severs and re-seeds** — a
+  fresh anchor `Aₖ = (period(q), τ)`, its subtree continuing at `(Aₖ, 1, 0)`.
+  The canonical residue (`c < m`) holds within each anchor's subtree by the
+  same induction. Everything except binding `Δt_base` — deployment's —
+  happens here; note that final divisors for anchored entries genuinely
+  cannot exist until it binds.
 - **Stratum B — schedule.** The single evaluation-feeds-structure step:
   workspace allocation at the probing scalar (sound this early: the allocator
   reads only the instance and the scalar, row 77 — no layout dependence),
@@ -4829,9 +4927,30 @@ organized as three strata:
 Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm,
 `localization_tol`, `localization_budget`, `firing_budget`, harmonic-grid
 validation, tick schedule instantiation) sits after all three, at `Simulation`
-construction — nothing in A–C depends on it. Its validation is collected like
+construction — nothing in A–C depends on it. `Δt_base` has exactly one of
+three sources, cross-validated: the explicit keyword (a `Rational`, `Period`
+or `Hz` value; `n` is then derived as `Δt_base/h` and validated an integer
+≥ 1), the `n·h` product when only `n` is given (today's rule, the default
+`n = 1`), or **derivation** — permitted only when every discrete component is
+anchored (anchor 0 unpopulated), so that `Δt_base` is pure bookkeeping no
+component's period depends on. An unanchored component's period is
+`m·Δt_base`; deriving under one would let an anchor edit anywhere in the tree
+silently rescale it — action at a distance — so if any unanchored component
+exists, deployment must declare `Δt_base`, and the refusal is constructive
+([§12.2](#122-the-build-artifact)'s suggestion message). Admissibility is exact GCD arithmetic over the
+**constraint pool** — every anchor's period and every nonzero offset: a
+`Δt_base` is admissible iff it divides every pool entry, equivalently iff it
+divides their GCD, so the admissible set is `gcd(pool)/k` for integer `k ≥ 1`
+and the derivation path takes the GCD itself, the coarsest admissible value.
+Resolution is then one division pair per anchor and one multiply-add per
+component: `Dₖ = Tₖ/Δt_base`, `Φₖ = τₖ/Δt_base` — both exact integers, or a
+`DeploymentInvalid` naming the anchor with its declaring scope and key from
+the provenance column — and `D = m·Dₖ`, `Φ = Φₖ + c·Dₖ`, `Δt = D·Δt_base`:
+the bound schedule ([§12.2](#122-the-build-artifact)). Validation is collected like
 its declarative siblings ([§13.1](#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)): a nonpositive `h`, an `n < 1`, a
-harmonic-grid violation, an algorithm the stepper seam does not know, a
+harmonic-grid violation, a non-dividing anchor period or offset, a declared
+`Δt_base` disagreeing with a declared `n`, an algorithm the stepper seam does
+not know, a
 nonpositive `localization_tol`, a `localization_budget` or a `firing_budget`
 that is not an integer ≥ 1
 are collected and reported as `DeploymentInvalid` ([Appendix C](#appendix-c-the-diagnostic-kind-set) — parameter,
@@ -4865,6 +4984,48 @@ calling `build`; the acceptance tests target `build` errors directly;
 inside the `Simulation` constructor — CI would construct simulations with
 dummy deployment parameters, and the phase outputs must exist as coherent
 intermediate data anyway; the artifact just names them.
+
+**The schedule the `Build` carries is anchor-relative; the `Simulation` binds
+it.** From Stratum A the artifact gains two printable tables: the **anchor
+table** — each anchor's exact `(T, τ)` rationals with the declaring scope's
+path and key — and the **component table** of `(anchor, m, c)` triples with
+their declaration provenance, the `Relative`/`Absolute` chain down the tree.
+For a fully relative model the only anchor is `A₀` and the triples *are* the
+final base-tick `(D, Φ)` pairs; when anchors exist, final divisors cannot
+live here — they do not exist until `Δt_base` binds, and the same `Build`
+already backs many `Simulation`s with different deployment parameters.
+Binding ([§12.1](#121-three-strata)) produces the **bound schedule**, a named printable artifact
+on the `Simulation`: per discrete component, `(D, Φ, Δt)` with the anchor and
+provenance columns carried through — the single source of truth for `Δt`
+([§8.5](#85-multi-rate-tick-scheduling)), the substrate of the grid diagnostics below, and the table that
+answers "when does what run, and what coincides with what". Its `show`-form
+is the **hyperperiod chart**: the pattern repeats with period `lcm(Dᵢ)` base
+ticks — the gate is pure modulo arithmetic, so one hyperperiod is the
+complete truth, not a sample — rendered as a tick chart over
+`k = 0 … lcm(Dᵢ) − 1`, with a guard for absurd hyperperiods.
+
+**Grid diagnostics print from the pool, exactly.** The refusal path's
+suggestion message and the derivation path's info line share one substrate:
+the coarsest admissible `Δt_base` with the admissible set `gcd(pool)/k`, and
+per-entry attribution — **leave-one-out refinement factors**
+`r_p = gcd(pool ∖ p)/gcd(pool)`, an integer ≥ 1 read as "how much coarser the
+grid would be without this entry", every `r_p > 1` listed rather than one
+culprit crowned (joint responsibility is the honest answer); and **prime
+attribution**, each prime power of `1/Δt_base` traced to the pool entries
+whose denominators supply it, which pinpoints what an edit changed. When an
+offset is a driver, the message adds the nearest non-refining alternatives —
+the admissible offsets on the grid the rest of the pool supports — turning
+the diagnostic into a repair. A simple-fraction-of-its-period test is
+authoring guidance only, never the engine's: demand is relational (`τ = T/10`
+can cost nothing and `τ = T/15` cost 3×, depending on what else is declared),
+so blame is computed against the actual pool. The derivation path — the one
+place refinement happens silently — always prints the derived value with its
+drivers, and carries the one advisory: `GridUtilization` ([Appendix C](#appendix-c-the-diagnostic-kind-set)),
+reporting `min_i Dᵢ` — base ticks between the fastest component's ticks — as
+"grid is N× finer than the fastest declared work" with the drivers named,
+information rather than scolding, since a scope deliberately declared finer
+than its fastest member to buy stagger room ([§8.5](#85-multi-rate-tick-scheduling)) legitimately inflates the
+metric.
 
 ### 12.3 Probing and input synthesis
 
@@ -5242,8 +5403,9 @@ dynamically per entry and boxes every stage return — the framework itself
 would allocate, and [§7.5](#75-allocation-policy-a-scoped-invariant)'s canary role (framework contribution exactly zero,
 so any model inference regression announces itself) would die with the
 invariant. An entry carries what selects code — component type, stage — in
-type parameters, and what is plain data — tick divisor, layout offsets — in
-fields; gating compiles to an integer test inside the specialized *boundary*
+type parameters, and what is plain data — tick divisor and phase, the
+bundle's `Δt`, layout offsets — in
+fields; gating compiles to `(idx − Φ) % D == 0` inside the specialized *boundary*
 body, the interior bodies holding no discrete entries to test ([§8.5](#85-multi-rate-tick-scheduling)).
 
 **Cells are stored per element type, not per cell.** The signal table is one
@@ -5274,9 +5436,15 @@ arities off one entry list** ([§8.5](#85-multi-rate-tick-scheduling)'s interior
 only — which is what makes `@ballocated(sweep_hxu()) == 0` a well-defined
 measurement *of the interior path*, rather than of whichever tick phase the
 simulation happens to be sitting in — while `sweep_hx(tick)`/`sweep_hxu(tick)`
-are the boundary variants, gating their discrete entries by modulo against the
+are the boundary variants, gating their discrete entries by `(idx − Φ) % D`
+against the
 passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147,
-amending row 116). Across passes these bodies communicate only
+amending row 116). One gate serves all three tick-sensitive blocks — due-ness
+is per component, per boundary, never per stage — and `t*`'s empty due set is
+**arity selection, not an index trick**: no sentinel index fails every gate
+(a `D = 1, Φ = 0` entry passes at all of them), so the `t*` iteration runs
+the zero-arg arities, whose compiled bodies contain no discrete entries
+([§8.5](#85-multi-rate-tick-scheduling)). Across passes these bodies communicate only
 through the stores and the table, so the seams between passes cost
 nothing — no values cross them. **Within** a pass one kind of value does: a
 stage's `w` ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)) is handed to its one-hop consumers as an ordinary SSA
@@ -5394,7 +5562,7 @@ sites are split into their two populations:
 
 - **Declarative checks over collected structure** — unconnected inputs,
   two-producers, wire typos and type mismatches, face-name uniqueness,
-  `output_types`/state-field consistency, `rates` validation. Each is a
+  `output_types`/state-field consistency, `sample_times` validation. Each is a
   pass over a list; the whole-tree obligation check literally computes *the
   set of* inputs whose obligation chain never terminates. Reporting every
   violation is the natural output of the pass — truncating to the first would
@@ -5715,7 +5883,7 @@ Rejected mechanisms:
   serializable into run metadata, a permanent public snapshot-reading API for
   user closures, and every use of the extra expressiveness is logic that
   belongs in-model. `user_callback!` in a costume.
-- **Root-type-declared stop policy**: the rates precedent read correctly cuts
+- **Root-type-declared stop policy**: the `sample_times` precedent read correctly cuts
   the other way — ratios travel with the design, *absolutes* bind at
   deployment, and "stop here" is absolute-flavored run policy: development
   runs past the condition to inspect, unattended studies log it and continue,
@@ -6199,10 +6367,13 @@ parity is exact, not approximate. Piece by piece:
   block against fresh defaults). Projection after condition writes is the
   same position it holds after any other `x` mutation, and costs nothing
   when the state is already clean.
-- **The sweep runs with every tick due.** `t₀` is a grid point of every
-  divisor, so all discrete output stages are gated in, publishing from the
-  authored `x` — necessarily, since no earlier tick exists for a ZOH to
-  hold. The `t₀` snapshot carries a fully populated table.
+- **The sweep runs with every `Φ = 0` tick due.** `t₀` is a grid point of
+  every phase-free divisor, so those discrete output stages are gated in,
+  publishing from the authored `x` — necessarily, since no earlier tick
+  exists for a ZOH to hold. An offset component ([§8.5](#85-multi-rate-tick-scheduling)) is *not* due: its
+  first tick is at `Φ·Δt_base`, and until then its cells hold the values the
+  activation's probe populated ([§12.3](#123-probing-and-input-synthesis)). The `t₀` snapshot carries a fully
+  populated table either way.
 - **Events run.** A condition landing a guard predicate in holding territory
   (an authored stall flag, a strut authored into contact) fires visibly at `t₀` rather
   than one step later — grounded by the prior rule ([§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)):
@@ -6572,7 +6743,10 @@ tolerances (the very numbers the verdict is read off, gathered at the
 backend's returned point), the **committed-state residuals** (the same
 residuals re-gathered from the boundary-zero world after the commit — nearly
 free, since that boundary's sweep has already run and the residuals'
-declared reads need only gather from it: the numbers describing the state
+declared reads need only gather from it (with [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)'s offset caveat
+carried over: an offset component is not due at boundary zero, so a residual
+reading its port reads the probe-populated cell, not a commit-refreshed
+one): the numbers describing the state
 the simulation is actually *in*, which is the point a `capture`-defaulted
 `linearize` reads), the backend's returned status together
 with its iteration/evaluation counts (diagnostic throughout: informative
@@ -7662,7 +7836,7 @@ lifecycle:
 - Discrete leaf: `init_x`, `workspace(::C)`,
   `input_types`/`output_types` — stages `h_x`, `h_xu`, `g`.
 - Assembly: `child_connections` (mandatory — the class marker),
-  `input_connections`, `output_connections`, `rates`.
+  `input_connections`, `output_connections`, `sample_times`.
 - Shipped conditions: `condition(::C; kw)` fragment functions ([§14.2](#142-fragment-composition-locality-without-schema)).
 
 Bundle contents by function family (the maximal legal sets, [§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws) — signatures
@@ -7709,15 +7883,21 @@ updates it** ([§5.2](#52-two-stage-outputs-signatures-bundles-and-the-hand-off-
 
 **Deployment.**
 
-- `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
+- `Simulation(world; algorithm = RK4(), h, n = 1, Δt_base = nothing,
+  t_end = Inf,
   stop_on = (), localization_tol = 1e-6, localization_budget = 8,
   firing_budget = 4,
   trace = true, log = true, log_every = 1, log_max = 65536)` —
   wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
   the `Build` overload takes the same deployment keywords and deploys an
   inspected artifact directly, [§12.2](#122-the-build-artifact)); `h` is required (a domain rate is not a
-  framework default) and `RK4` is the default stepper ([§8.2](#82-the-stepper-seam)); `n` binds
-  `Δt_base = n·h` ([§8.5](#85-multi-rate-tick-scheduling)); `t_end = Inf` is the honest interactive default —
+  framework default) and `RK4` is the default stepper ([§8.2](#82-the-stepper-seam)); `Δt_base` binds
+  from exactly one of three sources ([§12.1](#121-three-strata)): the `Δt_base` keyword — a
+  `Rational`, `Period` or `Hz` value, `n` then derived and validated an
+  integer ≥ 1 — the `n·h` product when the keyword is absent (the default
+  path), or, in a fully anchored model omitting both, derivation from the
+  constraint pool at the coarsest admissible value, printed with its drivers
+  ([§12.2](#122-the-build-artifact)); `t_end = Inf` is the honest interactive default —
   open-ended in time but bounded in memory, `log_max` being what keeps such a
   session from growing without limit ([§9.2](#92-outbound-snapshot-publication)) — and
   a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
@@ -7991,7 +8171,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | [§10.6](#106-run-lifecycle-and-partial-advance) | service |
 | `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster), [§14](#14-stopped-sim-services) | service |
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5](#135-termination-is-a-state-not-an-exception) | service |
-| `DeploymentInvalid` | the deployment parameter (`h`, `n`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, the harmonic-grid relation), the value in hand, the violated constraint | [§12.1](#121-three-strata) | service (collected) |
+| `DeploymentInvalid` | the deployment parameter (`h`, `n`, `Δt_base`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, the harmonic-grid relation, a non-dividing anchor period or offset — the anchor named with its declaring scope and key), the value in hand, the violated constraint | [§12.1](#121-three-strata) | service (collected) |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§9.1](#91-no-shared-mutable-model-staged-writes-snapshot-reads), [§9.3](#93-inbound-root-input-slots-claims-and-the-frozen-roster) | service |
@@ -8007,6 +8187,7 @@ Severities, in the vocabulary [§13](#13-error-discipline) fixes:
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.5](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report) | warning (service) |
+| `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§12.1](#121-three-strata), [§12.2](#122-the-build-artifact) | warning (service), at deployment binding (derivation path only) |
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5](#95-inbound-the-input-trace), [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7](#107-replay-the-trace-re-drives-the-ordinary-loop) | service (collected) |
 
@@ -8052,7 +8233,7 @@ slot (`AbstractAtRoot`) ([§11.2](#112-the-declaration-inventory)).
 
 **assembly** — pure composition: component-typed fields as children, plus
 `child_connections` (mandatory, the class marker), `input_connections`,
-`output_connections` and `rates`, with no
+`output_connections` and `sample_times`, with no
 dynamics of its own; flattened away for scheduling, retained as the
 navigation hierarchy and as declaration-level rate scopes ([§3.3](#33-assembly), [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape)).
 
@@ -8094,7 +8275,7 @@ the discrete one. Declared in
 **declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_m`, `workspace`,
 `input_types`/`output_types`, `events`, the stages, `f`/`g`/
-`project`, and `child_connections`/`input_connections`/`output_connections`/`rates` — each declared in a stated
+`project`, and `child_connections`/`input_connections`/`output_connections`/`sample_times` — each declared in a stated
 register of authority: by value, by type, by allocation ([§11.2](#112-the-declaration-inventory)).
 
 **function family** — which bundle fields a given function may legally
@@ -8125,10 +8306,11 @@ at a declared rate, and two output stages whose cells hold zero-order between
 ticks; it has no `m` store, and its `x` reaches others only through signals
 ([§3.2](#32-periodic-discrete-component)).
 
-**rate scope** — an assembly's `rates` declaration: immediate child name ⇒
-integer multiplier `K ≥ 1` relative to the enclosing scope, composing
-multiplicatively down the tree and compiled to one absolute tick divisor per
-discrete component ([§11.7](#117-rate-scopes), [§8.5](#85-multi-rate-tick-scheduling)).
+**rate scope** — an assembly's `sample_times` declaration: immediate child
+name ⇒ `Relative` or `Absolute` declaration against the enclosing scope,
+relative entries composing affinely down the tree, absolute entries
+anchoring; all compiled to one `(D, Φ)` pair per discrete component
+([§11.7](#117-rate-scopes), [§8.5](#85-multi-rate-tick-scheduling)).
 
 **schema authority** — the principle that declarations *define* structure and
 evaluation only *checks* conformance against them, never the reverse; types by
@@ -8286,6 +8468,17 @@ until quiescence ([§5.3](#53-structural-feedthrough-stage-roles-schedule-and-st
 
 ### D.4 Time and events
 
+**anchor** — the exact `(T, τ)` pair an `Absolute` entry establishes: period
+and offset in rational seconds, severing its subtree from the enclosing
+scope's grid; anchor 0 is the base grid itself. Anchors join the deployment
+constraint pool; relative declarations below one compose against it exactly
+as against the root grid ([§8.5](#85-multi-rate-tick-scheduling), [§12.1](#121-three-strata)).
+
+**bound schedule** — the named printable artifact on the `Simulation`
+produced by deployment binding: per discrete component, `(D, Φ, Δt)` with
+anchor and provenance columns — the single source of truth for `Δt` and the
+substrate of the grid diagnostics and the hyperperiod chart ([§12.2](#122-the-build-artifact), [§8.5](#85-multi-rate-tick-scheduling)).
+
 **boundary** — a published consistency point: where the [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted) macro-sequence
 completes and a snapshot goes out. Every grid point is a boundary, but `t*`
 and boundary zero are boundaries that are not frame tops ([§8.4](#84-localization-mechanics)). *Boundary
@@ -8306,15 +8499,18 @@ rest of the frame and further crossings fire at the next boundary, under a
 `ChatteringBudget` warning naming the event ([§8.4](#84-localization-mechanics)).
 
 **`Δt_base`** — the base tick period, an integer multiple `n·h` of the
-continuous step and fixed at `Simulation` construction; every discrete
-component's period is an integer multiple of it ([§8.5](#85-multi-rate-tick-scheduling)).
+continuous step, bound at `Simulation` construction from one of three
+sources: explicit keyword, `n·h`, or — fully anchored models only —
+derivation from the constraint pool; every discrete component's period is an
+integer multiple of it ([§8.5](#85-multi-rate-tick-scheduling), [§12.1](#121-three-strata)).
 
-**due** — a discrete component is due at a boundary when its compiled absolute
-divisor admits that boundary's tick index; due components' output stages are
-gated into the *boundary* sweep (never the interior one) and their `g` updates
-run after quiescence. The due set is a property of the boundary, fixed for its
-whole event iteration: the modulo image of the frame index at a frame top, empty
-at `t*`, everything at boundary zero ([§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
+**due** — a discrete component is due at a boundary when its compiled `(D, Φ)`
+pair admits that boundary's tick index (`(idx − Φ) % D == 0`); due components'
+output stages are gated into the *boundary* sweep (never the interior one) and
+their `g` updates run after quiescence. The due set is a property of the
+boundary, fixed for its whole event iteration: the gate's image of the frame
+index at a frame top, empty at `t*`, the `Φ = 0` set at boundary zero
+([§8.5](#85-multi-rate-tick-scheduling), [§8.6](#86-event-iteration-at-boundaries-to-quiescence-budgeted)).
 
 **edge semantics / holding** — an event fires on a not-holding → holding
 transition of its predicate, never on a bare sign change; the opposite
@@ -8336,7 +8532,8 @@ type — `Bool` boundary-detected, the nominal scalar localized ([§2.1](#21-eve
 [§11.2](#112-the-declaration-inventory)).
 
 **harmonic grid** — the rule that every discrete period is an integer multiple
-of `Δt_base`, itself an integer multiple of `h`, so ticks land only on step
+of `Δt_base` — and every anchor period and offset an integer multiple
+likewise — itself an integer multiple of `h`, so ticks land only on step
 boundaries; grid times are indexed from the frame count, never accumulated
 ([§8.5](#85-multi-rate-tick-scheduling), [§8.4](#84-localization-mechanics)).
 
@@ -8366,6 +8563,12 @@ identically paced or unpaced ([§2.1](#21-events-two-detection-policies), [§8.4
 never alters the boundary sequence; a frame exceeding its wall budget leaves
 **debt** that later frames repay, with excess forgiven by re-anchor plus
 warning ([§8.7](#87-real-time-pacing)).
+
+**phase (`Φ`)** — a schedule's offset against its grid: in scope ticks for
+`Relative(K, Φ)`, in rational seconds for `Absolute(q, τ)`, compiled to base
+ticks with `0 ≤ Φ < D` by construction; the boundary gate is
+`(idx − Φ) % D == 0`, and a phase shifts firing instants, never the period
+([§8.5](#85-multi-rate-tick-scheduling)).
 
 **predicate** — what a guard defines: a `Bool`-valued form, or the sign of a
 continuous function with positive = holding (writing the sign value `σ`,
