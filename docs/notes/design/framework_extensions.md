@@ -208,6 +208,132 @@ section 1.4's closed axis is dragged in.
 
 ---
 
+## 3. Parameter sensitivities: walking the parameter fields
+
+Provenance: distilled from the parameter-AD discussion of 2026-08-12. Status as
+everything here: analysis preserved, nothing built, guarded-additions rule applies.
+
+### 3.1 The capability and its consumers
+
+[§7.2](framework_spec.md#72-numeric-genericity-eltype) scopes the eltype-generic surface deliberately: payload/value types are
+**walked** (they follow the activation scalar), parameters are **pinned** ("stay
+`Float64`; promotion handles mixing"), and [§14.10](framework_spec.md#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) makes differentiation
+participation a per-invocation *seeding* fact over `x`-taps and slots. The
+consequence: a component parameter can only ever enter an evaluation as a
+zero-partial constant. That is correct for every current service — in `∂ẋ/∂x` and
+`∂ẋ/∂u` the parameter genuinely is a constant — but structurally incapable of being
+the seeded direction itself. Forward-mode differentiation with respect to a quantity
+means that quantity carries the unit partial, and a `k::Float64` field cannot hold a
+`Dual`: the wall is at construction, before any math runs.
+
+The extension admits parameter fields to the walked set by making them
+type-parametric —
+
+```julia
+struct Gain{T <: Real}   # Float64 nominally; Dual under a seeded build
+    k::T
+end
+```
+
+— which enables exact `∂(anything on the continuous path)/∂k`: `ẋ` leaves, outputs,
+trim residuals ([§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)), and — with the section 3.4 caveat — trajectory values. Three
+consumers this project would actually use: **parametric linearization**
+(`∂A/∂(aero coefficient)`; `∂(trim point)/∂(mass, CG)` via the implicit function
+theorem on the trim residual Jacobian), **gradient-based tuning** (FCS gains against
+a closed-loop cost, exact gradients instead of one finite difference per gain), and
+**parameter estimation** (fitting to flight data needs `∂(trajectory)/∂(parameters)`).
+
+Not a Simulink-parity item: this is an axis where section 1.1 already places the
+design ahead (exact AD Jacobians through the sweep); the extension widens that
+surface rather than closing a gap.
+
+### 3.2 Mechanism: the seed moves from a tap into the world value
+
+Everything rides seams already in place; no new evaluation machinery. Mechanism,
+verified end to end in plain Julia (2026-08-12):
+
+```julia
+struct Actuator{G,L}     # parent generic over children — the §11.5 shape
+    gain::G
+    lag::L
+end
+f(a::Actuator, x, u) = (a.gain.k * u - x) / a.lag.τ   # ẋ = (k·u − x)/τ
+
+kd = Dual{T}(2.0, 1.0)                 # the parameter: unit partial
+a  = Actuator(Gain(kd), Lag(0.5))      # the rest: plain Float64
+xd = Dual{T}(1.0, 0.0)                 # state at the operating point
+ud = Dual{T}(3.0, 0.0)                 # slot value
+partials(f(a, xd, ud), 1)              # ∂ẋ/∂k = u/τ = 6.0, exact
+```
+
+- **Seeding.** Construct the target component around a unit-partial `Dual` and build
+  the world from it; states and slots enter as zero-partial constants. This is
+  [§14.10](framework_spec.md#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)'s seeded pass verbatim, with the unit partial living in a field instead of
+  an `x`-tap.
+- **Mixed construction is semantically right, not merely convenient.** Unseeded
+  components keep plain `Float64` parameters; promotion lifts each one into a
+  zero-partial constant on contact with `Dual` traffic — the mathematically correct
+  role for a parameter not being differentiated. [§7.2](framework_spec.md#72-numeric-genericity-eltype)'s "promotion handles mixing"
+  clause is already doing exactly this job.
+- **Parents must be generic over child types.** `Actuator{G,L}` absorbs a
+  `Gain{Dual}` child; a parent pinning `gain::Gain{Float64}` re-erects the wall one
+  level up (loudly, at assembly construction). [§11.5](framework_spec.md#115-assembly-declaration-type-based-class-by-declaration-shape)'s type-based assembly shape
+  already has this property — it is [§7.2](framework_spec.md#72-numeric-genericity-eltype)'s "no `::SomeType{Float64}` annotations"
+  rule transposed from method signatures to field declarations.
+- **Parameters mix; storage does not.** Cell types and the `x`-buffer eltype are
+  declarations *evaluated at the activation scalar* ([§7.2](framework_spec.md#72-numeric-genericity-eltype), [§11.2](framework_spec.md#112-the-declaration-inventory)), never inferred
+  from traffic. A seeded world therefore runs under the matching `Dual` activation:
+  homogeneous `Dual` storage, heterogeneous parameters. Under the nominal `Float64`
+  activation the first `Dual` product to reach a `Float64` cell throws — the same
+  loud-failure channel as [§12.4](framework_spec.md#124-activations-executable-sets-laziness-caching)'s probe. Corollary: parameter duals carry the
+  framework's canonical probe tag family, not private tags.
+- **Nominal cost is zero.** At the `Float64` activation a parametric field
+  specializes to the same concrete struct; `@kwdef` defaults pin the no-argument
+  case — the pattern [§7.2](framework_spec.md#72-numeric-genericity-eltype) already prescribes for the walked payload types. The
+  pinned-parameters stance stays the right nominal default; this extension is
+  additive.
+
+### 3.3 Economics: seeding patterns are world types
+
+`Actuator{Gain{Dual}, Lag{Float64}}` and `Actuator{Gain{Float64}, Lag{Dual}}` are
+distinct types — one build, and one compilation of everything downstream, per choice
+of target component. Fine for a one-off study. For scanning many parameters the
+amortized shape is: construct **all** candidate parameters as `Dual`s — one world
+type, one compilation — and select the differentiated subset by *value* (unit
+vs. zero partials), chunked exactly as [§14.10](framework_spec.md#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query) chunks its tap directions. Which
+parameters carry partials is a value fact, not a type fact.
+
+### 3.4 Boundaries
+
+- **Discrete-side parameters are excluded, and correctly so.** Under frozen-exact, a
+  digital compensator coefficient's influence on the continuous state is temporal,
+  not instantaneous; its point-wise partial is genuinely zero. Differentiating with
+  respect to it means differentiating the sampled-data step map — [§14.10](framework_spec.md#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)'s own
+  "recorded, not built" extension. This section is that seam's parameter-flavored
+  companion: if the sampled-data `Dual` activation is ever built, walked parameter
+  fields on participating discrete components ride along.
+- **Trajectory sensitivities through events need jump corrections.** Point-wise
+  Jacobians are unconditionally clean, and `Dual` propagation through an integrator
+  is exact along smooth flow (verified: the lag's `∂x/∂k` converges to the analytic
+  steady-state sensitivity). But at an event crossing the crossing *time* depends on
+  the parameter, and naive propagation misses that term; the standard sensitivity
+  jump correction is research-grade machinery deliberately out of scope — consistent
+  with [§8.4](framework_spec.md#84-localization-mechanics)'s rejection of Newton/AD localization on C⁰ grounds.
+
+### 3.5 What adoption would still need
+
+The unresolved question is the user-facing surface, and per the guarded-additions
+rule it stays unresolved until a consumer arrives: how a user *asks* for `∂y/∂k`.
+Candidates, none worked out: a parameter-tap register extending [§14.10](framework_spec.md#1410-linearization-tap-selectors-one-seeded-pass-a-pure-query)'s selector
+family, with the framework performing the seeded construction internally; a
+documented construct-with-`Dual`s convention (the capability with no service
+wrapper); parameter-path overlays in [§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s condition system. Also unexamined:
+which library structs get the parametric spelling in the [§13.7](framework_spec.md#137-tooling-consequences-provenance-and-the-component-library) migration — whether
+[§7.2](framework_spec.md#72-numeric-genericity-eltype)'s mechanical parametrization of the walked payload list simply extends to
+parameter carriers, or participation is opted into per component.
+
+---
+
 ## Addendum A. The `Group` component: on-the-fly assemblies
 
 **Folded into the spec (2026-08-12, row 184).** `Group` is now normative: the
