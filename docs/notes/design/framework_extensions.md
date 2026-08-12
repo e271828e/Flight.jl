@@ -209,48 +209,9 @@ section 1.4's closed axis is dragged in.
 
 ## Addendum A. The `Group` component: on-the-fly assemblies
 
-*(Parked here pending a proper home — likely the [§13.7](framework_spec.md#137-tooling-consequences-provenance-and-the-component-library) component library's starting
-inventory.)*
-
-The spec rejected the mutable builder (`Assembly()` + `add!`/`connect!`) in [§11.5](framework_spec.md#115-assembly-declaration-type-based-class-by-declaration-shape) on
-grounds that survive any reframing: the dispatched-on type and the recipe defining
-its structure drift apart, mutable state threads through declaration code, and it
-does not even capture source locations. But the *immutable* version of "grouping
-components by plain calls" needs no builder — it is already expressible inside the
-current spec as a single library component, because [§11.5](framework_spec.md#115-assembly-declaration-type-based-class-by-declaration-shape)'s container-children rule
-makes a `NamedTuple` field contribute its elements as path-named children, and
-declarations are ordinary functions of the *instance*, free to read its fields:
-
-```julia
-struct Group{C <: NamedTuple, W, I, O} <: AbstractComponent
-    children::C      # component-typed elements → children by the container rule
-    wires::W         # inert parameter data
-    inputs::I
-    outputs::O
-end
-child_connections(g::Group)  = g.wires
-input_connections(g::Group)  = g.inputs
-output_connections(g::Group) = g.outputs
-
-world = Group(
-    (; plant = Plant(), ctrl = PID(kp = 2.0)),
-    (("ctrl/u", "plant/u"), ("plant/y", "ctrl/y")),
-    (;),
-    (;),
-)
-```
-
-One type, defined once; every ad-hoc topology is a *value* of it. The type parameters
-still carry the children's concrete types, so Stratum C specialization and the
-compiled executor work unchanged; wiring validation, did-you-mean errors and the
-two-producer check all run at build against the instance exactly as for a named
-assembly. What is given up relative to a named type is exactly what named types are
-*for* — dispatching domain code on `::Cessna172X`, a reusable identity for the
-topology — which exploratory work does not want anyway.
-
-The framing that earns `Group` its place: the spec's bias was never the type-based
-*semantics* (sound on general-purpose grounds too) but making *named* types the only
-spelled-out route. A general-purpose engine ships `Group` in its standard library on
-day one, the way Julia ships anonymous functions alongside named ones — serving the
-model-assembler persona of section 1.5 with a library addition and perhaps a paragraph in
-[§11.5](framework_spec.md#115-assembly-declaration-type-based-class-by-declaration-shape) acknowledging the pattern. No spec surgery.
+**Folded into the spec (2026-08-12, row 184).** `Group` is now normative: the
+pattern, its sketch and the anonymous-functions framing live in [§11.5](framework_spec.md#115-assembly-declaration-type-based-class-by-declaration-shape),
+and the component joins [§13.7](framework_spec.md#137-tooling-consequences-provenance-and-the-component-library)'s starting inventory as its one
+persona-admitted member. Nothing of the addendum's argument was lost in the
+move; this heading remains so section 1.5's persona discussion keeps its
+pointer.

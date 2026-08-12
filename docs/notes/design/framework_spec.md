@@ -4401,6 +4401,46 @@ any more than a returned value can). Its one real advantage, programmatic
 generation, survives intact in the type-based form: a declaration is an ordinary
 function body — loops and comprehensions build the returned tuple.
 
+**`Group`: the on-the-fly assembly.** The *immutable* version of "grouping
+components by plain calls" needs no builder — it is already expressible under
+this section's rules as a single library component ([§13.7](#137-tooling-consequences-provenance-and-the-component-library)'s starting
+inventory), because the container-children rule makes a `NamedTuple` field
+contribute its elements as path-named children, and declarations are ordinary
+functions of the *instance*, free to read its fields:
+
+```julia
+struct Group{C <: NamedTuple, W, I, O} <: AbstractComponent
+    children::C      # component-typed elements → children by the container rule
+    wires::W         # inert parameter data
+    inputs::I
+    outputs::O
+end
+child_connections(g::Group)  = g.wires
+input_connections(g::Group)  = g.inputs
+output_connections(g::Group) = g.outputs
+
+world = Group(
+    (; plant = Plant(), ctrl = PID(kp = 2.0)),
+    (("ctrl/u", "plant/u"), ("plant/y", "ctrl/y")),
+    (;),
+    (;),
+)
+```
+
+One type, defined once; every ad-hoc topology is a *value* of it. The type
+parameters still carry the children's concrete types, so Stratum C
+specialization and the compiled executor ([§12.7](#127-the-compiled-executor)) work unchanged; wiring
+validation, did-you-mean errors and the two-producer check all run at build
+against the instance exactly as for a named assembly. What is given up
+relative to a named type is exactly what named types are *for* — dispatching
+domain code on `::Cessna172X`, a reusable identity for the topology — which
+the exploratory and programmatic composition `Group` serves does not want
+anyway. The framing that earns it its place (row 184): the builder rejection
+above was never about type-based *semantics* — it was about mutable recipes —
+and named types were simply the only spelled-out route; `Group` ships in the
+library the way Julia ships anonymous functions alongside named ones, serving
+the model assembler with a library addition and zero new declaration rules.
+
 **No `AbstractAssembly`; one root `AbstractComponent`.** Two facts kill a class
 supertype: Julia's single inheritance is already spoken for by the domain
 hierarchies (`AbstractAircraft`, engine families — a slot `E <: AbstractEngine`
@@ -5773,7 +5813,12 @@ commitments, a library and an idiom follow:
   junctions, the Bool gates the termination chains use, `UnitDelay`, the
   spelling [§5.5](#55-algebraic-loop-policy-reject-at-build-time)'s second loop-breaking remedy needs, and
   `Constant{V}`, the source block — growing by migration demand only
-  (Simulink's library is a language; this is a toolbox). Doctrine: **library blocks are ordinary components** — no
+  (Simulink's library is a language; this is a toolbox). One member is
+  admitted by persona rather than migration demand: `Group`, the on-the-fly
+  assembly, whose declaration-layer treatment lives in [§11.5](#115-assembly-declaration-type-based-class-by-declaration-shape) (row 184) — it
+  serves the model assembler, for whom topology is data rather than a named
+  type, and it needs no rule the declaration layer does not already have.
+  Doctrine: **library blocks are ordinary components** — no
   framework privileges, no special vocabulary — which keeps schema authority
   total and makes the library a permanent ergonomics torture test: if a
   three-input OR gate is painful to write under the declaration rules, the
