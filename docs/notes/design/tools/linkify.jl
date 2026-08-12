@@ -38,7 +38,8 @@ const COMPANIONS = ["framework_extensions.md",
                     "inbound_periphery_walkthrough.md",
                     "trim_environment_walkthrough.md",
                     "frozen_discrete_walkthrough.md",
-                    "localization_validation_walkthrough.md"]
+                    "localization_validation_walkthrough.md",
+                    "sample_time_proposal.md"]
 
 # Companions that cite their own numbered sections (the walkthroughs; the review
 # files' numbered findings are never cited with `§`). Only here is a bare `§N`

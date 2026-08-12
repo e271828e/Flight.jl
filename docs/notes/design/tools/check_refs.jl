@@ -37,7 +37,8 @@ const COMPANIONS = ["framework_decisions.md",
                     "inbound_periphery_walkthrough.md",
                     "trim_environment_walkthrough.md",
                     "frozen_discrete_walkthrough.md",
-                    "localization_validation_walkthrough.md"]
+                    "localization_validation_walkthrough.md",
+                    "sample_time_proposal.md"]
 
 # The companions that cite their own numbered sections (see the advisory above).
 const SELF_CITING = ["event_visibility_walkthrough.md",
