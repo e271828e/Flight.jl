@@ -190,12 +190,8 @@ differs:
   which the edge was observed. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
 - **[Localized](#g-localized) (precise):** localization of the crossing instant by root-finding,
-  for events where timing precision genuinely matters (mechanics in [§8.4][s8-4]). Runs
-  identically in every execution mode: under real-time [pacing](#g-pacing) the
-  localization cost is absorbed as [pacer debt](#g-pacing) like any other expensive frame
-  ([§8.7][s8-7]) — detection policy never depends on pacing, as the [§8.7][s8-7] invariant
-  requires. (Degrading to boundary detection under pacing was rejected: it would
-  move `t*` and diverge paced from unpaced trajectories — row 80.)
+  for events where timing precision genuinely matters (mechanics in [§8.4][s8-4]).
+  Detection policy never depends on real-time [pacing](#g-pacing) ([§8.7][s8-7]).
 
 This gives step-boundary logic *well-defined semantics*: the transition is defined by
 the crossing; detection resolution is an execution-policy detail.
@@ -209,34 +205,11 @@ prior bookkeeping stated in [§8.6][s8-6]; the opposite crossing direction is
 declared as a second event with the negated guard (stall entry/exit as a
 pair).
 
-**Detection policy is declared by the guard's return type,** not by a flag:
-a guard returning `Bool` is boundary-detected, a guard returning the nominal
-scalar — the continuous (sign) form — is localized. The build reads the policy
-off the [probe](#g-probe) it already runs ([§12.3][s12-3], nominal [activation](#g-activation)), so `Event(guard,
-handler)` carries no detection keyword (row 179). The form *is* the policy
-because localization brackets a root and only the sign form offers one; the
-illegal pairing is thereby unrepresentable rather than merely diagnosed.
-De-localizing is a one-line rewrite with no semantic cost: **cast the guard to
-its predicate** — return `σ ≥ 0` instead of `σ` — which is the definition
-above, hence the same predicate, the same edges, observed at boundary
-resolution.
-
-**Boundary detection is *exact* for guards over `u` and `m` alone.** Such a
-predicate is piecewise frame-constant: `u` steps only at the [frame-top drain](#g-drain)
-([§9.4][s9-4]), `m` only through handlers, at boundaries. It cannot cross mid-step, so
-there is no interior instant for a root-finder to find and the boundary is not
-a resolution limit but the crossing itself. Localization is machinery that
-class has no use for.
-
-**Localizing a mixed predicate: the gate idiom.** This matters in practice:
-most transitions in FlightPhysics mix input predicates with state thresholds
-(e.g. the piston engine's `starting → running` fires on
-`ω > ω_idle && fuel_available`). The blessed spelling when such a transition
-wants localizing is the gate form `(gate) ? σ : -one(σ)` — the `Bool` factors
-ride the branch, the continuous factor rides the value. It is honest, not a
-trick to defeat the check: probes vary only θ, with `u` and `m` fixed through
-a localization ([§8.4][s8-4]), so the gates are constant over the bracket and σ
-restricted to it is the continuous atom, bracketable as such.
+Which form an author declares is not a free choice riding a keyword: **the
+guard's return type is the declared policy** — `Bool` boundary-detected, the
+sign form localized. [§8.4][s8-4] states the rule, the exactness result that
+motivates the `Bool` form, and the gate idiom for localizing mixed
+predicates.
 
 ### 2.2 Exclusions (deliberate)
 
@@ -1476,13 +1449,43 @@ step boundaries.** Mid-step contents carry no meaning.
 
 ### 8.4 Localization mechanics
 
-Trigger: a [localized](#g-localized) event's [predicate](#g-predicate) was not-[holding](#g-edge-semantics) at $t_n$'s [quiescence](#g-quiescence) (its
+**Which guards localize: the form is the policy.** Detection policy is
+declared by the guard's return type, not by a flag: a guard returning `Bool`
+is [boundary-detected](#g-boundary-detected), a guard returning the nominal scalar — the continuous
+(sign) form — is [localized](#g-localized). The build reads the policy off the [probe](#g-probe) it
+already runs ([§12.3][s12-3], nominal [activation](#g-activation)), so `Event(guard, handler)`
+carries no detection keyword (row 179). The form *is* the policy because
+localization brackets a root and only the sign form offers one; the illegal
+pairing is thereby unrepresentable rather than merely diagnosed.
+De-localizing is a one-line rewrite with no semantic cost: **cast the guard
+to its [predicate](#g-predicate)** — return `σ ≥ 0` instead of `σ` — which is [§2.1][s2-1]'s
+definition, hence the same predicate, the same edges, observed at boundary
+resolution.
+
+**Boundary detection is *exact* for guards over `u` and `m` alone.** Such a
+predicate is piecewise frame-constant: `u` steps only at the [frame-top drain](#g-drain)
+([§9.4][s9-4]), `m` only through handlers, at boundaries. It cannot cross mid-step, so
+there is no interior instant for a root-finder to find and the boundary is not
+a resolution limit but the crossing itself. Localization is machinery that
+class has no use for.
+
+**Localizing a mixed predicate: the gate idiom.** This matters in practice:
+most transitions in FlightPhysics mix input predicates with state thresholds
+(e.g. the piston engine's `starting → running` fires on
+`ω > ω_idle && fuel_available`). The blessed spelling when such a transition
+wants localizing is the gate form `(gate) ? σ : -one(σ)` — the `Bool` factors
+ride the branch, the continuous factor rides the value. It is honest, not a
+trick to defeat the check: probes vary only θ, with `u` and `m` fixed through
+a localization (below), so the gates are constant over the bracket and σ
+restricted to it is the continuous atom, bracketable as such.
+
+Trigger: a localized event's predicate was not-[holding](#g-edge-semantics) at $t_n$'s [quiescence](#g-quiescence) (its
 prior, [§8.6][s8-6]) and is holding at $t_{n+1}$ — the directional edge of [§2.1][s2-1], never a
 bare sign change: a holding → not-holding transition neither fires nor localizes.
 The trigger check runs against the **arrival [sweep](#g-sweep)** at $t_{n+1}$ — the sweep
 that closes the integration step — and therefore *before* the due-gated
 [boundary sweep](#g-sweep) refreshes any discrete [cell](#g-cell). This makes explicit an ordering the
-ZOH clause below already forces ([probes](#g-probe) must see the values the frame actually
+ZOH clause below already forces (probes must see the values the frame actually
 held) and fixes the sequencing at the top: every `t*` firing precedes
 $t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
 
@@ -1495,7 +1498,7 @@ $t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
   the value-based root-finders need ($\sigma_1 = \sigma(t_{n+1})$ is retained
   from the arrival evaluation; $\sigma_0$ was otherwise unsourced), and it
   **discriminates the edge's cause**. The vocabulary: an **[input epoch](#g-input-epoch)** is a
-  maximal span of constant `u`, delimited by [frame-top drains](#g-drain) ([§9.4][s9-4]); within
+  maximal span of constant `u`, delimited by frame-top drains ([§9.4][s9-4]); within
   an epoch a guard can change only through the trajectory, while at a seam it
   can jump without crossing anything. `u` is the *only* thing that can differ
   between the prior's evaluation context and this probe — `m` changes only via
@@ -1513,11 +1516,11 @@ $t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
     exists to find. The localization is **discarded** and the event fires
     inside $t_{n+1}$'s ordinary iteration — mechanically, *not localizing is
     the action*: fall through, and the boundary iteration detects and fires it
-    like any [boundary-detected](#g-boundary-detected) event. This path costs one interior sweep,
+    like any boundary-detected event. This path costs one interior sweep,
     never $\dot{x}_{n+1}$ and never an interpolant, consumes no
     `localization_budget`, and **warns nothing** — input timing is a frame
     fact (the same doctrine that forbids draining at `t*`, below) and boundary
-    detection is *exact* for a `u`-caused edge ([§2.1][s2-1], row 179), so
+    detection is *exact* for a `u`-caused edge (above; row 179), so
     boundary firing is the correct semantics rather than a degradation. It is
     the left-end mirror of the `t* = tₙ₊₁` degeneracy below.
 - **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
@@ -2034,7 +2037,9 @@ paced and an unpaced run with identical input [traces](#g-trace) produce bit-ide
 trajectories — deterministic [replay](#g-replay) ([§2.2][s2-2]) extends over pace. Interactive runs differ
 only because their *inputs* differ. Detection policy is inside the semantics:
 Event localization runs identically paced or unpaced, its [sweep](#g-sweep) cost
-absorbed as debt like any other expensive frame ([§2.1][s2-1]).
+absorbed as debt like any other expensive frame ([§8.4][s8-4]). Degrading to
+boundary detection under pacing was rejected: it would move `t*` and diverge
+paced from unpaced trajectories (row 80).
 
 **Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
 $\tau(t) = \tau_{\mathrm{anchor}} + (t - t_{\mathrm{anchor}})/p$, with the anchor pair as its reference point. A
@@ -4244,7 +4249,7 @@ The inventory, and where each schema fact gets its authority:
 - **`events(::C)`**: an ordered, named collection of guard/handler pairs —
   `Event(guard, handler)`, with no detection keyword: policy is declared by the
   guard's return type, `Bool` boundary-detected and the nominal scalar localized
-  ([§2.1][s2-1]). Order is semantics ([§5.3][s5-3] declaration
+  ([§8.4][s8-4]). Order is semantics ([§5.3][s5-3] declaration
   order, [§8.6][s8-6] priority with re-decision); nothing here is inferrable.
 
 #### No stage tags anywhere
@@ -5351,7 +5356,7 @@ rather than a flat `isa Bool`: a `Bool`-form guard's probed return is `Bool`, a
 sign-form guard's is the nominal scalar — guards run only at the nominal
 activation (row 52), so no parametrized-leaf case arises here. Any other probed
 return type is a build error naming both admissible forms. There is nothing
-further to check: the probed form *is* the detection policy ([§2.1][s2-1], row 179),
+further to check: the probed form *is* the detection policy ([§8.4][s8-4], row 179),
 so no form/policy mismatch can be declared, and the check that once policed one
 has no subject.
 
@@ -7846,7 +7851,7 @@ lifecycle:
   `output_types(::C, ::Type{T})` (by type),
   `events` — stages `h_x`, `h_xu`, `f`, guard/handler pairs
   (`Event(guard, handler)`; detection policy comes from the guard's return
-  type, [§2.1][s2-1]), `project`.
+  type, [§8.4][s8-4]), `project`.
 - Discrete leaf: `init_x`, `workspace(::C)`,
   `input_types`/`output_types` — stages `h_x`, `h_xu`, `g`.
 - Assembly: `child_connections` (mandatory — the class marker),
@@ -8504,7 +8509,7 @@ guards are checked for
 not-holding → holding edges against their priors at step boundaries only, with
 no root-finding and no step rejection, the handler firing at the end of the
 step in which the edge was observed. Exact, not approximate, for guards over
-`u`/`m` alone — those predicates are piecewise frame-constant ([§2.1][s2-1]).
+`u`/`m` alone — those predicates are piecewise frame-constant ([§8.4][s8-4]).
 
 <a id="g-chattering"></a>**chattering / localization budget** — the bounded per-frame localization
 allowance, `localization_budget`, a `Simulation` deployment keyword defaulting
@@ -8542,7 +8547,7 @@ exhaustion drops its further edges there under a `FiringBudget` warning
 <a id="g-guard"></a>**guard** — the declared function defining an event's predicate, evaluated
 against the fresh boundary table and paired with a handler in an ordered,
 named `events` collection; its detection policy is declared by its return
-type — `Bool` boundary-detected, the nominal scalar localized ([§2.1][s2-1],
+type — `Bool` boundary-detected, the nominal scalar localized ([§8.4][s8-4],
 [§11.2][s11-2]).
 
 <a id="g-harmonic-grid"></a>**harmonic grid** — the rule that every discrete period is an integer multiple
@@ -8571,7 +8576,7 @@ bracketed by derivative-free root-finding over probe sweeps of interpolated
 states, to a bracket narrower than `localization_tol · h` (a deployment
 keyword, default `1e-6`). Only the sign form can declare it — the `Bool` form
 offers no root to bracket — and it runs
-identically paced or unpaced ([§2.1][s2-1], [§8.4][s8-4]).
+identically paced or unpaced ([§8.7][s8-7], [§8.4][s8-4]).
 
 <a id="g-pacing"></a>**pacing / pacer debt** — the pacer inserts waits between completed frames and
 never alters the boundary sequence; a frame exceeding its wall budget leaves
