@@ -1280,16 +1280,7 @@ into convention territory, enforced by callback-registration order in a foreign 
 loop. That is the same "rigor by convention" failure mode the redesign exists to
 eliminate.
 
-The evidence that this is not hypothetical comes from FlightCore's own `sim.jl`: the
-periodic callback is hand-rolled with explicit `add_tstop!` bookkeeping because a
-DiffEqCallbacks release moved `PeriodicCallback` onto `task_local_storage`, breaking
-the init-on-one-task/step-from-another pattern that interactive operation requires;
-the [RHS](#g-flow) wrapper copies state in and out of the integrator per evaluation; stateless
-models integrate a dummy `[0.0]`; log saving detours through `deepcopy` in a
-`SavingCallback`. Each is a tax paid to express our semantics in someone else's loop —
-and `run!` already drives the integrator interface manually anyway.
-
-`OrdinaryDiffEq` is therefore **dropped as a dependency** of the new core.
+`OrdinaryDiffEq` is therefore **dropped as a dependency** of the new core (row 17).
 
 ### 8.2 The stepper seam
 
@@ -1301,17 +1292,17 @@ a narrow internal interface (the **[stepper seam](#g-seam)**). Its [contract](#g
 - **dense output on demand over the last completed step** — required only by event
   localization ([§8.4][s8-4]), constructed lazily;
 - **one-step methods only** — event handlers reset state discontinuously, and a
-  one-step method restarts from a new state for free; multistep methods would need
-  history-rebuild machinery after every handler and are excluded.
+  one-step method restarts from a new state for free; multistep methods are excluded
+  (row 17).
 
 **The seam is never entered empty.** A model with no continuous state at all is
 legal — nothing in [§11.2][s11-2] requires an `x` block of anyone — and the framework
 short-circuits rather than pushing the corner down the seam: with an empty `x`,
 integrate degenerates to advancing `t` to the next boundary, and the stepper is
 simply not called. No backend ever faces `N = 0`, and no backend contract has to
-say what it would do there. This finishes structurally what [§8.1][s8-1] argues — the
-dummy-`[0.0]` tax it charges to FlightCore is gone at the root, not just the
-[buffer](#g-buffer) but the step over it. Everything else about such a model is ordinary: the
+say what it would do there. This finishes structurally what [§8.1][s8-1] argues: the
+dummy-`[0.0]` tax an empty state pays under a foreign solver loop (row 17) is gone at
+the root, not just the [buffer](#g-buffer) but the step over it. Everything else about such a model is ordinary: the
 boundary machinery — [sweeps](#g-sweep), events, ticks — runs unchanged.
 
 First cut ships **in-house fixed-step RK4 and Heun** over the flat state buffer:
@@ -1445,19 +1436,14 @@ $t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
   what the controller is holding. One interior sweep per probe.
 - **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
   acceptable fallback). The observed not-holding/holding bracket *is* an unconditional
-  convergence certificate. Newton/AD localization is rejected: guards are guaranteed C⁰, not C¹
-  (clamps, table knots, saturated stretches where σ′ = 0), Newton discards the
-  bracket for merely local guarantees, and its superlinear convergence saves a
-  handful of microsecond probes per rare event. AD earns its keep in Jacobians, not
-  in root-polishing a possibly-kinked bracketed scalar. **Convergence is a
-  relative bracket width**: localization stops once the bracket is narrower
-  than `localization_tol · h`, with `localization_tol` a `Simulation` deployment
-  keyword defaulting to `1e-6` (below). Relative because an absolute-in-`t`
-  tolerance is not scale-free — one number is slack at `h = 1` and unreachable at
-  `h = 10⁻⁴`; `1e-6` because the event time can only ever be as accurate as the
-  interpolant (`O(h⁴)`, above), so at practical `h` anything tighter buys nothing
-  while every probe costs a full sweep — a handful of probes under ITP, ~20 even
-  in bisection's worst case.
+  convergence certificate; Newton/AD localization is rejected (row 18).
+  **Convergence is a relative bracket width**: localization stops once the bracket is
+  narrower than `localization_tol · h`, with `localization_tol` a `Simulation`
+  deployment keyword defaulting to `1e-6` (below). Relative because an absolute-in-`t`
+  tolerance is not scale-free (row 133); `1e-6` because the event time can only ever be
+  as accurate as the interpolant (`O(h⁴)`, above), so at practical `h` anything tighter
+  buys nothing while every probe costs a full sweep — a handful of probes under ITP,
+  ~20 even in bisection's worst case.
 - **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
   invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
   `t*` with the [remainder step](#g-remainder-step) targeting `tₙ₊₁` → re-check guards on the remainder,
@@ -1513,9 +1499,8 @@ and already do. Authority rests with the `t*` boundary: projection runs there,
 and the [§8.6][s8-6] iteration's edge checks read the *projected* state. If projection
 moves the state back across a guard, the event does not fire and the run has
 published one extra boundary — harmless, and deterministic and pace-independent
-like any other localization outcome (row 80). Per-probe projection is rejected:
-it puts projection cost inside the root-finder's loop to correct an interpolant
-drift far below the localization tolerance.
+like any other localization outcome (row 80). Per-probe projection is rejected
+(row 18).
 
 **`t*` is a boundary, not a frame.** A *frame* is a grid step
 `[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top ([§9.4][s9-4]), pacer
@@ -1570,15 +1555,12 @@ else is computed from.
 **[Harmonic grid](#g-harmonic-grid).** Every discrete [component](#g-component)'s period is an integer multiple of a base
 [tick](#g-tick) period `Δt_base`, itself an integer multiple of the continuous step
 ($\Delta t_{\mathrm{base}} = n \cdot h$, $n \ge 1$). Ticks therefore land on step [boundaries](#g-boundary) — the only place
-anything discrete ever happens. Rejected: arbitrary periods via a time-ordered tick
-queue, which forces variable-length steps and irregular real-time frames for a
-generality nothing demonstrated wants.
+anything discrete ever happens (row 19).
 
 **Discrete stages are gated to tick instants.** A discrete component's `h_x`/`h_xu`
-run only at its own ticks; its [cells](#g-cell) hold in between (ZOH, stated in [sweep](#g-sweep) terms). The
-alternative — re-running its stages at every boundary — would let outputs drift
-between ticks as fresh continuous inputs flow in, silently un-sampling a sampled-data
-controller. Delivering that hold takes **two statically distinct sweep variants,
+run only at its own ticks; its [cells](#g-cell) hold in between (ZOH, stated in [sweep](#g-sweep) terms) —
+re-running its stages at every boundary would un-sample a sampled-data controller
+(row 19). Delivering that hold takes **two statically distinct sweep variants,
 compiled from one entry list** — discreteness is a build-time fact, so the split is
 static, not a runtime test (row 147):
 
@@ -1586,12 +1568,7 @@ static, not a runtime test (row 147):
   ([§8.3][s8-3]) and localization [guard](#g-guard) [probes](#g-probe) ([§8.4][s8-4]) run this variant, so the ZOH holds
   mid-step **by construction**: discrete entries are not gated out at runtime, they
   are absent from the walk at compile time, and the hot path carries no gating test
-  at all. Counter-modulo gating alone cannot deliver it — at divisor 1 (the common
-  $n = K = 1$ configuration) the test admits every discrete entry at every
-  evaluation, so a discrete `h_xu` would re-run against interpolated `u` at each interior
-  stage and the `f` reading its cell would integrate a continuously re-sampled
-  controller: exactly the un-sampling this rule forbids, and invisible — such a run
-  is as type-stable, allocation-free and replayable as the correct one.
+  at all.
 - The **[boundary sweep](#g-sweep)** walks the full list, with discrete entries gated by
   `(idx − Φ) % D` against the boundary's tick index. It is the variant the [§8.6][s8-6] macro-sequence
   runs, and it is not one fixed list: different boundaries run different subsets of
@@ -1635,17 +1612,10 @@ schedule and its hyperperiod chart ([§12.2][s12-2]) are how a user audits which
 actually have.
 
 **[Assemblies](#g-assembly): virtual for execution, [rate scopes](#g-rate-scope) for declaration.** There are no
-atomic assemblies, and no opt-in variant. Execution atomicity coarsens the schedulable
-unit, which is exactly how artificial [algebraic loops](#g-algebraic-loop) are manufactured — [§5.4][s5-4] at
-assembly scale, a hazard Simulink documents for its Atomic Subsystems — while the
-thing it protects, non-interleaved execution, protects nothing here: the [signal table](#g-signal-table)
-makes interleaving semantically invisible (consumers read cells whose freshness is
-guaranteed by topological order, not contiguity). Its other Simulink roles — code
-generation units, enabled/triggered execution — have no counterpart in the consumers;
-conditional behavior ("on ground, force `direct`") is mode logic. FlightCore's
-whole-tree atomicity (children's `f_periodic!` called from the parent's, hence
-`Subsampled`'s parent-relative multipliers) was an artifact of call-tree execution,
-not a design requirement; the signal table dissolves it.
+atomic assemblies, and no opt-in variant (row 19). What makes the coarsening
+unnecessary is the [signal table](#g-signal-table): interleaving is semantically invisible under it,
+consumers reading cells whose freshness is guaranteed by topological order rather than
+by contiguity.
 
 **Sample-time declaration: two registers, one concept.** A discrete component or
 sub-assembly is scheduled by a `sample_times` entry in its enclosing assembly
@@ -1709,10 +1679,7 @@ relational (against everything else declared), which is why attribution is the
 engine's job ([§12.2][s12-2]).
 
 **The doctrinal line moves, and sharpens.** Absolute-first declaration as the
-default register stays rejected — it welds deployment rates into reusable
-definitions, and replicating relative structure through a shared base-period
-variable does not compose across independently authored assemblies
-(parameter-threading ceremony, cf. [§4.4][s4-4]). What mid-tree anchors legitimize is
+default register stays rejected (rows 19, 186). What mid-tree anchors legitimize is
 narrower: **an absolute declaration inside a library type is legitimate when the
 rate is a fact about the modeled system, not a preference about the simulation.**
 A GPS receiver emitting at 1 Hz, a bus schedule, an ADC pipeline's fixed
@@ -1734,14 +1701,10 @@ continuous bundles, so touching it on the wrong tier is a missing-field error
 rather than a rule. It must be readable in the *stages*, not just `g`: per
 [§15.2][s15-2], the discretized laws that actually consume `Δt` — a PID's
 backward-difference coefficients, a LeadLag's Tustin transform — run in
-`h_xu`; `g` is a copy. (A virtual property on the component handle,
-`comp.Δt`, after FlightCore's `mdl.Δt`, is the natural-looking alternative,
-and it is impossible here, not merely inconvenient: `comp`
-is the author's own immutable struct, and two fields holding the same
-immutable value are `===`-identical — the [§11.6][s11-6] argument — while carrying
-different `sample_times` keys, so the period is a fact about the *schedule
-position*, with nothing on the instance to hang a property on. The value must
-arrive through the call; the bundle field is where.) Author rule: **never
+`h_xu`; `g` is a copy. (A `comp.Δt` virtual property is impossible here rather than
+merely inconvenient — the period is a fact about the *schedule position*, not about
+the instance, so there is nothing on the component to hang a property on (row 19).
+The value must arrive through the call; the [bundle](#g-bundle) field is where.) Author rule: **never
 store `Δt`, or any `Δt`-derived coefficient, as a component parameter** —
 recomputing derived coefficients per tick is a few arithmetic ops, and a
 cached copy is a second thing for gain-scheduling machinery to chase.
@@ -1824,42 +1787,29 @@ belongs inside one component, where declaration order gives exact sequencing
 across rounds (the synchronous-languages position: a micro-step sees the
 pre-state, effects appear at the next micro-step). The cost of serializing
 same-component firings is one extra intra-boundary sweep per event so
-serialized — microseconds, on the rare boundary that fires at all. Rejected
-shapes: the per-event re-decode with a frozen round-start `u` obtained by
-pre-materializing the fired components' gathers (the prior design of record,
-rows 16/100/152 — two freshness classes in one bundle, whose delivery needed
-a two-pass staging structure, buying only same-round multi-handler own-`y`
-freshness that serialization provides free); live-table reads under the
-canonical execution order (deterministic, but model semantics would then
-depend on the executor's schedule order — a rewiring that permutes it
-silently changes trajectories, the same structure-the-framework-inserts
-class this section already rejects); a table copy per firing round
-(identical semantics, paying an allocation for nothing); handlers stripped
-of their own `y` (makes the incoherence unwritable, but keeps a two-epoch
-bundle and the fire-on-falsified-premise hole).
+serialized — microseconds, on the rare boundary that fires at all. The
+rejected shapes are row 154's: the per-event re-decode with a frozen
+round-start `u` (the prior design of record, rows 16/100/152), live-table
+reads under the canonical execution order, a table copy per firing round
+(row 100), and handlers stripped of their own `y`.
 
-**Why a per-event budget.** A re-enabled event fires at its *true* boundary.
-The alternative this replaces — fire once, then defer the re-arm to the next
-boundary — put a logically-instantaneous cascade one step late, an `h`-artifact
-of exactly the class this section's iteration exists to abolish, and it bought
-that delay with a manufactured prior (below). Priors stay honest as a
-consequence: every prior is a sample actually taken, never a value recorded to
-make a rule work out. Termination is then budget-bounded rather than
-structural — at most `firing_budget · E` firings per boundary for `E` declared
-events, hence a bounded number of rounds, deterministically and independently
-of pace. A livelock (two FSMs toggling each other) no longer resolves silently:
-each toggler spends its budget, warns (below), and the run proceeds and replays
-identically — degradation, not an error, per [§8.4][s8-4]'s doctrine, which is
-also why a *round* cap is the wrong shape (row 20's rejected form, rescued here
-repaired): a per-round cap punishes collectively, aborting innocent cascades
-that happen to share the boundary with a chatterer and naming none of them,
-while a per-event budget names the actual chatterer in its warning and leaves
-every other event's iteration untouched. The trade is recorded openly: the
-elegance of structural termination is gone, and with it the arbitrary-K
-objection returns in `firing_budget`. What it bought back is the deferral
-machinery deleted entirely — the manufactured prior, the re-arm flag, the
-`EventDeferred` warning — the one-step artifact, and deferral's collapse of
-several intra-boundary re-arms into a single later firing.
+**Why a per-event budget.** A re-enabled event fires at its *true* boundary,
+against a fresh sweep — the deferral design it replaces, and the per-round cap
+row 20 once rejected, are both row 181's. Priors stay honest as a consequence:
+every prior is a sample actually taken, never a value recorded to make a rule
+work out. Termination is then budget-bounded rather than structural — at most
+`firing_budget · E` firings per boundary for `E` declared events, hence a
+bounded number of rounds, deterministically and independently of pace. A
+livelock (two FSMs toggling each other) no longer resolves silently: each
+toggler spends its budget, warns (below), and the run proceeds and replays
+identically — degradation, not an error, per [§8.4][s8-4]'s doctrine — and the
+warning names the actual chatterer while every other event's iteration
+continues untouched. The trade is recorded openly: the elegance of structural
+termination is gone, and with it the arbitrary-K objection returns in
+`firing_budget`. What it bought back is the deferral machinery deleted entirely
+— the manufactured prior, the re-arm flag, the `EventDeferred` warning — the
+one-step artifact, and deferral's collapse of several intra-boundary re-arms
+into a single later firing.
 
 **Guard priors and firing semantics.** "Newly-fired" means precisely this:
 an event fires in an iteration round iff its predicate ([§2.1][s2-1]: the `Bool` form
@@ -1942,21 +1892,18 @@ completed [frames](#g-frame) and never reorders, skips or alters the [boundary](
 paced and an unpaced run with identical input [traces](#g-trace) produce bit-identical
 trajectories — deterministic [replay](#g-replay) ([§2.2][s2-2]) extends over pace. Interactive runs differ
 only because their *inputs* differ. Detection policy is inside the semantics:
-Event localization runs identically paced or unpaced, its [sweep](#g-sweep) cost
-absorbed as debt like any other expensive frame ([§8.4][s8-4]). Degrading to
-boundary detection under pacing was rejected: it would move `t*` and diverge
-paced from unpaced trajectories (row 80).
+event localization runs identically paced or unpaced, its [sweep](#g-sweep) cost
+absorbed as debt like any other expensive frame ([§8.4][s8-4]); degrading to
+boundary detection under pacing was rejected (row 80).
 
 **Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
 $\tau(t) = \tau_{\mathrm{anchor}} + (t - t_{\mathrm{anchor}})/p$, with the anchor pair as its reference point. A
 live pace change re-establishes the anchor at the current `(t, τ)` so the new slope
-applies only forward; keeping the old anchor would retroactively reinterpret the
-entire elapsed run at the new pace (deadlines minutes in the past or future after a
-long session). Un-pause re-anchors for the same reason. Debt is cleared at re-anchor:
-a deliberate user action is a natural sync point, and the counters record what was
-forgiven.
+applies only forward (row 21); un-pause re-anchors for the same reason. Debt is
+cleared at re-anchor: a deliberate user action is a natural sync point, and the
+counters record what was forgiven.
 
-**Deadline law: absolute [schedule](#g-schedule) with bounded [debt](#g-pacing).** Frame deadlines come from
+**Deadline law: absolute [schedule](#g-schedule) with bounded [debt](#g-pacing)** (row 21). Frame deadlines come from
 the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent frames
 repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
 (GC, scheduler) are invisible. Debt beyond a threshold — **five frames' worth of
@@ -1964,15 +1911,11 @@ budget, `5·h/p`** — is forgiven by re-anchor plus warning, so long stalls
 (debugger, laptop sleep) do not trigger catch-up bursts. Five: comfortably above
 the ms-scale hiccups debt exists to absorb silently, and far below the
 seconds-to-minutes stalls forgiveness exists for, so neither case lands near the
-threshold. Rejected: relative deadlines (next = last completion +
-budget), under which every overrun permanently slips sim time against wall time.
+threshold.
 
-**`p = ∞` is pacer-off, not a limit value.** FlightCore's arithmetic trick
-(`τ_next = τ_last + dt/∞` collapses the wait [predicate](#g-predicate)) does not survive debt
-accounting: every deadline would sit perpetually in the past and the diagnostics
-would faithfully report garbage. Unpaced mode is the explicit *absence* of deadlines —
-no waits, no debt, no warnings; by the invariant, the same execution with the waits
-deleted.
+**`p = ∞` is pacer-off, not a limit value** (row 21). Unpaced mode is the explicit
+*absence* of deadlines — no waits, no debt, no warnings; by the invariant, the same
+execution with the waits deleted.
 
 **Wait mechanism: hybrid sleep-then-spin, one knob.** Non-realtime OSes guarantee
 only a lower bound on sleep: the thread becomes runnable no earlier than requested;
