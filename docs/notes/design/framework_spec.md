@@ -3107,20 +3107,13 @@ condition (notified on un-pause and stop), not a spin.
 
 ### 10.2 Loop scheduling: wait primitive, yields, thread budget
 
-**Coarse phase = task-yielding `sleep`; no `systemsleep` variant.** The precision
-argument for `Libc.systemsleep` (≈0.5 ms vs ≈1.4 ms median overshoot, [§8.7][s8-7]) is
-worth ~1.5 ms of `margin` — a few percent of one core at 50 Hz. Against it: `sleep`
-releases the loop's thread, making the pacer's wait [slot](#g-slot) the natural scheduling
-window for co-resident [device](#g-device) tasks (the design already spends that slot twice:
-[§8.7][s8-7]'s staging slot, [§9.4][s9-4]'s [drain](#g-drain) source); `systemsleep` turns the slot into dead
-time and makes the [periphery](#g-periphery) correct only when every device task has its own
-thread — resurrecting FlightCore's hard `nthreads` check as a correctness
-precondition. The failure asymmetry decides: `sleep`'s worst case is a late
-wake-up → an overrun → absorbed as debt and *diagnosed*; `systemsleep`'s is starved
-device tasks → silent functional degradation. And [§8.7][s8-7] committed to `margin` as
-the single knob; a primitive [selector](#g-selector) is a second knob hiding inside the first (its
-two settings differ by a margin recalibration). A `systemsleep` variant for
-dedicated-thread hard-RT deployments is a [guarded addition](#g-guarded-addition).
+**Coarse phase = task-yielding `sleep`; no `systemsleep` variant** (row 27).
+What the choice buys is the wait [slot](#g-slot): `sleep` releases the loop's
+thread, making the pacer's wait the natural scheduling window for co-resident
+[device](#g-device) tasks — the design already spends that slot twice
+([§8.7][s8-7]'s staging slot, [§9.4][s9-4]'s [drain](#g-drain) source). A
+`systemsleep` variant for dedicated-thread hard-RT deployments is a
+[guarded addition](#g-guarded-addition).
 
 **Yield rule: with devices attached, every frame yields at least once** —
 implicitly via the coarse-phase `sleep` when it runs, via an explicit `yield()`
@@ -3133,10 +3126,8 @@ cooperative-scheduler freeze (a never-yielding task holds its thread forever) is
 structurally absent from framework tasks.
 
 **Thread budget: a documented sizing rule and a startup warning, not a hard
-error.** FlightCore's `nthreads` error was honest for its architecture: under-lock
-blocking plus a busy-wait pacer wedges *totally* when tasks share threads — the GUI
-queues on the lock behind the stall, the window freezes, no escape and no message.
-Here [the freeze](#g-the-freeze) cannot reproduce: the loop yields every frame, nothing couples a
+error** (row 27). The freeze FlightCore's `nthreads` error
+prevented cannot reproduce here: the loop yields every frame, nothing couples a
 stall to anyone else (the GUI waits on nothing, ever — [snapshot](#g-snapshot) acquire-load, own
 [staging cell](#g-staging-cell), atomic control), and the GUI runs on the *calling* task, so it cannot
 fail to be scheduled: under any starvation the window keeps rendering and the stop
@@ -3175,11 +3166,8 @@ parked in `wait` has released the lock as part of parking). The device-side
 the canonical [predicate](#g-predicate)-loop idiom, which handles waiters at different paces,
 frames skipped while transmitting, and shutdown ([§10.4][s10-4] wakes all waiters; each
 predicate routes its owner out) with no per-frame reset. An `Event` latch is the
-wrong primitive here: recurring signals require un-latching, and the reset has no
-correct placement under asynchronously arriving waiters (the `io_start` reset
-comments in FlightCore's sim.jl document the once-per-run version of exactly this
-race). Conditions carry no facts, only "look again"; the facts (counter, running)
-live in state each waiter tests privately.
+wrong primitive here (row 28). Conditions carry no facts, only "look again"; the
+facts (counter, running) live in state each waiter tests privately.
 
 **Counter home and publication order.** The boundary index is carried *in* the
 snapshot (with `t`), so any holder of one — the log, an error's [replay](#g-replay) pointer
@@ -3195,8 +3183,7 @@ the increment that woke you — is expected and correct: newest-wins.
 receives the current world. This mirrors the inbound side: [coalescing](#g-coalescing) to the
 newest batch (in) and to the newest snapshot (out) are the same ZOH decision; no
 backpressure exists in either direction, and the loop never waits on anyone.
-Rejected: per-consumer every-boundary queues (unbounded under a slow consumer —
-the batch stack's pause pathology again; complete history *is* the log). The GUI
+Rejected: per-consumer every-boundary queues (row 28). The GUI
 does not use the wait (VSync-paced, it reads `latest` each render).
 
 ### 10.4 Shutdown protocol
@@ -3386,11 +3373,9 @@ references, flaps, wind). Both write only `u` fields; no demo, test or GUI path
 pokes `x`/`s` mid-run, and `init!`/trim appear only between construction and
 `run!` (c172_demos.jl:303).
 
-**Sim-time scripts are model behavior: [scenario components](#g-scenario-component).** Both archetypes are
-clocked by *sim time* (`t`, the trajectory). Mapping them to [devices](#g-device) fails
-outright unpaced — the demos run at `pace = Inf`, where frames take microseconds
-and a wall-clock task's staging lands at scheduler-determined sim times,
-differently every run. The clock is the criterion: **sim-time scripts →
+**Sim-time scripts are model behavior: [scenario components](#g-scenario-component).** Both archetypes are clocked by *sim time*
+(`t`, the trajectory), and mapping them to [devices](#g-device) is rejected
+(row 31). The clock is the criterion: **sim-time scripts →
 source/supervisor [components](#g-component)** (periodic discrete, `K = 1` for today's
 `dt = 0.02` callbacks), executed synchronously in the loop, deterministic paced or
 unpaced, replayed by recomputation with no [trace](#g-trace); **wall-clock interactions →
@@ -3405,12 +3390,10 @@ in a scenario configuration the script drives the avionics' input [ports](#g-por
 renders the corresponding GUI widgets read-only with provenance — today's
 demo-vs-GUI dead-slider fight, resolved by the port-resolution rule.
 
-**`user_callback!` is eliminated.** It is the [periphery](#g-periphery)'s `f_step!`: arbitrary
-unrecorded mutation, ordered by convention, invisible to [replay](#g-replay) ([§2.2][s2-2]). Its
-historical justification was FlightCore's composition cost — a supervisor required
-a full `System` declaration against a ten-line closure; this framework prices a
-component at roughly the closure's weight, removing the pressure. Its call sites
-migrate to scenario components, not devices.
+**`user_callback!` is eliminated** (row 31): it is the
+[periphery](#g-periphery)'s `f_step!`, and cheap composition removed the
+pressure that once justified it. Its call sites migrate to scenario components,
+not devices.
 
 **Manual event triggering needs no mechanism:** a root input [slot](#g-slot) plus a [boundary-detected](#g-boundary-detected)
 [guard](#g-guard) reading it (levels doctrine: latched commands or counters), already
@@ -3624,13 +3607,9 @@ Everything else is the loop as already specified:
   the recorded session, never a constraint on this one: overrides bind as
   stated above.
 
-Rejected shapes, for the record: a `run!(sim; replay = trc)` flag (replay
-replaces `init!` and swaps the drain source — it is a lifecycle *entry*, not
-a run option, and folding it into `run!` muddies [§10.6][s10-6]'s mandatory-`init!`
-rule); a synthetic playback device staging the recorded batches (wall-clock
-staging cannot hit recorded frame ordinals — it would reintroduce exactly the
-scheduler-determined input timing that [§9.1][s9-1] indicts and replay exists to
-remove); replay ending `stopped` (kills all three workflows above).
+Rejected shapes, for the record (row 101): a `run!(sim; replay = trc)` flag, a
+synthetic playback device staging the recorded batches, and replay ending
+`stopped`.
 
 ---
 
