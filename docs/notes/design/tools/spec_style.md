@@ -36,6 +36,11 @@ in pedagogy is not.
   or more places, or far from its definition, gets a glossary entry; a local
   one- or two-use coinage gets an inline gloss only. New coinages introduced
   during the rewrite join the inventory.
+- Link plumbing is deliberately asymmetric: section citations are
+  reference-style (`[§9.4][s9-4]`, linkify-managed) because Phase 4 renumbers
+  sections; glossary links are inline (`[drain](#g-drain)`) because glossary
+  anchor ids are names, never renumbered, so the indirection would buy
+  nothing. Not a defect; do not flag or convert.
 
 ## Section template
 
