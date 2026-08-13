@@ -295,14 +295,15 @@ the navigation/introspection hierarchy (GUI, logging, paths) and as declaration-
 
 [Ports](#g-port) exchange **immutable values** — typically isbits structs (floats, `SVector`s,
 enums, nested immutables). The framework owns a **[signal table](#g-signal-table)**: one concretely-typed
-**[cell](#g-cell)** per output port in the flattened model. A producer's output-[stage function](#g-stage-function) returns
-a named tuple of fresh values; the framework writes each into its cell; consumers read
-cells. (Vocabulary, binding throughout this document: bare *cell* is the table
-entry, and only that — the discrete-state and mode registers are *stores*, [§7.3][s7-3], not cells;
-*[staging cell](#g-staging-cell)* is a distinct compound term, the per-[device](#g-device) inbound register of
-[§9.4][s9-4], which unlike a table cell is mutated frame by frame and sits outside the
-table's publish-once discipline; *[slot](#g-slot)* is reserved for the root input slots of
-[§9.3][s9-3].)
+**[cell](#g-cell)** per output port in the flattened model. A producer's
+output-[stage function](#g-stage-function) (`h_x` or `h_xu`, the two output stages every component
+provides) returns a named tuple of fresh values; the framework writes each into
+its cell; consumers read cells. (Vocabulary, binding throughout this document:
+bare *cell* is the table entry, and only that — the discrete-state and mode
+registers are *stores*, [§7.3][s7-3], not cells; *[staging cell](#g-staging-cell)* is a distinct compound
+term, the per-[device](#g-device) inbound register of [§9.4][s9-4], which unlike a table cell is
+mutated frame by frame and sits outside the table's publish-once discipline;
+*[slot](#g-slot)* is reserved for the root input slots of [§9.3][s9-3].)
 
 Consequences:
 
@@ -333,16 +334,17 @@ functions, private by construction, see [§5.2][s5-2], [§11.3][s11-3]. A presen
 
 ### 4.3 Table mechanics and port granularity
 
-- **Scatter/gather is the whole protocol.** A [stage function](#g-stage-function) returns a named tuple;
-  the framework scatters each field into that [port](#g-port)'s concretely-typed [cell](#g-cell). Every
+- **Scatter/gather is the whole protocol.** A [stage function](#g-stage-function) (`h_x` or `h_xu`,
+  the two output stages every component provides) returns a named tuple; the
+  framework scatters each field into that [port](#g-port)'s concretely-typed [cell](#g-cell). Every
   reader — the next stage, `f`/`g`, [guards](#g-guard), wired consumers, [snapshot](#g-snapshot) capture —
   gathers views from cells. The [component](#g-component)'s aggregate `y` is the merge of its
-  stage products (`merge(y_x, y_xu)`, the same on either [tier](#g-tier)) —
-  declared ports only, a stage's private intermediates riding its `w` return rather
-  than the table ([§5.2][s5-2]) —
-  *semantically* but virtual *physically*: reconstructed per call from cells (field
-  loads, register-level, zero cost for isbits), never stored as an object. Name
-  collisions across a component's stages are a build error.
+  stage products (`merge(y_x, y_xu)`, the same on either [tier](#g-tier)) — declared ports
+  only, a stage's private intermediates riding its `w` return rather than the
+  table ([§5.2][s5-2]) — *semantically* but virtual *physically*: reconstructed per
+  call from cells (field loads, register-level, zero cost for isbits), never
+  stored as an object. Name collisions across a component's stages are a build
+  error.
 - **Stage returns are named tuples of port values, period.** A custom struct is a
   first-class port *value* — one field of the returned tuple, one declared port, one
   cell (`pose = KinPose{T}`). Nested fields get no cells of their own; GUI and logs
@@ -762,12 +764,12 @@ verification. Triggered when the scheduler finds a cycle, to classify it (genuin
 "insert a state"; artificial → the remedy ladder, [§5.4][s5-4]).
 
 **Detection and naming.** A cycle surfaces as a topological-sort stall in
-[Stratum](#g-stratum) B. The stalled subgraph is decomposed
-into **strongly connected [components](#g-component)**, and each nontrivial SCC names one cyclic
-cluster exactly: one diagnostic, its members and the wires among them, presented
-as one readable loop in the canonical slash form ([§11.6][s11-6],
-`aero/F → dyn/a → aero/α̇ → aero/F`). Neither the raw stall residue nor a single
-back edge names the cluster correctly (row 12).
+[Stratum](#g-stratum) B (one of the build's three phases: structure, schedule, activation).
+The stalled subgraph is decomposed into **strongly connected [components](#g-component)**, and
+each nontrivial SCC names one cyclic cluster exactly: one diagnostic, its
+members and the wires among them, presented as one readable loop in the
+canonical slash form ([§11.6][s11-6], `aero/F → dyn/a → aero/α̇ → aero/F`). Neither the
+raw stall residue nor a single back edge names the cluster correctly (row 12).
 
 **Classification is [schedule](#g-schedule)-free.** It runs inside Stratum B's failure path,
 where no schedule exists — and needs none, because each SCC member is evaluated
@@ -1034,12 +1036,14 @@ stack, the compiler's business) for exactly the duration of the call and has no
 existence between calls — re-materializing is the same loads, value-identical
 because the value is immutable and the buffer unchanged within a [sweep](#g-sweep). Whether
 repeated reads within a sweep re-materialize or reuse the loads is codegen freedom
-in the literal sense: the [executor](#g-executor) is spelled rebuild-per-call, and hoisting is the
-code generator's CSE, whose legality condition is exactly the
-buffer-unchanged-within-a-sweep rule ([§12.7][s12-7]). The complementary rule ([§5.2][s5-2]): **[one home per datum](#g-one-home-per-datum)** —
-buffer for continuous `x`, stores for discrete `x` and for `m`, table for produced signals — and no store ever
-mirrors another; in particular there are no state [cells](#g-cell) in the table beyond
-[contract](#g-contract)-driven [auto-published ports](#g-auto-published-port), which are interface, not transport.
+in the literal sense: the [executor](#g-executor) (the compiled execution form of the
+schedule) is spelled rebuild-per-call, and hoisting is the code generator's
+CSE, whose legality condition is exactly the buffer-unchanged-within-a-sweep
+rule ([§12.7][s12-7]). The complementary rule ([§5.2][s5-2]): **[one home per datum](#g-one-home-per-datum)** — buffer
+for continuous `x`, stores for discrete `x` and for `m`, table for produced
+signals — and no store ever mirrors another; in particular there are no state
+[cells](#g-cell) in the table beyond [contract](#g-contract)-driven [auto-published ports](#g-auto-published-port), which are
+interface, not transport.
 
 **Why the vocabulary is closed: views must materialize without running
 anyone's invariants.** Scalars and `SArray`s have invariant-free
