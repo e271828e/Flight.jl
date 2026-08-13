@@ -5276,10 +5276,8 @@ sites are split into their two populations:
   (B), the probe chain (C). When user code throws there is no meaningful
   rest-of-collection: a failed `input_connections` leaves the parent's face derivation
   undefined; a failed stage-2 probe starves every downstream probe of its wired
-  inputs ([probe values](#g-probe-value) flow topologically, [§12.3][s12-3]). Continuing past these
-  requires genuine compiler machinery — poisoned nodes, cascade suppression,
-  dependent-check skipping — and buys little, because user-code failures are
-  typically singular. **The first user-code exception aborts the phase.**
+  inputs ([probe values](#g-probe-value) flow topologically, [§12.3][s12-3]).
+  **The first user-code exception aborts the phase** (row 57).
 
 Strata are barriers: a stratum that produced any error-severity diagnostic, of
 either kind, throws before the next stratum begins — probing against
@@ -5289,11 +5287,11 @@ this decision open — build phases having to carry partial internal results
 across a failure, the machinery [§12][s12]'s strata would otherwise need — never
 materializes.
 
-**No cascade suppression within a stratum** — a deliberate simplification. A
-typo'd wire (`:throtle`) produces both the [did-you-mean](#g-did-you-mean) error and an
-unconnected-input error for the intended `throttle`; both are reported. They
-render adjacently (diagnostics sort by path), the pairing is self-explanatory,
-and suppression heuristics are exactly the fussy machinery this split avoids.
+**No cascade suppression within a stratum** — a deliberate simplification
+(row 57). A typo'd wire (`:throtle`) produces both the
+[did-you-mean](#g-did-you-mean) error and an unconnected-input error for the
+intended `throttle`; both are reported. They render adjacently (diagnostics
+sort by path), and the pairing is self-explanatory.
 
 ### 13.2 Diagnostics: structured values, one carrier exception
 
@@ -5427,8 +5425,7 @@ The [§11.8][s11-8] sketch's primitives, made normative:
 
 **Where caught.** The loop wraps each execution of the [boundary](#g-boundary) macro-sequence
 (integrate → project → event iteration → [ticks](#g-tick) → publication) in a single
-`try` — never per stage or per [component](#g-component), which would salt the hot path with
-exception frames for no benefit. Framing information does not need to be
+`try` — never per stage or per [component](#g-component) (row 59). Framing information does not need to be
 *caught* into existence: the [executor](#g-executor) maintains an **[execution cursor](#g-execution-cursor)**, a
 plain mutable field in the loop state recording where in the compiled [schedule](#g-schedule)
 it is — component path (schedule index), which function
@@ -5487,12 +5484,12 @@ conversion — [§11.4][s11-4]'s error-locality inversion, designed out of the b
 [tier](#g-tier) and quietly reintroduced at runtime. One `isfinite` pass over a flat
 [buffer](#g-buffer) is cheap enough that placement, not cost, decides.
 
-*Scope: `ẋ` does not participate.* A nonfinite derivative contaminates its own
-state block's step result within that very step, so the `x` check at the next
-boundary is the same detection with identical component attribution — the
-`ẋ` sweep would report nothing new, one boundary earlier. And `ẋ` buffers are
-integrator scratch: written per stage, meaningful only inside a step, and not
-boundary-consistent in the sense the check is stated over.
+*Scope: `ẋ` does not participate* (row 157). A nonfinite derivative
+contaminates its own state block's step result within that very step, so the
+`x` check at the next boundary is the same detection with identical component
+attribution. And `ẋ` buffers are integrator scratch: written per stage,
+meaningful only inside a step, and not boundary-consistent in the sense the
+check is stated over.
 
 **Domain separation.** [Device](#g-device)-side user code — loop bodies and mappings run
 on the device task ([§9.4][s9-4], [§9.6][s9-6]) — fails in the device's own domain, and in
@@ -5505,9 +5502,8 @@ the no-shared-mutable-model decision bought.
 ### 13.5 Termination is a state, not an exception
 
 FlightCore's `SimulationTermination` idiom — model code throws, the loop
-catches and logs it as informational — has **no counterpart here**. It sits badly
-in this design: a mid-[sweep](#g-sweep) throw aborts a [boundary](#g-boundary) halfway, and [§10.4][s10-4] is built on
-completing one. The discipline: **exceptions from model code are always
+catches and logs it as informational — has **no counterpart here** (row 60).
+The discipline: **exceptions from model code are always
 abnormal**; graceful termination is model *state*, reaching the loop through
 declared machinery:
 
@@ -5579,47 +5575,23 @@ exports `fallen`. Wired, the sim ends at the fall; unwired, it integrates a
 frozen robot — well-defined, unlike an uncaught throw. The discipline forces
 models to have well-defined terminal states, which is better modeling.
 
-Rejected mechanisms:
+Rejected mechanisms — predicate closures (`stop_when = snap -> ...`),
+root-type-declared stop policy, [blessed](#g-blessed) terminal types and
+`terminal` event flags, a [control-plane](#g-control-plane) capability for
+[components](#g-component), and observation-by-path (`stop_on` naming a deep path
+into any public output) — are litigated in row 60. A root-declared *default*,
+overridable at the constructor, is the one variant on record for reopening,
+should the constructor argument prove chronically forgotten ([§16][s16]).
 
-- **Predicate closures** (`stop_when = snap -> ...`): opaque (not printable
-  data — against the `Build`-as-inspectable-contract doctrine), not
-  serializable into run metadata, a permanent public snapshot-reading API for
-  user closures, and every use of the extra expressiveness is logic that
-  belongs in-model. `user_callback!` in a costume.
-- **Root-type-declared stop policy**: the `sample_times` precedent read correctly cuts
-  the other way — ratios travel with the design, *absolutes* bind at
-  deployment, and "stop here" is absolute-flavored run policy: development
-  runs past the condition to inspect, unattended studies log it and continue,
-  services don't step at all. (A root-declared *default* overridable at the
-  ctor remains the one variant worth reopening if migration shows the ctor
-  argument chronically forgotten.)
-- **[Blessed](#g-blessed) terminal types/names scanned from the tree, and `terminal` event
-  flags**: action at a distance — a deep declaration halts the world, the
-  root contract says nothing, substituting an aircraft silently changes when
-  runs end, and per-deployment disabling needs masking machinery. The
-  localization that terminal events appear to buy structurally is already
-  available under `stop_on` via the event idiom.
-- **Control-plane capability for components**: [§10.1][s10-1] separates the control
-  plane from model semantics precisely because components live inside
-  boundary semantics; a mid-sweep imperative control action is the
-  `user_callback!` shape again. The device-capability precedent does not
-  transfer — devices live outside the boundary loop.
-- **Observation-by-path** (`stop_on` naming a deep path into any public
-  output): rejected on a line worth recording as doctrine. **Diagnostic
-  observation** — the log retaining the full table, GUI panels rendering a
-  component's [ports](#g-port), [replay](#g-replay) inspection — is human-facing, has no effect on
-  run semantics, and legitimately sees every public [cell](#g-cell). **Load-bearing
-  observation** — a read that changes what the run *does* — must speak the
-  contract. A deep `stop_on` path makes termination semantics depend on
-  internals no contract mentions: precisely the knowledge violation [§6.1][s6-1]
-  forbids for wires (which bans deep paths into generic children *even where
-  the concrete instantiation would resolve them*), brittle under substitution
-  for reasons the aircraft's contract never promised anything about, and it
-  leaves the root face list lying about what can halt a run. Output devices
-  are not a counterexample but the other half of the same doctrine:
-  their reads are diagnostic — snapshot-path bindings, [§9.2][s9-2]/[§15.4][s15-4] — while
-  `stop_on` is the one read that changes what the run does, which is exactly
-  why it alone must speak the contract.
+The observation-by-path line leaves doctrine behind it. **Diagnostic
+observation** — the log retaining the full table, GUI panels rendering a
+component's [ports](#g-port), [replay](#g-replay) inspection — is human-facing,
+has no effect on run semantics, and legitimately sees every public
+[cell](#g-cell). **Load-bearing observation** — a read that changes what the run
+*does* — must speak the [contract](#g-contract). `stop_on` is the one read that
+changes what the run does, which is why it alone names root-exported faces;
+output devices are the other half of the same doctrine, their reads being
+diagnostic snapshot-path bindings ([§9.2][s9-2], [§15.4][s15-4]).
 
 The wall-clock channel — GUI stop button, device handle, code — is orthogonal
 and untouched: that is the [control plane](#g-control-plane)'s operator path. The sim-time,
