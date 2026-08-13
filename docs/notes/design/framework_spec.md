@@ -4301,21 +4301,22 @@ Everything else is the loop as already specified:
   seven are compared against the target `Simulation`'s own deployment binding.
   Mismatch is `ReplayHeaderMismatch` with a deployment-parameter discriminator,
   never a what-if. A deployment change moves the times at which the
-  frame-ordinal batches apply: different inputs, not a modified model. The event trio — the localization pair and `firing_budget` —
-  is compared for exactly the same reason the grid parameters are. It moves the
-  trajectory, so a run that differs in it is not re-driving the recorded one.
+  frame-ordinal batches apply: different inputs, not a modified model. The
+  event trio — the localization pair and `firing_budget` — is compared for
+  exactly the same reason the grid parameters are. It moves the trajectory,
+  so a run that differs in it is not re-driving the recorded one.
 
   `t₀` is *applied*, not compared. Replay stands in the `init!` position and
   owns the anchor, so `replay!` takes no `t0` argument. The header's
   `t_end`/`stop_on` pair is a recorded fact of the recorded session, never a
   constraint on this one; overrides bind as stated above.
 
-The header, field by field:
+The dispositions, by header content:
 
 | header content | disposition |
 |---|---|
 | store layout, slot faces | compared against the `Build` |
-| the deployment block: `Δt_base`, `h`, `n`, the algorithm, `localization_tol`, `localization_budget`, `firing_budget` | compared against the target `Simulation`'s own deployment binding |
+| the deployment block's seven trajectory-determining parameters: `Δt_base`, `h`, `n`, the algorithm, `localization_tol`, `localization_budget`, `firing_budget` | compared against the target `Simulation`'s own deployment binding |
 | resolved stores, slot values | applied directly at boundary zero |
 | `t₀` | applied; `replay!` takes no `t0` argument |
 | `t_end`, `stop_on` | neither compared nor applied: a recorded fact of the recorded session |
