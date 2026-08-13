@@ -36,6 +36,12 @@ Companion documents change only where they cite spec section numbers.
   scope (a section, a chapter, or one mechanical transformation).
 - **Per-batch approval.** Claude proposes each batch as a diff; Miguel approves;
   then commit. One-sentence commit subjects, no attribution trailers.
+  *Amended for P3.2 (2026-08-13):* per-section approval is replaced by
+  end-of-pass review — Miguel reads the finished spec side by side with the
+  untracked pre-P3.2 baseline copy (`framework_spec_p32_baseline.md`, the spec
+  at `007484ea`; deleted at Phase 3 close). In-flight content preservation
+  moves to an independent verifier agent per section (P3.2 step 5); decisions
+  that would have surfaced at approval time queue into chapter-end digests.
 - **Sequencing: mechanical → migration → style → structure.** The reorder comes
   last because it renumbers sections and touches every citing document; doing
   it over stable content makes it one mechanical move instead of a moving
@@ -132,15 +138,25 @@ worst offenders from sampling: §8.5–8.6, §9.3–9.5, parts of §14.
 
 **P3.2 Per-section procedure** (the content-preservation core):
 
-1. Extract the section's normative claims as a bullet inventory (scratchpad,
-   not committed).
+1. Extract the section's normative claims as a bullet inventory (untracked
+   `p32_inventories/` beside the spec, one file per section; deleted at Phase 3
+   close — kept on disk so the verifier and the end-of-pass review can consult
+   it).
 2. Rewrite to the template: context first, rule marked, mechanism with a code
    sketch where the section is prose-heavy (candidate sketches: a
    `sample_times` declaration next to its compiled `(D, Φ)` pairs for §8.5; a
    staging/drain timeline for §9.4).
 3. Re-verify every inventory claim against the rewrite; diff the section's row
    citations and glossary links.
-4. Present diff → approval → commit (one commit per section or small cluster).
+4. Commit (one commit per full section or per chapter light-cluster), checks
+   green. No new section numbers during P3.2: proposed splits (§9.2, §10.4)
+   are realized as `####` sub-headings; real splits, if still wanted, wait for
+   Phase 4.
+5. An independent verifier agent (fresh context) compares the baseline section
+   against the rewrite using the claim inventory; findings are fixed (follow-up
+   commit) before the next section launches. Decisions needing Miguel — R1
+   borderline keep/reduce calls, unclear-meaning flags, structural proposals —
+   queue into a chapter-end digest rather than blocking per section.
 
 **P3.3 Work order.** Recommended: chapter-linear within a part, starting with
 Part II (worst offender, and the part most consulted during kernel
