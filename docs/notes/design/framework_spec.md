@@ -861,8 +861,7 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
   takes the bound check alone, because its stages read exclusively at real [ticks](#g-tick)
   in the [nominal](#g-nominal) world — a `Dual`-carrying [cell](#g-cell) exists only inside activations the
   discrete tier never runs in ([§12.4][s12-4]) — so a continuous producer feeding a
-  discrete consumer is unconditionally legal; unscoped, the clause would reject
-  every sensor → controller wire in the design. The clause is also what gives the
+  discrete consumer is unconditionally legal (row 167). The clause is also what gives the
   two [contract](#g-contract) sides their **failure asymmetry**: the input-side forgotten-`T` —
   the habitual `Float64` written at an entry whose consumer really promotes —
   fails at the *first nominal build*, at the wire, with both endpoints named,
@@ -874,18 +873,9 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
   junctions, [§6.2][s6-2]). The rule spans levels: an input fed both inside a sub-assembly
   and by an ancestor's deep route is a two-producers build error — deep routing
   cannot silently double-feed.
-- No auto-bubbling of unconnected inputs (implicit interface growth — and worse:
-  the forgotten-wire error, [§11.4][s11-4] walkthrough 2, would be silently *promoted to
-  interface*, climbing level by level into a live root [slot](#g-slot) nobody feeds, instead
-  of failing at build).
-- Unconnected output ports: legal, silently (there is no build-time warning
-  for them, row 84 — under mandatory `output_types` most models carry many
-  observation-oriented ports no wire consumes, [§9.2][s9-2] blesses exactly that,
-  and [§9.2][s9-2]'s path-bound readers attach after the build, so "unused" is not
-  even decidable; a warning firing on every honest port poisons the sole
-  warning stream, [§9.7][s9-7]'s anti-diagnostic lesson. The hazard it nominally
-  guarded — a wire someone meant to draw — is caught from the consumer side,
-  where the information actually lives). Unconnected input ports: build error
+- No auto-bubbling of unconnected inputs (row 43).
+- Unconnected output ports: legal, silently, with no build-time warning (row 84).
+  Unconnected input ports: build error
   (no silent defaults). **The check is a whole-tree property, not a
   per-declaration one**: within a single assembly declaration an unfed child input
   is simply *awaiting a claim from above* — a sibling wire, an ancestor's deep
@@ -938,7 +928,7 @@ child_connections(::Systems) = (
   ceremony, never silence.
 - **The aggregate is a first-class signal.** `wr_sum.Σ` is an ordinary port:
   loggable, GUI-visible, fanned out to a second consumer (a loads monitor) for one
-  wire. (Under consumer-side folding, the total was ephemeral gather scratch.)
+  wire.
 - **Aggregation logic is arbitrary stage-2 code** — mass-properties composition with
   its transport terms, weighted blends — not restricted to a declared
   commutative-associative binary op.
@@ -989,25 +979,13 @@ author's back. This is not [§6.1][s6-1]'s banned default in component clothing 
 opposite: that default is silent and consumer-declared, this one is loud and
 assembly-declared, the author writing the child and the wire, both inspectable.
 
-The ledger against FlightCore's tree walk, recorded: its zero-wiring convenience and
-its worst failure mode were the same property — a contributor with a forgotten trait
-method contributes *silently nothing* (a lighter vehicle, no diagnostic, ever).
-Explicit wiring inverts every silence into a warning or error, and makes
-per-contributor values and intermediate totals observable ports; the cost is that
-adding a deep contributor edits one assembly level (its owner's wiring) instead of
-zero. Rejected at every revision: **contribution buses** (today's mechanism
-portified — dataflow invisible in the graph, scoping rules, accidental
-contributions).
+The cost of explicit wiring, recorded: adding a deep contributor edits one assembly
+level (its owner's wiring) instead of zero, and buys in exchange per-contributor
+values and intermediate totals as observable ports, with every silence inverted into
+a warning or error (rows 7, 37).
 
-An earlier design specified **reduce-ports** — consumer-declared
-commutative-associative folds with multi-connection legality, canonical fold order
-and identity-element opt-outs — and it was abandoned (rows 7 and 37): the use-site
-census never grew beyond the three Newton–Euler aggregations in one library
-assembly; the mandatory typed declarations of [§11][s11] make junction mistakes loud,
-dissolving the original "positional ceremony" objection; and `Reduce` was the
-declaration vocabulary's last remaining wrapper — killing it leaves `input_types` as bare
-types with zero framework vocabulary and retires the canonical-fold and
-identity-element rules wholesale.
+The reduce-port design that preceded this one — consumer-declared folds with
+multi-connection legality — is closed (rows 7 and 37).
 
 ---
 
@@ -1041,9 +1019,7 @@ derivation; here the attitude leaf is an `SVector{4,T}` and so is its rate.)
 The conformance [predicate](#g-predicate) is structural — *each field of `f`'s return
 scatters into its field's block at `T`* ([§12.5][s12-5] states the check) — which
 makes derivative completeness a property of the layout rather than of author
-discipline. There is deliberately **no `derivative_type` hook**: a per-leaf
-override would be a second register for a fact the layout already knows, and
-the two could disagree.
+discipline. There is deliberately **no `derivative_type` hook** (row 190).
 
 **The buffer is authoritative; typed values are ephemeral reconstructions.** Nobody
 outside the framework ever holds a mutable reference to state. "Ephemeral" is
@@ -1066,16 +1042,8 @@ no user code, nothing normalizes or clamps — so building a view through
 ordinary public construction is bit-faithful automatically:
 `reconstruct(flatten(x)) == x` identically, with no constructor bypass, no
 `reinterpret`, and no reliance on a custom struct's memory layout mirroring
-the buffer's. Admitting invariant-carrying leaves would force one of two
-readings, both rejected (row 94): run the constructor on read, and every
-consumer sees a silently projected value over a buffer accumulating the raw
-one — a `Ranged` leaf integrating past its bound while the clamped view hides
-it and the derivative keeps pushing, `project` ([§2][s2]) redundant on views yet
-necessary on the buffer, [§8.4][s8-4]'s off-manifold [probes](#g-probe) (which must see the raw
-interpolated state, RK-stage-like) impossible; or bypass the constructor,
-which is safe under the common-eltype rule and build-time verifiable, but
-plants layout-coincidence cleverness in the executor's core to save a cast
-line. Domain semantics are instead an **explicit, invariant-free cast at the
+the buffer's. Invariant-carrying leaves are closed (row 94). Domain semantics
+are instead an **explicit, invariant-free cast at the
 point of use** — `q = RQuat(x.q, normalization = false)` — the conversion
 today's `f_ode!` code performs on its raw views, now visible and chosen.
 Invariants live where the design already put them: in `project` at
@@ -1181,11 +1149,8 @@ live example pattern).
   beyond the structure the allocator itself established (a plan or
   factorization configured at allocation is valid from then on); scratch is
   garbage until written this call; nothing a previous call left behind may be
-  relied upon. No poison is attempted: "poisonable scratch" is not well-defined
-  over the workspace's legitimate contents — a fill that recursed into a plan's
-  internal buffers would destroy it — and a partial guarantee, even a loudly
-  partial one, trains authors onto a safety net that may not be under them
-  (row 183). Declared **by allocation**: the well-known method *is* the
+  relied upon. No poisoning of scratch is attempted (row 183).
+  Declared **by allocation**: the well-known method *is* the
   allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
   c.n, c.n), x̂ = Vector{T}(undef, c.n))` on the continuous [tier](#g-tier), plain
   `workspace(::C)` on the discrete (the contract declarations' tier split) — called
@@ -1200,22 +1165,15 @@ live example pattern).
   loudly at the `Dual` [probe](#g-probe). The `undef` spelling is the
   recommended idiom and the sole visible marker that contents are meaningless:
   it puts that fact in the declaration, which is the register this store
-  actually lives in — a workspace is *not* memory, so
-  declaration-by-initial-value ([§11.2][s11-2]) never
-  legitimately covered it, and none of the [§11.2][s11-2] arguments for authored values
-  (condition overlay base, the probe-value barrier) applies to a store that
-  conditions exclude and whose contents at entry no one may rely on. Available
+  actually lives in — declaration by allocation, never by initial value (row 77).
+  Available
   on **both tiers**: nothing in the contract is tier-specific, and a continuous
   workspace simply joins the `T`-generic surface — under a `Dual` activation
   the allocator is called at `Dual`, and the in-place math runs through Julia's
   generic fallbacks (no BLAS; activations probe and linearize, they don't run
   marathons). The calls-per-[boundary](#g-boundary) multiplicity of the continuous side (RK
   stages, localization probes, event re-[sweeps](#g-sweep)) makes the no-information-between-
-  calls contract *more* load-bearing there, not less. (Rejected: `workspace_type`
-  returning types with framework instantiation — array types carry no
-  dimensions, sizes live in runtime fields like `kf.n` which no zero-argument
-  constructor can see, and hoisting sizes into type parameters lands on the
-  `MMatrix` codegen catastrophe below.)
+  calls contract *more* load-bearing there, not less.
 - **Blessed idiom — zero-allocation [ticks](#g-tick) with immutable `x`:** do the in-place math
   (`mul!`, `cholesky!`, BLAS) on the workspace; at the end, snapshot into an isbits
   container (`x = KFState(SVector{20}(ws.x̂), SMatrix{20,20}(ws.P))`) and return it.
@@ -1227,41 +1185,29 @@ live example pattern).
   `getindex`/iteration — structurally what `SArray` is, minus the methods). Practical
   ceiling: a few KB comfortable, tens of KB defensible, beyond that value semantics
   stop making sense.
-- **Double-buffered mutable state**: documented as a possible future extension only.
-  It reintroduces aliasing/publication questions (GUI reads vs. buffer flips) that the
-  first cut deliberately avoids, and nothing in the plausible workload needs it.
+- **Double-buffered mutable state**: a possible future extension only,
+  deferred (row 13).
 
 ### 7.4 The fused-evaluation lineage (prior art and how we got here)
 
 The [§5.2][s5-2] interfaces are the end point of a three-step simplification arc, recorded
 here because each step replaced a mechanism with something smaller:
 
-1. **N output groups → exactly two.** General output groups (each declaring its input
-   subset) handled a cross-coupling case that never materialized in the domain; strict
-   two-stage eliminates all dependency declarations, at the price of an occasional
+1. **N output groups → exactly two** (row 6), at the price of an occasional
    [component](#g-component) split ([§5.4][s5-4]).
-2. **Derivative binding → own-output access.** An earlier revision had a declaration
-   feature binding `ẋ` fields to output [ports](#g-port) (`ẋ_bindings(::C) = (ω = :ω̇,)`). Passing
-   the fresh [signal table](#g-signal-table) to `f`/`g` subsumes it: the "binding" is a one-line function
-   body, no validation machinery, strictly more general (an `f` may combine published
-   values with extra terms).
-3. **Separate state arguments → the state decoder.** With `y` in hand, passing `x` to
-   `f` duplicated information (FlightPhysics culturally publishes state in `y` anyway);
-   removing it produced the uniform continuous/discrete shapes and the
-   single-computation-site guarantee.
-4. **Decoder-exclusive state access → stores-and-views arguments.**
-   Step 3's second half was reversed (row 35). Its justification — "state is published
-   anyway" — quietly depended on default identity publication; once [§11.3][s11-3] made
-   publication a deliberate interface act, the identity decode stood revealed as
-   *transport*: copying the [buffer](#g-buffer) into [cells](#g-cell) so a buffer view could be replaced by
-   a cell view — ceremony of exactly the kind step 2 removed elsewhere, now with
-   dead stores (no own-function reads state through the table). The
-   reductio that decided it: the same minimalist logic would pack `u` into the stage-2 product
-   and end at `f(comp, y, t)`, republishing foreign cells under local names. The
-   fixed point is [§5.2][s5-2]'s argument rule — zero-copy views of the stores a function
-   genuinely reads. What survives of step 3: the uniform shapes, the fused
-   economics, and the stage-1 decoder itself (today's `h_x`) — no longer the sole state gate, but the
-   no-[feedthrough](#g-feedthrough) stage.
+2. **Derivative binding → own-output access** (row 15): passing the fresh
+   [signal table](#g-signal-table) to `f`/`g` subsumes the declaration feature, and the
+   "binding" becomes a one-line function body.
+3. **Separate state arguments → the state decoder** (rows 16, 35) — the step
+   later reversed by step 4.
+4. **Decoder-exclusive state access → stores-and-views arguments.** Step 3's
+   second half was reversed (row 35): once [§11.3][s11-3] made publication a
+   deliberate interface act, the identity decode stood revealed as *transport* —
+   copying the [buffer](#g-buffer) into [cells](#g-cell) so a buffer view could be replaced by a
+   cell view. The fixed point is [§5.2][s5-2]'s argument rule — zero-copy views of
+   the stores a function genuinely reads. What survives of step 3: the uniform
+   shapes, the fused economics, and the stage-1 decoder itself (today's `h_x`) —
+   no longer the sole state gate, but the no-[feedthrough](#g-feedthrough) stage.
 
 Prior art, for orientation — every causal framework meets the shared-computation
 problem and resolves it per its architecture: **Simulink diagrams** make integrators
