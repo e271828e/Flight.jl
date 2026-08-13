@@ -130,9 +130,7 @@
 This document specifies a modeling and simulation framework intended to
 replace `FlightCore` as the substrate for `FlightPhysics` and `FlightApps`.
 It is the [normative statement](#g-normative) of the design: what the framework *is*, in
-present tense. It is derived from `framework_design.md`, the historical
-original, which carries the full record of how the design was reached and
-survives in git history. The new framework must match or surpass `FlightCore` in
+present tense. The new framework must match or surpass `FlightCore` in
 functionality, performance and flexibility, while being more rigorous and
 explicit — reducing the learning curve and the number of latent footguns for
 model authors.
@@ -500,7 +498,7 @@ type and the field name as data (Julia ≥ 1.12), the probe catches it *matched
 against the bundle's own NamedTuple type*, and synthesizes the framing
 diagnostic from the legal set — classifying the field as an undeclared store, a
 wrong-tier fact, or a name illegal for this function family. The wrong-tier
-class survives the state-letter fusion on `m` and `Δt` (row 173): state itself
+class holds under the shared state letter (row 173): state itself
 is legal on both tiers, `m` is continuous-only and `Δt` discrete-only, so
 destructuring either on the wrong tier still lands in that bucket. No message text is
 scraped, and the bundle stays a bare NamedTuple (row 74); a getproperty-wrapper
@@ -581,8 +579,8 @@ survives without introducing a copy (row 35).
 update, `h_*` the output stages — the hybrid-systems flow/jump pair
 (Goebel–Sanfelice–Teel) joined to the control/estimation convention that `h` is
 the output map (`y = h(x, u)`; every navigation filter's measurement function).
-Bare `h` now means the integration step size only ([§8][s8]), retiring a double
-booking. Stage suffixes name the **dependence class**, not the argument
+Bare `h` denotes the integration step size only ([§8][s8]). Stage suffixes name
+the **dependence class**, not the argument
 list: `x` versus `xu` — state-only versus
 state-plus-input, the `y = h(x)` / `y = h(x, u)` distinction spelled in the
 name, identically on both [tiers](#g-tier). So "no `u` in the
@@ -852,8 +850,8 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
   in the path-resolution primitive itself (`resolve`, [§13.3][s13-3]), which walks
   declared field types alongside instances.
 - Paths are validated at build time; renames break loudly.
-- **Two clauses type-check a wire** ([§11.2][s11-2]). The **nominal bound check** is the
-  standing rule, stated over declaration evaluations: the producer's declaration
+- **Two clauses type-check a wire** ([§11.2][s11-2]). The **nominal bound check** is
+  stated over declaration evaluations: the producer's declaration
   at `Float64` must be `<:` the consumer's entry at `Float64` — one uniform rule,
   degenerating to exact equality for a concrete entry, violated as
   `WireTypeMismatch`. Beside it, and **for a continuous consumer only**, the
@@ -978,7 +976,7 @@ contributors at all — the bare-propagation `Vehicle{NoVehicleSystems}`, zero
 contributors to external wrench and to internal angular momentum, while
 `VehicleDynamics` requires both unconditionally. There is no junction to write and no
 producer to wire, [§6.1][s6-1] bans unconnected inputs and silent defaults, and the identity
-element a zero-arity junction would need was retired on purpose (row 37). The spelling
+element a zero-arity junction would need is deliberately absent (row 37). The spelling
 is a library `Constant` source ([§13.7][s13-7]) wired straight to the consumer's input —
 `Constant(Wrench())` → `dynamics/wr_ext` — so the zero total becomes declared
 structure, the configuration stating "external wrench ≡ 0" as a visible wire and an
@@ -992,8 +990,7 @@ level (its owner's wiring) instead of zero, and buys in exchange per-contributor
 values and intermediate totals as observable ports, with every silence inverted into
 a warning or error (rows 7, 37).
 
-The reduce-port design that preceded this one — consumer-declared folds with
-multi-connection legality — is closed (rows 7 and 37).
+Consumer-declared folds with multi-connection legality are closed (rows 7 and 37).
 
 ---
 
@@ -1540,7 +1537,7 @@ frame-indexed — `t*` boundaries consume no inputs.
 **Endpoint policy and grid integrity.** The root-finder returns the
 **holding endpoint of its final bracket** — the smallest probed point where
 the predicate holds. Consequences: **`t* = tₙ` is structurally impossible**,
-not clamped away — and the argument now rests on **observation, not
+not clamped away — and the argument rests on **observation, not
 testimony**: root-finding is entered only after the θ = 0 validation above has
 *measured* `σ₀` not-holding under the frame's own `u`, so the bracket's left
 end is strictly not-holding by the same kind of evidence as its right end, and
@@ -1692,8 +1689,8 @@ offset of `T/2` can cost a 2× finer grid, `T/1000` a 1000× one, and the cost i
 relational (against everything else declared), which is why attribution is the
 engine's job ([§12.2][s12-2]).
 
-**The doctrinal line moves, and sharpens.** Absolute-first declaration as the
-default register stays rejected (rows 19, 186). What mid-tree anchors legitimize is
+**Where the doctrinal line falls.** Absolute-first declaration as the
+default register is rejected (rows 19, 186). What mid-tree anchors legitimize is
 narrower: **an absolute declaration inside a library type is legitimate when the
 rate is a fact about the modeled system, not a preference about the simulation.**
 A GPS receiver emitting at 1 Hz, a bus schedule, an ADC pipeline's fixed
@@ -1804,27 +1801,27 @@ pre-state, effects appear at the next micro-step). The cost of serializing
 same-component firings is one extra intra-boundary sweep per event so
 serialized — microseconds, on the rare boundary that fires at all. The
 rejected shapes are row 154's: the per-event re-decode with a frozen
-round-start `u` (the prior design of record, rows 16/100/152), live-table
+round-start `u` (rows 16, 100, 152), live-table
 reads under the canonical execution order, a table copy per firing round
 (row 100), and handlers stripped of their own `y`.
 
 **Why a per-event budget.** A re-enabled event fires at its *true* boundary,
-against a fresh sweep — the deferral design it replaces, and the per-round cap
-row 20 once rejected, are both row 181's. Priors stay honest as a consequence:
+against a fresh sweep; the deferral design and the per-round cap are both
+rejected (rows 20, 181). Priors stay honest as a consequence:
 every prior is a sample actually taken, never a value recorded to make a rule
 work out. Termination is then budget-bounded rather than structural — at most
 `firing_budget · E` firings per boundary for `E` declared events, hence a
 bounded number of rounds, deterministically and independently of pace. A
-livelock (two FSMs toggling each other) no longer resolves silently: each
+livelock (two FSMs toggling each other) does not resolve silently: each
 toggler spends its budget, warns (below), and the run proceeds and replays
 identically — degradation, not an error, per the doctrine ([§8.4][s8-4]) — and the
 warning names the actual chatterer while every other event's iteration
-continues untouched. The trade is recorded openly: the elegance of structural
-termination is gone, and with it the arbitrary-K objection returns in
-`firing_budget`. What it bought back is the deferral machinery deleted entirely
-— the manufactured prior, the re-arm flag, the `EventDeferred` warning — the
-one-step artifact, and deferral's collapse of several intra-boundary re-arms
-into a single later firing.
+continues untouched. The trade is recorded openly: termination is
+budget-bounded rather than structural, so the arbitrary-K objection lives on in
+`firing_budget`. What that buys is the absence of deferral machinery — no
+manufactured prior, no re-arm flag, no `EventDeferred` warning, no one-step
+artifact, and no collapse of several intra-boundary re-arms into a single later
+firing.
 
 **Guard priors and firing semantics.** "Newly-fired" means precisely this:
 an event fires in an iteration round iff its predicate ([§2.1][s2-1]: the `Bool` form
@@ -2238,8 +2235,7 @@ there is no parent. (A root slot is usefully read as the output face of the
 one producer the build never sees — the [periphery](#g-periphery) and the services: slot
 exclusivity below is a producer's one-writer right, and the totality
 ([§14.6][s14-6]) is its completeness obligation.) No dedicated vocabulary
-survives (`add_input!` in the early
-sketches is dead). Slots are sources to the build-time scheduler, constants within
+is needed. Slots are sources to the build-time scheduler, constants within
 a frame, and the *only* thing the periphery may write (the GUI reaches them
 through the resolution, [§9.7][s9-7]; control commands are not writes, [§10.1][s10-1]); [devices](#g-device),
 mappings, the [trace](#g-trace) and the GUI write path address them by **face name** ([§11.6][s11-6]):
@@ -2404,7 +2400,7 @@ path, not a second semantics — while for a **sparse** writer (the GUI, a
 JSON peer: only what was touched) overwrite is a silent lost-write bug
 ([§15.3][s15-3]'s hazard: a pending `flaps` edit clobbered by an unrelated `gear`
 message, undrained, undiagnosable). A user-facing overwrite opt-in
-(`complete(binding)`) was drafted and dropped (row 104).
+(`complete(binding)`) is closed (row 104).
 
 **The staged representation is fixed per attachment, compiled at attach.**
 An enumerated writer's [claim](#g-claim) set and slot types are both known at attach
@@ -2425,7 +2421,7 @@ through an attach-compiled shim (name → position, convert to the slot's
 declared type, fill `nothing`), confining the residual name-shaped
 dynamism to one framework-owned conversion on the device task, at the
 [boundary](#g-boundary) where wire-shaped data becomes system-shaped data. (Author-built
-total tuples were rejected as a padding form, the same disease row 74 and
+total tuples are rejected as a padding form, the same disease row 74 and
 the handler return law refuse — row 104.) A **greedy entry needs no
 special treatment here**: its claim
 was computed at the attach point and is an ordinary claim set by the time
@@ -2467,7 +2463,7 @@ monotonic counters.
 indivisible take, no lost-write window — every cell applied through its
 compiled scatter, **in attachment order**, retained
 as a deterministic application order (under slot exclusivity, cross-device writes
-to one slot no longer arise; the order matters only for diagnostics). Which
+to one slot cannot arise; the order matters only for diagnostics). Which
 *frame* a write lands in remains wall-clock reality; what the drain guarantees is
 that the frame's outcome is a pure function of the drained batches. Because
 the roster is a fixed value at `run!`, the drain is fully compilable: the
@@ -2713,10 +2709,10 @@ handle primitives, which store them in the device's own [diagnostic cell](#g-dia
 loop). **`should_close` dissolves**: a window ✕ or peer EOT is the loop
 body returning; the wrapper's exit path releases the device's OS resources,
 marks it dead for the heartbeat and consults `should_abort` — [claims](#g-claim) and
-[roster](#g-roster) entry persist to run end (the freeze, [§9.3][s9-3]) — [§10.4][s10-4](6) is now
+[roster](#g-roster) entry persist to run end (the freeze, [§9.3][s9-3]) — [§10.4][s10-4](6) is
 literally "the task body returned." The GUI implements the same contract; the framework calls its
 `loop` inline on the [calling task](#g-calling-task) instead of spawning (the
-pinning, [§9.1][s9-1], unchanged).
+pinning, [§9.1][s9-1]).
 
 #### The binding: framework-legible by enumeration, opaque in its mappings
 
@@ -2813,17 +2809,16 @@ detection, which is what the bidirectional check turns the traits into: the
 same fact stated twice, in two registers, with the framework paid to compare
 them.
 
-**`is_greedy` is a claim source, not a device class.** The class it used to
-justify — a *derived* surface elected by a marker, shared among the
-writers that elected it — no longer exists: what the declaration buys is
-one computation at the attach point, after which the binding holds an
+**`is_greedy` is a claim source, not a device class.** What the declaration
+buys is one computation at the attach point, after which the binding holds an
 ordinary claim set and every mechanism downstream (exclusivity and storage,
 [§9.3][s9-3]; shape, shim, merge, scatter and [drain](#g-drain), [§9.4][s9-4];
 [trace](#g-trace), [§9.5][s9-5]; detach's release) is blind to where the set
-came from. The standing
-rejection is untouched by that: opportunistic writing to unclaimed faces
+came from. There is no derived surface shared among the writers that elected
+it, and no device class hanging off the marker. The standing
+rejection is untouched: opportunistic writing to unclaimed faces
 "for any device" stays dead (row 44) — autonomous devices still enumerate,
-and a maximal surface is now something exactly one line of a binding asks
+and a maximal surface is what exactly one line of a binding asks
 for, in the open, checked like any other claim.
 
 **A second greedy attach stakes the empty remainder.** The complement is
@@ -2833,7 +2828,7 @@ is legal, being the honest may-write-nothing degenerate below, and useless,
 which is worth saying out loud: the attach succeeds and reports
 `EmptyGreedyClaim` ([Appendix C][sC], a service warning naming the device and its
 binding), the one honest reading of "you asked for what is left and nothing
-was left". No singleton rule survives anywhere here. **Several interactive
+was left". **Several interactive
 front ends may be rostered at once** — a web console claiming the autopilot
 faces beside a local GUI claiming the stick faces — because with explicit
 claims they are simply two enumerated devices, partitioning the surface
@@ -2859,7 +2854,7 @@ beside other front ends.
 `claims(b) = ()` stays an
 honest degenerate — a device that may write nothing, its writes
 still binding-bounded, so drift onto any face is `OutOfClaimEntry` — and
-there is no longer a privileged class for it to promote into: `claims`
+there is no privileged class for it to promote into: `claims`
 bodies are ordinary code (the idiom, [§11.5][s11-5]; comprehensions included),
 and an enumeration that came
 back empty by accident stays inert, exactly as written. The maximal surface
@@ -2884,8 +2879,8 @@ TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
              trigger  = (face = "brake_count",))       # levels doctrine: a counter
 ```
 
-Its generic `map_input` *is* the shared pure conditioning helper ([§9.4][s9-4]), now
-with an owner; the entry tuple rides in the type, so the mapping
+Its generic `map_input` *is* the shared pure conditioning helper ([§9.4][s9-4]), and
+its owner; the entry tuple rides in the type, so the mapping
 specializes per table with no dynamic dispatch. A *code-driven* binding (a
 JSON telecommand peer: `claims` returns the vocabulary, `map_input` parses
 bytes) looks identical to the framework. Purity note, taught in [Appendix A][sA]:
@@ -2983,8 +2978,8 @@ buttons do not re-stage — after the drain applies and the snapshot catches up,
 re-staging from the peek would auto-repeat at frame rate; the activation edge is
 the intent.
 
-The alternative — active widgets staging on *every* render pass — lost its
-motivation to slot exclusivity ([§9.3][s9-3]) and is rejected (row 26). Side
+The alternative — active widgets staging on *every* render pass — is rejected
+(row 26): under slot exclusivity ([§9.3][s9-3]) it has no motivation. Side
 benefit: staging traffic (and trace noise) drops from
 render-rate-while-grabbed to actual edits. No
 claim-transition policy exists, because no claim transition can occur
@@ -3061,13 +3056,13 @@ carries `recent` — the ring this boundary drained, at most sixteen entries;
 `suppressed` — the per-kind counts the ring refused this boundary; `totals` —
 the cumulative per-writer × per-kind counts since the run began, owned
 privately by the loop and *copied* into each status; and `heartbeat`. Beside
-the per-writer records ride the pacer diagnostics ([§8.7][s8-7]), as before. Delta
+the per-writer records ride the pacer diagnostics ([§8.7][s8-7]). Delta
 plus total is what makes the status legible at any reading cadence: a GUI
 panel refreshing at 60 Hz sees each occurrence once in `recent`, while a
 consumer that samples occasionally still reads a complete account from
 `totals` — nothing is lost by not looking.
 
-**Presentation is where the old `maxlog` lives.** A status renderer prints a
+**Presentation is where `maxlog` lives.** A status renderer prints a
 given writer × kind up to **25** cumulative occurrences and then switches to
 count-only display ("`MalformedDatum` from `UDPInput#3`: 1 482 occurrences").
 That threshold is presentation policy, not channel policy: counts keep
@@ -3426,8 +3421,8 @@ renders the corresponding GUI widgets read-only with provenance — today's
 demo-vs-GUI dead-slider fight, resolved by the port-resolution rule.
 
 **`user_callback!` is eliminated** (row 31): it is the
-[periphery](#g-periphery)'s `f_step!`, and cheap composition removed the
-pressure that once justified it. Its call sites migrate to scenario components,
+[periphery](#g-periphery)'s `f_step!`, and cheap composition leaves it without
+justification. Its call sites migrate to scenario components,
 not devices.
 
 **Manual event triggering needs no mechanism:** a root input [slot](#g-slot) plus a [boundary-detected](#g-boundary-detected)
@@ -3848,7 +3843,7 @@ was made there.
 #### `input_types(::C, ::Type{T})` — continuous; `input_types(::C)` — discrete
 
 A bare `NamedTuple` of types — zero framework vocabulary, no
-wrapper types (the last candidate, `Reduce`, died with reduce-[ports](#g-port), [§6.2][s6-2]). On
+wrapper types. On
 **continuous consumers the two-argument form is mandated**, on **discrete
 consumers the plain one**: the same [tier](#g-tier) mandate `output_types` carries, [class](#g-class)
 read off declaration shape and the form fixed by the class ([§11.5][s11-5]), either
@@ -3880,8 +3875,8 @@ component's *requirements*: the unconnected-input error ([§6.1][s6-1]),
 over-wiring detection and [did-you-mean](#g-did-you-mean) typo messages (the offending name plus
 the list-in-hand it should have matched) are only definable against them.
 
-**Two clauses check a wire** ([§6.1][s6-1]). The **nominal bound check** is unchanged in
-force, now stated over evaluations: the producer's declaration at `Float64` must
+**Two clauses check a wire** ([§6.1][s6-1]). The **nominal bound check** is
+stated over evaluations: the producer's declaration at `Float64` must
 be `<:` the entry at `Float64` — one uniform rule, degenerating to exact
 equality for a concrete entry, concrete types being final. Beside it sits the
 **tier-scoped walk-compatibility clause**: for a *continuous* consumer, a
@@ -3906,8 +3901,8 @@ scalars the wiring delivers, the consumer's math promotes — still checked by t
 **declarations record choices; obligations are checked** — the `T` entry records
 the tolerance choice, the probe checks the promotion.
 
-**The permissive reading is the operative one, and the two readings it escapes
-stay rejected** (rows 33, 54, 167): the *predictive* reading — the entry saying
+**The permissive reading is the operative one; the two readings it escapes
+are rejected** (rows 33, 54, 167): the *predictive* reading — the entry saying
 what *will* arrive — and the *envelope* reading — the entry as a promise to
 promote. The permissive reading predicts nothing, and it is not constant, pinned
 entries being rare but real, which is what makes the `T` carry information here.
@@ -3954,7 +3949,7 @@ an entry states what the [cell](#g-cell) *carries*, not what it tolerates. On
 mandated**: `output_types(::Engine, ::Type{T}) where {T <: Real} =
 (M_shaft = T, P = T, ω = T)`. On **discrete producers the plain form is
 mandated**, and it *is* the wholesale pinning of the discrete exemption
-([§7.2][s7-2]) — now spelled in the signature as well as enforced by [tier](#g-tier): class is
+([§7.2][s7-2]) — spelled in the signature as well as enforced by [tier](#g-tier): class is
 read off declaration shape ([§11.5][s11-5]), the class fixes the form the declaration
 must take, and `TierSignatureMismatch` names a producer whose form and tier
 disagree in either direction. Semantics are **literal**: the cell types at an
@@ -3999,8 +3994,7 @@ partials is still chosen by seeding ([§14.10][s14-10]), never by typing: the de
 says which leaves *can* carry them, the seed which directions do.
 
 **The forgotten-`T` account, stated openly.** The whole-signature variant — a
-continuous producer declared as though it were discrete, the nastiest member
-of the class while the plain form was itself the tier marker — is extinct by
+continuous producer declared as though it were discrete — is unwritable by
 construction: the tier mandate catches it in [Stratum](#g-stratum) A (one of the build's
 three phases: structure, schedule, activation), before any user code runs. What
 remains is per-leaf: an author writes `Float64` at a leaf that really
@@ -4014,13 +4008,11 @@ machinery: **the test suite builds a `Dual` activation of every component**
 to make this unremarkable in CI). What the form buys in exchange is **reader
 honesty**: participation is read off the declaration instead of reconstructed
 from a framework rule carried in the reader's head, and a genuinely frozen leaf
-can say so. (History: the `T`-signature was the original design (rows 33, 79);
-row 166 revived it and records the reversal grounds.)
+can say so.
 
-**The stores keep their walk**; only the output side is evaluated. The type
-derived from a *continuous* leaf's `init_x` is walked exactly as a continuous
-producer's cells once
-were — real leaves and `Real` type parameters follow the activation scalar —
+**The stores are walked; only the output side is evaluated.** The type
+derived from a *continuous* leaf's `init_x` is walked — real leaves and `Real`
+type parameters follow the activation scalar —
 while `init_m` and a *discrete* leaf's `init_x` pin wholesale, mirroring the
 discrete-producer rule. The asymmetry is the register criterion stated above under the by-value
 declarations, not an inconsistency: `init_*` declare *by value*, and [§7.1][s7-1]
@@ -4088,23 +4080,21 @@ error, caught by method lookup at declaration-reading time rather than as a
 `MethodError` at the first firing — an event that fires only in a corner of the
 envelope would otherwise hide the omission indefinitely. **[Tier](#g-tier) is declared by
 the update law:** for a **stateful** leaf, `f` marks continuous and `g` marks
-discrete — the flow/jump pair carries the tier now that the stage names are
+discrete — the flow/jump pair carries the tier, the stage names being
 shared (row 173) — and the remaining tier-implying declarations must agree:
 `init_m` and `events` are continuous-only (the event system is
 continuous-side only: [§5.2][s5-2], [§3.2][s3-2], [§14.1][s14-1]),
 `workspace`'s arity splits the tiers (`(::C, ::Type{T})` versus `(::C)`), and
 so do `output_types`' and `input_types`' arities (rows 166–167). Disagreement is
 `DeclarationOnWrongTier` ([Appendix C][sC] — the offending
-declaration, with the tier the leaf's other declarations announce), surviving
-on a reduced member set with its job unchanged: declaring both `f` and `g`, or
-a `g` beside a two-argument `output_types`. The wrong-letter class — an `h_z`
-written on a continuous leaf — dies with the distinction it policed.
+declaration, with the tier the leaf's other declarations announce): declaring
+both `f` and `g`, or a `g` beside a two-argument `output_types`.
 A **stateless** leaf declares no store and no update law, so its tier is
 decided by its [contract](#g-contract) arities — `output_types`, mandatory hence always the
 decider, with `input_types`, where declared, agreeing; and the arity is no
 mere marker — it *is* the tier's semantics (rows 166–167): the two-argument
 forms declare [cells](#g-cell) and tolerances at the [activation](#g-activation) scalar, walking with it,
-where the plain forms declare the [pinned](#g-walked) discrete world. The tier-transparency point stands unchanged: a
+where the plain forms declare the [pinned](#g-walked) discrete world. A
 stateless `h_xu` component is tier-transparent library material
 ([§13.7][s13-7]). Members of both families, or of neither,
 are the [§11.5][s11-5] class errors. **The root of a build is an [assembly](#g-assembly):** root [slots](#g-slot)
@@ -4343,8 +4333,8 @@ other declarations announce and the form found versus the form mandated. The
 check is Stratum A and collected: declaration shape is read, nothing is
 evaluated. So the tier fact is spelled in the signature *and* fixed by the
 class, the two kept in agreement by a check rather than by convention — which
-is what makes the whole-signature forgotten-`T` bug (the worst case, row 79,
-when the plain form silently *was* the tier marker) unwritable. Error
+is what makes the whole-signature forgotten-`T` bug (the worst case, row 79)
+unwritable. Error
 taxonomy: `child_connections` plus `init_x`/stages on one type is a build error
 (assemblies have no state of their own — no-atomic-assemblies at declaration
 time, [§8.5][s8-5]); the neither-family error sharpens into a did-you-mean when
@@ -4396,8 +4386,8 @@ consumer — and every right side is fed exactly once. **Direction is therefore
 declared by the method**, not inferred: the resolved endpoints only *cross-check*
 it, and an entry whose endpoint resolves to a port of the wrong direction is a
 build error naming the method, the entry and the resolved port's actual direction.
-A mixed entry is no longer expressible, so that error class disappears with the
-single list that made it possible; two entries producing the same output face
+A mixed entry is not expressible: the single list that made that error class
+possible does not exist; two entries producing the same output face
 remain the ordinary two-producers error. Face *types and [tiers](#g-tier)* are derived from
 the internal endpoints — the [blessed](#g-blessed) derivation-from-declarations ([§11.2][s11-2]) — and the
 derivation is forced, not merely convenient (row 41): an assembly is
@@ -4405,7 +4395,7 @@ tier-neutral, exporting continuous-sourced and discrete-sourced ports side by
 side, and a face's [cells](#g-cell) follow the producer's own declaration
 ([§11.5][s11-5]), evaluated at the [activation](#g-activation) scalar on the
 continuous tier and [pinned](#g-walked) on the discrete.
-Three alternative spellings were rejected (rows 41, 170): routing values under
+Three alternative spellings are rejected (rows 41, 170): routing values under
 the leaf names `input_types`/`output_types`, leaf-style *typed* faces with face
 wires inside `child_connections`, and routing-as-wires with derived types and no
 face list. Publicity is never implicit ([§11.3][s11-3]).
@@ -4704,7 +4694,8 @@ organized as three strata:
   the producers' output declarations **evaluated** at the activation's `T` to
   type the [cells](#g-cell) (the literal semantics, [§11.2][s11-2] — a continuous producer's
   two-argument declaration called at `T`, a discrete producer's plain one read
-  once and [pinned](#g-walked)), the `init_x`-derived state type [walked](#g-walked) as before, the probe chain run in topo order —
+  once and [pinned](#g-walked)), the `init_x`-derived state type [walked](#g-walked)
+  by the leaf-walk rule ([§11.2][s11-2]), the probe chain run in topo order —
   threading each stage's `w` to its one-hop consumers ([§5.2][s5-2], [§12.3][s12-3]) — observed compared against
   declared, flat `x` [buffer](#g-buffer) and table laid out. The nominal `Float64`
   activation (a re-run of Stratum C at a given scalar type) runs at build;
@@ -4950,7 +4941,7 @@ output declaration at a leaf that really participates (the per-leaf
 forgotten-`T`, [§11.2][s11-2]), lurks until the first `Dual` activation
 detonates it
 at the probe, naming the offending constructor or leaf. The repository's test suite
-pins the invariant instead, and row 166 makes it policy rather than advice:
+pins the invariant instead, as policy rather than advice (row 166):
 **every component gets a `Dual` activation built in CI** —
 `build(world; activations = (Float64, ProbeDual))`
 (or a `check` entry) runs the exhaustive set, catching both genericity
@@ -5028,24 +5019,23 @@ already assumes: the scatter writes each returned field into its own *named*
 cell ([§4.3][s4-3]), so order-sensitivity in the check would be incidental
 strictness rather than protection. The canonicalizing reorder costs nothing:
 a compile-time permutation of an already-typed value — register shuffling SROA
-deletes — folding exactly where the test folds, so the economics (row 53) stand
-unamended (one whole-type test, never per-field checks) and the canary
-([§7.5][s7-5]) verifies the fold empirically rather than by assertion. What
-remains an error is
-what always was: a key-set mismatch or a per-field type mismatch, reported by
-the unchanged [payload](#g-payload) below. A permutation is not an error at all — which is
+deletes — folding exactly where the test folds, so the economics (row 53) hold
+— one whole-type test, never per-field checks — and the canary
+([§7.5][s7-5]) verifies the fold empirically rather than by assertion. What is
+an error is a key-set mismatch or a per-field type mismatch, reported by
+the [payload](#g-payload) below. A permutation is not an error at all — which is
 equally why that diff never has to express one.
 
 **Exact match at nominal; embed-accept at declared-`T` leaves.** At
 the nominal activation — the only one that ever runs in real time — the check
-is unchanged: exact type match, no convert-on-write, one baked `isa` that
+is an exact type match, no convert-on-write, one baked `isa` that
 folds away (row 53). The error can afford to be
 didactic: "field `M_shaft`: expected `Float64`, got `Int64` — return
 `zero(x.ω)`, not `0`". Under a non-nominal activation (a re-run of Stratum C at
 a given scalar type) the two leaf kinds the declaration ([§11.2][s11-2]) distinguishes
 are checked differently. A **declared-`T` leaf** — the author wrote `T` there —
 accepts exactly two types: the activation scalar (the fast path — the baked
-`isa` unchanged) or `Float64`, which the executor **embeds** as a zero-partial
+`isa`) or `Float64`, which the executor **embeds** as a zero-partial
 constant (`convert` through the leaf; struct-valued [ports](#g-port) use the standard
 cross-eltype constructor, a missing one failing loudly with both types named).
 Nothing else is accepted. A **declared-[pinned](#g-walked) leaf** — the author wrote a
@@ -5066,8 +5056,8 @@ code, because accidental `Float64`s from `Dual` operands are impossible
 zero in the Jacobian — the stop-gradient idiom, occasionally legitimate
 (deliberately frozen couplings, opaque non-Julia wrappers), and equally
 invisible to a strict exact-match rule when applied mid-expression, so the
-leniency costs nothing. What it is no longer is invisible to the schema *by
-necessity*: **the declared-pinned leaf is the schema-visible freeze** — an
+leniency costs nothing. What it need not be is invisible to the schema:
+**the declared-pinned leaf is the schema-visible freeze** — an
 author who means to strip declares the leaf `Float64` and strips inside the
 stage, and the check above holds the freeze to its word at every activation.
 Stripping mid-expression at a leaf still declared `T` remains legal and remains
@@ -5124,8 +5114,7 @@ sign-form guard's is the nominal scalar — guards run only at the nominal
 activation (row 52), so no parametrized-leaf case arises here. Any other probed
 return type is a build error naming both admissible forms. There is nothing
 further to check: the probed form *is* the detection policy ([§8.4][s8-4], row 179),
-so no form/policy mismatch can be declared, and the check that once policed one
-has no subject.
+so no form/policy mismatch can be declared.
 
 **Failure payload:** component path, function, field-level diff (missing /
 unexpected / per-field expected-vs-observed), simulation time. Deliberately
@@ -5212,8 +5201,8 @@ measurement *of the interior path*, rather than of whichever tick phase the
 simulation happens to be sitting in — while `sweep_hx(tick)`/`sweep_hxu(tick)`
 are the boundary variants, gating their discrete entries by `(idx − Φ) % D`
 against the
-passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147,
-amending row 116). One gate serves all three tick-sensitive blocks — due-ness
+passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147).
+One gate serves all three tick-sensitive blocks — due-ness
 is per component, per boundary, never per stage — and `t*`'s empty due set is
 **arity selection, not an index trick** (rows 147, 185), so the `t*` iteration
 runs the zero-arg arities, whose compiled bodies contain no discrete entries
@@ -5608,9 +5597,8 @@ simulation; `run!(sim; t_end = …, stop_on = …)` binds them for **that run
 only** — the `run!` argument wins where given, the constructor's value stands
 where it is not, and nothing about the `Simulation` is mutated, so the next
 `run!` without arguments gets the constructor's policy again. The effective
-values are what the run metadata records (unchanged obligation, now stated of
-the effective pair). `stop_on` face validation against the `Build` runs at
-**both** binding sites, identically: an unknown or non-`Bool` face fails at
+values are what the run metadata records. `stop_on` face validation against the
+`Build` runs at **both** binding sites, identically: an unknown or non-`Bool` face fails at
 `run!` exactly as it fails at construction. This is not the root-declared stop
 policy rejected below: binding moves one notch *later* along the same axis —
 more deployment-flavored, not less — and the `stopped → init! → run!` cycle and
@@ -5717,9 +5705,9 @@ commitments, a library and an idiom follow:
   is a question the artifact must answer, not the reader — and the same
   rendering serves the wiring diagnostics, which already carry endpoint
   paths.
-- **A standard [component](#g-component) library** makes good on the junction promise ([§6.2][s6-2]): when
-  reduce-[ports](#g-port) were rejected, the argument leaned on explicit junctions being
-  *cheap*, and a junction hand-written per arity per type is not. Starting
+- **A standard [component](#g-component) library** makes good on the junction promise ([§6.2][s6-2]): that
+  promise rests on explicit junctions being *cheap*, and a junction
+  hand-written per arity per type is not. Starting
   inventory strictly from demonstrated need — wrench/scalar summing
   junctions, the Bool gates the termination chains use, `UnitDelay`, the
   spelling the second loop-breaking remedy ([§5.5][s5-5]) needs, and
@@ -5759,7 +5747,7 @@ commitments, a library and an idiom follow:
   the leaf is **deliberately [pinned](#g-walked)** at that value's own type — a
   `Constant{Float64}` declares a `Float64` port and means it, and the embedding
   ([§11.2][s11-2]) turns it into the zero-partial constant it already was
-  under any `Dual` activation. The honest pin is now spelled rather than
+  under any `Dual` activation. The honest pin is spelled rather than
   inferred. Two demonstrated needs admit it under this
   bullet's charter: the zero-contributor configurations ([§6.2][s6-2]), where a
   required aggregate input has no physical contributor and the zero total
@@ -5941,9 +5929,8 @@ offending argument's type, the node kinds in hand): it is raised at
 composition time, before any resolution pass or provenance chain exists,
 which is why it is its own kind and not a `ConditionResolution` sub-kind
 ([§14.3][s14-3]). The
-explicit, *ordered* layering spelling — `override` — was deferred here and
-admitted one sub-topic later, when [slot totality](#g-slot-totality) produced its use case
-([§14.6][s14-6]).
+explicit, *ordered* layering spelling — `override` — belongs with the use case
+[slot totality](#g-slot-totality) produces ([§14.6][s14-6]).
 
 ### 14.3 Resolution: flatten, validate, compile once
 
@@ -6025,9 +6012,7 @@ with domain code. There is no selector for a [component](#g-component)'s private
 intermediates, and cannot be: they are values in flight, not [cells](#g-cell) anything
 could address ([§5.2][s5-2]), so a reader that wants one is a component that should
 declare it an output ([§11.3][s11-3]). `get_face` addresses a root-exported
-output [face](#g-face) — the *integration* register ([§9.2][s9-2]), previously
-recommended but unspellable in
-the family.
+output [face](#g-face) — the *integration* register ([§9.2][s9-2]).
 
 **A selector resolves against a source, before any client policy applies.**
 The table selectors — `get_output`, `get_slot`, `get_face` —
@@ -6696,9 +6681,9 @@ fallback, since frozen `g` has no Jacobian columns) and exact discrete-time
 linearization of the full loop (digital design on the exact discretized
 plant instead of continuous linearization + Tustin).
 
-**Delivered, and what is still only recorded: declarative non-participation.**
-**Both halves of this door are now built.** The output half (row 166): a
-continuous producer's declaration is per-leaf, so "this [port](#g-port) is frozen under
+**Declarative non-participation: what the schema states, and what stays
+recorded.** **Both halves of this door have a spelling.** The output half
+(row 166): a continuous producer's declaration is per-leaf, so "this [port](#g-port) is frozen under
 differentiation" has a spelling — declare the leaf `Float64` and strip with
 `ForwardDiff.value` inside the stage ([§11.2][s11-2], [§12.5][s12-5]). An opaque wrapper (an FMU,
 a C aerodynamic table) and a deliberately severed coupling can therefore both
@@ -6707,8 +6692,8 @@ rows, and the conformance check holds them to it at every activation. The input
 half (row 167): a consumer's entries are per-leaf too, so a `Float64` entry
 declares "never hand me partials" — the AD-incompatible component's own
 statement, enforced at the wire ([§6.1][s6-1]) — and, at a root slot, *is* the
-forbid-seeding marker this section once recorded as speculative. The marker
-therefore exists, and it carries semantics rather than mere protection: it types
+forbid-seeding marker itself. That marker
+carries semantics rather than mere protection: it types
 the slot cell at every activation — so an unseeded slot is a *choice* where a
 `Float64`-entry slot is a *declaration* — and tap resolution rejects the latter
 with the offending entry in hand instead of returning a silent zero column. What
@@ -6888,12 +6873,12 @@ concrete interleaving did:
   filter becoming an embedded [component](#g-component) with `u_cmd` driven by another component
   (the `Cessna172Xv0` → `Xv1` throttle situation).
 - **Note**: under slot exclusivity ([§9.3][s9-3]) the contested-`u_cmd`
-  scenario itself becomes an attach-time error — the drag-against-the-stream
-  phase cannot arise. The test's verdicts on cell *shapes* (atomicity,
-  [coalescing](#g-coalescing), pause behavior, the peek rule) stand; its conflict-precedence
-  findings and the active-widget stage-every-pass contract ([§9.7][s9-7]) do not —
-  both were patches for the contested-slot world this test examined, and that
-  world is gone.
+  scenario cannot arise — a second writer on `u_cmd` is an attach-time error.
+  What the test settles is therefore the cell *shapes*: atomicity,
+  [coalescing](#g-coalescing), pause behavior and the peek rule. Its
+  conflict-precedence comparison and the active-widget stage-every-pass
+  contract ([§9.7][s9-7]) describe a contested-slot world the design does not
+  have.
 
 ### 15.4 The interactive C172X demo: the periphery under load
 
@@ -7347,17 +7332,14 @@ Still to be settled:
   value selectors called against `reads` and [snapshots](#g-snapshot) carry `get_`
   ([§14.4][s14-4]); lifecycle and mutating actions are verbs, `!` when they mutate;
   build primitives ([§13.3][s13-3]) are plain verbs. A name in the wrong register is a
-  rename candidate on that ground alone — which is what the `passthrough`
-  rename ([§11.8][s11-8], now `input_passthrough`, row 171) already applied, retiring a caller-side helper that wore
-  declaration dress and collided with `get_face`; the [§9.6][s9-6] binding-method
-  renames (`faces` → `claims`, `selectors` → `reads`, row 146) then applied the
-  convention's **semantic axis** — right register, wrong noun: both were correctly
-  bare-noun declarations but named their *content*, where `claims` and `reads`
-  name the *consequence* the declaration has. (That axis's earlier exemplar was
-  `exports`, retired by the split (row 170); the `*_connections` family that replaced
-  it names content deliberately, for authoring transparency — a recorded choice,
-  not register drift.) Five items are flagged
-  for the sweep and deliberately not settled now: `input_faces`/`output_faces`
+  rename candidate on that ground alone. The convention's **semantic axis** —
+  right register, wrong noun — is what `input_passthrough` ([§11.8][s11-8],
+  row 171) and the binding methods `claims`/`reads` ([§9.6][s9-6], row 146)
+  settle: bare-noun declarations that name the *consequence* a declaration has
+  rather than its *content*. (`exports` is that axis's retired exemplar
+  (row 170); the `*_connections` family names content deliberately, for
+  authoring transparency — a recorded choice, not register drift.) Five items
+  are flagged for the sweep and deliberately not settled now: `input_faces`/`output_faces`
   (noun accessors punning on the `_types` declarations, mitigated by being
   framework-facing); `workspace` (a declaration whose bare noun reads as an
   accessor — every candidate replacement is clunkier, so lean keep); `loop` (the
@@ -7371,7 +7353,7 @@ Still to be settled:
   post-run accessor `trace(sim)` are one name in two senses, the overload
   pattern rows 122/144 retire); and whether register (1) needs an explicit
   exemption for predicate traits (`is_greedy`, `needs_calling_task`) —
-  boundary cases drawn after the list (row 144) was fixed,
+  boundary cases the list (row 144) does not settle,
   not defects. The
   **[§12.7][s12-7] [executor](#g-executor) compile-cost re-measurement** runs on
   the real vehicle skeleton — early, before the executor's shape hardens.
@@ -8354,7 +8336,7 @@ plain data in fields ([§12.7][s12-7]).
 
 <a id="g-leaf-walk"></a>**leaf walk** — the framework's derivation of per-activation types from a
 declared nominal type: real leaves and `Real` type parameters follow the
-activation scalar, everything else pins. It survives on the **state** side alone
+activation scalar, everything else pins. It applies on the **state** side alone
 (the type derived from a continuous leaf's `init_x`; `init_m` and a discrete
 leaf's `init_x` pin wholesale). **Cells are not
 walked**: an output cell comes from evaluating the producer's `output_types` at
