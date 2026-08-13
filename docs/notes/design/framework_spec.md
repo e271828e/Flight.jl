@@ -3619,85 +3619,135 @@ condition (notified on un-pause and stop), not a spin.
 
 ### 10.2 Loop scheduling: wait primitive, yields, thread budget
 
-**Coarse phase = task-yielding `sleep`; no `systemsleep` variant** (row 27).
-What the choice buys is the wait [slot](#g-slot): `sleep` releases the loop's
-thread, making the pacer's wait the natural scheduling window for co-resident
-[device](#g-device) tasks — the design already spends that slot twice
-(the staging slot, [§8.7][s8-7]; the [drain](#g-drain) source, [§9.4][s9-4]). A
-`systemsleep` variant for dedicated-thread hard-RT deployments is a
+[§8.7][s8-7] fixed the shape of the pacer's wait, hybrid sleep-then-spin, but
+left the coarse phase's primitive open. That choice is a scheduling decision
+rather than an arithmetic one: it settles what else can run while a frame
+waits. It is made here, together with the two questions that trail it —
+whether a frame is guaranteed to yield at all, and how many threads a session
+needs.
+
+**Rule.** The coarse phase uses task-yielding `sleep`; there is no
+`systemsleep` variant (row 27).
+
+**Why.** What the choice buys is the wait [slot](#g-slot). `sleep` releases the
+loop's thread, which makes the pacer's wait the natural scheduling window for
+co-resident [device](#g-device) tasks. The design already spends that slot
+twice, as the staging slot ([§8.7][s8-7]) and as the [drain](#g-drain) source
+([§9.4][s9-4]).
+
+A `systemsleep` variant for dedicated-thread hard-RT deployments is a
 [guarded addition](#g-guarded-addition) (a capability the design admits but does not build).
 
-**Yield rule: with devices attached, every frame yields at least once** —
-implicitly via the coarse-phase `sleep` when it runs, via an explicit `yield()`
-otherwise (unpaced runs; pure-spin frames with budget ≤ margin). Zero semantic
-cost: [pacing](#g-pacing), hence yielding, is outside the semantics ([§8.7][s8-7]). The spin phase
-itself never yields — that would trade its µs precision for scheduler noise.
-Consequence: the loop occupies a thread for at most one frame before the scheduler
-can run anyone else, so the thread-monopolist precondition for Julia's
-cooperative-scheduler freeze (a never-yielding task holds its thread forever) is
-structurally absent from framework tasks.
+**Rule.** With devices attached, every frame yields at least once.
 
-**Thread budget: a documented sizing rule and a startup warning, not a hard
-error** (row 27). The freeze FlightCore's `nthreads` error
-prevented cannot reproduce here: the loop yields every frame, nothing couples a
-stall to anyone else (the GUI waits on nothing, ever — [snapshot](#g-snapshot) acquire-load, own
-[staging cell](#g-staging-cell), atomic control), and the GUI runs on the *calling* task, so it cannot
-fail to be scheduled: under any starvation the window keeps rendering and the stop
-button keeps working. Undersized sessions degrade to laggy inputs and stale
-snapshots — visible, recoverable states. `run!` warns when `Threads.nthreads()` is
-tight for the attached population — one check per run, against the frozen
-[roster](#g-roster) ([§9.3][s9-3]) — naming the `julia -t` remedy; sizing guidance:
-one thread for the loop, the main thread for the GUI, headroom for compute-heavy or
-blocking-ccall devices (libuv-backed I/O yields; raw blocking ccalls pin their
-thread for the duration). No pinning, no sticky tasks.
+**Why.** The rule is semantically free: [pacing](#g-pacing), and hence
+yielding, is outside the semantics ([§8.7][s8-7]).
 
-**Liveness heartbeat.** Since starvation is survivable it must be diagnosable: the
-published [framework status](#g-framework-status) includes per-device liveness (last-staged / last-read
-wall time, task state) next to the pacer diagnostics. The mechanism is the
-per-writer [cell](#g-cell) ([§9.8][s9-8]) and nothing besides — an atomic
-timestamp field
-the device task stores on every loop pass from inside the handle primitives
-([§9.6][s9-6]) and the loop acquire-loads at the [frame-top drain](#g-drain), alongside that
-device's diagnostics. A starved, blocked or crashed
-device task shows in the GUI as a stale heartbeat with a name on it, not as
-mysteriously frozen physics. **Stale means a liveness timestamp more than 2 s
-behind wall clock** — deliberately loose, because the heartbeat is advisory
-(a liveness display and a provenance record, never a kill trigger, never a
-detach) and must tolerate a device legitimately parked in a blocking read
-between rare data.
+The yield is implicit in the coarse-phase `sleep` whenever that phase runs. An
+explicit `yield()` covers the frames where it does not run: unpaced runs, and
+pure-spin frames with budget ≤ margin. The spin phase itself never yields.
+Yielding there would trade its µs precision for scheduler noise.
+
+The consequence is a bound on thread occupancy: the loop holds a thread for at
+most one frame before the scheduler can run anyone else. Julia's
+cooperative-scheduler freeze requires a thread monopolist — a never-yielding
+task that holds its thread forever — and that precondition is structurally
+absent from framework tasks.
+
+**Rule.** The thread budget is a documented sizing rule and a startup warning,
+not a hard error (row 27).
+
+The freeze FlightCore's `nthreads` error prevented cannot reproduce here, for
+three reasons. The loop yields every frame. Nothing couples a stall to anyone
+else, the GUI least of all: it waits on nothing, ever — a
+[snapshot](#g-snapshot) acquire-load, its own [staging cell](#g-staging-cell),
+atomic control. And the GUI runs on the *calling* task, so it cannot fail to
+be scheduled. Under any starvation, then, the window keeps rendering and the
+stop button keeps working. Undersized sessions degrade to laggy inputs and
+stale snapshots, which are visible, recoverable states.
+
+`run!` warns when `Threads.nthreads()` is tight for the attached population,
+naming the `julia -t` remedy. That is one check per run, against the frozen
+[roster](#g-roster) ([§9.3][s9-3]). The sizing guidance behind it: one thread
+for the loop, the main thread for the GUI, and headroom for compute-heavy or
+blocking-ccall devices. libuv-backed I/O yields; raw blocking ccalls pin their
+thread for the duration. No pinning, no sticky tasks.
+
+**Liveness heartbeat.** Since starvation is survivable, it must be
+diagnosable. The record is the published
+[framework status](#g-framework-status), the frozen diagnostics value each
+snapshot carries beside the table. It includes per-device liveness — last-staged
+and last-read wall time, task state — next to the pacer diagnostics. The
+mechanism is the per-writer [cell](#g-cell) and nothing besides, specified in
+full by [§9.8][s9-8]. A starved, blocked or crashed device task shows in the
+GUI as a stale heartbeat with a name on it, not as mysteriously frozen physics.
+
+**Stale means a liveness timestamp more than 2 s behind wall clock.** The
+threshold is deliberately loose, because the heartbeat is advisory: a liveness
+display and a provenance record, never a kill trigger, never a detach. It must
+also tolerate a device legitimately parked in a blocking read between rare
+data.
 
 ### 10.3 The next-snapshot wait
 
-Rate-matched output [devices](#g-device) (telemetry, disk streaming) act once per [boundary](#g-boundary)
-without polling: a monotonic **[boundary counter](#g-boundary-counter)** published with the
-[snapshot](#g-snapshot) — counting *published boundaries* (grid, `t*`, [boundary zero](#g-boundary-zero); [§8.4][s8-4]),
-not frames, so consecutive wakes are not necessarily `h` apart — plus one
-`Threads.Condition`. The loop's publication is `lock; counter += 1; notify;
-unlock` — nanoseconds of framework-only code, never blocked by waiters (a waiter
-parked in `wait` has released the lock as part of parking). The device-side
-`wait_next_snapshot(handle)` blocks until `counter > last_seen && running` under
-the canonical [predicate](#g-predicate)-loop idiom, which handles waiters at different paces,
-frames skipped while transmitting, and shutdown ([§10.4][s10-4] wakes all waiters; each
-predicate routes its owner out) with no per-frame reset. An `Event` latch is the
-wrong primitive here (row 28). Conditions carry no facts, only "look again"; the
-facts (counter, running) live in state each waiter tests privately.
+Rate-matched output [devices](#g-device) — telemetry, disk streaming — act once
+per [boundary](#g-boundary). What they need from the framework is a way to learn
+that a boundary has happened without polling for it.
+
+**Rule.** Two artifacts provide it: a monotonic
+**[boundary counter](#g-boundary-counter)** published with the
+[snapshot](#g-snapshot), plus one `Threads.Condition`.
+
+The counter counts *published boundaries* — grid, `t*`,
+[boundary zero](#g-boundary-zero) ([§8.4][s8-4]) — not frames. Consecutive wakes
+are therefore not necessarily `h` apart.
+
+The loop's publication is `lock; counter += 1; notify; unlock`, nanoseconds of
+framework-only code. Waiters never block it: one parked in `wait` has released
+the lock as part of parking.
+
+The device side is `wait_next_snapshot(handle)`, which blocks until
+`counter > last_seen && running` under the canonical
+[predicate](#g-predicate)-loop idiom. That idiom handles waiters at different
+paces, frames skipped while transmitting, and shutdown, all with no per-frame
+reset. Shutdown works because [§10.4][s10-4] wakes all waiters and each
+predicate then routes its owner out.
+
+An `Event` latch is the wrong primitive here (row 28). Conditions carry no
+facts, only "look again"; the facts that matter, the counter and `running`,
+live in state each waiter tests privately.
 
 **Counter home and publication order.** The boundary index is carried *in* the
-snapshot (with `t`), so any holder of one — the log, an error's [replay](#g-replay) pointer
-([§13.4][s13-4]), a post-run inspector — indexes it without consulting the loop; the
-loop additionally mirrors it in the state the wait predicate tests. The order
-of the two publications is normative: the release-store of `latest` ([§9.2][s9-2])
-happens **before** the counter increment under the lock, so `counter >
-last_seen` implies `latest` holds at least that boundary — a waiter can never
-wake onto a stale snapshot. The converse — observing a *newer* snapshot than
-the increment that woke you — is expected and correct: newest-wins.
+snapshot, with `t`. Any holder of one therefore indexes it without consulting
+the loop — the log, an error's [replay](#g-replay) pointer ([§13.4][s13-4]), a
+post-run inspector. The loop additionally mirrors the index in the state the
+wait predicate tests.
+
+**Rule.** The order of the two publications is normative: the release-store of
+`latest` ([§9.2][s9-2]) happens **before** the counter increment under the lock.
+
+```julia
+# the loop, at every published boundary
+@atomic latest = snap    # 1. release-store: the snapshot becomes reachable (§9.2)
+lock(cond) do            # 2. only then the counter, under the lock
+    counter += 1
+    notify(cond)         #    parked waiters wake and re-test their predicate
+end
+```
+
+`counter > last_seen` therefore implies that `latest` holds at least that
+boundary, and a waiter can never wake onto a stale snapshot. The converse —
+observing a *newer* snapshot than the increment that woke you — is expected and
+correct: newest-wins.
 
 **Semantics: newest-wins, no queues.** A slow consumer skips frames and always
 receives the current world. This mirrors the inbound side: [coalescing](#g-coalescing) to the
-newest batch (in) and to the newest snapshot (out) are the same ZOH decision; no
-backpressure exists in either direction, and the loop never waits on anyone.
-Rejected: per-consumer every-boundary queues (row 28). The GUI
-does not use the wait (VSync-paced, it reads `latest` each render).
+newest batch (in) and to the newest snapshot (out) are the same ZOH decision.
+No backpressure exists in either direction, and the loop never waits on anyone.
+Rejected: per-consumer every-boundary queues (row 28).
+
+The GUI does not use the wait. Being VSync-paced, it reads `latest` at each
+render.
 
 ### 10.4 Shutdown protocol
 
