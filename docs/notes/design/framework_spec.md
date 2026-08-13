@@ -2043,19 +2043,6 @@ first held. And a predicate genuinely falsified and re-enabled inside the
 boundary — its effect reverted by another handler's cascade — fires again, at
 this boundary, against a fresh sweep (row 181).
 
-One boundary's iteration, sketched:
-
-```julia
-# entering the boundary, per event:  last ← prior,  count ← 0
-while the previous round fired something   # the first round always runs
-    boundary sweep                         # whole gated schedule, due set fixed for the boundary
-    per event:  eligible ← last not-holding && now holding && count < firing_budget
-    per event:  last ← now
-    fire the eligible events               # ≤ 1 per component; handler → project, count += 1
-end                                        # the exit condition is quiescence
-per event:  prior ← last                   # the settled boundary's honest sample
-```
-
 **The prior is updated at each boundary's quiescence, from the final
 post-iteration samples.** That update is unconditional, with no exception. Every
 prior is therefore an honest observation of a settled boundary, which is what
