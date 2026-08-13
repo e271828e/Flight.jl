@@ -6865,33 +6865,23 @@ surface, with each item's home:
 #### Architectures examined here and rejected
 
 **Architectures examined here and rejected** (the [§9][s9], [§10][s10] [periphery](#g-periphery) decisions were
-forced by this cast):
+forced by this cast): [devices](#g-device) as [components](#g-component) (a `T16000M`
+component wrapping SDL), a root-level `PilotInterface` cockpit component, and
+bundled command [faces](#g-face) (`pilot_inputs` as one struct [port](#g-port)) —
+all three litigated in row 45. What each leaves behind is the design's own
+answer:
 
-- **[Devices](#g-device) as [components](#g-component)** (a `T16000M` component wrapping SDL): [replay](#g-replay) stops
-  being same-build (the [trace](#g-trace) doctrine's strongest property — same type, same
-  [schedule](#g-schedule), staging fed from the recording); the GUI is irreducibly a staging
-  device, so inbound uniformity is unreachable anyway (two mechanisms instead of
-  one); device lifecycle would duplicate [§10.4][s10-4] in component vocabulary; and the
-  [drain](#g-drain) stops being the single audit point for external data. The salvage: the
-  *knowledge* half (a device model's semantics) is expressible as an ordinary
-  in-model component wherever wanted; only the wall-clock pump stays outside. In
-  an interactive, paced world the scheme is internally consistent (frame-top
-  hardware sampling is well-defined) — the rejection rests on the invariants
-  above, not on the [§10.5][s10-5] clock criterion.
-- **A root-level `PilotInterface` cockpit component** assembling `pilot_commands`
-  beside the physical models: its claimed jobs dissolved one by one — struct
-  [assembly](#g-assembly) happens in-model downstream of scalar [faces](#g-face) (any component can gather
-  and [bundle](#g-bundle)), curves became mapping data, widget arbitration is [§9.7][s9-7] +
-  exclusivity, and the stateful residue (accumulators, capture-on-engage) fits
-  the avionics, where FBW stick shaping arguably belongs. What remained was a
-  component with no natural place — a cockpit artifact sitting beside
-  aircraft/terrain/atmosphere in `World` misstates the composition.
-- **Bundled command faces** (`pilot_inputs` as one struct [port](#g-port)): kills per-field
-  claiming, liveness and trace provenance — the port is the periphery's atomic
-  unit ([§4.3][s4-3] write-side corollary). The routing convenience the bundle bought in
-  FlightCore's argument-threading world is provided here by the namespace prefix
-  and `input_passthrough` ([§11.8][s11-8]); the struct reappears legitimately downstream, assembled
-  in-model by a single producer.
+- the *knowledge* half of a device model — its semantics — is expressible as an
+  ordinary in-model [component](#g-component) wherever wanted; only the wall-clock
+  pump stays outside;
+- the cockpit component's claimed jobs are covered where they belong: struct
+  [assembly](#g-assembly) in-model downstream of scalar faces, curves as mapping
+  data, widget arbitration by [§9.7][s9-7] plus exclusivity, and the stateful
+  residue (accumulators, capture-on-engage) in the avionics;
+- the routing convenience a command bundle bought in FlightCore's
+  argument-threading world is provided by the namespace prefix and
+  `input_passthrough` ([§11.8][s11-8]), with the struct reappearing legitimately
+  downstream, assembled in-model by a single producer.
 
 #### Surface walkthrough
 
@@ -6995,16 +6985,11 @@ state and `g` only the discrete one,
 and `x⁺` is decoded only at the owner's next tick (`g` runs last) — the very
 fact that makes ticks→events structurally impossible and terminates the [boundary](#g-boundary) iteration ([§8.6][s8-6]). Cross-[tier](#g-tier)
 influence inside the merged class still routes through published table [cells](#g-cell), so
-the all-in-one component is an [assembly](#g-assembly) of two primitives in a trench coat. Its
-costs, meanwhile, are real: a stage cannot run both every sweep *and* only at
-ticks, so the merged class needs four tier-disambiguated [stage functions](#g-stage-function); tier
-stops being a component property readable off one `output_types` signature ([§11.2][s11-2]) and
-becomes per-[port](#g-port) vocabulary; every class-implied obligation (rate required,
-`K`-on-continuous error, `Δt` [bundle](#g-bundle) availability, `Dual` [activation](#g-activation) membership) becomes a
-facet-conditional web; and the sampling [seam](#g-seam) — ZOH and the `z⁻¹` delay, the most
-bug-prone boundary in a flight-control stack — disappears into a monolith where
-the split keeps it a visible wire. (Simulink and FMI allow the fused block;
-sample-time propagation confusion is the documented price.)
+the all-in-one component is an [assembly](#g-assembly) of two primitives in a trench coat — with
+real costs on top of the zero gain: stage doubling, per-[port](#g-port) tier vocabulary,
+facet-conditional obligations, and the sampling [seam](#g-seam) — ZOH and the `z⁻¹` delay, the
+most bug-prone boundary in a flight-control stack — disappearing into a monolith
+where the split keeps it a visible wire (row 56).
 
 #### The counterexample
 
@@ -7185,8 +7170,7 @@ formulation — the framework's rules pushed the model into the only form its ow
 linearization semantics could coherently handle. Residual escape hatch, recorded
 unbuilt: if interval-relative dynamics ever neither factor algebraically nor
 tolerate the latch-back wire, the [guarded addition](#g-guarded-addition) is a **tick-triggered handler**
-on [continuous components](#g-continuous-component) (periodic events). Nothing surveyed needs it, and it
-would be the camel's nose for the merged class.
+on [continuous components](#g-continuous-component) (periodic events). Nothing surveyed needs it (row 56).
 
 ---
 
@@ -7224,10 +7208,7 @@ Still to be settled:
   (tracking), not options. The gear then wires `strut.wow → frc.reset`: the
   **touchdown** edge ([§2.1][s2-1]'s not-[holding](#g-edge-semantics) → holding semantics), fresh
   regulator state per contact episode. The liftoff edge (`!wow`) was
-  rejected — its equivalence to today's level reset rests on the strut's
-  airborne zero-default (`v_ec_xy = [0,0]` in the no-contact branch) plus the
-  integrator leak, a cross-component dependency the touchdown edge dissolves
-  rather than documents. [Boundary-detected](#g-boundary-detected) policy suffices (the regulator's
+  rejected (row 141). [Boundary-detected](#g-boundary-detected) policy suffices (the regulator's
   input ramps from zero at touchdown; localization buys nothing), and a sim
   initialized on ground fires the reset at [boundary zero](#g-boundary-zero) harmlessly (declared
   inits are zero, and [boundary](#g-boundary)-zero [priors](#g-prior) are not-holding, [§14.5][s14-5]). The
