@@ -5470,9 +5470,10 @@ The [§11.8][s11-8] sketch's primitives, made normative:
       error for a client that never claimed substitutability — "what is in
       *this* build" is the inspection register's defining question — and
       drift stays loud: an unknown path is an attach-time
-      `ReadBindingUnresolved` with [did-you-mean](#g-did-you-mean).
-  Which register a client resolves under is internal framework fact, never
-  user-facing API — the same status as the two `apply!` registers ([§14.4][s14-4]).
+      `ReadBindingUnresolved` with [did-you-mean](#g-did-you-mean) (the offending name plus the
+  list-in-hand it should have matched). Which register a client resolves under
+  is internal framework fact, never user-facing API — the same status as the
+  two `apply!` registers ([§14.4][s14-4]).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — the stringified keys of
   a leaf's `input_types` (the key set is `T`-independent); the entries of
   `input_connections(c)` / `output_connections(c)` for an [assembly](#g-assembly). Declaration order is preserved: deterministic
@@ -5528,10 +5529,10 @@ sequence — and it is kept defensively because the cost of being wrong about th
 is a terminally errored session in place of a clean stop.
 
 **Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
-`errored` — with the exception retrievable. A synchronous [unattended run](#g-unattended-run) rethrows
-after the shutdown tail completes, so CI fails honestly; an interactive
-session logs the rendered error and surfaces the status through the control
-plane and GUI.
+`errored` — with the exception retrievable. A synchronous [unattended run](#g-unattended-run) (a run
+with empty staging and no snapshot readers) rethrows after the shutdown tail
+completes, so CI fails honestly; an interactive session logs the rendered error
+and surfaces the status through the control plane and GUI.
 
 **The nonfinite check.** Divergence is not termination: dynamics that blow up
 (ground penetration, an unstable gain) produce NaNs that defeat guards — NaN
@@ -5596,10 +5597,10 @@ declared machinery:
   terminal snapshot is the terminal state, no roll-back, nothing [§10.4][s10-4] doesn't
   already do (and its status carries the run's final cumulative diagnostic
   counters, [§9.8][s9-8]). `run!` therefore checks the boundary-zero snapshot before the
-  first step: an authored [condition](#g-condition) already terminal ends the run at `t₀`
-  with that snapshot final, integrating nothing. Default: no stop faces, run
-  to `t_end` — `stop_on` is `t_end`'s model-declared sibling at the same
-  declaration site.
+  first step: an authored [condition](#g-condition) (the path-addressed sparse overlay that
+  sets a build's state) already terminal ends the run at `t₀` with that
+  snapshot final, integrating nothing. Default: no stop faces, run to `t_end` —
+  `stop_on` is `t_end`'s model-declared sibling at the same declaration site.
 
 **Both are `run!`-time overridable, with the constructor value as the
 default.** `Simulation(world; t_end, stop_on)` sets the defaults for the
@@ -5782,15 +5783,16 @@ commitments, a library and an idiom follow:
   source block's first shipped instance — with bespoke stubs remaining
   ordinary components wherever the double must compute something.
   Zero new machinery — wiring and `except` already exist — and it is the
-  substitutability contract doing its job: an [abstract entry](#g-abstract-entry) declares that
-  a substitute must be chosen, and the rig choosing its test double
-  explicitly, as ordinary inspectable code, is precisely the isolation the
-  rig exists to provide. [`design_world`](#g-design_world)'s little sibling ([§14.9][s14-9]): where
-  `design_world(ac)` mounts an aircraft in a minimal world for trim and
-  linearization, the rig mounts one component behind a root contract for
-  unit tests and open-loop probing. Deliberately ordinary machinery end to
-  end — no framework support, which makes it, like the library blocks, a
-  standing ergonomics test of the declaration rules.
+  substitutability contract doing its job: an [abstract entry](#g-abstract-entry) (an `input_types`
+  entry admitting any concrete producer face) declares that a substitute must
+  be chosen, and the rig choosing its test double explicitly, as ordinary
+  inspectable code, is precisely the isolation the rig exists to provide.
+  [`design_world`](#g-design_world)'s little sibling ([§14.9][s14-9]): where `design_world(ac)` mounts an
+  aircraft in a minimal world for trim and linearization, the rig mounts one
+  component behind a root contract for unit tests and open-loop probing.
+  Deliberately ordinary machinery end to end — no framework support, which
+  makes it, like the library blocks, a standing ergonomics test of the
+  declaration rules.
 
 ---
 
@@ -6163,7 +6165,8 @@ parity is exact, not approximate. Piece by piece:
 
 [Slots](#g-slot) are the one initialized datum without declared defaults — the
 bare-types decision ([§9.3][s9-3]), upheld here (row 68). So a
-slot's only source before [boundary zero](#g-boundary-zero) is the condition, and three
+slot's only source before [boundary zero](#g-boundary-zero) (the initialization boundary: the
+ordinary macro-sequence with an empty integrate) is the condition, and three
 consequences follow.
 
 **Totality is a precondition of starting, checked by the service.** A
@@ -6237,18 +6240,16 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   `get_deriv` address a declared state field and its derivative (validated
   against `init_x`), `get_output` a declared output [port](#g-port) (validated against
   `output_types`), `get_slot` and `get_face` a root input and output face
-  (validated against the root face lists). The path [selectors](#g-selector)
-  reach only through the locality scopes ([§6.1][s6-1]); an equilibrium equation
-  crossing a
-  generic seam reads a face. A [component](#g-component)'s private intermediates are
-  not addressable at all ([§5.2][s5-2], [§14.4][s14-4]) —
-  a trim evaluation needing one is a signal the component should export it —
-  and a derivative wanted across a [contract](#g-contract) [boundary](#g-boundary) takes the same remedy:
-  publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step 2's
-  one-line binding, made contract), leaving `get_deriv` scoped to owned
-  concrete subtrees.
-  The compiled reader (the gather twin, [§14.4][s14-4]) fills a stack-only NamedTuple
-  per evaluation.
+  (validated against the root face lists). The path [selectors](#g-selector) (the closed
+  family of deferred reads resolving against a source) reach only through the
+  locality scopes ([§6.1][s6-1]); an equilibrium equation crossing a generic seam reads
+  a face. A [component](#g-component)'s private intermediates are not addressable at all ([§5.2][s5-2],
+  [§14.4][s14-4]) — a trim evaluation needing one is a signal the component should
+  export it — and a derivative wanted across a [contract](#g-contract) [boundary](#g-boundary) takes the same
+  remedy: publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step
+  2's one-line binding, made contract), leaving `get_deriv` scoped to owned
+  concrete subtrees. The compiled reader (the gather twin, [§14.4][s14-4]) fills a
+  stack-only NamedTuple per evaluation.
 - **The user supplies a residual *system*, not a scalar cost** — authored as a
   NamedTuple of named equations, packed to the solver's vector by field order —
   `tolerances`' field order here, the declared side again, the residual return
