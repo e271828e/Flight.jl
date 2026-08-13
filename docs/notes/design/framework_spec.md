@@ -139,9 +139,6 @@ model authors.
 
 Ground rules adopted for this design:
 
-- **Independence.** This is one of (at least) two design solutions developed from
-  scratch and in isolation from each other, to be compared and possibly merged later.
-  Nothing here derives from, or has been checked against, the `core-redesign` branch.
 - **Capability grounding, not interface grounding.** Requirements are derived from what
   `FlightPhysics` and `FlightApps` demonstrably *do* (code, unit tests, demos). Every
   `FlightCore` call site in the consumers is read as evidence of a capability the
@@ -1572,8 +1569,9 @@ one step — needs three or four; chattering needs tens; 8 bounds the pathology
 without ever binding on a healthy model. When a step spends its event
 budget, localization stops for the remainder of that frame: the remainder step
 completes, and any further crossings fire in the next boundary's ordinary
-iteration — boundary granularity for that frame — under a warning naming the
-chattering event and the localization count. The degradation is a function of
+iteration — boundary granularity for that frame — under a `ChatteringBudget`
+warning ([Appendix C](#appendix-c-the-diagnostic-kind-set)) naming the chattering
+event and the localization count. The degradation is a function of
 the trajectory alone, never of wall clock, so row 80's pace-independence stands
 untouched and the run replays identically. A `StepError` would misclassify an
 expected modeling outcome as broken machinery ([§14.8](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)'s doctrine). The same
@@ -2786,7 +2784,7 @@ init!(dev)                                   # its own bracket, pre-spawn (§10.
 task = Threads.@spawn try
     loop(dev, handle)
 catch e
-    report!(DeviceCrash, dev, e)             # §10.4(6): sim continues, device absent
+    report!(handle, DeviceCrash(e))          # §10.4(6): sim continues, device absent
 finally
     shutdown!(dev)                           # any exit path: OS resources released
     mark_dead!(...)                          # heartbeat only — claims stay, §9.3
@@ -3497,7 +3495,7 @@ for entry in roster                       # attachment order, calling task
         init!(entry.device)
     catch e
         shutdown!(entry.device)           # release, unconditionally (§9.6)
-        report!(DeviceCrash, entry.device, e)
+        report!(entry, DeviceCrash(e))    # pre-spawn: the entry is the address, no handle yet
         mark_dead!(entry)                 # from boundary zero; no task is spawned
         entry.should_abort && stop!(control)
     end
@@ -3511,7 +3509,11 @@ resources are released rather than leaked — which is exactly why `shutdown!`
 owes tolerance of a partially initialized device ([§9.6](#96-devices-one-authoring-contract-no-taxonomy)'s taught obligation).
 The report is the ordinary `DeviceCrash` ([Appendix C](#appendix-c-the-diagnostic-kind-set)), not a kind of its own:
 its payload — device id, the cause exception, whether `should_abort` was set —
-already carries everything an init-time failure has to say, and the name is
+already carries everything an init-time failure has to say. It is written
+through the ordinary `report!(address, diagnostic)` entry point, addressed by
+the roster entry rather than by a handle, there being no device task to hold one
+before the spawn; the address supplies the device identity either way, which is
+why no call passes a device id ([§9.8](#98-diagnostics-and-liveness-the-per-writer-cell)). The name is
 honest, a device that cannot acquire its resources having crashed before it
 lived. No task is spawned for a failed device, so it is **dead from boundary
 zero**, and that needs no machinery: its diagnostic cell never receives a
@@ -4706,6 +4708,10 @@ instance, so they may *compute* entries from child contracts — derivation from
 declarations, [§11.2](#112-the-declaration-inventory)-blessed. The framework helper, sketched:
 
 ```julia
+# the two shapes of `declaration_error` used below:
+declaration_error(path::AbstractString, why::Symbol)      # e.g. :both_given
+declaration_error(path::AbstractString, unknown, legal)   # did-you-mean against the legal set
+
 function input_passthrough(asm, child_path::AbstractString;
                      prefix::AbstractString = child_path,   # "" → no prefixing
                      sep::AbstractString = ".",
@@ -6817,10 +6823,13 @@ that residual math sees only the gathered NamedTuple pays off here:
 
 ```julia
 at(prefix::String, p::TrimProblem) = TrimProblem(
-    p.guess, p.lower, p.upper,                 #path-free: pass through
-    d -> at(prefix, p.condition(d)),           #post-compose: wrap each returned tree
-    at(prefix, p.reads),                       #reads are inert selector data: same Scoped node
-    p.residuals, p.tolerances)                 #path-free: pass through
+    guess      = p.guess,                      #path-free: pass through
+    lower      = p.lower,
+    upper      = p.upper,
+    condition  = d -> at(prefix, p.condition(d)),  #post-compose: wrap each returned tree
+    reads      = at(prefix, p.reads),              #inert selector data: same Scoped node
+    residuals  = p.residuals,                      #path-free: pass through
+    tolerances = p.tolerances)
 ```
 
 Resolution then needs nothing new: the flattening accumulator of [§14.3](#143-resolution-flatten-validate-compile-once)
@@ -7202,9 +7211,10 @@ surface, with each item's home:
   conditioning upstream as mapping data, semantics in-model ([§9.4](#94-inbound-per-device-staging-representation-and-the-drain)).
 - **Mode engage** (`mode_req` + setpoint capture from current measurements — the
   GUI handler does `u.EAS_ref = EAS` read from `vehicle.y`): the one place the
-  GUI composes writes from model state. Open fork: GUI peek-batch ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract) supports
-  it as-is) vs. capture-on-engage latched inside the control laws (uniform across
-  all writers, but moves behavior into the FCS).
+  GUI composes writes from model state. Resolved under *Frame anatomies* below:
+  semantic capture is aircraft design — the FCS already latches each controller's
+  reference on mode transitions — so the GUI peek-batch ([§9.7](#97-the-gui-write-path-port-resolution-peek-staging-contract)) survives as
+  display/slot-sync sugar only.
 - **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
   masses, terrain surface enum, sea-level T/p, wind NED): ordinary component
   inputs exported to root faces; the GUI writes them under its greedy claim via
