@@ -205,16 +205,16 @@ prior bookkeeping stated in [§8.6][s8-6]; the opposite crossing direction is
 declared as a second event with the negated guard (stall entry/exit as a
 pair).
 
-Which form an author declares is not a free choice riding a keyword: **the
+Which form an author declares is not a free choice: **the
 guard's return type is the declared policy** — `Bool` boundary-detected, the
-sign form localized. [§8.4][s8-4] states the rule, the exactness result that
+sign form localized (row 179). [§8.4][s8-4] states the rule, the exactness result that
 motivates the `Bool` form, and the gate idiom for localizing mixed
 predicates.
 
 ### 2.2 Exclusions (deliberate)
 
-- **No DAEs / algebraic constraints.** [Projection](#g-projection) covers the actual need (state
-  manifolds) at near-zero cost and zero solver complexity.
+- **No DAEs / algebraic constraints.** [Projection](#g-projection) is what covers the actual
+  need, state manifolds (row 1).
 - **No SDEs / stochastic integrators.** Noise processes (Dryden/von Kármán turbulence,
   sensor noise) are modeled as ordinary RNG-driven discrete processes (shaping filters),
   which is both faithful to how they are specified and cheap. Consequence elevated to a
@@ -224,9 +224,7 @@ predicates.
   decomposes into projection (quaternion renorm) or [boundary-detected](#g-boundary-detected) events (engine phase
   transitions, stall hysteresis latch) — for one class the mapping tightens
   semantics: level-triggered cross-component resets (the gear friction
-  regulator under `!wow`) become edge-triggered events ([§15.2][s15-2], [§16][s16]).
-  Dropping the hook eliminates the footgun of
-  model semantics that depend on the integrator's step size.
+  regulator under `!wow`) become edge-triggered events ([§15.2][s15-2], [§16][s16], row 1).
 
 ---
 
@@ -284,9 +282,8 @@ discrete tier's own state semantics under another name.
 
 Pure composition: submodels + child connections + [boundary](#g-boundary) [faces](#g-face). **No dynamics of its own.**
 Hybridness emerges at the [assembly](#g-assembly) level (an aircraft = continuous vehicle parts +
-discrete avionics parts). The two-leaf split held under its strongest
-counterexample — a strapdown IMU's periodically-reset integrators land on two
-leaves with less code than the fused original ([§15.5][s15-5], row 56). Assemblies are flattened away for scheduling but retained as
+discrete avionics parts). The two-leaf split was upheld against the
+integrate-and-dump challenge ([§15.5][s15-5], row 56). Assemblies are flattened away for scheduling but retained as
 the navigation/introspection hierarchy (GUI, logging, paths) and as declaration-level
 [rate scopes](#g-rate-scope) ([§8.5][s8-5]).
 
@@ -313,8 +310,7 @@ Consequences:
 - safe concurrent reads (GUI/logging threads) by construction;
 - zero allocation for isbits [payloads](#g-payload) (named tuples of isbits are isbits);
 - each cell has a definite freshness tied to its producer's position in the [schedule](#g-schedule)
-  (unlike a monolithic `y` struct, which can be half-fresh mid-[sweep](#g-sweep) with no way to
-  tell).
+  (row 4).
 
 The signal requirement, stated precisely, is **immutability plus frozen references**:
 signals may reference bulk data (see [§4.4][s4-4]) provided that data is read-only for the
@@ -332,11 +328,8 @@ stage membership change, [§12.1][s12-1]).
 **Visibility.** Which ports exist at all is a declaration-layer decision: the output
 [contract](#g-contract) *is* the public interface, and stage-function results outside it never enter the
 table at all — they ride the stage's `w` return down to the component's own later
-functions, private by construction, see [§5.2][s5-2], [§11.3][s11-3]. (A presentational
-*unlisted* flag — skipped in logs and GUI but still connectable — was rejected: it
-pretends privacy without enforcing it, and its motivating case, RNG state feeding the
-component's own update, dissolves entirely once the update function reads `x`
-directly. Row 16.)
+functions, private by construction, see [§5.2][s5-2], [§11.3][s11-3]. A presentational
+*unlisted* flag — skipped in logs and GUI but still connectable — is closed (row 16).
 
 ### 4.3 Table mechanics and port granularity
 
@@ -353,11 +346,8 @@ directly. Row 16.)
 - **Stage returns are named tuples of port values, period.** A custom struct is a
   first-class port *value* — one field of the returned tuple, one declared port, one
   cell (`pose = KinPose{T}`). Nested fields get no cells of their own; GUI and logs
-  drill into them lazily ([§4.2][s4-2]'s view clause). Bare-struct returns are rejected:
-  field-splatting would be ambiguous (one anonymous port vs. a splat), type-lossy
-  under the merge (the struct type, and the methods that justify its existence,
-  cannot be reassembled from a flat namespace), and reflection-hungry where the
-  named-tuple form needs none.
+  drill into them lazily ([§4.2][s4-2]'s view clause). Bare-struct returns are rejected
+  (row 36).
 - **Wiring is port-granular.** No sub-field connections: a consumer that wants less
   than a [bundle](#g-bundle) asks the producer for a loose port, or takes the bundle and
   destructures. A field-projection connector is a [guarded addition](#g-guarded-addition) with an obvious
@@ -427,8 +417,7 @@ a load, which is acceptable because condition authoring is design-time code.
 Pre-sampling — a component consuming the field and a pose and emitting plain data
 (`Airflow` emitting `AirData` for the whole vehicle) — is an **idiom built on top**,
 used where natural; not a separate mechanism. Resource injection (declare-and-resolve
-service registries) was considered and rejected for the first cut: it is a second
-composition mechanism, invisible in the graph — today's argument-threading, automated.
+service registries) is closed for the first cut (row 8).
 
 This replaces threading `atmosphere`/`terrain` as arguments through every update
 signature, and dovetails with the terrain ray-query direction of the landing-gear
