@@ -470,13 +470,8 @@ which the author **destructures by name** only what the body reads —
 `f(c::LowPassFilter, (; x, u)) = ...`, `h_xu(c::PID, (; x, u, Δt)) = ...`. The
 [executor](#g-executor)'s call is one fixed shape, `fn(comp, args)`; unread fields are ignored
 by language semantics; argument order cannot be confused because there is no
-order. Naming spellings rejected, for the record: positional
-signatures (dead [slots](#g-slot) written but unread, un-droppable holes mid-list, and the
-`t`/`Δt` scalar pair swappable without error); keyword arguments via
-`Base.kwarg_decl` reflection (a load-bearing framework [seam](#g-seam) on a binding Julia
-marks internal — the [§8.1][s8-1] `task_local_storage` lesson); keyword arguments with
-a `_...` slurp (permanent noise, and "the signature is the read-set" weakens to
-"at least") — row 74. `project` alone stays positional — one store in, the same store
+order. Positional, `kwarg_decl`-reflected and slurping-keyword spellings are all
+closed (row 74). `project` alone stays positional — one store in, the same store
 out, nothing to select.
 
 **The [bundle law](#g-bundle).** A name appears in a component's bundle **iff the
@@ -489,10 +484,8 @@ returned one (the one-hop law below), `t` always, `Δt` on the
 discrete [tier](#g-tier) only. **`y_x` carries the stage-1 *return*, auto-published
 names excluded**: an [auto-published port](#g-auto-published-port) is the framework copying a state or
 mode field into a cell at stage-1 position ([§5.3][s5-3]), and stage 2 already
-holds `x`/`m` (continuous) or `x` (discrete) directly, so carrying it in the
-hand-down would be transport
-for its own sake — [§7.4][s7-4] step 4's rejected identity transport, in a bundle rather
-than a table. The rule is what [§12.3][s12-3] already sources: `y_x` comes from the
+holds `x`/`m` (continuous) or `x` (discrete) directly. The rule is what
+[§12.3][s12-3] already sources: `y_x` comes from the
 stage-1 [probe](#g-probe)'s return, so a component whose only stage-1 ports are
 auto-published has no `y_x` in its stage-2 bundle at all (row 169). Undeclared stores are *absent*, never `nothing`-filled:
 destructuring a field that is not a thing for you fails at the probe inside the
@@ -559,10 +552,7 @@ the corresponding store exists on the component **and** the handler updates
 it. A pure FSM (modes and events, no `x`) returns `(; m = (; phase =
 running))`; an `x`-only reset map returns `(; x = (; x..., ω = 0.0))`; a
 handler touching both returns both. Padding forms — `((;), m⁺)`, `(x⁺, (;))`
-— do not exist, for the reason row 74 gives on the argument side: a filler
-value defers the error from the return to first use, with a worse message,
-and a positional pair additionally lets the two stores be swapped without a
-name-shaped diagnostic. Semantics per key: `x` present ⇒ the value is
+— do not exist (row 90, on row 74's argument-side ground). Semantics per key: `x` present ⇒ the value is
 complete against the state field set; `m` present ⇒ the names-subset
 [predicate](#g-predicate); an unknown key ⇒ did-you-mean against `{x, m}` — the same
 `FieldError`-shaped machinery [§13.2][s13-2] builds for bundles, now running in both
@@ -579,10 +569,8 @@ through the wiring's name binding), the clock (`t`, and `Δt` — see [§8.5][s8
 scratch (`ws`, [§7.3][s7-3]). The [signal table](#g-signal-table) holds only *produced* signals, never
 transported ones: each datum has exactly one home — buffer for continuous `x`,
 stores for discrete `x` and for `m`, table for signals — and no store mirrors another. Every bundle field
-earns its place as a view genuinely readable, and no further "simplification"
-exists that does not introduce a copy: eliminating `u` would mean republishing
-foreign cells under local names; eliminating `x` would mean identity transport
-through the table, rejected for exactly that reason ([§7.4][s7-4], step 4).
+earns its place as a view genuinely readable, and no minimization of the set
+survives without introducing a copy (row 35).
 
 ### 5.3 Structural feedthrough: stage roles, schedule and step boundaries
 
@@ -597,19 +585,13 @@ state-plus-input, the `y = h(x)` / `y = h(x, u)` distinction spelled in the
 name, identically on both [tiers](#g-tier). So "no `u` in the
 name" *is* the no-[feedthrough](#g-feedthrough) property, visible at every definition site.
 The letters are deliberately non-exhaustive: modes fold under the state
-letter (`m` is state — the objection that `h_x` omits it is answered by the
-suffix's job being the feedthrough split, not an inventory; an earlier
-`h_xm`/`h_xmu` spelling was traded away for the tier symmetry and the
-textbook mirror), and ambient facts (`t`, `Δt`) and scratch (`ws`) ride
+letter (`m` is state, and the suffix names the [feedthrough](#g-feedthrough)
+split rather than an argument inventory — row 75), and ambient facts (`t`,
+`Δt`) and scratch (`ws`) ride
 unnamed. The stage names do not distinguish the tiers at all — the state
 letter is shared (row 173), so what declares a stateful leaf's tier is its
 update law, `f` versus `g`, with the remaining tier-implying declarations
-agreeing ([§11.2][s11-2]). Rejected namings: verb names (`decode`/`compute` — encode
-nothing), `Moore`/`Mealy` (exact and opaque), `g`-for-output (forfeits both
-the jump-map alignment and the step-size disambiguation). The tier-neutral
-stage pair, once rejected for want of an honest neutral state letter, is what
-row 173 arrives at: fusing the discrete state into `x` makes the letter
-honest on both tiers, and the pair neutral with it.
+agreeing ([§11.2][s11-2]).
 
 - **`h_x` is the no-feedthrough stage** — defined entirely by what it
   cannot see: its [bundle](#g-bundle) carries no `u`, so "no feedthrough" is unfalsifiable,
@@ -628,8 +610,7 @@ honest on both tiers, and the pair neutral with it.
   from the state stores at stage-1 position ([§11.3][s11-3]) — the match is against
   the declared stores (`init_x`, plus `init_m` on the continuous tier) and the
   publication position is `h_x` on either tier — publication driven by the
-  public [contract](#g-contract), rather than the blanket identity publication of state that
-  row 16 rejected.
+  public [contract](#g-contract) (row 16).
 - **`h_xu` receives all wired inputs plus `y_x`** — its own
   stage-1 ports, and with them stage 1's `w`, so shared intermediates are
   computed once, not re-derived, whether or not they are interface —
@@ -639,9 +620,7 @@ honest on both tiers, and the pair neutral with it.
   component's own stage-2 ports — is complete and fresh. The fused idiom stands:
   compute each law once, in a stage; publish it; let `f`/`g` copy from `y`. The
   interfaces *reward* single-source-of-truth (nothing ever needs computing twice)
-  rather than claiming to make duplication unwritable — a claim no prototype
-  could honestly make anyway, since `f` always had `u` and the published state
-  (row 15).
+  rather than making duplication unwritable (rows 15, 35).
 - **[Guards](#g-guard) and handlers read the same fresh world.** At a step [boundary](#g-boundary), the order
   is *integrate → project → [boundary sweep](#g-sweep) → guards*, so by guard/handler time `y`
   is a fresh decode of exactly the state being transformed, and the state views are
@@ -689,9 +668,8 @@ publishes what you know from state alone; stage 2 adds what needs inputs; your
 dynamics read your own published results instead of recomputing them."* The decision
 was grounded in a component-by-component survey of FlightPhysics/FlightApps ([§15.2][s15-2]):
 derivative/output overlap is the *norm* in this domain (Newton–Euler, kinematics,
-piston engine, gear friction, every discrete compensator), so the orthodox split
-would force either systematic duplicated math (with its silent-drift bug class),
-systematic component atomization, or a cache mechanism — all rejected. FlightCore's
+piston engine, gear friction, every discrete compensator), which is what makes the
+orthodox split expensive here (row 15). FlightCore's
 fused `f_ode!` already embodied the same economics; this design keeps them while
 adding checked scheduling.
 
@@ -741,8 +719,8 @@ tracer labels **artificial**. Two remedies, in this order:
   `StrutGeometry`-shaped value — not N loose ports. The bundle type is then contract,
   a real cost but a bounded and honest one. No visibility register is added for the
   orphaned intermediates: rows 34 and 55 (`unlisted`, `Private(T)`) stay closed, and
-  the `w` channel ([§5.2][s5-2]) is no exit either — it hands values between one
-  component's own functions, and there is nothing for a wire to carry.
+  the `w` channel ([§5.2][s5-2]) is no exit — it hands values between one
+  component's own functions, so there is nothing for a wire to carry (row 165).
 
 The build diagnostic offers both exits explicitly ("cycle through `systems/aero` is
 artificial at port level — split the component, or narrow the neighbor's contract",
@@ -764,18 +742,12 @@ it explicitly: insert dynamics (the α-filter idiom — already standard practic
 domain and in the current C172 model), insert an explicit unit delay ([§13.7][s13-7]'s
 `UnitDelay` — note that this remedy changes the model's [tier](#g-tier) structure: the broken
 signal becomes discrete, sampled at [`Δt_base`](#g-dt_base), which is a modeling decision, not a
-transparent wire), or restructure.
+transparent wire), or restructure. Implicit delays and per-step numerical loop
+solving are both closed (row 5).
 
-Rejected alternatives:
-
-- *Implicit unit delays* silently change the model's mathematics at a location the
-  framework picked — the archetypal hidden footgun.
-- *Numerical loop solving* (Simulink-style fixed-point/Newton per step) has
-  data-dependent per-step cost and runtime convergence failures — hostile to real-time
-  budgets — and conflicts with immutable signals.
-- Implicit *algebraic balances* inside a [component](#g-component) (e.g. a turbomachinery operating
-  point) remain the component author's business: local, owned, bounded. Rejecting
-  framework-level loops does not forbid such models.
+Implicit *algebraic balances* inside a [component](#g-component) (e.g. a turbomachinery operating
+point) remain the component author's business: local, owned, bounded. Rejecting
+framework-level loops does not forbid such models.
 
 ### 5.6 Diagnostics: feedthrough tracing
 
@@ -785,13 +757,12 @@ verification. Triggered when the scheduler finds a cycle, to classify it (genuin
 "insert a state"; artificial → [§5.4][s5-4]'s remedy ladder).
 
 **Detection and naming.** A cycle surfaces as a topological-sort stall in
-[Stratum](#g-stratum) B. The stall's residue is not the diagnostic: it also holds the innocent
-downstream cone, so it over-reports, while a single DFS back edge under-reports —
-one edge of a possibly large tangle. The stalled subgraph is instead decomposed
+[Stratum](#g-stratum) B. The stalled subgraph is decomposed
 into **strongly connected [components](#g-component)**, and each nontrivial SCC names one cyclic
 cluster exactly: one diagnostic, its members and the wires among them, presented
 as one readable loop in [§11.6][s11-6]'s canonical slash form
-(`aero/F → dyn/a → aero/α̇ → aero/F`).
+(`aero/F → dyn/a → aero/α̇ → aero/F`). Neither the raw stall residue nor a single
+back edge names the cluster correctly (row 12).
 
 **Classification is [schedule](#g-schedule)-free.** It runs inside Stratum B's failure path,
 where no schedule exists — and needs none, because each SCC member is evaluated
@@ -831,8 +802,8 @@ Two modes, degrading gracefully:
 - **Local (primal-carrying) set-tracer at sampled states** — the fallback whenever the
   global tracer hits an undecidable branch (piecewise friction, stall blending, any
   gridded lookup at an input-tainted coordinate). Reports the dependence pattern of the
-  taken paths, sampled across randomized states. Strictly dominates Dual-based tracing
-  (no derivative-zero blind spot; only untaken-branch misses).
+  taken paths, sampled across randomized states; its only misses are untaken branches
+  (row 12).
 
 [Boundaries](#g-boundary): only *inputs* are seeded, so branching on state/modes/parameters/time never
 interferes (stage-2 functions also receive state views, but neither those nor `y_x`
