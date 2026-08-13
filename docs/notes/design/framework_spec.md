@@ -4011,147 +4011,190 @@ readers, rely on `t_end` and `stop_on`, as they already must.
 ### 10.5 Scripts and the mid-run mutation doctrine
 
 What the consumers demonstrably mutate mid-run, surveyed: FlightCore's
-`user_callback!` has exactly two archetypes — the timetable script
-(c172_demos.jl:290: `elevator_offset` as a function of `t`) and the synthetic
-pilot (c172_demos.jl:423, 525: a phase FSM reading `y` and writing mode requests,
-references, flaps, wind). Both write only `u` fields; no demo, test or GUI path
-pokes `x`/`s` mid-run, and `init!`/trim appear only between construction and
-`run!` (c172_demos.jl:303).
+`user_callback!` has exactly two archetypes. The first is the timetable script
+(c172_demos.jl:290: `elevator_offset` as a function of `t`). The second is the
+synthetic pilot (c172_demos.jl:423, 525: a phase FSM reading `y` and writing
+mode requests, references, flaps, wind). Both write only `u` fields. No demo,
+test or GUI path pokes `x`/`s` mid-run, and `init!`/trim appear only between
+construction and `run!` (c172_demos.jl:303).
 
-**Sim-time scripts are model behavior: [scenario components](#g-scenario-component).** Both archetypes are clocked by *sim time*
-(`t`, the trajectory), and mapping them to [devices](#g-device) is rejected
-(row 31). The clock is the criterion: **sim-time scripts →
-source/supervisor [components](#g-component)** (periodic discrete, `K = 1` for today's
-`dt = 0.02` callbacks), executed synchronously in the loop, deterministic paced or
-unpaced, replayed by recomputation with no [trace](#g-trace); **wall-clock interactions →
-devices**, traced and replayed from the trace. The component mapping is strictly
-richer than the callback it replaces: the `Ref(:init)` phase closure becomes
-honest `x` (visible in [snapshots](#g-snapshot), logs and plots); inputs arrive same-[boundary](#g-boundary)
-fresh by topological order (the callback ran post-step, one boundary staler);
-the pure timetable script is a one-liner reading its [bundle](#g-bundle)'s clock
-(`h_xu(s, (; t)) = (; offset = profile(t))` — exact at its own [ticks](#g-tick), no
-latching); and
-in a scenario configuration the script drives the avionics' input [ports](#g-port), so [§9.7][s9-7]
-renders the corresponding GUI widgets read-only with provenance — today's
-demo-vs-GUI dead-slider fight, resolved by the port-resolution rule.
+**Sim-time scripts are model behavior, so they become
+[scenario components](#g-scenario-component)** (ordinary periodic discrete
+components holding a sim-time script). Both archetypes are clocked by *sim
+time*: `t`, the trajectory. Mapping them to [devices](#g-device) is rejected
+(row 31). The clock is the criterion.
 
-**`user_callback!` is eliminated** (row 31): it is the
+**Rule.** A sim-time script becomes a source or supervisor
+[component](#g-component); a wall-clock interaction becomes a device.
+
+A script mapped to a component is periodic discrete, with `K = 1` for today's
+`dt = 0.02` callbacks. It executes synchronously in the loop, deterministic
+paced or unpaced. It is replayed by recomputation, with no [trace](#g-trace). A
+device, by contrast, is traced and replayed from the trace.
+
+**The component mapping is strictly richer than the callback it replaces.**
+
+- The `Ref(:init)` phase closure becomes honest `x`, visible in
+  [snapshots](#g-snapshot), logs and plots.
+- Inputs arrive same-[boundary](#g-boundary) fresh by topological order; the
+  callback ran post-step, one boundary staler.
+- The pure timetable script is a one-liner reading the clock out of its
+  [bundle](#g-bundle) (the NamedTuple of zero-copy views a component function
+  receives). That one-liner is `h_xu(s, (; t)) = (; offset = profile(t))`,
+  exact at its own [ticks](#g-tick), with no latching.
+- In a scenario configuration the script drives the avionics' input
+  [ports](#g-port). [§9.7][s9-7] therefore renders the corresponding GUI widgets
+  read-only with provenance — today's demo-vs-GUI dead-slider fight, resolved
+  by the port-resolution rule.
+
+**`user_callback!` is eliminated** (row 31). It is the
 [periphery](#g-periphery)'s `f_step!`, and cheap composition leaves it without
-justification. Its call sites migrate to scenario components,
-not devices.
+justification. Its call sites migrate to scenario components, not devices.
 
-**Manual event triggering needs no mechanism:** a root input [slot](#g-slot) plus a [boundary-detected](#g-boundary-detected)
-[guard](#g-guard) reading it (levels doctrine: latched commands or counters), already
-expressible in settled machinery — the demos' engine start/stop buttons are
-`u`-writes today.
+**Manual event triggering needs no mechanism.** It takes a root input
+[slot](#g-slot) plus a [boundary-detected](#g-boundary-detected)
+[guard](#g-guard) reading that slot — an edge check at step boundaries only,
+with no root-finding. That is already expressible in settled machinery. The
+levels doctrine applies: latched commands or counters. The demos' engine
+start/stop buttons are `u`-writes today.
 
 **Mid-run re-initialization is not built, because it is not demonstrated.**
-Initialization and trim are stopped-sim workflows (first-class services, [§14][s14]),
-where no concurrency perimeter exists — no loop, no devices, plain single-task
-code. The guarded-addition shape is on record should demand appear: a traced,
-boundary-executed intervention command applied through project → [sweep](#g-sweep) → publish,
-so no consumer ever observes un-decoded state.
+Initialization and trim are stopped-sim workflows (first-class services,
+[§14][s14]). No concurrency perimeter exists there: no loop, no devices, plain
+single-task code. The guarded-addition shape is on record should demand appear.
+It would be a traced, boundary-executed intervention command applied through
+project → [sweep](#g-sweep) → publish, so that no consumer ever observes
+un-decoded state.
 
-**The doctrine, final form:** while a simulation runs, the periphery stages
-root-input writes and issues control commands — nothing else, structurally.
-Anything that wants to poke the model mid-run is an *input* in disguise (wire a
-slot and guard), *model behavior* in disguise (add a scenario component), or a
-*wall-clock interaction* (attach a device). Graceful termination follows the
-same shape ([§13.5][s13-5]): a declared stop [face](#g-face) in the model plus `stop_on` policy at
-deployment — never a callback, never a thrown exception.
+**The doctrine, final form.** While a simulation runs, the periphery stages
+root-input writes and issues control commands. Structurally, it does nothing
+else. Anything that wants to poke the model mid-run is one of three things. It
+is an *input* in disguise, so wire a slot and a guard. It is *model behavior*
+in disguise, so add a scenario component. Or it is a *wall-clock interaction*,
+so attach a device. Graceful termination follows the same shape
+([§13.5][s13-5]): a declared stop [face](#g-face) in the model, plus `stop_on`
+policy at deployment. Never a callback, and never a thrown exception.
 
 ### 10.6 Run lifecycle and partial advance
 
-A `Simulation` moves through five states: **built** (stores allocated,
-nothing authored), **initialized** (`init!` completed [boundary zero](#g-boundary-zero), [§14.5][s14-5]),
-**running**, and terminally **stopped** or **errored** ([§13.4][s13-4]). `init!` is
-mandatory: `run!` or `step!` on a simulation whose [boundary](#g-boundary) zero has not
-completed is an error in the kind set ([§13.2][s13-2]) naming `init!` — distinct from
-`UninitializedSlots`, which fires *inside* `init!` ([§14.6][s14-6]). (`replay!` is
-the one alternative entry: it runs boundary zero from a [trace header](#g-trace-header),
-[§10.7][s10-7].) The loop runs on
-the [calling task](#g-calling-task) unless a calling-task [device](#g-device) — the GUI — is rostered
-(the [roster](#g-roster)-derived topology, [§9.1][s9-1]); deviceless, `run!` is fully
-synchronous — the unattended
-register ([§9.1][s9-1]: an [unattended run](#g-unattended-run) is the same loop
-with empty staging), and what the synchronous rethrow ([§13.4][s13-4])
-presupposes.
+A `Simulation` moves through five states: **built**, **initialized**,
+**running**, and terminally **stopped** or **errored** ([§13.4][s13-4]).
+**Built** is stores allocated, nothing authored. **Initialized** is `init!`
+completed [boundary zero](#g-boundary-zero), the initialization boundary run as
+the ordinary macro-sequence with an empty integrate ([§14.5][s14-5]).
+
+**Rule.** `init!` is mandatory.
+
+`run!` or `step!` on a simulation whose [boundary](#g-boundary) zero has not
+completed is an error in the kind set ([§13.2][s13-2]) naming `init!`. That is
+distinct from `UninitializedSlots`, which fires *inside* `init!`
+([§14.6][s14-6]). `replay!` is the one alternative entry: it runs boundary zero
+from a [trace header](#g-trace-header) ([§10.7][s10-7]).
+
+**Where the loop runs.** The loop runs on the [calling task](#g-calling-task),
+the task that invoked `run!`, unless a calling-task [device](#g-device) is
+rostered. That device is the GUI, and the topology is derived from the
+[roster](#g-roster) ([§9.1][s9-1]). Deviceless, `run!` is fully synchronous.
+That is the unattended register: an [unattended run](#g-unattended-run) is the
+same loop with empty staging ([§9.1][s9-1]). It is also what the synchronous
+rethrow presupposes ([§13.4][s13-4]).
 
 **Partial advance.** `step!(sim; frames = 1)` advances whole frames
-synchronously through the ordinary frame sequence — [drain](#g-drain), integrate,
-boundaries, publication — and returns; a stepped simulation is bit-identical
-to the same frames under `run!`. `step!(sim; t_plus = 10.0)` is the duration
-spelling, mutually exclusive with `frames`: whole frames until the boundary
-time first covers the duration — the migration suite's advance-by-duration
-idiom. This is the test-[harness register](#g-harness-register) (advance,
-assert, advance) and the REPL register (fly a while, inspect, continue);
-neither is a script, so the scenario-[component](#g-component) doctrine ([§10.5][s10-5]) does not absorb
-them.
+synchronously through the ordinary frame sequence — [drain](#g-drain),
+integrate, boundaries, publication — and returns. A stepped simulation is
+bit-identical to the same frames under `run!`. `step!(sim; t_plus = 10.0)` is
+the duration spelling, mutually exclusive with `frames`. It advances whole
+frames until the boundary time first covers the duration, which is the
+migration suite's advance-by-duration idiom.
 
-A stepping session is **deviceless by construction**: device tasks are
-per-`run!` artifacts ([§9.1][s9-1]) and a device loop's `while running(handle)` is
-false outside a run. Between `step!` calls the simulation is in a
-stopped-sim state (`initialized`, below), so `attach!` is legal there and
-does what it always does — registers ([§9.3][s9-3]); the task appears at the next
-`run!`. The [frame-top drain](#g-drain) still runs — `step!` frames stay
-bit-identical to `run!` frames — and what it drains is the **harness
-[cell](#g-cell)**: `stage!(sim, "face" => value, ...)`, the harness write path
-([§9.3][s9-3]) with the calling task (the task that invoked `run!`) as writer. Staged
-batches are ordinary batches — traced, so [replay](#g-replay) and bit-identity hold; applied
-at the next frame top; surface-checked like any writer's ([§9.3][s9-3]). The read half
-is `latest(sim)`: the same immutable [snapshot](#g-snapshot) value a device handle acquires
-([§9.2][s9-2]), navigated directly for assertions. Advance-assert-advance is `stage!` →
-`step!` → `latest`. Both entry points work under `run!` too — the [harness cell](#g-harness-cell)
-is not step-scoped — and an inspection accessor leaves the rejection of
+Partial advance is the test-[harness register](#g-harness-register): advance,
+assert, advance. It is equally the REPL register: fly a while, inspect,
+continue. Neither is a script, so the scenario-[component](#g-component)
+doctrine does not absorb them ([§10.5][s10-5]).
+
+**A stepping session is deviceless by construction.** Device tasks are
+per-`run!` artifacts ([§9.1][s9-1]), and a device loop's `while running(handle)`
+is false outside a run. Between `step!` calls the simulation is in a stopped-sim
+state — `initialized`, below — so `attach!` is legal there and does what it
+always does: it registers ([§9.3][s9-3]). The task appears at the next `run!`.
+
+**The [frame-top drain](#g-drain) still runs**, `step!` frames staying
+bit-identical to `run!` frames. What it drains is the **harness
+[cell](#g-cell)**. The harness write path is
+`stage!(sim, "face" => value, ...)` ([§9.3][s9-3]), with the calling task as
+writer. Staged batches are ordinary batches. They are traced, so
+[replay](#g-replay) and bit-identity hold. They are applied at the next frame
+top. They are surface-checked like any writer's ([§9.3][s9-3]).
+
+The read half is `latest(sim)`. It hands back the same immutable
+[snapshot](#g-snapshot) value a device handle acquires ([§9.2][s9-2]), navigated
+directly for assertions. Advance-assert-advance is `stage!` → `step!` →
+`latest`. Both entry points work under `run!` too: the
+[harness cell](#g-harness-cell), the always-present staging cell of the harness
+register, is not step-scoped. An inspection accessor leaves the rejection of
 closure-based termination ([§13.5][s13-5]) untouched.
 
-**Status, termination and the `run!` [seam](#g-seam).** Between `step!` calls a simulation
-reports **initialized**: no loop task exists, so `running` would lie, and
-nothing is terminal, so `stopped` would too — the state reads "boundary-
-consistent and ready to advance", not "sitting at boundary zero". `run!` may
-therefore follow `step!`, continuing from the current boundary; so may another
-`step!`. Termination policy is honored throughout, as bit-identity requires:
-`t_end` reached, or a `stop_on` [face](#g-face) [holding](#g-edge-semantics) at frame 3 of `step!(sim; frames =
-10)`, ends the run there through the ordinary [§10.4][s10-4] tail and leaves the
-simulation `stopped`. `step!` therefore returns the number of frames
-**actually advanced** — the requested count in the ordinary case, fewer when
-the run terminated inside the call, which is how a harness detects the
-truncation without inspecting the clock.
+**Status, termination and the `run!` [seam](#g-seam).** Between `step!` calls a
+simulation reports **initialized**. No loop task exists, so `running` would lie;
+nothing is terminal, so `stopped` would lie too. The state reads
+"boundary-consistent and ready to advance", not "sitting at boundary zero".
+`run!` may therefore follow `step!`, continuing from the current boundary; so
+may another `step!`.
 
-**Re-running.** `stopped → init! → run!` is the supported cycle: `init!`
-re-runs boundary zero from its condition (warm restart = `capture` → tweak →
-`init!`, [§14.1][s14-1]) and clears the [trace](#g-trace), the log, *and* any batches still in
-[staging cells](#g-staging-cell) — the [recorders](#g-recorders) restart with the run they record, and
-no stale batch survives to clobber the boundary zero it predates. Device attachments persist across
-re-initialization — attachment is orthogonal to the run lifecycle ([§9.3][s9-3]) —
-and persistence means *roster* persistence: binding, [claims](#g-claim) and device id
-survive; tasks and OS resources do not (the per-run topology, [§9.1][s9-1]; the
-teardown, [§10.4][s10-4]). Each `run!` re-initializes every rostered device and
-spawns its
-task; `attach!` while stopped only registers — the task appears at the next
-`run!`. Task topology follows the roster each time ([§9.1][s9-1]): a GUI
-attached *by hand* is still rostered, so the next `run!` renders it again —
-loop on a spawned task — whether or not `gui = true` is repeated. **The flag
-itself is run-scoped**: at run entry it attaches the standard GUI device under
-the greedy binding, with `should_abort = true`, iff no GUI is rostered
-([Appendix B][sB]), and the run's shutdown tail detaches it again ([§10.4][s10-4]) —
-so the roster a flagged run leaves behind is the roster it found, and a window
-on every run means the flag on every run. A *persistent* GUI session is
-spelled by hand — `attach!` while stopped, `detach!` when done — and against a
-hand-attached GUI the flag does nothing and detaches nothing, having attached
-nothing. What the scoping buys is the absence of a trap: the flag's GUI claims
-everything unclaimed at attach (the computed source, [§9.3][s9-3]), and a claim of
-that shape must not outlive the run that asked for it — a joystick attached
+Termination policy is honored throughout, as bit-identity requires. `t_end`
+reached, or a `stop_on` [face](#g-face) [holding](#g-edge-semantics) at frame 3
+of `step!(sim; frames = 10)`, ends the run there through the ordinary
+[§10.4][s10-4] tail and leaves the simulation `stopped`. `step!` therefore
+returns the number of frames **actually advanced** — the requested count in the
+ordinary case, fewer when the run terminated inside the call. That return is how
+a harness detects the truncation without inspecting the clock.
+
+**Re-running: `stopped → init! → run!` is the supported cycle.** `init!` re-runs
+boundary zero from its condition, the warm restart being `capture` → tweak →
+`init!` ([§14.1][s14-1]). It clears the [trace](#g-trace), the log, *and* any
+batches still in [staging cells](#g-staging-cell). The [recorders](#g-recorders)
+restart with the run they record, and no stale batch survives to clobber the
+boundary zero it predates.
+
+**Device attachments persist across re-initialization**, attachment being
+orthogonal to the run lifecycle ([§9.3][s9-3]). Persistence means *roster*
+persistence: binding, [claims](#g-claim) and device id survive. Tasks and OS
+resources do not (the per-run topology, [§9.1][s9-1]; the teardown,
+[§10.4][s10-4]). Each `run!` re-initializes every rostered device and spawns its
+task. `attach!` while stopped only registers, the task appearing at the next
+`run!`.
+
+**Task topology follows the roster each time** ([§9.1][s9-1]). A GUI attached
+*by hand* is still rostered, so the next `run!` renders it again — loop on a
+spawned task — whether or not `gui = true` is repeated.
+
+**The `gui = true` flag itself is run-scoped.** At run entry it attaches the
+standard GUI device under the greedy binding, with `should_abort = true`, iff
+no GUI is rostered ([Appendix B][sB]). The run's shutdown tail detaches it again
+([§10.4][s10-4]). So the roster a flagged run leaves behind is the roster it
+found, and a window on every run means the flag on every run. A *persistent* GUI
+session is spelled by hand: `attach!` while stopped, `detach!` when done.
+Against a hand-attached GUI the flag does nothing and detaches nothing, having
+attached nothing.
+
+**What the scoping buys is the absence of a trap.** The flag's GUI claims
+everything unclaimed at attach (the computed source, [§9.3][s9-3]), and a claim
+of that shape must not outlive the run that asked for it. A joystick attached
 between two runs would otherwise meet a `ClaimConflict` against an
 everything-claim staked by a convenience argument nobody remembers passing.
-The accepted cost is a fresh device id per run for that GUI: ids exist to be
+
+**The accepted cost is a fresh device id per run for that GUI.** Ids exist to be
 read *across* roster changes, and each run's trace header carries its own
-schemas ([§9.5][s9-5]), so nothing that reads a completed run is affected.
-Run policy is re-bindable per cycle: `t_end` and `stop_on` are `Simulation`
-defaults that `run!` may override for the run it starts ([§13.5][s13-5]), so a second
-run — or a `step!` register between two runs — can stop on a different clock
-or a different face set without a rebuild. `errored` is terminal (row 59):
-reproduction is trace replay ([§10.7][s10-7]), not resurrection.
+schemas ([§9.5][s9-5]). Nothing that reads a completed run is therefore
+affected.
+
+**Run policy is re-bindable per cycle.** `t_end` and `stop_on` are `Simulation`
+defaults that `run!` may override for the run it starts ([§13.5][s13-5]). A
+second run — or a `step!` register between two runs — can therefore stop on a
+different clock or a different face set without a rebuild.
+
+**`errored` is terminal** (row 59). Reproduction is trace replay
+([§10.7][s10-7]), not resurrection.
 
 ### 10.7 Replay: the trace re-drives the ordinary loop
 
@@ -4164,100 +4207,118 @@ replay!(sim2, trc)                    # header-init, then re-drive every recorde
 replay!(sim2, trc; to_boundary = k)   # partial: the §13.4 replay-pointer register
 ```
 
-`replay!` is **the ordinary loop with exactly two substitutions** — not a
-separate execution mode, which is what keeps every property proved of the
-loop true of [replay](#g-replay):
+`replay!` is **the ordinary loop with exactly two substitutions**, not a
+separate execution mode. That is what keeps every property proved of the loop
+true of [replay](#g-replay):
 
-- **[Boundary zero](#g-boundary-zero) from the header.** `replay!` stands in the `init!`
-  position of the lifecycle ([§10.6][s10-6]): it applies the header's resolved stores
-  and [slot](#g-slot) values directly — no condition resolution; the totality
-  ([§14.6][s14-6]) holds by capture — and then executes the ordinary
-  [boundary](#g-boundary)-zero sequence
+- **[Boundary zero](#g-boundary-zero) from the header** — the initialization
+  boundary, the ordinary macro-sequence with an empty integrate. `replay!`
+  stands in the `init!` position of the lifecycle ([§10.6][s10-6]): it applies
+  the header's resolved stores and [slot](#g-slot) values directly. There is no
+  condition resolution, and the totality ([§14.6][s14-6]) holds by capture. It
+  then executes the ordinary [boundary](#g-boundary)-zero sequence
   ([§14.5][s14-5]). Authored-condition events re-fire identically: the header
-  predates the sequence (the capture placement, [§9.5][s9-5]), so nothing is applied
-  twice and nothing is skipped.
-- **The [drain](#g-drain) reads the trace.** Each frame top applies the recording's
-  batches for that **[frame ordinal](#g-frame-ordinal)** instead of swapping the [roster](#g-roster)'s
-  [staging cells](#g-staging-cell) (where a device's pending write batch waits between drains).
-  Ordinal keying is exact because the frame sequence is itself deterministic
-  under replay (`t*` boundaries derive from state, [§8.4][s8-4]): frame *k* of the
-  replay *is* frame *k* of the recording. Recorded batches apply **verbatim,
-  with no surface re-check** — the write-surface rule ([§9.3][s9-3]) ran at recording
-  time, and [claims](#g-claim) are a live-roster fact of the recorded session that replay
-  does not reconstruct.
+  predates the sequence (the capture placement, [§9.5][s9-5]), so nothing is
+  applied twice and nothing is skipped.
+- **The [drain](#g-drain) reads the trace.** Each frame top applies the
+  recording's batches for that **[frame ordinal](#g-frame-ordinal)**, the frame
+  index a batch replays at. It does not swap the [roster](#g-roster)'s
+  [staging cells](#g-staging-cell), where a device's pending write batch waits
+  between drains. Ordinal keying is exact because the frame sequence is itself
+  deterministic under replay (`t*` boundaries derive from state, [§8.4][s8-4]):
+  frame *k* of the replay *is* frame *k* of the recording. Recorded batches
+  apply **verbatim, with no surface re-check**. The write-surface rule
+  ([§9.3][s9-3]) ran at recording time, and [claims](#g-claim) are a live-roster
+  fact of the recorded session that replay does not reconstruct.
 
 Everything else is the loop as already specified:
 
 - **Termination and partial replay.** Replay ends at the recording's final
   frame, or earlier at `to_boundary = k` — the consumer of the replay pointer
-  ([§13.4][s13-4]), defined as running **through the frame whose execution
-  published
-  boundary `k`**, so replay always halts at a frame top. For a grid boundary
-  that is exactly at `k` (the frame that publishes one ends at it), and the
-  frame-entry pointer ([§13.4][s13-4]) lands the same way; a
-  [localized](#g-localized) `t*`
-  boundary inside the frame is reproduced but not stoppable-at
-  ([§8.4][s8-4]'s separation: the trace stays frame-indexed, boundaries are
-  the reporting index) — or earlier still under the ordinary policies: `t_end` and
-  `stop_on` overrides bind for this replay exactly as at `run!` ([§10.6][s10-6]); a
+  ([§13.4][s13-4]). That spelling is defined as running **through the frame
+  whose execution published boundary `k`**, so replay always halts at a frame
+  top. For a grid boundary the halt is exactly at `k`, the frame that publishes
+  one ending at it. The frame-entry pointer ([§13.4][s13-4]) lands the same way.
+  A [localized](#g-localized) `t*` boundary inside the frame — the crossing
+  instant bracketed by root-finding over probe sweeps — is reproduced but not
+  stoppable-at. [§8.4][s8-4] separates the two indices: the trace stays
+  frame-indexed, and boundaries are the reporting index. Replay may also end
+  earlier still under the ordinary policies, since `t_end` and `stop_on`
+  overrides bind for this replay exactly as at `run!` ([§10.6][s10-6]). A
   termination the recorded session hit through `stop_on` reproduces itself
   anyway, deterministically.
 - **Replay ends `initialized`, never `stopped`** — boundary-consistent and
   ready to advance, the same state `step!` leaves ([§10.6][s10-6]). This is what
-  makes three promised workflows real: state-trajectory inspection
-  ([§9.2][s9-2]; "what was the private state at t = 37.2?" — replay there, read
-  the live stores), error reproduction ([§13.4][s13-4]; replay to `k − 1`, then
-  `step!` the failing frame under instrumentation), and continuation (`run!`
-  after
-  `replay!` is a live session from the replayed boundary).
+  makes three promised workflows real. State-trajectory inspection asks "what
+  was the private state at t = 37.2?", and answers it by replaying there and
+  reading the live stores ([§9.2][s9-2]). Error reproduction replays to
+  `k − 1`, then `step!`s the failing frame under instrumentation
+  ([§13.4][s13-4]). Continuation is `run!` after `replay!`, a live session from
+  the replayed boundary.
 - **Replay re-records.** The trace register runs normally: the new trace
-  inherits the old header and accumulates the re-drained batches — a
-  bit-identical prefix — so a replayed-then-continued session leaves behind
-  a complete, valid trace of *itself*, with no special stitching.
-- **[Pacing](#g-pacing) and the [control plane](#g-control-plane) are unchanged** ([§8.7][s8-7], [§10.1][s10-1]): pacing sits
-  outside the semantics, so paused, slow-motion or real-time replay is free —
-  paced replay with an attached visualizer *is* session playback. Stop
-  truncates, as anywhere.
-- **[Devices](#g-device) are readers.** Rostered devices init and spawn normally ([§9.1][s9-1])
-  and consume [snapshots](#g-snapshot) ([§9.2][s9-2], [§10.3][s10-3]) — the visualizer case — but no live
-  staging [cell](#g-cell) is drained while the trace feeds the loop: a batch found
-  staged is discarded with a rate-limited warning
-  (`ReplayDiscardedStaging`, [Appendix C][sC]). Mixing live writes into a replay
-  would destroy the property replay exists to provide; a session that wants
-  live input is a continuation (`run!` after replay), not a replay.
+  inherits the old header and accumulates the re-drained batches, a
+  bit-identical prefix. A replayed-then-continued session therefore leaves
+  behind a complete, valid trace of *itself*, with no special stitching.
+- **[Pacing](#g-pacing) and the [control plane](#g-control-plane) are
+  unchanged** ([§8.7][s8-7], [§10.1][s10-1]). Pacing (waits inserted between
+  completed frames, never altering the boundary sequence) sits outside the
+  semantics, so paused, slow-motion or real-time replay is free. Paced replay
+  with an attached visualizer *is* session playback. Stop truncates, as
+  anywhere.
+- **[Devices](#g-device) are readers.** Rostered devices init and spawn normally
+  ([§9.1][s9-1]) and consume [snapshots](#g-snapshot) ([§9.2][s9-2],
+  [§10.3][s10-3]) — the visualizer case. But no live staging [cell](#g-cell) is
+  drained while the trace feeds the loop: a batch found staged is discarded with
+  a rate-limited warning (`ReplayDiscardedStaging`, [Appendix C][sC]). Mixing
+  live writes into a replay would destroy the property replay exists to provide.
+  A session that wants live input is a continuation (`run!` after replay), not a
+  replay.
 - **Validation is loud and up front.** Before the first frame, the header is
-  validated against the `Build` (store layout, slot [faces](#g-face)) and the trace's
-  batch entries against the root input-face list — attach-style, with
-  [did-you-mean](#g-did-you-mean) (`ReplayHeaderMismatch`, `ReplayUnknownFace`, [Appendix C][sC]).
-  The same pass pays the trace-record conversion in reverse: every writer's
-  sparse records ([§9.5][s9-5]) are normalized to positional batches
-  against the header's schemas, once, off the loop — replay has the whole
-  trace in hand before frame 1 — so the replay drain applies compiled
-  scatters exactly as the live drain does, and no face name is resolved
-  per frame under replay either.
-  *Structural* mismatch is an error; *parametric* difference is not:
-  replaying against the same structure with changed parameters is the
-  **[what-if register](#g-what-if-register)** — deterministic re-driving of the recorded inputs
-  through a modified model. Bit-identity is promised only against the
-  identical build; the what-if register promises determinism, never
+  validated against the `Build` (store layout, slot [faces](#g-face)), and the
+  trace's batch entries against the root input-face list. The checks are
+  attach-style, and a failure reports [did-you-mean](#g-did-you-mean): the
+  offending name plus the list-in-hand it should have matched. The kinds are
+  `ReplayHeaderMismatch` and `ReplayUnknownFace` ([Appendix C][sC]).
+
+  The same pass pays the trace-record conversion in reverse. Every writer's
+  sparse records ([§9.5][s9-5]) are normalized to positional batches against the
+  header's schemas, once, off the loop — replay has the whole trace in hand
+  before frame 1. The replay drain therefore applies compiled scatters exactly
+  as the live drain does, and no face name is resolved per frame under replay
+  either.
+
+  *Structural* mismatch is an error; *parametric* difference is not. Replaying
+  against the same structure with changed parameters is the
+  **[what-if register](#g-what-if-register)** — deterministic re-driving of the
+  recorded inputs through a modified model. Bit-identity is promised only
+  against the identical build; the what-if register promises determinism, never
   reproduction.
+
   The header's deployment block ([§9.5][s9-5]) validates in the same pass, on
-  the *structural* side of that line: the seven trajectory-determining
-  parameters — `Δt_base`, `h`, `n`, the algorithm, `localization_tol`,
-  `localization_budget` ([§8.4][s8-4]) and `firing_budget` ([§8.6][s8-6]) —
-  are compared against the target `Simulation`'s own deployment binding —
-  mismatch is `ReplayHeaderMismatch` with a deployment-parameter
-  discriminator, never a what-if, because a deployment change moves the
-  times at which the frame-ordinal batches apply: different inputs, not a
-  modified model. The event trio — the localization pair and `firing_budget` —
-  is compared for exactly the same
-  reason the grid parameters are: it moves the trajectory, so a run that
-  differs in it is not re-driving the recorded one. `t₀` is *applied*, not
-  compared — replay stands in the
-  `init!` position and owns the anchor, so `replay!` takes no `t0`
-  argument — and the header's `t_end`/`stop_on` pair is a recorded fact of
-  the recorded session, never a constraint on this one: overrides bind as
-  stated above.
+  the *structural* side of that line. The seven trajectory-determining
+  parameters are `Δt_base`, `h`, `n`, the algorithm, `localization_tol`,
+  `localization_budget` ([§8.4][s8-4]) and `firing_budget` ([§8.6][s8-6]). All
+  seven are compared against the target `Simulation`'s own deployment binding.
+  Mismatch is `ReplayHeaderMismatch` with a deployment-parameter discriminator,
+  never a what-if. A deployment change moves the times at which the
+  frame-ordinal batches apply: different inputs, not a modified model. The event trio — the localization pair and `firing_budget` —
+  is compared for exactly the same reason the grid parameters are. It moves the
+  trajectory, so a run that differs in it is not re-driving the recorded one.
+
+  `t₀` is *applied*, not compared. Replay stands in the `init!` position and
+  owns the anchor, so `replay!` takes no `t0` argument. The header's
+  `t_end`/`stop_on` pair is a recorded fact of the recorded session, never a
+  constraint on this one; overrides bind as stated above.
+
+The header, field by field:
+
+| header content | disposition |
+|---|---|
+| store layout, slot faces | compared against the `Build` |
+| the deployment block: `Δt_base`, `h`, `n`, the algorithm, `localization_tol`, `localization_budget`, `firing_budget` | compared against the target `Simulation`'s own deployment binding |
+| resolved stores, slot values | applied directly at boundary zero |
+| `t₀` | applied; `replay!` takes no `t0` argument |
+| `t_end`, `stop_on` | neither compared nor applied: a recorded fact of the recorded session |
 
 Rejected shapes, for the record (row 101): a `run!(sim; replay = trc)` flag, a
 synthetic playback device staging the recorded batches, and replay ending
