@@ -2778,7 +2778,7 @@ policy under which a device writes into its cell, the shape the cell holds,
 and the [drain](#g-drain) (the frame-top swap that publishes staged device
 inputs into the root slots) that empties it.
 
-**Rule.** Staging keeps one atomic [cell](#g-cell) per attached
+**Rule.** Staging keeps one atomic [cell](#g-staging-cell) per attached
 [device](#g-device) under one [coalescing](#g-coalescing) policy: CAS merge,
 newest wins per [face](#g-face). Each cell has a single writer, its own device
 task, and holds that device's latest pending [batch](#g-batch) of
@@ -2947,7 +2947,7 @@ staging fed from the recording, no devices or mappings present — reproduces th
 trajectory bit-identically.
 
 **One record format: every batch is retained sparse.** At the [drain](#g-drain), each
-drained [cell](#g-cell) is scanned and recorded as (position ⇒ value) pairs for its
+drained [cell](#g-staging-cell) is scanned and recorded as (position ⇒ value) pairs for its
 non-`nothing` entries, against the writer's [face](#g-face)-name → position schema in
 the header (below) — an O(surface-width) scan and one small allocation per
 drained batch. The rule is uniform because a [claim](#g-claim)'s *width* is a
