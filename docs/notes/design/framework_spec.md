@@ -1279,69 +1279,98 @@ offending commit.
 
 ### 8.1 Loop ownership: the framework owns the simulation loop
 
-The simulation loop — the [§5.3][s5-3] [boundary](#g-boundary) sequence, [tick](#g-tick) dispatch, event handling,
-logging, input staging, [pacing](#g-pacing) — is **framework code, unconditionally**. The step-
-boundary [contract](#g-contract) is this design's central invariant; expressing it as an ordered
-`CallbackSet` inside a third-party solver would put the framework's semantics back
-into convention territory, enforced by callback-registration order in a foreign event
-loop. That is the same "rigor by convention" failure mode the redesign exists to
-eliminate.
+Six activities make up the simulation loop: the [§5.3][s5-3] [boundary](#g-boundary)
+sequence, [tick](#g-tick) dispatch, event handling, logging, input staging, and
+[pacing](#g-pacing) (waits inserted between completed frames, never altering the
+boundary sequence).
+
+**Rule.** All six are **framework code, unconditionally**. The loop is written
+here, not assembled out of callbacks registered with a third-party solver.
+
+**Why.** The step-boundary [contract](#g-contract) is this design's central
+invariant, and only a loop the framework owns can enforce it by construction
+rather than by convention. Choreographing the same sequence as an ordered
+`CallbackSet` inside a foreign event loop is rejected on exactly that ground
+(row 17).
 
 `OrdinaryDiffEq` is therefore **dropped as a dependency** of the new core (row 17).
 
 ### 8.2 The stepper seam
 
-The one delegated operation is *advance the continuous state from `t` by `h`*, behind
-a narrow internal interface (the **[stepper seam](#g-seam)**). Its [contract](#g-contract):
+Loop ownership stops at one operation: *advance the continuous state from `t` by
+`h`*. That operation is delegated across a narrow internal interface, the
+**[stepper seam](#g-seam)**, so that the integration method can be replaced
+without the loop changing.
 
-- **advance by arbitrary `h`** — required anyway to land on [tick](#g-tick) [boundaries](#g-boundary) and to
-  resume from a [localized](#g-localized) event time;
-- **dense output on demand over the last completed step** — required only by event
-  localization ([§8.4][s8-4]), constructed lazily;
-- **one-step methods only** — event handlers reset state discontinuously, and a
-  one-step method restarts from a new state for free; multistep methods are excluded
-  (row 17).
+#### What the seam requires of a backend
 
-**The seam is never entered empty.** A model with no continuous state at all is
-legal — nothing in [§11.2][s11-2] requires an `x` block of anyone — and the framework
-short-circuits rather than pushing the corner down the seam: with an empty `x`,
-integrate degenerates to advancing `t` to the next boundary, and the stepper is
-simply not called. No backend ever faces `N = 0`, and no backend contract has to
-say what it would do there. This finishes structurally what [§8.1][s8-1] argues: the
-dummy-`[0.0]` tax an empty state pays under a foreign solver loop (row 17) is gone at
-the root, not just the [buffer](#g-buffer) but the step over it. Everything else about such a model is ordinary: the
-boundary machinery — [sweeps](#g-sweep), events, ticks — runs unchanged.
+The seam [contract](#g-contract) has three clauses.
 
-First cut ships **in-house fixed-step RK4 and Heun** over the flat state buffer:
-~a hundred lines, trivially zero-allocation (auditable for the [§7.5][s7-5] CI invariant),
-trivially `T`-generic — though genericity is not even required of the stepper, since
-linearization and the tracer drive the *sweep*, never the integrator. An
-`OrdinaryDiffEq`-backed stepper can exist later as a package extension if an offline
-study genuinely demands adaptive or stiff methods; per the guarded-additions rule it
-is not built until then.
+- **Advance by arbitrary `h`.** This is required anyway: the loop lands on
+  [tick](#g-tick) [boundaries](#g-boundary), and it resumes from a
+  [localized](#g-localized) event time (the crossing instant bracketed by
+  root-finding over probe sweeps).
+- **Dense output on demand over the last completed step.** Only event
+  localization needs it ([§8.4][s8-4]), so it is constructed lazily.
+- **One-step methods only.** Event handlers reset state discontinuously, and a
+  one-step method restarts from a new state for free. Multistep methods are
+  excluded (row 17).
 
-**Why fixed-step low-order suffices** (the domain argument, recorded because it is
-load-bearing for the whole axis):
+#### Models with no continuous state
+
+A model with no continuous state at all is legal: nothing in [§11.2][s11-2]
+requires an `x` block of anyone. Such a model still has to be run.
+
+**The seam is never entered empty.** The framework short-circuits rather than
+pushing the corner down the seam. With an empty `x`, integrate degenerates to
+advancing `t` to the next boundary, and the stepper is simply not called. No
+backend ever faces `N = 0`, and no backend contract has to say what it would do
+there.
+
+The ownership rule of [§8.1][s8-1] pays off structurally here, rather than as an
+argument: the dummy-`[0.0]` tax an empty state pays under a foreign solver loop
+(row 17) is gone at the root, not just the [buffer](#g-buffer) but the step over
+it. Everything else about such a model is ordinary. The boundary machinery —
+[sweeps](#g-sweep), events, ticks — runs unchanged.
+
+#### The first-cut backends
+
+First cut ships **in-house fixed-step RK4 and Heun** over the flat state buffer.
+Together they are ~a hundred lines: trivially zero-allocation, hence auditable
+against the CI invariant of [§7.5][s7-5], and trivially `T`-generic. Genericity is
+not even required of the stepper, since linearization and the tracer drive the
+*sweep*, never the integrator.
+
+An `OrdinaryDiffEq`-backed stepper can exist later as a package extension, if an
+offline study genuinely demands adaptive or stiff methods. Per the
+guarded-additions rule it is not built until then.
+
+#### Why fixed-step low-order suffices
+
+The domain argument is recorded here because it is load-bearing for the whole
+axis.
 
 1. **The closed-loop tick cap.** Every application beyond bare propagation runs
-   periodic avionics (50 Hz today), whose commands are zero-order-held signals:
-   integrating past a tick with stale commands is wrong, so the integrator must land
-   on every tick boundary regardless of method. Adaptive and high-order methods pay
-   off exactly when steps can stretch; the execution model forbids the stretch by
-   construction.
-2. **A piecewise-smooth [RHS](#g-flow) starves high order.** Linearly-interpolated lookup tables
-   (C¹-kinked at every knot), clamps, friction blends and mode branches deny
-   high-order error estimators and implicit-solver Newton iterations the smoothness
-   they assume. RK4 at 50 Hz already puts integration error orders of magnitude below
-   the model uncertainty of a coefficient-table aircraft model.
-3. **Stiffness has a remedy ladder.** The fastest continuous dynamics in the current
-   codebase (actuator poles ~31 rad/s, gear damper decay, friction compensators) sit
-   inside RK4's stability region at `h = 0.02` — the crosswind-landing demo is the
-   empirical proof. If a future model exceeds it: first shrink `h` (the RHS costs
-   microseconds; 500 Hz real-time is unremarkable), then subcycle the stepper against
-   the tick grid, and only then reach for an implicit method through the adapter.
-   If that day comes, [§7.2][s7-2] genericity supplies exact ForwardDiff Jacobians through
-   the sweep for free.
+   periodic avionics (50 Hz today), whose commands are zero-order-held signals.
+   Integrating past a tick with stale commands is wrong, so the integrator must
+   land on every tick boundary regardless of method. Adaptive and high-order
+   methods pay off exactly when steps can stretch, and the execution model
+   forbids the stretch by construction.
+2. **A piecewise-smooth [RHS](#g-flow) starves high order.** Linearly-interpolated
+   lookup tables (C¹-kinked at every knot), clamps, friction blends and mode
+   branches deny high-order error estimators and implicit-solver Newton
+   iterations the smoothness they assume. RK4 at 50 Hz already puts integration
+   error orders of magnitude below the model uncertainty of a coefficient-table
+   aircraft model.
+3. **Stiffness has a remedy ladder.** The fastest continuous dynamics in the
+   current codebase — actuator poles ~31 rad/s, gear damper decay, friction
+   compensators — sit inside RK4's stability region at `h = 0.02`, and the
+   crosswind-landing demo is the empirical proof. If a future model exceeds that
+   region, the ladder runs in order: first shrink `h` (the RHS costs
+   microseconds, and 500 Hz real-time is unremarkable), then subcycle the stepper
+   against the tick grid, and only then reach for an implicit method through the
+   adapter. If that day comes, the eltype genericity of [§7.2][s7-2] supplies
+   exact ForwardDiff Jacobians through the sweep for free.
 
 ### 8.3 Signal-table consistency is a boundary property
 
