@@ -351,7 +351,7 @@ functions, private by construction, see [§5.2][s5-2], [§11.3][s11-3]. A presen
   drill into them lazily (the view clause, [§4.2][s4-2]). Bare-struct returns are rejected
   (row 36).
 - **Wiring is port-granular.** No sub-field connections: a consumer that wants less
-  than a [bundle](#g-bundle) asks the producer for a loose port, or takes the bundle and
+  than a bundle asks the producer for a loose port, or takes the bundle and
   destructures. A field-projection connector is a [guarded addition](#g-guarded-addition) with an obvious
   shape, not built.
 - **Granularity guideline** for authors: bundle what *shares a stage* (trivially
@@ -397,7 +397,7 @@ pose). They are therefore carried by ordinary [ports](#g-port) as **immutable qu
   structs with existing references — never `Ref`s, whose mutable cell allocates).
 - **No mutable caches inside field objects** (memoizing interpolators, lazy loaders):
   concurrent consumers and the GUI thread would race. Caches belong in the consumer's
-  state, or the [interpolant](#g-interpolant) is restructured to be pure.
+  state, or the interpolant is restructured to be pure.
 - Loggers treat field-handle signals specially (skip or summarize).
 
 **The [value-level constructor](#g-value-level-constructor).** Every field-emitting component must expose the
@@ -774,7 +774,7 @@ raw stall residue nor a single back edge names the cluster correctly (row 12).
 **Classification is [schedule](#g-schedule)-free.** It runs inside Stratum B's failure path,
 where no schedule exists — and needs none, because each SCC member is evaluated
 *once, in isolation*, at the [probe](#g-probe) point: state views from `init_*`,
-out-of-cycle [cells](#g-cell) from the acyclic prefix's [probe values](#g-probe-value), in-cycle cells
+out-of-cycle [cells](#g-cell) from the acyclic prefix's probe values, in-cycle cells
 synthesized through `probe_value` ([§12.3][s12-3]) under tracer tags. The tracer's
 product is a per-member dependence set rather than a value, so no ordering has
 to be valid for the labels to come out right. The loop is **real** iff every hop
@@ -864,7 +864,7 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
   marker scalar — declaration reading, no user stage code ([§12.1][s12-1]) — and a
   violation is `WalkingFaceAtFrozenEntry`, naming both endpoints, the leaf and
   both declared leaf types, with both remedies in the message: declare the entry
-  `T` if the consumer promotes, or feed it from a non-walking source if [the freeze](#g-the-freeze)
+  `T` if the consumer promotes, or feed it from a non-walking source if the freeze
   is genuine. **The [tier](#g-tier) scope is load-bearing, not tidiness.** A discrete consumer
   takes the bound check alone, because its stages read exclusively at real [ticks](#g-tick)
   in the [nominal](#g-nominal) world — a `Dual`-carrying [cell](#g-cell) exists only inside activations the
@@ -3835,7 +3835,7 @@ style: [contracts](#g-contract) describe table [cells](#g-cell), recomputed from
 which must have contents before the first sweep can run.
 **These declarations stay one-argument**, and the criterion is the register
 they live in (row 166), stated once here and referred to from below: a
-*by-value* declaration states nominal physics — its *types* walk by rule, [§7.1][s7-1]
+*by-value* declaration states nominal physics — its *types* [walk by rule](#g-leaf-walk), [§7.1][s7-1]
 forcing every state leaf to follow the [activation](#g-activation) scalar, so a `T` in the
 signature would record no choice its author could make, and partials enter
 through per-invocation seeding, never through initialization; a *by-type*
@@ -5069,7 +5069,7 @@ invisible to a strict exact-match rule when applied mid-expression, so the
 leniency costs nothing. What it is no longer is invisible to the schema *by
 necessity*: **the declared-pinned leaf is the schema-visible freeze** — an
 author who means to strip declares the leaf `Float64` and strips inside the
-stage, and the check above holds [the freeze](#g-the-freeze) to its word at every activation.
+stage, and the check above holds the freeze to its word at every activation.
 Stripping mid-expression at a leaf still declared `T` remains legal and remains
 unseen, as the sharp tool it is.
 
@@ -5190,7 +5190,7 @@ contiguous [buffer](#g-buffer) per element type — the construction pointed at
 signals rather than state ([§7.1][s7-1]) — and a cell address is a build-time
 offset into it, carried
 in an entry *field* with the [port](#g-port) type as the address's own parameter; gathers
-reconstruct and scatters flatten through the same [leaf walk](#g-leaf-walk), so the closed
+reconstruct and scatters flatten through the same leaf walk, so the closed
 vocabulary earns its keep twice. This is the entry rule above paying rent: two
 instances of one component type then differ only in field values, share an
 entry type, and compile to **one** body — where a store enumerating every cell
