@@ -3751,93 +3751,139 @@ render.
 
 ### 10.4 Shutdown protocol
 
-1. **Initiation:** `t_end` reached, a control-plane stop (GUI, [device](#g-device) handle,
-   code, or an [operator interrupt](#g-operator-interrupt) — Ctrl-C, below), or a `stop_on` [face](#g-face)
-   reading `true` in the just-published [snapshot](#g-snapshot)
-   (model-detected termination, [§13.5][s13-5]). The loop always completes the current
-   [boundary](#g-boundary) sequence — never stops mid-frame — publishes the final snapshot,
-   then sets the sticky stopped status.
-   Publishing first guarantees output devices can flush the true final state,
-   and that final status carries the run's cumulative diagnostic counters
-   ([§9.8][s9-8]) — the complete warning account of a run nobody watched. That
-   terminal snapshot is retained in the log unconditionally, under any
-   `log_every` and any `log_max` ([§9.2][s9-2]).
-   **`t_end` lands on the grid:** the run ends at the first grid boundary whose
-   time reaches or exceeds `t_end` — whole frames only, never a shortened final
-   step, which grid integrity ([§8.4][s8-4]; `tₖ = t₀ + k·h`, indexed and never
-   accumulated) forbids. The final boundary may therefore overshoot `t_end` by
-   up to `h`, and the termination record carries the actual final `t`
-   ([§13.5][s13-5]). This is the `t_plus` spelling ([§10.6][s10-6]) — whole frames until
-   the boundary time first covers the duration — applied to the run's own
-   clock, and it is where the two termination sources differ in kind: `t_end`
-   is a grid fact, checked against boundary times on the grid, while `stop_on`
-   is checked at *every* published boundary, `t*` included ([§13.5][s13-5]).
-2. **Wake all framework waits** (next-snapshot, pause): waiters observe the
-   stopped status and unwind — a stop while paused therefore works.
-3. **Unblock device-specific blocking calls** via an `unblock!(device)` hook,
-   default no-op; a network input's override closes its own socket, raising in
-   the blocked task (caught by the framework wrapper, treated as shutdown).
-   This demotes FlightCore's EOT convention from load-bearing shutdown mechanism
-   to an optional wire-protocol courtesy between remote peers.
-4. **Loop bodies exit:** the author's `while running(handle)` (the
-   [contract](#g-contract), [§9.6][s9-6] — the [predicate](#g-predicate) check
-   and interruptible blocking are the two
-   taught obligations) with all blocking points
-   interruptible per (2)–(3); the wrapper's `finally shutdown!(device)` is
-   guaranteed on every exit path.
-5. **Join with a timeout — 5 s:** a device task exceeding it is reported *by name*
-   ([§10.2][s10-2] heartbeat) and abandoned with a warning (`DeviceJoinTimeout`,
-   [Appendix C][sC]) rather than hanging `run!`. Five seconds is generous for
-   GUI window teardown and socket closes, and short enough that an abandoned
-   join reads as a diagnosed timeout rather than a hang.
-   The calling-task device — the GUI — having no spawned task ([§9.1][s9-1]), is
-   outside the join: its loop body is the [calling task](#g-calling-task)'s own occupation of
-   `run!`, exits by the same `running(handle)` predicate as any device
-   loop, and `run!` returns after the joins. One honest asymmetry: the
-   abandonment protocol cannot cover it — nothing can abandon the task
-   `run!` stands on — so a calling-task device that blocks past shutdown
-   hangs `run!`. The trait's one authoring obligation is therefore a loop
-   body that never blocks between `running` checks; the shipped GUI's
-   render loop polls once per frame and never blocks.
-6. **Device-initiated paths:** voluntary exit — the loop body returns
-   (window ✕, peer EOT; no `should_close` hook exists, [§9.6][s9-6]); with
-   `should_abort` set the wrapper's exit path also requests a sim stop,
-   otherwise the sim continues with the device's *task* absent: its [cell](#g-cell)
-   stops filling — the loop is structurally indifferent — while its [roster](#g-roster)
-   entry and [claims](#g-claim) persist to run end ([§9.3][s9-3]'s freeze: death is not
-   detach; the orphaned [slots](#g-slot) hold their last-drained values, visibly,
-   [§9.7][s9-7]). A crashing device task is caught by the
-   framework wrapper and follows the same path, logged with the device's name
-   (`DeviceCrash`, [Appendix C][sC]).
-7. **Loop-side failure** runs (1)–(5) from the catch path — specified in
-   [§13.6][s13-6]: the failed boundary is discarded and the previous snapshot promoted
-   to final (FlightCore's `SimulationTermination` catch path was the precedent;
-   the exception-based termination idiom itself has no place here, [§13.5][s13-5]) — so devices
-   unwind cleanly regardless of who died.
+A run ends when its time is up, when someone stops it, or when the model itself
+says so. Whatever the cause, the same work has to happen: the loop has to stop
+on a [boundary](#g-boundary) rather than mid-frame, every device task has to be
+woken out of whatever it was blocked on, and every resource acquired for the run
+has to be released before `run!` returns. This section specifies that sequence,
+which it calls the tail throughout. It also specifies the two things that
+bracket the tail. One is the pre-spawn initialization at the top of a run, which
+is a step of this same protocol. The other is the operator interrupt, which
+enters the tail rather than bypassing it.
 
-After (5) the task set is empty — device tasks are per-run artifacts
-([§9.1][s9-1]) — and `shutdown!` has released each device's OS resources. What
-survives a stop is the roster entry: binding, claims, stable device id
-([§9.3][s9-3]); never a task, never a live resource — a device whose task died
-mid-run included, its entry indistinguishable at this point from any
-other's; `stopped` is where `detach!` removes it and releases its claims.
-**One roster change belongs to this tail**: a GUI attached by `run!`'s
+#### The tail: the ordered sequence every stop takes
+
+**Rule.** Steps (1) through (5) below run in that order on every stop, whatever
+initiated it. Steps (6) and (7) specify what happens when a device task or the
+loop itself ends first.
+
+1. **Initiation.** Three events start a shutdown: `t_end` is reached, a
+   control-plane stop is issued, or a `stop_on` [face](#g-face) reads `true` in
+   the just-published [snapshot](#g-snapshot). The stop's issuers are the GUI, a
+   [device](#g-device) handle, code, or an
+   [operator interrupt](#g-operator-interrupt) — Ctrl-C, treated below. The
+   third event is model-detected termination ([§13.5][s13-5]). The loop always
+   completes the current boundary sequence and never stops mid-frame. It then
+   publishes the final snapshot. Only then does it set the sticky stopped
+   status.
+2. **Wake all framework waits.** The waits are the next-snapshot wait and the
+   pause. Each waiter observes the stopped status and unwinds. A stop issued
+   while paused therefore works.
+3. **Unblock device-specific blocking calls.** The hook is `unblock!(device)`,
+   default no-op. A network input's override closes its own socket, which raises
+   in the blocked task. The framework wrapper catches that raise and treats it
+   as shutdown. This demotes FlightCore's EOT convention from load-bearing
+   shutdown mechanism to an optional wire-protocol courtesy between remote
+   peers.
+4. **Loop bodies exit.** The exit is the author's own `while running(handle)`
+   loop, the [contract](#g-contract) of [§9.6][s9-6]. That contract teaches two
+   obligations: the [predicate](#g-predicate) check and interruptible blocking.
+   Steps (2) and (3) are what make every blocking point interruptible. The
+   wrapper's `finally shutdown!(device)` is guaranteed on every exit path.
+5. **Join with a timeout of 5 s.** A device task exceeding the timeout is
+   reported *by name*, through the [§10.2][s10-2] heartbeat. It is then
+   abandoned with a `DeviceJoinTimeout` warning ([Appendix C][sC]) rather than
+   left to hang `run!`.
+6. **Device-initiated paths.** A device exits voluntarily when its loop body
+   returns, at a window ✕ or a peer EOT. No `should_close` hook exists
+   ([§9.6][s9-6]). With `should_abort` set, the wrapper's exit path also
+   requests a sim stop. Otherwise the sim continues with the device's *task*
+   absent: its [cell](#g-cell) stops filling, and the loop is structurally
+   indifferent. Its [roster](#g-roster) entry and its [claims](#g-claim) persist
+   to run end, because [§9.3][s9-3] freezes the roster for the run and death is
+   not detach. The orphaned [slots](#g-slot) hold their last-drained values,
+   visibly ([§9.7][s9-7]). A crashing device task is caught by the framework
+   wrapper and follows the same path, logged with the device's name
+   (`DeviceCrash`, [Appendix C][sC]).
+7. **Loop-side failure.** A failure on the loop's own side runs steps (1)
+   through (5) from the catch path, specified in [§13.6][s13-6]. The failed
+   boundary is discarded and the previous snapshot is promoted to final.
+   FlightCore's `SimulationTermination` catch path was the precedent, though the
+   exception-based termination idiom itself has no place here ([§13.5][s13-5]).
+   Devices therefore unwind cleanly regardless of who died.
+
+The ordered part, in one line:
+
+> **(1)** stop observed → current boundary completed → final snapshot published
+> → sticky `stopped` set → **(2)** framework waits woken → **(3)** `unblock!`
+> per device → **(4)** loop bodies return, each through its wrapper's
+> `finally shutdown!` → **(5)** join under the 5 s cap → `run!` returns
+
+**Why the final snapshot goes out before the status is set.** Publishing first
+guarantees that output devices can flush the true final state. The status that
+follows carries the run's cumulative diagnostic counters ([§9.8][s9-8]) — the
+complete warning account of a run nobody watched.
+
+**Rule.** That terminal snapshot is retained in the log unconditionally, under
+any `log_every` and any `log_max` ([§9.2][s9-2]).
+
+**`t_end` lands on the grid.** The run ends at the first grid boundary whose
+time reaches or exceeds `t_end`. Whole frames only, never a shortened final
+step, which grid integrity forbids ([§8.4][s8-4]; `tₖ = t₀ + k·h`, indexed and
+never accumulated). The final boundary may therefore overshoot `t_end` by up to
+`h`. The termination record carries the actual final `t` ([§13.5][s13-5]). This
+is the `t_plus` spelling ([§10.6][s10-6]) applied to the run's own clock: whole
+frames until the boundary time first covers the duration.
+
+**The two termination sources differ in kind.** `t_end` is a grid fact, checked
+against boundary times on the grid. `stop_on` is checked at *every* published
+boundary, `t*` included ([§13.5][s13-5]).
+
+**Why five seconds.** It is generous for GUI window teardown and socket closes.
+It is short enough that an abandoned join reads as a diagnosed timeout rather
+than a hang.
+
+**The calling-task device sits outside the join.** The
+[calling task](#g-calling-task) is the task that invoked `run!`. The device it
+hosts is the GUI, which has no spawned task ([§9.1][s9-1]). That device's loop
+body is the calling task's own occupation of `run!`. It exits by the same
+`running(handle)` predicate as any device loop, and `run!` returns after the
+joins. One honest asymmetry follows: the abandonment path of (5) cannot cover
+it, because nothing can abandon the task `run!` stands on. A calling-task device
+that blocks past shutdown therefore hangs `run!`. The trait's one authoring
+obligation is a loop body that never blocks between `running` checks. The
+shipped GUI's render loop polls once per frame and never blocks.
+
+**What survives the tail.** After (5) the task set is empty, device tasks being
+per-run artifacts ([§9.1][s9-1]), and `shutdown!` has released each device's OS
+resources. What survives a stop is the roster entry: binding, claims, stable
+device id ([§9.3][s9-3]). Never a task, never a live resource. That holds for a
+device whose task died mid-run too, its entry being indistinguishable at this
+point from any other's. `stopped` is where `detach!` removes an entry and
+releases its claims.
+
+**One roster change belongs to this tail.** A GUI attached by `run!`'s
 `gui = true` is detached here, releasing its computed claim (the run-scoped
-flag, [§10.6][s10-6]) — the only roster mutation the protocol itself performs,
-and
-it sits in the tail precisely so that (7)'s failure path takes it too, an
-everything-claim staked for one run never surviving into the next.
-The next `run!` re-runs device
-`init!` — resource acquisition is per-run; FlightCore's
-create-a-new-socket-each-`init!` in network.jl is the precedent — and spawns
-fresh tasks against the re-armed [§10.3][s10-3] counter. While stopped there are no
-device tasks, so voluntary exit and the [§10.2][s10-2] liveness heartbeat are
-run-scoped observables; a device unplugged while stopped surfaces as the next
-run's `init!` failure, disposed of by the initialization step below.
+flag, [§10.6][s10-6]). It is the only roster mutation the protocol itself
+performs. It sits in the tail precisely so that (7)'s failure path takes it too,
+an everything-claim staked for one run never surviving into the next.
+
+**The next run re-acquires everything.** The next `run!` re-runs device `init!`,
+resource acquisition being per-run; FlightCore's
+create-a-new-socket-each-`init!` in network.jl is the precedent. It also spawns
+fresh tasks against the re-armed [§10.3][s10-3] counter. While stopped there are
+no device tasks at all, so voluntary exit and the [§10.2][s10-2] liveness
+heartbeat are run-scoped observables. A device unplugged while stopped surfaces
+as the next run's `init!` failure, disposed of by the initialization bracket
+below.
+
+#### Initialization: the pre-spawn bracket
 
 **Initialization is a step of this protocol, taken at the top of a run.**
-Before any task is spawned, the loop calls `init!` once per roster entry, in
-attachment order, on the calling task — and each call sits in its own bracket:
+
+**Rule.** Before any task is spawned, the loop calls `init!` once per roster
+entry, in attachment order, on the calling task. Each call sits in its own
+bracket.
 
 ```julia
 for entry in roster                       # attachment order, calling task
@@ -3852,84 +3898,115 @@ for entry in roster                       # attachment order, calling task
 end
 ```
 
-The bracket is what makes "guaranteed on every exit path" ([§9.6][s9-6]) true of
-the path outside its wrapper: a device that throws half-way through acquisition
-is handed back to `shutdown!` right there, so its partially acquired OS
-resources are released rather than leaked — which is exactly why `shutdown!`
-owes tolerance of a partially initialized device (the taught obligation, [§9.6][s9-6]).
-The report is the ordinary `DeviceCrash` ([Appendix C][sC]), not a kind of its own:
-its [payload](#g-payload) — device id, the cause exception, whether `should_abort` was set —
-already carries everything an init-time failure has to say. It is written
-through the ordinary `report!(address, diagnostic)` entry point, addressed by
-the roster entry rather than by a handle, there being no device task to hold one
-before the spawn; the address supplies the device identity either way, which is
-why no call passes a device id ([§9.8][s9-8]). The name is
-honest, a device that cannot acquire its resources having crashed before it
-lived. No task is spawned for a failed device, so it is **dead from boundary
-zero**, and that needs no machinery: its [diagnostic cell](#g-diagnostic-cell) (the single-writer
-ring each writer owns for diagnostics and heartbeat) never receives a heartbeat
-timestamp, so it reads stale against the threshold ([§10.2][s10-2]) from the first frame
-([§9.8][s9-8]). Its **claims persist to run end** — the death-is-not-detach disposition
-([§9.3][s9-3]), applied one step earlier than (6)'s: the roster is frozen for the run,
-and the orphaned slots hold their initial values, well-defined by [slot totality](#g-slot-totality)
-([§14.6][s14-6]; every root slot must hold a value) where an orphan of (6) holds a last
-drained batch.
+**Why the bracket.** It is what makes "guaranteed on every exit path"
+([§9.6][s9-6]) true of the path outside that wrapper. A device that throws
+half-way through acquisition is handed back to `shutdown!` right there, so its
+partially acquired OS resources are released rather than leaked. That is exactly
+why `shutdown!` owes tolerance of a partially initialized device, a taught
+obligation of [§9.6][s9-6].
 
-**The run's disposition splits on `should_abort`, uniformly with (6).** Clear —
-the default ([§9.6][s9-6]) — the remaining entries initialize, the run starts, and
-the sim runs with that device absent from frame zero: (6)'s "the sim continues
-with the device's task absent", shifted to `t₀`. Set, the failure requests a
-control-plane stop, and that stop is simply *already pending* when the run
-reaches [boundary zero](#g-boundary-zero) — a path this protocol already has,
-since the boundary-zero check ([§13.5][s13-5]) ends a run at `t₀` with that
-snapshot final, integrating
-nothing. No new exit protocol, therefore: the remaining entries still
-initialize — every rostered device gets its `init!`/`shutdown!` pair, uniformly
-— the run publishes boundary zero, and it ends `stopped` at `t₀` through this
-same tail, with the termination record naming the source ([§13.5][s13-5]). What the
-operator is left with is an ordinary stopped simulation: a terminal snapshot,
-the failure named in its diagnostic account, fully serviceable by [§14][s14] and
-resumable by the next `run!` ([§10.6][s10-6]) once the device is plugged back in.
+**The report is the ordinary `DeviceCrash`, not a kind of its own**
+([Appendix C][sC]). Its [payload](#g-payload) already carries everything an
+init-time failure has to say: the device id, the cause exception, and whether
+`should_abort` was set. The name is honest, a device that cannot acquire its
+resources having crashed before it lived.
+
+**Rule.** The report is written through the ordinary
+`report!(address, diagnostic)` entry point, addressed by the roster entry rather
+than by a handle.
+
+There is no device task to hold a handle before the spawn. The address supplies
+the device identity either way, which is why no call passes a device id
+([§9.8][s9-8]).
+
+**Rule.** No task is spawned for a failed device, so it is dead from
+[boundary zero](#g-boundary-zero) (the initialization boundary: the ordinary
+macro-sequence with an empty integrate).
+
+That needs no machinery. Its [diagnostic cell](#g-diagnostic-cell) (the
+single-writer ring each writer owns for diagnostics and heartbeat) never
+receives a heartbeat timestamp. The cell therefore reads stale against the
+[§10.2][s10-2] threshold from the first frame ([§9.8][s9-8]).
+
+**Rule.** The claims of a failed device persist to run end.
+
+This is the death-is-not-detach disposition ([§9.3][s9-3]), applied one step
+earlier than (6)'s. The roster is frozen for the run, and the orphaned slots
+hold their initial values, well-defined by [slot totality](#g-slot-totality)
+([§14.6][s14-6]; every root slot must hold a value). An orphan of (6) holds a
+last drained batch instead.
+
+**The run's disposition splits on `should_abort`, uniformly with (6).** With the
+flag clear, which is the default ([§9.6][s9-6]), the remaining entries
+initialize, the run starts, and the sim runs with that device absent from frame
+zero. That is (6)'s "the sim continues with the device's *task* absent", shifted
+to `t₀`.
+
+With the flag set, the failure requests a control-plane stop, and that stop is
+simply *already pending* when the run reaches boundary zero. This protocol
+already has that path: the boundary-zero check ([§13.5][s13-5]) ends a run at
+`t₀` with that snapshot final, integrating nothing. No new exit protocol is
+needed, therefore.
+The remaining entries still initialize, every rostered device getting its
+`init!`/`shutdown!` pair uniformly. The run publishes boundary zero. It ends
+`stopped` at `t₀` through this same tail, with the termination record naming the
+source ([§13.5][s13-5]). What the operator is left with is an ordinary stopped
+simulation: a terminal snapshot, with the failure named in its diagnostic
+account. It is fully serviceable by [§14][s14] and resumable by the next `run!`
+([§10.6][s10-6]) once the device is plugged back in.
 
 **Topology is derived after initialization**, not from the roster alone
-([§9.1][s9-1]): a `needs_calling_task` holder whose `init!` failed returns the loop
-to the calling task, which would otherwise be pinned waiting to run the loop
-body of a device that does not exist. The shipped GUI attaches with
-`should_abort = true`, so in practice that run ends at `t₀` anyway; the rule is
+([§9.1][s9-1]): a `needs_calling_task` holder whose `init!` failed returns the
+loop to the calling task, which would otherwise be pinned waiting to run the
+loop body of a device that does not exist. The shipped GUI attaches with
+`should_abort = true`, so in practice that run ends at `t₀` anyway. The rule is
 stated generally because it costs nothing.
 
+#### The operator interrupt
+
 **The operator interrupt is a stop, not a failure.** Ctrl-C in an interactive
-session is a control-plane stop command issued by hand: the run completes the
+session is a control-plane stop command issued by hand. The run completes the
 current boundary, publishes the final snapshot, takes this tail like any other
-stop, and ends `stopped` — boundary-consistent, fully serviceable by the [§14][s14]
-stopped-sim services, resumable by the next `run!` ([§10.6][s10-6]). It is the escape
-from a run nothing else can end — deviceless, `t_end = Inf`, empty `stop_on`
-(`UnboundedRun`, [Appendix C][sC]) — and it needs no entry point of its own: the
-[control plane](#g-control-plane) already carries the stop ([§10.1][s10-1]), and
-the exceptions-are-abnormal doctrine ([§13][s13]) is untouched, being about
-*model* code, while
-this is the one exception whose meaning the framework knows.
-**Masking across the boundary is normative**, not an implementation hint. An
-`InterruptException` is delivered asynchronously, so an interrupt landing
-mid-[sweep](#g-sweep) would destroy the boundary this protocol is built on completing and
-leave half-written stores ([§13.6][s13-6]) — forcing a choice between `stopped` with
-dirty stores and a terminal `errored`, and the `stopped`-with-consistent-stores
-guarantee is exactly what the masking buys. The loop therefore masks delivery
-across the boundary macro-sequence (Julia's `disable_sigint`; a sigatomic
-counter increment, negligible per frame) and takes the deferred raise at the
-unmask points — the frame top, where it already consults the control plane
-([§10.1][s10-1]), and inside its wait and pause blocks — all boundary-consistent.
-Caught there, it sets the control-plane stop and enters this tail; the catch
-site ([§13.4][s13-4]) therefore never sees it. A **second interrupt during the
-tail** collapses
-the remaining joins immediately — (5)'s abandonment path taken at once, devices
-still reported by name (`DeviceJoinTimeout`) — and the run still ends `stopped`:
-escalation shortens the tail, never reclassifies the run. It cannot repair (5)'s
-honest asymmetry either, since nothing can abandon the task `run!` stands on.
-**Interactive-session scope**, stated plainly: outside the REPL, Julia's default
+stop, and ends `stopped`. The result is boundary-consistent. It is fully
+serviceable by the [§14][s14] stopped-sim services and resumable by the next
+`run!` ([§10.6][s10-6]).
+
+The interrupt is the escape from a run nothing else can end: deviceless,
+`t_end = Inf`, empty `stop_on` (`UnboundedRun`, [Appendix C][sC]). It needs no
+entry point of its own. The stop already rides on the
+[control plane](#g-control-plane), the separate atomic surface carrying pause,
+pace and stop ([§10.1][s10-1]). The exceptions-are-abnormal doctrine
+([§13][s13]) is untouched. That doctrine is about *model* code, while this is
+the one exception whose meaning the framework knows.
+
+**Rule.** Masking across the boundary is normative, not an implementation hint.
+
+**Why.** An `InterruptException` is delivered asynchronously. An interrupt
+landing mid-[sweep](#g-sweep) would therefore destroy the boundary this protocol
+is built on completing, and would leave half-written stores ([§13.6][s13-6]).
+That forces a choice between `stopped` with dirty stores and a terminal
+`errored`. The `stopped`-with-consistent-stores guarantee is exactly what the
+masking buys.
+
+The loop masks delivery across the boundary macro-sequence, using Julia's
+`disable_sigint` — a sigatomic counter increment, negligible per frame. It takes
+the deferred raise at the unmask points: the frame top, where it already
+consults the control plane ([§10.1][s10-1]), and inside its wait and pause
+blocks. All of those points are boundary-consistent. Caught at one of them, the
+interrupt sets the control-plane stop and enters this tail. The catch site
+([§13.4][s13-4]) therefore never sees it.
+
+**A second interrupt during the tail** collapses the remaining joins
+immediately. That is (5)'s abandonment path taken at once, with devices still
+reported by name (`DeviceJoinTimeout`). The run still ends `stopped`: escalation
+shortens the tail, never reclassifies the run. Nor can a second interrupt repair
+(5)'s honest asymmetry, since nothing can abandon the task `run!` stands on.
+
+**Interactive-session scope, stated plainly.** Outside the REPL, Julia's default
 (`exit_on_sigint(true)`) kills the process on SIGINT before any of this
-machinery runs, and the framework flips nothing process-global — [unattended runs](#g-unattended-run)
-rely on `t_end` and `stop_on`, as they already must.
+machinery runs. The framework flips nothing process-global.
+[Unattended runs](#g-unattended-run), those with empty staging and no snapshot
+readers, rely on `t_end` and `stop_on`, as they already must.
 
 ### 10.5 Scripts and the mid-run mutation doctrine
 
