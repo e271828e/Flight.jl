@@ -43,7 +43,7 @@ function main(strict::Bool)
     # entries: optional anchor prefix, then the bold term opening the line
     entries = Tuple{String,Union{String,Nothing}}[]   # (term, anchor id)
     for line in glossary
-        m = match(r"^(?:<a id=\"(g-[a-z0-9-]+)\"></a>\s*)?\*\*(.+?)\*\*(?= —| –|—)", line)
+        m = match(r"^(?:<a id=\"(g-[a-z0-9_-]+)\"></a>\s*)?\*\*(.+?)\*\*(?= —| –|—)", line)
         m === nothing && continue
         push!(entries, (m[2], m[1]))
     end

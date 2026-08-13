@@ -8236,19 +8236,19 @@ wherever a neighboring term is genuinely close.*
 
 ### D.1 Component model and declaration layer
 
-**abstract entry** — an `input_types` entry whose declared type is abstract,
+<a id="g-abstract-entry"></a>**abstract entry** — an `input_types` entry whose declared type is abstract,
 stating **structural substitutability**: any concrete producer face below the
 bound wires to it ([§4.4][s4-4]'s field handles are the demonstrated client). Never
 needed for eltype genericity, and illegal where the face surfaces as a root
 slot (`AbstractAtRoot`) ([§11.2][s11-2]).
 
-**assembly** — pure composition: component-typed fields as children, plus
+<a id="g-assembly"></a>**assembly** — pure composition: component-typed fields as children, plus
 `child_connections` (mandatory, the class marker), `input_connections`,
 `output_connections` and `sample_times`, with no
 dynamics of its own; flattened away for scheduling, retained as the
 navigation hierarchy and as declaration-level rate scopes ([§3.3][s3-3], [§11.5][s11-5]).
 
-**auto-published port** — a declared output that matches a state or mode field
+<a id="g-auto-published-port"></a>**auto-published port** — a declared output that matches a state or mode field
 by name and type and that no stage produces: the framework publishes it from
 the store at stage-1 position (`h_x`, either tier; the match is against
 `init_x`, plus `init_m` on the continuous tier). Contract-driven — row 16
@@ -8256,26 +8256,26 @@ rejected blanket identity publication of state — a framework write, never a
 probe product, and excluded from the stage-1 hand-down `y_x` ([§5.3][s5-3], [§11.3][s11-3],
 [§5.2][s5-2], row 169).
 
-**class** — a component's primitive-vs-assembly status, read off *which*
+<a id="g-class"></a>**class** — a component's primitive-vs-assembly status, read off *which*
 well-known declarations its type defines: `child_connections` ⇒ assembly, any leaf
 declaration ⇒ primitive, neither ⇒ `ClassUnreadable` ([§11.5][s11-5]). Not to be
 confused with *tier* (continuous vs. discrete, [§D.4][sD-4]) or with a diagnostic
 *kind* ([§D.9][sD-9]).
 
-**component** — the unit of modeling: a leaf (continuous or periodic discrete
+<a id="g-component"></a>**component** — the unit of modeling: a leaf (continuous or periodic discrete
 primitive) or an assembly of components; "primitive" and "leaf" are used
 interchangeably for the non-assembly classes ([§3][s3]).
 
-**container children** — a `Tuple`/`NamedTuple` field whose elements are all
+<a id="g-container-children"></a>**container children** — a `Tuple`/`NamedTuple` field whose elements are all
 components, contributing them as children path-named `"field/1"` or
 `"field/key"`. Transparent grouping, not an assembly: no contract, no
 `child_connections`, no rate scope ([§11.5][s11-5]).
 
-**continuous component** — the hybrid primitive: continuous state `x`, modes
+<a id="g-continuous-component"></a>**continuous component** — the hybrid primitive: continuous state `x`, modes
 `m`, flow `f`, two output stages, events (guards + handlers) and optional
 `project`; any facet may be empty, so a state-free instance is an FSM ([§3.1][s3-1]).
 
-**contract** — a component's declared interface: `input_types` (its
+<a id="g-contract"></a>**contract** — a component's declared interface: `input_types` (its
 requirements, read permissively — what each entry *allows* to arrive) and
 `output_types` (its public ports, read literally — what each cell *carries*).
 Both take the two-argument `T`-form on the continuous tier and the plain form on
@@ -8283,56 +8283,56 @@ the discrete one. Declared in
 `output_types` = public, returned in `w` = private by construction, returned in
 `y` and declared nowhere = build error ([§11.2][s11-2], [§11.3][s11-3]).
 
-**declaration inventory** — the closed set of well-known functions a component
+<a id="g-declaration-inventory"></a>**declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_m`, `workspace`,
 `input_types`/`output_types`, `events`, the stages, `f`/`g`/
 `project`, and `child_connections`/`input_connections`/`output_connections`/`sample_times` — each declared in a stated
 register of authority: by value, by type, by allocation ([§11.2][s11-2]).
 
-**function family** — which bundle fields a given function may legally
+<a id="g-function-family"></a>**function family** — which bundle fields a given function may legally
 receive: `h_x`/`h_xu`/`f`/`g`/guard/handler/`project` (the `h_*` sets being
 per-tier, [§5.2][s5-2]), with
 [§5.2][s5-2]'s comment block stating each family's maximal legal set and
 `BundleFieldError` classifying a read as illegal for the family ([§5.2][s5-2]).
 Not a diagnostic *kind* ([§D.9][sD-9]).
 
-**generic holding** — a parent holding a child through a non-concrete field
+<a id="g-generic-holding"></a>**generic holding** — a parent holding a child through a non-concrete field
 type; the child is opaque below its faces, and the wires and boundary connections
 referencing those faces *are* the imposed contract, checked per instantiation
 ([§11.8][s11-8], [§6.1][s6-1]).
 
-**hybrid causal system** — what the framework simulates: continuous flow with
+<a id="g-hybrid-causal-system"></a>**hybrid causal system** — what the framework simulates: continuous flow with
 algebraic outputs, multi-rate periodic discrete dynamics, zero-crossing
 events, post-step manifold projection, and externally injected inputs ([§2][s2]).
 
-**the letters** — `f` the continuous flow, `g` the discrete update, `h_*` the
+<a id="g-the-letters"></a>**the letters** — `f` the continuous flow, `g` the discrete update, `h_*` the
 output stages (suffix = dependence class, not argument list), `x` the state on
 either tier and `m` the continuous-only mode store, `u` wired inputs, `y` own
 published signals, `ws` the
 workspace. Bare `h` means the integration step size only ([§5.3][s5-3], [§8][s8]);
 bare `z` means only the shift operator `z⁻¹` (row 173).
 
-**periodic discrete component** — a leaf with state `x`, update `g`
+<a id="g-periodic-discrete-component"></a>**periodic discrete component** — a leaf with state `x`, update `g`
 at a declared rate, and two output stages whose cells hold zero-order between
 ticks; it has no `m` store, and its `x` reaches others only through signals
 ([§3.2][s3-2]).
 
-**rate scope** — an assembly's `sample_times` declaration: immediate child
+<a id="g-rate-scope"></a>**rate scope** — an assembly's `sample_times` declaration: immediate child
 name ⇒ `Relative` or `Absolute` declaration against the enclosing scope,
 relative entries composing affinely down the tree, absolute entries
 anchoring; all compiled to one `(D, Φ)` pair per discrete component
 ([§11.7][s11-7], [§8.5][s8-5]).
 
-**schema authority** — the principle that declarations *define* structure and
+<a id="g-schema-authority"></a>**schema authority** — the principle that declarations *define* structure and
 evaluation only *checks* conformance against them, never the reverse; types by
 declaration, values by execution, conformance by comparison ([§11.1][s11-1]).
 
-**stage function / two-stage outputs** — every component provides exactly two
+<a id="g-stage-function"></a>**stage function / two-stage outputs** — every component provides exactly two
 output stages, `h_x` (no `u` in the bundle, hence structurally no
 feedthrough) and `h_xu`; feedthrough is thereby declared by signature,
 with no dependency annotations anywhere ([§5.2][s5-2]).
 
-**workspace** — component-declared mutable scratch, declared *by allocation*
+<a id="g-workspace"></a>**workspace** — component-declared mutable scratch, declared *by allocation*
 (`workspace(::C, ::Type{T})` continuous, `workspace(::C)` discrete), arriving
 as the `ws` bundle field; excluded from state semantics, never a condition
 target, and never inspected or mutated by the framework — contents at call
@@ -8340,32 +8340,32 @@ entry are unspecified ([§7.3][s7-3]).
 
 ### D.2 Signals and data homes
 
-**buffer** — the framework-owned contiguous `Vector{T}` backing all continuous
+<a id="g-buffer"></a>**buffer** — the framework-owned contiguous `Vector{T}` backing all continuous
 state, laid out at build time; authoritative, with typed state values as
 ephemeral reconstructions of it ([§7.1][s7-1]). [§13.6][s13-6]'s integration intermediates live
 in framework-owned integrator buffers, never in a component's workspace.
 
-**bundle** — the single `NamedTuple` of zero-copy views a component function
+<a id="g-bundle"></a>**bundle** — the single `NamedTuple` of zero-copy views a component function
 receives beside the component itself. Under the bundle law a name is present
 **iff** the corresponding store or fact exists for that component; undeclared
 stores are absent, never `nothing`-filled ([§5.2][s5-2]).
 
-**cell** — one concretely-typed entry of the signal table, one per output port
+<a id="g-cell"></a>**cell** — one concretely-typed entry of the signal table, one per output port
 of the flattened model, written by its producing
 stage and read by every gatherer ([§4.1][s4-1]). Every cell is public, private
 intermediates never being cells ([§11.3][s11-3]). Bare "cell" is only this — see
 *staging cell* ([§D.6][sD-6]) and *store*.
 
-**constant source** — an ordinary library component with no inputs and no
+<a id="g-constant-source"></a>**constant source** — an ordinary library component with no inputs and no
 state, publishing a value its instance holds (`Constant{V}`); the spelling for
 an aggregate input with zero contributors and for the rig stub feeding an
 abstract face. Its value is instance data, never a default ([§13.7][s13-7], [§6.2][s6-2]).
 
-**entry** — never used bare: the spec's compounds are table entry (a cell),
+<a id="g-entry"></a>**entry** — never used bare: the spec's compounds are table entry (a cell),
 input entry ([§11.2][s11-2]), executor entry ([§12.7][s12-7]), roster entry ([§9.3][s9-3]), batch entry
 ([§9.3][s9-3]) and condition entry ([§14.3][s14-3]), each a different thing.
 
-**face** — the name a port wears on its component's boundary: for a leaf the
+<a id="g-face"></a>**face** — the name a port wears on its component's boundary: for a leaf the
 port's own name, for an assembly a name declared in `input_connections` or
 `output_connections`, aliasing an interior port. An opaque token with
 two build-checked invariants (no `/`, unique within the assembly), its type
@@ -8374,64 +8374,64 @@ that names it. The periphery's write side
 speaks face names only; the read side speaks them wherever it wants contract
 rather than structure ([§11.6][s11-6], [§9.2][s9-2], [§14.4][s14-4]).
 
-**feedthrough** — an instantaneous input→output dependence. **Structural
+<a id="g-feedthrough"></a>**feedthrough** — an instantaneous input→output dependence. **Structural
 feedthrough** is this design's version: fixed by which stage produces a port
 rather than annotated, with every stage-2 output conservatively presumed
 dependent on every wired input ([§5.3][s5-3]).
 
-**field handle / function-valued signal** — an immutable query object carried
+<a id="g-field-handle"></a>**field handle / function-valued signal** — an immutable query object carried
 on an ordinary port (`ISAField`, `TerrainField`) that consumers evaluate at
 arguments of their own choosing; bulk data rides as build-time-frozen
 references, never as mutable caches ([§4.4][s4-4]).
 
-**immutable value semantics** — the signal rule, stated precisely as
+<a id="g-immutable-value-semantics"></a>**immutable value semantics** — the signal rule, stated precisely as
 immutability *plus frozen references* (`isbits` is the common case, not the
 rule): no aliasing, safe concurrent reads, and a definite per-cell freshness
 tied to the producer's schedule position ([§4.1][s4-1]).
 
-**one home per datum** — buffer for continuous `x`, stores for discrete `x` and for `m`, table for
+<a id="g-one-home-per-datum"></a>**one home per datum** — buffer for continuous `x`, stores for discrete `x` and for `m`, table for
 produced signals; no store mirrors another, and the table never holds
 transported data ([§5.2][s5-2], [§7.1][s7-1]).
 
-**port** — the addressable unit of the model: one declared name, one cell, one
+<a id="g-port"></a>**port** — the addressable unit of the model: one declared name, one cell, one
 root slot, one staged write, one device claim, one trace address, one GUI
 liveness verdict. Wiring is port-granular, and which stage computes a port is
 invisible outside the component ([§4.2][s4-2], [§4.3][s4-3]).
 
-**signal table** — the framework-owned collection of cells holding every
+<a id="g-signal-table"></a>**signal table** — the framework-owned collection of cells holding every
 produced signal of the flattened model; consumers gather views from it, and
 its consistency is a boundary property, transiently integrator scratch within
 a step ([§4.1][s4-1], [§8.3][s8-3]).
 
-**slot** — a root input slot: the root assembly's own input face,
+<a id="g-slot"></a>**slot** — a root input slot: the root assembly's own input face,
 produced by no component, constant within a frame, and the only thing the
 periphery may write ([§9.3][s9-3], [§11.6][s11-6]).
 
-**staging cell** — the per-device atomic holding place where a device's pending
+<a id="g-staging-cell"></a>**staging cell** — the per-device atomic holding place where a device's pending
 write batch waits between drains; mutated frame by frame, hence outside the
 table's publish-once discipline ([§9.4][s9-4]). Not a table cell ([§4.1][s4-1]).
 
-**store** — the typed home of `m` and of a discrete leaf's `x`: overwritten by the framework when a
+<a id="g-store"></a>**store** — the typed home of `m` and of a discrete leaf's `x`: overwritten by the framework when a
 handler or update returns a new value, never arithmetic-touched, snapshot-free
 to copy. Never called a cell — root slots, by contrast, *are* source cells of
 the table ([§7.3][s7-3], [§4.1][s4-1], [§9.2][s9-2]).
 
-**summing junction** — an ordinary library component performing N-to-1
+<a id="g-summing-junction"></a>**summing junction** — an ordinary library component performing N-to-1
 aggregation through explicit wires (`SumJunction{W, N}` or a named
 site-specific variant); there is no framework aggregation mechanism, and fold
 order is the junction's positional input order ([§6.2][s6-2]).
 
-**value-level constructor** — the plain exported function (component, input
+<a id="g-value-level-constructor"></a>**value-level constructor** — the plain exported function (component, input
 values) → field handle that every field-emitting component is obliged to
 provide, its own swept output stage being a one-line call to it; the device by
 which [§14.1][s14-1] condition math queries the environment before any sweep exists
 ([§4.4][s4-4]).
 
-**view** — a zero-copy reconstruction of a store handed to a function through
+<a id="g-view"></a>**view** — a zero-copy reconstruction of a store handed to a function through
 its bundle; it materializes in the caller's frame for the duration of the call
 and is value-identical on re-materialization within a sweep ([§7.1][s7-1], [§5.2][s5-2]).
 
-**`w` (private intermediates)** — the optional second slot of an output stage's
+<a id="g-w"></a>**`w` (private intermediates)** — the optional second slot of an output stage's
 return, `(y, w)`: an `isbits`-leaf NamedTuple of values the component computes
 for its own later use. Private by construction — no cell, no contract entry,
 nothing to wire, list, filter or address — travelling exactly one hop by
@@ -8441,33 +8441,33 @@ for one is promotion to a declared output.
 
 ### D.3 Evaluation and scheduling
 
-**algebraic loop** — a genuine cycle in the instantaneous dependency graph: a
+<a id="g-algebraic-loop"></a>**algebraic loop** — a genuine cycle in the instantaneous dependency graph: a
 build error naming the path in canonical slash form, broken by the author with
 inserted dynamics, an explicit `UnitDelay` or restructuring ([§5.5][s5-5]). Not to be
 confused with an **artificial loop**, port-level acyclic but stage-level
 cyclic, whose remedy is a ladder — the two-stage split, contract re-factoring,
 and as residual a component split ([§5.4][s5-4]).
 
-**flow / RHS** — `f`, the continuous derivative function. Evaluating the RHS
+<a id="g-flow"></a>**flow / RHS** — `f`, the continuous derivative function. Evaluating the RHS
 means running the whole sweep, since `f` reads the fresh table: there is no
 incremental `f`-only re-evaluation ([§3.1][s3-1], [§5.3][s5-3]).
 
-**frame** — one iteration of the loop — drain, integrate, boundary sequence,
+<a id="g-frame"></a>**frame** — one iteration of the loop — drain, integrate, boundary sequence,
 publication — the unit `step!` counts and the trace's ordinal key ([§9.1][s9-1]).
 Distinct from a *boundary* ([§D.4][sD-4]), and from the kinematic reference frames of
 the aircraft domain, which always appear compounded ("the b frame").
 
-**projection** — the optional per-component hook `x ← project(x)`, run in the
+<a id="g-projection"></a>**projection** — the optional per-component hook `x ← project(x)`, run in the
 only two schedule positions between a state write and its decode (after
 integration, after a handler's `x`-reset); the cheap end of geometric
 integration's projection methods ([§2][s2], [§5.3][s5-3]).
 
-**schedule** — the static evaluation order computed once at build time from
+<a id="g-schedule"></a>**schedule** — the static evaluation order computed once at build time from
 wiring edges plus intra-component feedthrough: all stage-1 functions in any
 order, stage 2 in topological order, then `f`. The hot loop runs a flat list of
 `(component, stage)` entries, with zero runtime graph logic ([§5.1][s5-1]).
 
-**sweep** — one execution of that schedule against the current state, in one of
+<a id="g-sweep"></a>**sweep** — one execution of that schedule against the current state, in one of
 two statically distinct variants compiled from the same entry list: the
 **interior sweep** walks continuous entries only — what RK stage evaluations and
 localization guard probes run, so discrete cells hold ZOH mid-step by
@@ -8479,43 +8479,43 @@ until quiescence ([§5.3][s5-3], [§8.3][s8-3], [§8.5][s8-5], [§8.6][s8-6]).
 
 ### D.4 Time and events
 
-**anchor** — the exact `(T, τ)` pair an `Absolute` entry establishes: period
+<a id="g-anchor"></a>**anchor** — the exact `(T, τ)` pair an `Absolute` entry establishes: period
 and offset in rational seconds, severing its subtree from the enclosing
 scope's grid; anchor 0 is the base grid itself. Anchors join the deployment
 constraint pool; relative declarations below one compose against it exactly
 as against the root grid ([§8.5][s8-5], [§12.1][s12-1]).
 
-**bound schedule** — the named printable artifact on the `Simulation`
+<a id="g-bound-schedule"></a>**bound schedule** — the named printable artifact on the `Simulation`
 produced by deployment binding: per discrete component, `(D, Φ, Δt)` with
 anchor and provenance columns — the single source of truth for `Δt` and the
 substrate of the grid diagnostics and the hyperperiod chart ([§12.2][s12-2], [§8.5][s8-5]).
 
-**boundary** — a published consistency point: where the [§8.6][s8-6] macro-sequence
+<a id="g-boundary"></a>**boundary** — a published consistency point: where the [§8.6][s8-6] macro-sequence
 completes and a snapshot goes out. Every grid point is a boundary, but `t*`
 and boundary zero are boundaries that are not frame tops ([§8.4][s8-4]). *Boundary
 zero* ([§14.5][s14-5], [§D.8][sD-8]) is a hyponym — it is an ordinary boundary whose incoming
 transitions are authored rather than computed.
 
-**boundary-detected** — the detection policy a `Bool`-returning guard declares:
+<a id="g-boundary-detected"></a>**boundary-detected** — the detection policy a `Bool`-returning guard declares:
 guards are checked for
 not-holding → holding edges against their priors at step boundaries only, with
 no root-finding and no step rejection, the handler firing at the end of the
 step in which the edge was observed. Exact, not approximate, for guards over
 `u`/`m` alone — those predicates are piecewise frame-constant ([§2.1][s2-1]).
 
-**chattering / localization budget** — the bounded per-frame localization
+<a id="g-chattering"></a>**chattering / localization budget** — the bounded per-frame localization
 allowance, `localization_budget`, a `Simulation` deployment keyword defaulting
 to 8; exhaustion *degrades* rather than throws — localization stops for the
 rest of the frame and further crossings fire at the next boundary, under a
 `ChatteringBudget` warning naming the event ([§8.4][s8-4]).
 
-**`Δt_base`** — the base tick period, an integer multiple `n·h` of the
+<a id="g-dt_base"></a>**`Δt_base`** — the base tick period, an integer multiple `n·h` of the
 continuous step, bound at `Simulation` construction from one of three
 sources: explicit keyword, `n·h`, or — fully anchored models only —
 derivation from the constraint pool; every discrete component's period is an
 integer multiple of it ([§8.5][s8-5], [§12.1][s12-1]).
 
-**due** — a discrete component is due at a boundary when its compiled `(D, Φ)`
+<a id="g-due"></a>**due** — a discrete component is due at a boundary when its compiled `(D, Φ)`
 pair admits that boundary's tick index (`(idx − Φ) % D == 0`); due components'
 output stages are gated into the *boundary* sweep (never the interior one) and
 their `g` updates run after quiescence. The due set is a property of the
@@ -8523,12 +8523,12 @@ boundary, fixed for its whole event iteration: the gate's image of the frame
 index at a frame top, empty at `t*`, the `Φ = 0` set at boundary zero
 ([§8.5][s8-5], [§8.6][s8-6]).
 
-**edge semantics / holding** — an event fires on a not-holding → holding
+<a id="g-edge-semantics"></a>**edge semantics / holding** — an event fires on a not-holding → holding
 transition of its predicate, never on a bare sign change; the opposite
 crossing direction is declared as a second event with the negated guard ([§2.1][s2-1],
 [§8.6][s8-6]).
 
-**firing budget** — the rule bounding the boundary event iteration: each
+<a id="g-firing-budget"></a>**firing budget** — the rule bounding the boundary event iteration: each
 declared event fires at most `firing_budget` times per boundary (a
 `Simulation` deployment keyword, an integer ≥ 1 defaulting to 4), eligibility
 being a not-holding → holding edge on the event's last-observed sample. An
@@ -8536,19 +8536,19 @@ event re-enabled within the boundary therefore fires *at* that boundary;
 exhaustion drops its further edges there under a `FiringBudget` warning
 ([§8.6][s8-6]).
 
-**guard** — the declared function defining an event's predicate, evaluated
+<a id="g-guard"></a>**guard** — the declared function defining an event's predicate, evaluated
 against the fresh boundary table and paired with a handler in an ordered,
 named `events` collection; its detection policy is declared by its return
 type — `Bool` boundary-detected, the nominal scalar localized ([§2.1][s2-1],
 [§11.2][s11-2]).
 
-**harmonic grid** — the rule that every discrete period is an integer multiple
+<a id="g-harmonic-grid"></a>**harmonic grid** — the rule that every discrete period is an integer multiple
 of `Δt_base` — and every anchor period and offset an integer multiple
 likewise — itself an integer multiple of `h`, so ticks land only on step
 boundaries; grid times are indexed from the frame count, never accumulated
 ([§8.5][s8-5], [§8.4][s8-4]).
 
-**input epoch** — a maximal span of constant `u`, delimited by the frame-top
+<a id="g-input-epoch"></a>**input epoch** — a maximal span of constant `u`, delimited by the frame-top
 drains ([§9.4][s9-4]). Within an epoch a guard changes only through the
 trajectory; at a seam it can jump without crossing. Hence the **θ = 0
 validation**: the first act of a triggered localization is a probe at `xₙ`
@@ -8557,12 +8557,12 @@ tells a *trajectory-caused* edge (root-find) from an *epoch-caused* one (no
 in-frame crossing exists — discard the localization and let the event fire in
 the boundary's ordinary iteration, no budget, no warning) ([§8.4][s8-4]).
 
-**interpolant** — the lazily built cubic Hermite continuous extension over the
+<a id="g-interpolant"></a>**interpolant** — the lazily built cubic Hermite continuous extension over the
 last completed step, from which localization probes read the states they sweep;
 built only after the θ = 0 validation confirms an in-frame crossing, and
 invalidated at `t*`, where the handlers have made it a lie ([§8.4][s8-4]).
 
-**localized** — the detection policy a sign-form guard declares: the crossing
+<a id="g-localized"></a>**localized** — the detection policy a sign-form guard declares: the crossing
 instant is
 bracketed by derivative-free root-finding over probe sweeps of interpolated
 states, to a bracket narrower than `localization_tol · h` (a deployment
@@ -8570,46 +8570,46 @@ keyword, default `1e-6`). Only the sign form can declare it — the `Bool` form
 offers no root to bracket — and it runs
 identically paced or unpaced ([§2.1][s2-1], [§8.4][s8-4]).
 
-**pacing / pacer debt** — the pacer inserts waits between completed frames and
+<a id="g-pacing"></a>**pacing / pacer debt** — the pacer inserts waits between completed frames and
 never alters the boundary sequence; a frame exceeding its wall budget leaves
 **debt** that later frames repay, with excess forgiven by re-anchor plus
 warning ([§8.7][s8-7]).
 
-**phase (`Φ`)** — a schedule's offset against its grid: in scope ticks for
+<a id="g-phase"></a>**phase (`Φ`)** — a schedule's offset against its grid: in scope ticks for
 `Relative(K, Φ)`, in rational seconds for `Absolute(q, τ)`, compiled to base
 ticks with `0 ≤ Φ < D` by construction; the boundary gate is
 `(idx − Φ) % D == 0`, and a phase shifts firing instants, never the period
 ([§8.5][s8-5]).
 
-**predicate** — what a guard defines: a `Bool`-valued form, or the sign of a
+<a id="g-predicate"></a>**predicate** — what a guard defines: a `Bool`-valued form, or the sign of a
 continuous function with positive = holding (writing the sign value `σ`,
 holding = `σ ≥ 0`) ([§2.1][s2-1]). Not to be confused with [§14][s14]'s *condition*, the
 value that sets a build's state ([§D.8][sD-8]).
 
-**prior** — the per-event stored sample of its predicate at the previous
+<a id="g-prior"></a>**prior** — the per-event stored sample of its predicate at the previous
 boundary's quiescence, always an honest observation and never a manufactured
 one; held in loop state and never in a state store; "newly fired"
 is defined against it for the boundary's first round (later rounds test the
 last-observed sample), and boundary zero establishes every prior as
 not-holding ([§8.6][s8-6]).
 
-**quiescence** — the fixed point of the boundary event phase: rounds of
+<a id="g-quiescence"></a>**quiescence** — the fixed point of the boundary event phase: rounds of
 [sweep → guards → handlers] iterate until a round fires nothing, after which
 the priors are updated and due `g` updates run ([§8.6][s8-6]).
 
-**remainder step** — the integration from `t*` to the original grid target
+<a id="g-remainder-step"></a>**remainder step** — the integration from `t*` to the original grid target
 after a localized event, with `h′` derived at use; guards are re-checked on it
 under the localization budget ([§8.4][s8-4]).
 
-**`t*`** — the localized event time: the holding endpoint of the root-finder's
+<a id="g-t"></a>**`t*`** — the localized event time: the holding endpoint of the root-finder's
 final bracket, structurally strictly later than `tₙ`. A full boundary runs
 there, but no ticks are due and no staged inputs are drained ([§8.4][s8-4]).
 
-**tick** — an instant at which a discrete component's stages and update run,
+<a id="g-tick"></a>**tick** — an instant at which a discrete component's stages and update run,
 gated by counter modulo against the harmonic grid inside the boundary sweep;
 different boundaries therefore run different subsets of the schedule ([§8.5][s8-5]).
 
-**tier** — the continuous or discrete side of the hybrid formalism, read off a
+<a id="g-tier"></a>**tier** — the continuous or discrete side of the hybrid formalism, read off a
 leaf's declaration shape (`DeclarationOnWrongTier` names a violation) ([§11.2][s11-2],
 [§11.5][s11-5]). Bare "tier" means only this: the genericity classes are *walked /
 pinned / exempt* ([§D.5][sD-5]) and the detection policies *boundary-detected /
@@ -8617,40 +8617,40 @@ localized*.
 
 ### D.5 Build pipeline
 
-**activation** — a re-run of Stratum C at a given scalar type `T`: cells
+<a id="g-activation"></a>**activation** — a re-run of Stratum C at a given scalar type `T`: cells
 re-typed (producer-fed ones by evaluating the producer's output declaration at
 `T`, root slots by evaluating the consuming `input_types` entry at `T`, the
 state type by the leaf walk), buffers re-laid-out,
 workspace allocators re-invoked, probe chain re-run. Structure and schedule are `T`-independent;
 non-nominal activations are lazy, with an opt-in exhaustive set for CI ([§12.4][s12-4]).
 
-**always-on conformance check** — the probe's comparison left permanently in
+<a id="g-always-on-conformance-check"></a>**always-on conformance check** — the probe's comparison left permanently in
 place: one type test of a stage return against the declaration-derived
 expected `NamedTuple` at the table-write point, preceded by a type-level
 reorder to that type's field order (the names pair; order carries no
 semantics), both folding to zero instructions
 when the return type is proven ([§12.5][s12-5]).
 
-**`Build`** — the artifact `build(world)` produces: wire list, face table with
+<a id="g-build"></a>**`Build`** — the artifact `build(world)` produces: wire list, face table with
 provenance, schedule and root slots as plain printable data — the inspectable
 contract of the instantiation, and what `attach!`, `stop_on`, replay and
 condition resolution all validate against ([§12.2][s12-2]).
 
-**chunking** — splitting a large phase body's entry tuple into statically
+<a id="g-chunking"></a>**chunking** — splitting a large phase body's entry tuple into statically
 typed chunks behind non-inlined function barriers; the implementation's only
 representation freedom, converting compile cost from superlinear in body size
 to linear in entry count ([§12.7][s12-7]).
 
-**executable set** — the function set an activation can actually run, hence
+<a id="g-executable-set"></a>**executable set** — the function set an activation can actually run, hence
 exactly what it probes: a `Dual` activation sees only the continuous output
 stages and `f` — never the discrete stages, `g`, guards or handlers ([§12.4][s12-4]).
 
-**executor** — the compiled execution form of the schedule: a concretely-typed
+<a id="g-executor"></a>**executor** — the compiled execution form of the schedule: a concretely-typed
 tuple of entries over statically typed cell storage, traversed by a
 compile-time-unrolled walk, with code-selecting facts in type parameters and
 plain data in fields ([§12.7][s12-7]).
 
-**leaf walk** — the framework's derivation of per-activation types from a
+<a id="g-leaf-walk"></a>**leaf walk** — the framework's derivation of per-activation types from a
 declared nominal type: real leaves and `Real` type parameters follow the
 activation scalar, everything else pins. It survives on the **state** side alone
 (the type derived from a continuous leaf's `init_x`; `init_m` and a discrete
@@ -8661,49 +8661,49 @@ consuming `input_types` entry at it (row 167), participation and tolerance
 authored per leaf in both ([§11.2][s11-2]; applied in [§12.1][s12-1]'s
 Stratum C).
 
-**lens (`Getter`)** — the compiled navigation step of a condition entry: its
+<a id="g-lens"></a>**lens (`Getter`)** — the compiled navigation step of a condition entry: its
 tree position tuple lifted to a type parameter, giving type-stable access to
 the authored value at apply time ([§14.3][s14-3]).
 
-**measurement seam / phase bodies** — `phase_bodies(sim)` returns the compiled
+<a id="g-measurement-seam"></a>**measurement seam / phase bodies** — `phase_bodies(sim)` returns the compiled
 bodies of the nominal activation bound over the simulation's own buffers
 (`rhs`, `sweep_hx`, `sweep_hxu` — the sweeps in both arities, zero-arg interior
 and tick-indexed boundary — `ticks`, plus per-event guards and handlers
 and per-component `project`). Its one promise is identity with what the loop
 runs, which is what makes [§7.5][s7-5]'s allocation assertions honest ([§12.7][s12-7]).
 
-**nominal** — the `Float64` activation, and of a declaration its `Float64`
+<a id="g-nominal"></a>**nominal** — the `Float64` activation, and of a declaration its `Float64`
 face (for a continuous producer's output declaration, its evaluation at
 `Float64`); the only activation that runs in real time, and the one where the
 conformance check demands exact type match ([§11.2][s11-2], [§12.4][s12-4], [§12.5][s12-5]).
 
-**probe** — the build's single evaluation of a user function with real values,
+<a id="g-probe"></a>**probe** — the build's single evaluation of a user function with real values,
 checking shape and type conformance and discarding the result. Every user
 function is probed once, at the initial state; probes see only that state's
 branch ([§12.3][s12-3]).
 
-**probe value / input synthesis** — `probe_value(::Type)` fabricates values
+<a id="g-probe-value"></a>**probe value / input synthesis** — `probe_value(::Type)` fabricates values
 for the one kind of terminal with no producer, root slots
 (`zero(T)`/`false`/first enum/`T()`, overridable). Strictly probe-scoped:
 never an initial slot value, which [§14.6][s14-6] makes a structural barrier ([§12.3][s12-3]).
 
-**`ProbeDual`** — the framework's exported canonical concrete probe scalar
+<a id="g-probedual"></a>**`ProbeDual`** — the framework's exported canonical concrete probe scalar
 (`ForwardDiff.Dual{ProbeTag, Float64, 1}`), which keys the CI activation
 pinning walked-leaf genericity; its width is arbitrary, since what CI pins is
 genericity, not a particular Jacobian ([§12.4][s12-4]).
 
-**schema vs. layout** — the two lookup families the `Build` supplies to
+<a id="g-schema-vs-layout"></a>**schema vs. layout** — the two lookup families the `Build` supplies to
 condition resolution: *schema* is the evaluated declarations (may you write
 this field, at what leaf type — the authority), *layout* is where it
 physically lives (buffer ranges, store and slot indices) ([§14.3][s14-3]).
 
-**stratum** — one of the build's three phases: A structure (pure declaration
+<a id="g-stratum"></a>**stratum** — one of the build's three phases: A structure (pure declaration
 reading), B schedule (the single evaluation-feeds-structure step), C
 activation (everything type-shaped). Strata are barriers — a stratum that
 produced any error-severity diagnostic throws before the next begins ([§12.1][s12-1],
 [§13.1][s13-1]).
 
-**walked / pinned / exempt** — the eltype-genericity classes: walked
+<a id="g-walked"></a>**walked / pinned / exempt** — the eltype-genericity classes: walked
 payload/value types follow the activation scalar, pinned parameters and
 definitions stay `Float64`, and the discrete side is exempt. Enforced by the
 leaf walk on the state side and stated per leaf in a continuous leaf's contract
@@ -8712,17 +8712,17 @@ carry, `input_types` for what a consumer's entries tolerate ([§7.2][s7-2], [§1
 
 ### D.6 Runtime periphery
 
-**bad datum** — a datum unmappable for environmental reasons (truncated
+<a id="g-bad-datum"></a>**bad datum** — a datum unmappable for environmental reasons (truncated
 datagram, malformed JSON, out-of-range field): tolerated *in the loop body* —
 catch, stage nothing, `report!(handle, MalformedDatum(cause))`, continue —
 while any other exception propagates and becomes `DeviceCrash`. The
 classification is the device author's ([§9.6][s9-6]).
 
-**batch** — a device's staged set of face ⇒ value writes, coalesced in its
+<a id="g-batch"></a>**batch** — a device's staged set of face ⇒ value writes, coalesced in its
 staging cell and applied whole at the next drain ([§9.4][s9-4]). The word means only
 this; error reporting *collects* ([§D.9][sD-9]).
 
-**binding** — the value passed at `attach!` that makes a device
+<a id="g-binding"></a>**binding** — the value passed at `attach!` that makes a device
 framework-legible: a subtype of `AbstractBinding` declaring its sides by the
 Bool traits `is_input`/`is_output` (false by default on the root), with
 `is_greedy` switching the input side's claim source from returned to computed
@@ -8733,125 +8733,125 @@ are loop-idiom conventions the framework never calls. Every input-side binding
 stakes a claim; `TableBinding` is the shipped
 data-driven one ([§9.6][s9-6], [§9.4][s9-4]).
 
-**boundary counter** — the monotonic count of *published boundaries* carried
+<a id="g-boundary-counter"></a>**boundary counter** — the monotonic count of *published boundaries* carried
 in the snapshot and mirrored in the loop state the wait predicate tests;
 incremented after the `latest` release-store, so a waking waiter can never see
 a stale snapshot ([§10.3][s10-3]).
 
-**calling task** — the task that invoked `run!`. It runs the loop itself (the
+<a id="g-calling-task"></a>**calling task** — the task that invoked `run!`. It runs the loop itself (the
 unattended register) unless a `needs_calling_task` device is rostered, in
 which case it runs that device's loop body inline and the loop moves to a
 spawned task ([§9.1][s9-1]).
 
-**claim** — the set of faces a device *may* write, registered at attach —
+<a id="g-claim"></a>**claim** — the set of faces a device *may* write, registered at attach —
 either returned by its binding's `claims` or computed as the unclaimed
 complement under `is_greedy` — and released at detach; claiming an
 already-claimed face is an attach-time error (`ClaimConflict`), and a broad
 claim costs GUI liveness ([§9.3][s9-3]).
 
-**coalescing** — the CAS merge keeping one pending batch per device:
+<a id="g-coalescing"></a>**coalescing** — the CAS merge keeping one pending batch per device:
 untouched faces survive, re-staged faces take the newest level (the per-face
 ZOH). Its outbound mirror is newest-wins snapshot delivery ([§9.4][s9-4], [§10.3][s10-3]).
 
-**control plane** — the separate few-word atomic surface carrying pause,
+<a id="g-control-plane"></a>**control plane** — the separate few-word atomic surface carrying pause,
 un-pause, pace, `margin` and stop, consulted at frame top and inside the
 loop's wait and pause states; structurally not staging, since a paused loop
 drains nothing ([§10.1][s10-1]).
 
-**derived liveness** — the rule that a GUI widget is live iff its port's feed
+<a id="g-derived-liveness"></a>**derived liveness** — the rule that a GUI widget is live iff its port's feed
 chain terminates in a root slot inside the GUI's own claim in the run's frozen
 surface partition; baked once at run start, with no per-port "GUI-controlled"
 marking anywhere ([§9.7][s9-7]).
 
-**device** — any attached participant in the periphery: a subtype of
+<a id="g-device"></a>**device** — any attached participant in the periphery: a subtype of
 `AbstractDevice` under one authoring
 contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
 `needs_calling_task`) and one handle; input-only and output-only are
 degenerate uses, and the GUI is an ordinary device ([§9.6][s9-6]).
 
-**diagnostic cell** — the single-writer cell each rostered device and the loop
+<a id="g-diagnostic-cell"></a>**diagnostic cell** — the single-writer cell each rostered device and the loop
 itself owns for runtime diagnostics and liveness: a bounded ring (capacity 16)
 of diagnostic values plus per-kind suppressed counts — the bound being the
 rate limit itself — and an atomic heartbeat timestamp, taken by the loop with
 `atomicswap` at the frame-top drain and frozen into the published status
 ([§9.8][s9-8]).
 
-**drain** — the single point at the top of each frame where the loop takes
+<a id="g-drain"></a>**drain** — the single point at the top of each frame where the loop takes
 each staging cell by `atomicswap` and applies it through the attach-compiled
 scatter, in attachment order; never at a `t*` boundary, and under the roster
 freeze it performs no checks at all ([§9.1][s9-1], [§9.4][s9-4]). The diagnostic
 cells are taken at the same point ([§9.8][s9-8]).
 
-**framework status** — the concrete frozen value each snapshot carries beside
+<a id="g-framework-status"></a>**framework status** — the concrete frozen value each snapshot carries beside
 the signal table: [§8.7][s8-7]'s pacer diagnostics plus, per writer, this
 boundary's drained diagnostics (`recent`), the counts the ring refused
 (`suppressed`), the loop's cumulative per-writer × per-kind counters copied in
 (`totals`) and the liveness timestamp ([§9.8][s9-8], [§9.2][s9-2]).
 
-**greedy claim** — the claim a binding declaring `is_greedy` receives: the
+<a id="g-greedy-claim"></a>**greedy claim** — the claim a binding declaring `is_greedy` receives: the
 unclaimed complement computed by the framework at attach instead of returned
 by `claims`, ordinary in every respect afterwards; an empty remainder is legal
 and reported (`EmptyGreedyClaim`), and the shipped GUI binding is the shipped
 instance ([§9.3][s9-3], [§9.6][s9-6]).
 
-**harness cell** — the always-present staging cell of the harness register,
+<a id="g-harness-cell"></a>**harness cell** — the always-present staging cell of the harness register,
 written by `stage!(sim, "face" => value, …)` from the calling task itself:
 ordinary batches, traced and surface-checked, drained last by convention
 ([§10.6][s10-6], [§9.3][s9-3]).
 
-**harness register** — the framework-owned write path of the calling task —
+<a id="g-harness-register"></a>**harness register** — the framework-owned write path of the calling task —
 `stage!(sim, …)` and its cell — and the design's sole *derived* surface: the
 unclaimed complement, the faces no rostered device claims, recomputed at every
 stopped-sim roster change; a write to a claimed face is `ClaimedFaceEntry`
 ([§9.3][s9-3], [§10.6][s10-6]).
 
-**`latest`** — the `@atomic` reference a published snapshot is release-stored
+<a id="g-latest"></a>**`latest`** — the `@atomic` reference a published snapshot is release-stored
 into and readers acquire-load; `latest(sim)` hands the calling task the same
 immutable value a device handle gets ([§9.2][s9-2]).
 
-**next-snapshot wait** — `wait_next_snapshot(handle)`: the boundary counter
+<a id="g-next-snapshot-wait"></a>**next-snapshot wait** — `wait_next_snapshot(handle)`: the boundary counter
 plus one `Threads.Condition` under the canonical predicate loop
 (`counter > last_seen && running`), newest-wins, no queues, no per-frame reset
 ([§10.3][s10-3]).
 
-**operator interrupt** — Ctrl-C in an interactive session, read as a
+<a id="g-operator-interrupt"></a>**operator interrupt** — Ctrl-C in an interactive session, read as a
 control-plane stop rather than a failure: delivery is masked across the boundary
 macro-sequence (`disable_sigint`) and raised at a frame-top or wait unmask
 point, so the run takes the ordinary graceful tail and ends `stopped`. A second
 one collapses the device joins; outside the REPL, SIGINT still kills the process
 ([§10.4][s10-4], [§10.1][s10-1]).
 
-**orphaned claims** — the claims of a device whose task died mid-run. Death is
+<a id="g-orphaned-claims"></a>**orphaned claims** — the claims of a device whose task died mid-run. Death is
 not detach: the roster entry and claims persist to run end, the slots hold
 their last-drained values, and the GUI renders the fact in the widget's
 provenance; recovery is between runs ([§9.3][s9-3]).
 
-**peek** — the GUI display rule: a widget shows its own pending write if any,
+<a id="g-peek"></a>**peek** — the GUI display rule: a widget shows its own pending write if any,
 else the snapshot value. Own-cell only, which is what makes multi-click
 counting and paused editing correct ([§9.7][s9-7]).
 
-**periphery** — everything outside the loop that exchanges data with it — GUI,
+<a id="g-periphery"></a>**periphery** — everything outside the loop that exchanges data with it — GUI,
 input devices, network I/O, logging — together with the concurrency model
 binding them: staged writes inbound, snapshot reads outbound, control on its
 own surface ([§9][s9], [§10][s10]).
 
-**roster** — the list of attached device entries (binding, claims, stable
+<a id="g-roster"></a>**roster** — the list of attached device entries (binding, claims, stable
 device id, attachment order): a plain immutable value the loop reads once at
 `run!`, since `attach!`/`detach!` are stopped-sim operations ([§9.3][s9-3]).
 
-**scenario component** — the home of a sim-time script under the mid-run
+<a id="g-scenario-component"></a>**scenario component** — the home of a sim-time script under the mid-run
 mutation doctrine: an ordinary periodic discrete component executed
 synchronously in the loop, deterministic paced or unpaced and replayed by
 recomputation. The clock is the criterion — wall-clock interactions are
 devices ([§10.5][s10-5]).
 
-**selector (read-selector family)** — the closed set of deferred reads
+<a id="g-selector"></a>**selector (read-selector family)** — the closed set of deferred reads
 `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`, each
 resolving against a source (table sources — a boundary snapshot or a service
 evaluation's scratch tables — vs. live stores) before any client policy
 applies ([§14.4][s14-4]).
 
-**`should_abort`** — the per-attachment failure policy, an `attach!` keyword
+<a id="g-should_abort"></a>**`should_abort`** — the per-attachment failure policy, an `attach!` keyword
 defaulting to `false`: set, a device's departure — loop body returning, crash,
 or a failed `init!` — also requests a control-plane stop; clear, the run
 continues with the device absent and its claims held to run end. An attachment
@@ -8859,21 +8859,21 @@ fact, never a device property, the same device being advisory in one deployment
 and load-bearing in another; the shipped GUI attaches with `true` ([§9.6][s9-6],
 [§10.4][s10-4]).
 
-**snapshot** — the immutable per-boundary publication: boundary-consistent
+<a id="g-snapshot"></a>**snapshot** — the immutable per-boundary publication: boundary-consistent
 signal table (root slots included), `t`, boundary index and
 framework status. It deliberately carries no state stores — the state
 trajectory is derived data ([§9.2][s9-2]).
 
-**stage-on-interaction** — the GUI staging contract: value widgets stage the
+<a id="g-stage-on-interaction"></a>**stage-on-interaction** — the GUI staging contract: value widgets stage the
 new level on edit, edge widgets on activation as a level computed from the
 peek; held buttons do not re-stage, and no widget stages per render pass
 ([§9.7][s9-7]).
 
-**unattended run** — a run with empty staging and no snapshot readers: the
+<a id="g-unattended-run"></a>**unattended run** — a run with empty staging and no snapshot readers: the
 same loop, fully synchronous on the calling task, rethrowing after the
 shutdown tail so CI fails honestly ([§9.1][s9-1], [§13.4][s13-4]).
 
-**write surface** — the set of faces a writer's batch entries may reach: a
+<a id="g-write-surface"></a>**write surface** — the set of faces a writer's batch entries may reach: a
 device's claim set, whether returned by `claims` or computed under
 `is_greedy` ([§9.6][s9-6]), and for the harness register the derived
 unclaimed complement. Static per run and enforced entirely at
@@ -8882,7 +8882,7 @@ staging — `OutOfClaimEntry` for a device, `ClaimedFaceEntry` for the harness
 
 ### D.7 Recording and replay
 
-**decimation** — the log's keep-every-kth retention policy (`log_every`),
+<a id="g-decimation"></a>**decimation** — the log's keep-every-kth retention policy (`log_every`),
 admissible on the log alone because it is derived data; every boundary still
 runs, publishes to live readers and enters the trace. Bounded by `log_max`, the
 maximum number of retained snapshot references (default finite, `Inf` the
@@ -8892,123 +8892,123 @@ collapsing to a rolling window — with the boundary-zero and terminal snapshots
 retained unconditionally and outside the bound. A view policy throughout, never
 trajectory-determining ([§9.2][s9-2]).
 
-**frame ordinal** — the trace's key: replay applies the recording's batches
+<a id="g-frame-ordinal"></a>**frame ordinal** — the trace's key: replay applies the recording's batches
 for frame *k* at frame *k*, exact because the frame sequence is itself
 deterministic under replay ([§10.7][s10-7], [§9.1][s9-1]).
 
-**log** — the retained sequence of published snapshots (the same objects, no
+<a id="g-log"></a>**log** — the retained sequence of published snapshots (the same objects, no
 copies), with a plain kill switch and `log_every` decimation; derived data,
 recomputable from the trace by replay ([§9.2][s9-2]).
 
-**recorders** — the trace and the log jointly, cleared together at `init!` and
+<a id="g-recorders"></a>**recorders** — the trace and the log jointly, cleared together at `init!` and
 at a trim commit so they restart with the run they record ([§10.6][s10-6], [§14.8][s14-8]).
 
-**replay** — the ordinary loop with exactly two substitutions: boundary zero
+<a id="g-replay"></a>**replay** — the ordinary loop with exactly two substitutions: boundary zero
 from the trace header, and a drain reading the trace by frame ordinal. It
 re-records, ends `initialized`, and validates the header — stores, slot
 faces and deployment block — up front, applying the header's `t₀`
 ([§10.7][s10-7]).
 
-**run metadata** — the trace header's deployment block: `t₀`, `Δt_base`,
+<a id="g-run-metadata"></a>**run metadata** — the trace header's deployment block: `t₀`, `Δt_base`,
 `h`, `n`, the algorithm identifier, `localization_tol`, `localization_budget`,
 `firing_budget` and the
 effective `t_end`/`stop_on`
 pair ([§9.5][s9-5], [§13.5][s13-5]).
 
-**trace** — the primary record of a session: the sequence of drained,
+<a id="g-trace"></a>**trace** — the primary record of a session: the sequence of drained,
 device-tagged batches per frame, plus its header. On by default, because the
 log is recomputable from the trace and never the reverse ([§9.5][s9-5]).
 
-**trace header** — the trace's preamble: the resolved initial stores
+<a id="g-trace-header"></a>**trace header** — the trace's preamble: the resolved initial stores
 `(x, m)`, the initial root-slot values, each writer's face-name →
 position schema, and the deployment block — captured after `apply!` and the
 slot writes, before the boundary-zero sequence runs ([§9.5][s9-5], [§14.5][s14-5]).
 
-**trace record** — the retained form of a drained batch, uniform for every
+<a id="g-trace-record"></a>**trace record** — the retained form of a drained batch, uniform for every
 writer: (position ⇒ value) pairs for the non-`nothing` entries, converted at
 the drain against the header's schema, so trace size tracks information
 rather than surface width and consumers meet one format and one replay path
 ([§9.5][s9-5], row 176).
 
-**what-if register** — replaying a trace against the same structure with
+<a id="g-what-if-register"></a>**what-if register** — replaying a trace against the same structure with
 changed parameters: deterministic re-driving of the recorded inputs through a
 modified model, promising determinism but never bit-identical reproduction
 ([§10.7][s10-7]).
 
 ### D.8 Stopped-sim services and the condition algebra
 
-**`at` / `Scoped`** — the scoping combinator: `at(prefix, node)` stores a
+<a id="g-at"></a>**`at` / `Scoped`** — the scoping combinator: `at(prefix, node)` stores a
 prefix beside a condition node and applies nothing, path concatenation
 happening once at resolution. It also lifts whole `TrimProblem`s and
 linearization tap sets ([§14.2][s14-2], [§14.9][s14-9]).
 
-**baseline** — an aircraft-shipped, full-coverage condition function
+<a id="g-baseline"></a>**baseline** — an aircraft-shipped, full-coverage condition function
 (`ready_for_taxi(ac)`, `cold_and_dark(ac)`) layered under tweaks by
 `override`, and the `baseline` keyword `init!`/`trim!` take ([§14.6][s14-6]). Not to be
 confused with an event *prior* ([§D.4][sD-4]).
 
-**boundary zero** — the initialization boundary: the ordinary macro-sequence
+<a id="g-boundary-zero"></a>**boundary zero** — the initialization boundary: the ordinary macro-sequence
 with an empty integrate — project → [sweep → guards → handlers]\* → due `g`
 updates → header and first snapshot — run at `t₀` once `apply!` has
 established the stores ([§14.5][s14-5]).
 
-**capture** — the service reading the current committed stores *and* root
+<a id="g-capture"></a>**capture** — the service reading the current committed stores *and* root
 slots back as a condition value, returning `(condition, t)`; the gather twin
 of `apply!`, and what makes warm restart need no second semantics ([§14.1][s14-1],
 [§14.10][s14-10]).
 
-**component test rig** — a one-child assembly exporting the child's entire
+<a id="g-component-test-rig"></a>**component test rig** — a one-child assembly exporting the child's entire
 input face set, so any component can be built and simulated in isolation; an
 abstract entry is satisfied *inside* the rig by a concrete **stub child**
 wired to that face ([§13.7][s13-7]).
 
-**condition** — the datum that says "set this build to this state": a
+<a id="g-condition"></a>**condition** — the datum that says "set this build to this state": a
 path-addressed sparse overlay on the declared defaults, covering `x` and `m`
 fields plus root slots by face — never outputs, never workspace ([§14.1][s14-1]).
 [§14][s14] owns the word; a guard defines a *predicate* ([§D.4][sD-4]).
 
-**`design_world`** — the shipped thin world (aircraft +
+<a id="g-design_world"></a>**`design_world`** — the shipped thin world (aircraft +
 `SimpleAtmosphere(wind = NoWind())` + `HorizontalTerrain`) that mounts an
 aircraft for trim and linearization; "aircraft as root" is the shallowest
 world, not a special case ([§14.9][s14-9]).
 
-**fragment** — the leaf node of the condition algebra: `fragment(; x, m,
+<a id="g-fragment"></a>**fragment** — the leaf node of the condition algebra: `fragment(; x, m,
 slots)` payloads speaking only about the component at the authoring point
 (**self-vocabulary**), with addressing left entirely to `at` ([§14.2][s14-2]).
 
-**fragment tree** — the inert, lazy composition of `Fragment`/`Scoped`/
+<a id="g-fragment-tree"></a>**fragment tree** — the inert, lazy composition of `Fragment`/`Scoped`/
 `Merged`/override nodes; isbits but for the interned prefixes, so rebuilding
 it per trim iteration is stack-only construction ([§14.2][s14-2]).
 
-**merge** — the symmetric, collision-intolerant combinator over condition
+<a id="g-merge"></a>**merge** — the symmetric, collision-intolerant combinator over condition
 nodes: a duplicate leaf is an error naming both provenance chains, and mixing
 a node with a bare `NamedTuple` is an error method, not `Base.merge` ([§14.2][s14-2]).
 
-**mounting** — relocating a whole problem or tap set with `at(prefix, …)`:
+<a id="g-mounting"></a>**mounting** — relocating a whole problem or tap set with `at(prefix, …)`:
 every field is either condition-producing (path-relative, post-composed) or
 path-free, so the service never knows where its paths sit ([§14.9][s14-9]).
 
-**override** — the ordered, asymmetric layering combinator: on a shared leaf
+<a id="g-override"></a>**override** — the ordered, asymmetric layering combinator: on a shared leaf
 the patch wins and provenance keeps both sources, while collisions *within* a
 layer remain errors; variadic ([§14.6][s14-6]).
 
-**service lifecycle** — the `Simulation` states `built` / `initialized` /
+<a id="g-service-lifecycle"></a>**service lifecycle** — the `Simulation` states `built` / `initialized` /
 `running` / `stopped` / `errored` ([§10.6][s10-6]) and each service's legality against
 them; a violation is `ServiceLifecycle`, and `errored` is terminal for all
 four services ([§14][s14]).
 
-**slot totality** — the pre-write requirement that an application establishing
+<a id="g-slot-totality"></a>**slot totality** — the pre-write requirement that an application establishing
 a complete world over virgin stores — `init!`, trim setup, trim commit —
 cover every root slot. Conditions themselves are legitimately partial; a
 shortfall is `UninitializedSlots`, collected and declaration-ordered, leaving
 the simulation untouched ([§14.6][s14-6]).
 
-**taps** — the three selector lists (`x`, `u`, `y`) declaring what
+<a id="g-taps"></a>**taps** — the three selector lists (`x`, `u`, `y`) declaring what
 linearization seeds and reports, with an optional component index so a vector
 leaf yields named scalars; validated at resolution (`TapResolution`) and
 relocatable via `at` ([§14.10][s14-10]).
 
-**`TrimProblem`** — the closed seven-field value
+<a id="g-trimproblem"></a>**`TrimProblem`** — the closed seven-field value
 `guess`/`lower`/`upper`/`condition`/`reads`/`residuals`/`tolerances`: an
 *implicitly specified* condition, solved as a square root-find over named
 residuals and committed as an `init!` of `override(baseline, solution)`
@@ -9016,48 +9016,48 @@ residuals and committed as an `init!` of `override(baseline, solution)`
 
 ### D.9 Error discipline and diagnostics
 
-**carrier exception** — the single exception a set of diagnostics travels in:
+<a id="g-carrier-exception"></a>**carrier exception** — the single exception a set of diagnostics travels in:
 `BuildError` thrown at a stratum barrier, `StepError` at the runtime catch
 site. Diagnostics themselves are plain values ([§13.2][s13-2], [§13.4][s13-4]).
 
-**collect the checks, fail the evaluations fast** — the reporting policy:
+<a id="g-collect-the-checks-fail-the-evaluations-fast"></a>**collect the checks, fail the evaluations fast** — the reporting policy:
 declarative passes over collected structure return their full violation list,
 while the first user-code exception aborts the phase; strata are barriers, and
 the site column spells the collecting case "build (collected)" ([§13.1][s13-1],
 [Appendix C][sC]).
 
-**did-you-mean** — the required shape of any name-shaped failure: the
+<a id="g-did-you-mean"></a>**did-you-mean** — the required shape of any name-shaped failure: the
 offending name plus the list-in-hand it should have come from, carried as
 payload rather than baked into message text ([§13.2][s13-2]).
 
-**error locality** — the property the declaration layer buys: a mistake fails
+<a id="g-error-locality"></a>**error locality** — the property the declaration layer buys: a mistake fails
 at the site of the mistake, not later and inside correct code. [§11.4][s11-4]'s five
 walkthroughs are its grounding cases and the acceptance tests ([§11.4][s11-4]).
 
-**execution cursor** — the plain mutable field recording where in the compiled
+<a id="g-execution-cursor"></a>**execution cursor** — the plain mutable field recording where in the compiled
 schedule execution is (component path, function, boundary phase); one cheap
 store per dispatch, so a runtime failure gets its frame without exception
 frames in the hot path ([§13.4][s13-4]).
 
-**feedthrough tracer** — the set-propagation instrument (global value-blind,
+<a id="g-feedthrough-tracer"></a>**feedthrough tracer** — the set-propagation instrument (global value-blind,
 or local primal-carrying at sampled states) used to classify a rejected cycle
 as real or artificial; diagnostic only, never an input to scheduling ([§5.6][s5-6]).
 
-**kind** — a diagnostic's identity in the closed set enumerated normatively in
+<a id="g-kind"></a>**kind** — a diagnostic's identity in the closed set enumerated normatively in
 [Appendix C][sC], with payload fields, owning section and severity; tests match on
 kind plus payload, never on message text ([§13.2][s13-2]). Not a component *class*
 ([§D.1][sD-1]) or a *function family* ([§D.1][sD-1]).
 
-**payload** — the structured data a diagnostic carries beside its kind: paths
+<a id="g-payload"></a>**payload** — the structured data a diagnostic carries beside its kind: paths
 and names as strings (never instances or model types), expected/observed port
 types, the list-in-hand, the severity ([§13.2][s13-2], [Appendix C][sC]).
 
-**`stop_on` / termination is a state** — graceful termination is model state,
+<a id="g-stop_on"></a>**`stop_on` / termination is a state** — graceful termination is model state,
 never an exception: detection is ordinary event machinery, publication an
 ordinary root-exported `Bool` output face, and `stop_on` the deployment policy
 naming the faces the loop reads after every published boundary ([§13.5][s13-5]).
 
-**warning streams** — two, scoped separately: the *build* stream, whose
+<a id="g-warning-streams"></a>**warning streams** — two, scoped separately: the *build* stream, whose
 warning set is deliberately empty, and the *runtime* stream — per-occurrence,
 carried by the per-writer diagnostic cells that structurally rate-limit it
 ([§9.8][s9-8]), surfaced through published
@@ -9065,56 +9065,56 @@ framework status, with its committed inventory listed in [§13.2][s13-2].
 
 ### D.10 Meta-vocabulary
 
-**blessed** — the spec's marker for a practice it explicitly sanctions where a
+<a id="g-blessed"></a>**blessed** — the spec's marker for a practice it explicitly sanctions where a
 neighboring one is forbidden: derivation from other declarations ([§11.2][s11-2]), the
 one spot where evaluation feeds structure ([§12.1][s12-1]), the workspace-plus-snapshot
 idiom for zero-allocation ticks ([§7.3][s7-3]).
 
-**the freeze** — the roster freeze: `attach!`/`detach!` are stopped-sim
+<a id="g-the-freeze"></a>**the freeze** — the roster freeze: `attach!`/`detach!` are stopped-sim
 operations, so the roster, its claims and the run's partition of the root face
 set into write surfaces are static, inspectable facts of each run ([§9.3][s9-3], rows
 106–107).
 
-**guarded addition** — a capability the design admits but does not build,
+<a id="g-guarded-addition"></a>**guarded addition** — a capability the design admits but does not build,
 weighed against Flight.jl's fundamental strengths and recorded with its shape
 so adoption stays additive ([§1][s1]; e.g. [§4.3][s4-3]'s field-addressed staging, [§9.3][s9-3]'s
 mid-run reader attach).
 
-**normative / index, not a second home** — the spec is the normative statement
+<a id="g-normative"></a>**normative / index, not a second home** — the spec is the normative statement
 of the design, and its appendices are indices: each recall line's normative
 statement stays in the owning section ([Appendix A][sA], and the same rule for
 Appendices B, C and D). The design directory's walkthrough explainers are
 non-normative companions by their own preambles.
 
-**recorded, not built** — the disposition of a worked-out extension
+<a id="g-recorded-not-built"></a>**recorded, not built** — the disposition of a worked-out extension
 deliberately left unimplemented, with its seams named so adoption is additive
 ([§14.7][s14-7]'s closed-loop trim, [§14.10][s14-10]'s sampled-data `Dual` activation and
 declarative non-participation).
 
-**register** — the spec's word for a mode or idiom in which something is done,
+<a id="g-register"></a>**register** — the spec's word for a mode or idiom in which something is done,
 always compounded: the didactic register ([§13.2][s13-2]), the inspection and
 integration registers ([§9.2][s9-2]), the by-allocation register ([§11.2][s11-2]), the
 harness, unattended and what-if registers ([§10.6][s10-6], [§10.7][s10-7]). Reserved for this
 sense — the recording artifacts are the *recorders* ([§D.7][sD-7]).
 
-**row** — a numbered entry of `framework_decisions.md`, cited throughout as
+<a id="g-row"></a>**row** — a numbered entry of `framework_decisions.md`, cited throughout as
 "row N": one settled decision with the alternatives weighed against it. Row
 numbers are stable and never reused, and each row states its *current*
 position, a superseded one being demoted into its rejected-alternatives column
 rather than rewritten ([§1][s1]).
 
-**seam** — a narrow, named interface kept deliberately thin so what sits
+<a id="g-seam"></a>**seam** — a narrow, named interface kept deliberately thin so what sits
 behind it can be replaced or measured: the stepper seam ([§8.2][s8-2]), the backend
 seam ([§14.8][s14-8]), the measurement seam ([§12.7][s12-7]), the phase-body seams of the
 compiled executor ([§12.7][s12-7]).
 
-**torture test** — an existing, maximally awkward artifact transliterated
+<a id="g-torture-test"></a>**torture test** — an existing, maximally awkward artifact transliterated
 against a proposed mechanism to validate it before adoption: `PistonEngine`
 and the FCS cascade against [§5.2][s5-2] ([§15.2][s15-2]), filter/joystick/GUI against [§9][s9]'s
 staging shapes ([§15.3][s15-3]), the strapdown IMU against the leaf split ([§15.5][s15-5]); the
 standard component library is the standing ergonomics one ([§13.7][s13-7]).
 
-**worked (example)** — a full spelling of a mechanism against a real artifact,
+<a id="g-worked"></a>**worked (example)** — a full spelling of a mechanism against a real artifact,
 carried in the spec rather than left to the reader: the worked assembly of
 [§11.6][s11-6], the worked C172 cruise problem of [§14.7][s14-7], and [§15.5][s15-5]'s IMU as the
 boundary-sampling example [Appendix A][sA] points at.
