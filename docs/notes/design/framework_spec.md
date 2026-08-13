@@ -3256,8 +3256,8 @@ point rather than degrading into silence, and the attach runs a
   fact: a method written and never reached is exactly the drift the check
   exists to catch. Detecting it is one `which` against the fallback method —
   the reflection class ([§11.1][s11-1]), where the shadowing check is an
-  `isdefined`/`!==` pair. That check runs once at a stopped-sim service point,
-  not inside any frame.
+  `isdefined`/`!==` pair. The `which` detection runs once at a stopped-sim
+  service point, not inside any frame.
 
 Every violation in that list reports `BindingContractMismatch`
 ([Appendix C][sC]). The report names the binding type, the trait, the method
