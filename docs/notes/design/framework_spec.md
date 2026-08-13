@@ -2397,160 +2397,199 @@ replayed interactive session is the same loop with staging fed from a recording
 
 ### 9.2 Outbound: snapshot publication
 
-The loop builds each [snapshot](#g-snapshot) — [boundary](#g-boundary)-consistent [signal table](#g-signal-table), `t`, framework
-status — in private memory, then publishes it with a single
-release-store to an [`@atomic latest`](#g-latest) reference; readers acquire-load and then work
-with an immutable, coherent world for as long as they like. `latest(sim)`
-hands the same value to the [calling task](#g-calling-task) — the inspection register ([§10.6][s10-6]).
-Wait-free in both
-directions: a wedged reader cannot delay publication by a nanosecond; the loop cannot
-tear a reader's view. Publication happens only after the boundary sequence completes
-([§8.3][s8-3] as extended by [§8.6][s8-6]).
+Every reader outside the loop — GUI panels, output [devices](#g-device), the log — needs a
+picture of the model that holds still while it is read, and none of them should
+have to make the loop wait to get one. Publication is the answer: one immutable
+value per [boundary](#g-boundary), handed out through a single atomic reference. Three
+things follow from it, in that order: how a [snapshot](#g-snapshot) is built and published,
+how the log retains published snapshots under a bound, and how an output device
+addresses what it reads.
 
-**Binding rule: nothing reachable from a published snapshot is ever written again.**
-The table's immutable values ([§4.1][s4-1], [§7][s7]) make the compiler enforce most of it; the
-rule is what the soundness of lock-free reading rests on.
+#### The snapshot and its publication
+
+**Rule. The loop builds each snapshot in private memory, then publishes it with
+a single release-store to an [`@atomic latest`](#g-latest) reference.** A snapshot carries
+the boundary-consistent [signal table](#g-signal-table), `t` and the framework status. Readers
+acquire-load that reference and then work with an immutable, coherent world for
+as long as they like. The [calling task](#g-calling-task) (the task that invoked `run!`) reads the
+same value through `latest(sim)` — the inspection register ([§10.6][s10-6]).
+
+The exchange is wait-free in both directions: a wedged reader cannot delay
+publication by a nanosecond, and the loop cannot tear a reader's view.
+Publication happens only after the boundary sequence completes ([§8.3][s8-3] as
+extended by [§8.6][s8-6]).
+
+**Binding rule: nothing reachable from a published snapshot is ever written
+again.** The table's immutable values ([§4.1][s4-1], [§7][s7]) make the compiler enforce most
+of it. **Why.** The soundness of lock-free reading rests on this rule.
 
 **The [framework status](#g-framework-status) is a concrete frozen value, not a window onto live
-bookkeeping** — the pacer diagnostics ([§8.7][s8-7]), plus the per-writer diagnostic
-batches, suppressed and cumulative counters and liveness timestamps the loop
-takes at frame top ([§9.8][s9-8]). The binding rule is what forces that shape: a
-status referencing an accumulator its writers are still filling would be a
-snapshot whose contents change after publication.
+bookkeeping.** It carries the pacer diagnostics ([§8.7][s8-7]), plus the per-writer
+diagnostic batches, suppressed and cumulative counters and liveness timestamps
+the loop takes at frame top ([§9.8][s9-8]). **Why.** The binding rule forces that
+shape: a status referencing an accumulator its writers are still filling would
+be a snapshot whose contents change after publication.
 
-The captured table is the whole table — declared [ports](#g-port) and auto-published fields,
-every one of them public ([§11.3][s11-3]), so no presentation layer has anything to
+**The captured table is the whole table** — declared [ports](#g-port) and auto-published
+fields, every one of them public ([§11.3][s11-3]). No presentation layer has anything to
 filter. Private intermediates are not in it, never having been [cells](#g-cell) at all
-([§5.2][s5-2]); the inspection path for one is **promotion to a declared output** — a line
-in `output_types` and the value appears in the snapshot, the log, the GUI and the
-wiring alike, its visibility an authored fact like every other. **It also includes
-the root [slots](#g-slot)** ([§15.4][s15-4]): slots are source cells of the
-table, not state stores, so they ride along — and this is load-bearing, not
-incidental: the [§9.7][s9-7] [peek](#g-peek)'s else-snapshot fallback is what an idle live widget
-displays, and read-only mirrors of claimed slots (the axis sliders under joystick
-[claim](#g-claim)) show the applied slot value from the snapshot. Slot values in the log are
-derived data (recomputable from the [trace](#g-trace)), which is consistent — snapshots are
-derived wholesale. The snapshot
-deliberately does **not** carry the state stores (`x`, `m`): the state
-trajectory is *derived* data — recomputable from the [trace header](#g-trace-header) plus the batches
-([§9.5][s9-5]) by bit-identical [replay](#g-replay) — and per-boundary capture would systematically
-record derived data, the same asymmetry the trace-default decision (row 29) refuses
-in the other direction. "What was the private state at t = 37.2?" is answered by
-replaying to 37.2 and inspecting the live stores; a state field wanted in logs or
-GUI has the honest remedy of being declared public (one auto-published cell per
-[sweep](#g-sweep)). Post-run continuation reads the live stores directly; periodic full-state
-checkpoints (warm restart without replay-from-zero) are a [guarded addition](#g-guarded-addition) shaped as
-an opt-in log policy, and a dev-mode flag auto-publishing all state fields is a
-possible future diagnostic.
+([§5.2][s5-2]). The inspection path for one is **promotion to a declared output**: a
+line in `output_types`, and the value appears in the snapshot, the log, the GUI
+and the wiring alike. Its visibility is then an authored fact like every other.
 
-Logging dissolves into publication: the log is a vector of retained snapshot
-references — same objects, zero extra copies; the per-step `deepcopy` detour of the
-`SavingCallback` disappears. Cost: one snapshot allocation per boundary, on the
-framework side of the [§7.5][s7-5] scope (which already carved out logging); logged snapshots
-are not garbage at all, unlogged ones die young. Preallocated snapshot
-[buffers](#g-buffer) are rejected (row 23).
+**The captured table also includes the root [slots](#g-slot)** ([§15.4][s15-4]). Slots are source
+cells of the table, not state stores, so they ride along. That is load-bearing,
+not incidental. The [§9.7][s9-7] [peek](#g-peek) (showing a widget's own pending write, else the
+snapshot value) falls back to the snapshot, and that fallback is what an idle
+live widget displays. Read-only mirrors of claimed slots — the axis sliders
+under joystick [claim](#g-claim) — show the applied slot value from the snapshot. Slot
+values in the log are derived data, recomputable from the [trace](#g-trace), which is
+consistent: snapshots are derived wholesale.
 
-**Retention: the trace's kill switch, plus [decimation](#g-decimation).** The log takes the same
-plain on/off switch the trace has ([§9.5][s9-5]), and additionally a keep-every-kth
-policy (`log_every`, [Appendix B][sB]). What makes decimation admissible here and not
-there is the derived/primary split (row 38): the log is recomputable from the
-trace by replay, so a thinned log costs resolution in a *view*, never a record —
-whereas thinning the trace would destroy the only primary account of a session
-(row 29). Decimation is a retention policy only: every boundary still runs, is
-still published to live readers, and still enters the trace.
+**The snapshot deliberately does *not* carry the state stores (`x`, `m`).** Two
+reasons. The state trajectory is *derived* data, recomputable from the
+[trace header](#g-trace-header) plus the batches ([§9.5][s9-5]) by bit-identical [replay](#g-replay). And
+per-boundary capture would systematically record derived data — the same
+asymmetry the trace-default decision (row 29) refuses in the other direction.
 
-**The bound: `log_max`.** Decimation slows the log's growth; it does not stop
-it, and the default configuration — `log = true, log_every = 1` alongside
-`t_end = Inf`, the honest interactive default ([Appendix B][sB]) — grows for as long as
-the session lasts, which at C172X scale and 50 Hz is gigabytes per hour and
-ends in an out-of-memory nobody was warned about. So the log takes a
-**retention bound** beside its switch and its stride: `log_max`, the maximum
-number of retained snapshot references, default **65536** (2¹⁶), with `Inf`
-the explicit opt-out. **A count, not a memory budget** — snapshots are
-immutable object graphs with internal sharing ([§4.1][s4-1]), and [§4.4][s4-4] [field handles](#g-field-handle)
-ride as references to build-time-frozen data ([§7.5][s7-5]), so byte accounting over
-them is fuzzy and platform-dependent, while a count is exact and converts to
-memory through one number the user can measure once (`Base.summarysize` of a
-single snapshot). The default is **finite unconditionally**, not a modal rule
-keyed on `t_end`: a finite run shorter than the bound never notices the bound,
-and one number is easier to hold than two regimes. At 50 Hz and full density,
-2¹⁶ boundaries is about 22 minutes before anything is dropped at all.
+"What was the private state at t = 37.2?" is answered by replaying to 37.2 and
+inspecting the live stores. A state field wanted in logs or GUI has the honest
+remedy of being declared public, at a cost of one auto-published cell per
+[sweep](#g-sweep). Post-run continuation reads the live stores directly. Periodic full-state checkpoints — warm restart without
+replay-from-zero — are a [guarded addition](#g-guarded-addition) shaped as an opt-in log policy, and
+a dev-mode flag auto-publishing all state fields is a possible future
+diagnostic.
+
+#### The log: retained snapshots under a bound
+
+**Logging dissolves into publication.** The log is a vector of retained snapshot
+references: the same objects, zero extra copies. The per-step `deepcopy` detour
+of the `SavingCallback` disappears. The cost is one snapshot allocation per
+boundary, on the framework side of the [§7.5][s7-5] scope, which already carved out
+logging. Logged snapshots are not garbage at all; unlogged ones die young.
+Preallocated snapshot [buffers](#g-buffer) are rejected (row 23).
+
+**Retention: the trace's kill switch, plus [decimation](#g-decimation).** The log takes the
+same plain on/off switch the trace has ([§9.5][s9-5]), and additionally a
+keep-every-kth retention policy: `log_every` ([Appendix B][sB]). **Why decimation is
+admissible here and not there.** The derived/primary split (row 38): the log is
+recomputable from the trace by replay, so a thinned log costs resolution in a
+*view*, never a record. Thinning the trace would destroy the only primary
+account of a session (row 29). Decimation is a retention policy only — every
+boundary still runs, is still published to live readers, and still enters the
+trace.
+
+Decimation slows the log's growth; it does not stop it. The default
+configuration is `log = true, log_every = 1` alongside `t_end = Inf`, the honest
+interactive default ([Appendix B][sB]), and it grows for as long as the session lasts.
+At C172X scale and 50 Hz that is gigabytes per hour, and it ends in an
+out-of-memory nobody was warned about.
+
+**Rule. The log takes a retention bound beside its switch and its stride:**
+`log_max`, the maximum number of retained snapshot references, default **65536**
+(2¹⁶), with `Inf` the explicit opt-out.
+
+**A count, not a memory budget.** Snapshots are immutable object graphs with
+internal sharing ([§4.1][s4-1]), and a [field handle](#g-field-handle) (an immutable query object
+consumers evaluate at their own arguments, [§4.4][s4-4]) rides as a reference to
+build-time-frozen data ([§7.5][s7-5]). Byte accounting over them is therefore fuzzy and
+platform-dependent. A count is exact, and converts to memory through one number
+the user can measure once: `Base.summarysize` of a single snapshot.
+
+**The default is finite unconditionally**, not a modal rule keyed on `t_end`. A
+finite run shorter than the bound never notices the bound, and one number is
+easier to hold than two regimes. At 50 Hz and full density, 2¹⁶ boundaries is
+about 22 minutes before anything is dropped at all.
 
 **When the log fills, the retention stride doubles: coverage stays global.** A
-rolling window — recent past at full density, the start of the session
-forgotten — was rejected (row 137). Instead the log **re-decimates
-progressively**: after *k* generations the effective stride is
-`log_every · 2^k`, so the whole run stays plottable and what coarsens is
-density, never extent. That is the division of labor (row 38) carried through: the
-log's chief consumer is the post-run plot of a session *as a whole* (nobody
-plots hours at 50 Hz), while full density over any *segment* of interest is
-what replay from the trace recovers ([§9.5][s9-5], [§10.7][s10-7]). **Normative are the
-guarantees, not the mechanism**: the bound is respected continuously (the
-retained count never exceeds `log_max`), coverage is global at the effective
-stride, and the endpoints below are kept.
+rolling window — recent past at full density, the start of the session forgotten
+— was rejected (row 137). Instead the log **re-decimates progressively**: after
+*k* generations the effective stride is `log_every · 2^k`. The whole run stays
+plottable, and what coarsens is density, never extent.
+
+**Why.** That is the division of labor (row 38) carried through. The log's chief
+consumer is the post-run plot of a session *as a whole*, and nobody plots hours
+at 50 Hz. Full density over any *segment* of interest is what replay from the
+trace recovers ([§9.5][s9-5], [§10.7][s10-7]).
+
+**Normative are the guarantees, not the mechanism.** Three of them: the bound is
+respected continuously, the retained count never exceeding `log_max`; coverage
+is global at the effective stride; the endpoints below are kept.
 
 Mechanism sketch, non-binding: the thinning is **amortized**. When the log
 fills, the stride doubles immediately, and each subsequent retained append also
 releases one predecessor of the previous generation — a cursor over the odd
-indices, O(1) amortized, with physical compaction once per generation — so a
-generation's thinning completes exactly when its refill does. Amortizing rather
-than halving in one shot is a responsiveness choice (row 137): the amortized
-form drops exactly one old snapshot per retained append — the same steady
-trickle a rolling window would produce, so keeping coverage global costs
-nothing extra in GC pressure. The loop's own work is
-pointer bookkeeping, microseconds either way and on the framework side of the
-scope ([§7.5][s7-5]); publication stays wait-free and readers never block — a
-reader
-holding a released snapshot simply keeps it alive.
+indices, O(1) amortized, with physical compaction once per generation. A
+generation's thinning therefore completes exactly when its refill does.
+
+> fill at stride `log_every` → **full** → stride doubles → thin one predecessor
+> per retained append, while refilling → **full** at stride `log_every · 2` → ⋯
+> → generation *k* at `log_every · 2^k`
+
+Amortizing rather than halving in one shot is a responsiveness choice (row 137).
+The amortized form drops exactly one old snapshot per retained append, the same
+steady trickle a rolling window would produce, so keeping coverage global costs
+nothing extra in GC pressure. The loop's own work is pointer bookkeeping,
+microseconds either way and on the framework side of the scope ([§7.5][s7-5]).
+Publication stays wait-free and readers never block: a reader holding a released
+snapshot simply keeps it alive.
 
 **The endpoints are retained unconditionally.** The boundary-zero snapshot
-([§14.5][s14-5]) and the terminal snapshot ([§10.4][s10-4], [§13.5][s13-5]) survive any `log_every`
-and any `log_max`, and do not count against the bound — two extra references.
-The terminal snapshot's status carries the run's final cumulative diagnostic
-counters ([§9.8][s9-8]), so a run's two endpoints and its complete diagnostic account
-always outlive whatever retention did to the middle.
+([§14.5][s14-5]) and the terminal snapshot ([§10.4][s10-4], [§13.5][s13-5]) survive any `log_every` and
+any `log_max`, and do not count against the bound — two extra references. The
+terminal snapshot's status carries the run's final cumulative diagnostic
+counters ([§9.8][s9-8]). A run's two endpoints and its complete diagnostic account
+therefore always outlive whatever retention did to the middle.
 
-Two compositions, worth stating once. The `totals` monotonicity across logged
+Two compositions are worth stating once. The `totals` monotonicity across logged
 snapshots ([§9.8][s9-8]) is untouched: re-decimation, like decimation, loses *which*
-boundary within a stretch an occurrence fell on, never *how many*. And
-`log_max` is a **view policy, not a trajectory-determining one** — like `log`
-and `log_every` it stays out of the trace header's deployment block, and replay
-neither records nor compares it ([§9.5][s9-5], [§10.7][s10-7]). Sizing follows:
-the `sizehint!` for the expected duration ([§7.5][s7-5]) is now naturally capped
-by `log_max`,
-which is also what defines the hint when `t_end = Inf`.
+boundary within a stretch an occurrence fell on, never *how many*. And `log_max`
+is a **view policy, not a trajectory-determining one** — like `log` and
+`log_every` it stays out of the trace header's deployment block, and replay
+neither records nor compares it ([§9.5][s9-5], [§10.7][s10-7]). Sizing follows: the `sizehint!`
+for the expected duration ([§7.5][s7-5]) is now naturally capped by `log_max`, which is
+also what defines the hint when `t_end = Inf`.
 
-**Output-[device](#g-device) bindings are snapshot bindings.** An output device (telemetry, the XPlane visualizer, disk
-streaming) consumes snapshots via [§10.3][s10-3] and addresses what it reads
-with the [selectors](#g-selector) ([§14.4][s14-4]) — any cell, the diagnostic
-register admitting deep
-paths — resolved at attach against the `Build` with
-[did-you-mean](#g-did-you-mean) and compiled to one gather (the output half of
-the binding interface, [§9.6][s9-6]), so `map_output` receives a labeled
-NamedTuple rather than performing its own path lookups ([§15.4][s15-4]'s obligation: a
-substitution that breaks a binding fails at attach, not with silent garbage
-UDP). This is **diagnostic observation** ([§13.5][s13-5]):
-human-facing, no effect on run semantics — the same register as the log
-retaining the full table and the GUI's deep-reading panels; every cell is
-reachable, the table being public throughout ([§11.3][s11-3]), and an intermediate a
-device wants to stream is one promoted to a declared output. **A binding chooses
-its register**: a deep path is the
-*inspection* register — zero promises, free access, right for looking at
-*this* build; an exported output [face](#g-face) (spelled `get_face(name)`, [§14.4][s14-4]) is
-the *integration* register — named,
-curated, meaning-stable under substitution (writer-independent semantics,
-[§15.4][s15-4]), right for consumers that outlive the build they were configured
-against. Attach validation converts *structural* drift to loud errors in both
-registers; only faces protect against *semantic* drift — a substituted
-aircraft publishing the same path at the same type with a different meaning, a
-CG velocity under a name read as body-origin velocity — and nothing else can:
-meaning is not in the schema. Semantically generic consumers (a visualizer
-needs pose; every aircraft has one) should therefore bind faces, and aircraft
-families should export the conventional surface such consumers need — a
-library/migration deliverable ([§16][s16]) — with wrapper types making face semantics
-structurally checkable (`VelocityData`, its `v_eb_b` defined *at the type* as
-body-origin velocity: a bare vector doesn't wire, and wrapping the wrong
-quantity is a deliberate lie, not a drift).
+#### Output-device bindings
+
+**Output-device bindings are snapshot bindings.** An output device — telemetry,
+the XPlane visualizer, disk streaming — consumes snapshots via [§10.3][s10-3]. It
+addresses what it reads with the [selectors](#g-selector) (the closed family of deferred reads
+resolving against a source, [§14.4][s14-4]), which reach any cell, the diagnostic
+register admitting deep paths. A binding is resolved at attach against the
+`Build` with [did-you-mean](#g-did-you-mean) (the offending name plus the list-in-hand it should
+have matched), and compiled to one gather — the output half of the binding
+interface ([§9.6][s9-6]). `map_output` therefore receives a labeled NamedTuple instead
+of performing its own path lookups. That discharges the obligation stated in
+[§15.4][s15-4]: a substitution that breaks a binding fails at attach, not with silent
+garbage UDP.
+
+This is **diagnostic observation** ([§13.5][s13-5]): human-facing, with no effect on run
+semantics. It is the same register as the log retaining the full table and the
+GUI's deep-reading panels. Every cell is reachable, the table being public
+throughout ([§11.3][s11-3]), and an intermediate a device wants to stream is one
+promoted to a declared output.
+
+**A binding chooses its register.** A deep path is the *inspection* register:
+zero promises, free access, right for looking at *this* build. An exported
+output [face](#g-face) — spelled `get_face(name)` ([§14.4][s14-4]) — is the *integration* register:
+named, curated, meaning-stable under substitution, right for consumers that
+outlive the build they were configured against. What makes a face meaning-stable
+is writer-independent semantics ([§15.4][s15-4]).
+
+**Why the choice matters.** Attach validation converts *structural* drift to
+loud errors in both registers. Only faces protect against *semantic* drift — a
+substituted aircraft publishing the same path at the same type with a different
+meaning, a CG velocity under a name read as body-origin velocity. Nothing else
+can: meaning is not in the schema.
+
+Semantically generic consumers should therefore bind faces: a visualizer needs
+pose, and every aircraft has one. Aircraft families should export the
+conventional surface such consumers need, a library/migration deliverable
+([§16][s16]). Wrapper types make face semantics structurally checkable, as in
+`VelocityData` with its `v_eb_b` defined *at the type* as body-origin velocity:
+a bare vector doesn't wire, and wrapping the wrong quantity is a deliberate lie,
+not a drift.
 
 ### 9.3 Inbound: root input slots, claims and the frozen roster
 
