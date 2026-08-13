@@ -3020,8 +3020,8 @@ halves of that placement are load-bearing:
   a post-sequence capture would re-fire authored-condition events on top of
   already-latched state.
 
-The slots are as load-bearing as the stores. An unfed `mixture = 0.5` never
-appears in any batch, so replay is broken without them; the init/trim services
+An unfed `mixture = 0.5` never appears in any batch, so replay is broken
+without the slots; the init/trim services
 own slot initialization ([§14.6][s14-6]), and the header capture extends
 naturally. The header carries two further things:
 
@@ -3062,32 +3062,34 @@ with no lock, the protocol the taxonomy encoded has no referent (row 25).
 
 #### Every attached device receives the same handle
 
-The handle carries the two primitive
-capabilities — read (latest [snapshot](#g-snapshot); optionally wait-for-next-[boundary](#g-boundary), [§10.3][s10-3]) and
-stage —
-plus control access (observe running, request shutdown). **[`should_abort`](#g-should_abort) is an
-`attach!` keyword**, defaulting to `false`: per-attachment, never a device
-property — the same joystick is advisory in one deployment and load-bearing in
-another — so with it clear a device's departure (loop body returning, crash, or
-a failed `init!`) is reported and the run continues without it, and with it set
-that departure also requests a sim stop ([§10.4][s10-4]). The shipped GUI attaches with
-`should_abort = true` — closing the window is the interactive session's natural
-end — and `gui = true`'s run-scoped attachment states that value ([§10.6][s10-6],
-[Appendix B][sB]).
-Input-only and output-only devices are degenerate uses, not
-framework classes; a bidirectional network peer is *one* device with one socket and one
-lifecycle, not two framework devices sharing state. The GUI is an ordinary device —
-the paradigm one, using every capability — with exactly two genuine peculiarities,
-neither taxonomic: main-thread affinity (a launch concern) and read-modify-write
-widgets ([§9.7][s9-7]).
+The handle carries the two primitive capabilities, read and stage, plus
+control access (observe running, request shutdown). Read returns the latest
+[snapshot](#g-snapshot), optionally waiting for the next
+[boundary](#g-boundary) ([§10.3][s10-3]).
+
+**[`should_abort`](#g-should_abort) is an `attach!` keyword**, defaulting to
+`false`. It is per-attachment, never a device property: the same joystick is
+advisory in one deployment and load-bearing in another. With it clear, a
+device's departure is reported and the run continues without it; with it set,
+that departure also requests a sim stop ([§10.4][s10-4]). A departure is the
+loop body returning, a crash, or a failed `init!`. The shipped GUI attaches
+with `should_abort = true`, since closing the window is the interactive
+session's natural end, and `gui = true`'s run-scoped attachment states that
+value ([§10.6][s10-6], [Appendix B][sB]).
+
+Input-only and output-only devices are degenerate uses, not framework classes.
+A bidirectional network peer is *one* device with one socket and one
+lifecycle, not two framework devices sharing state. The GUI is an ordinary
+device — the paradigm one, using every capability. It has exactly two genuine
+peculiarities, neither taxonomic: main-thread affinity (a launch concern) and
+read-modify-write widgets ([§9.7][s9-7]).
 
 #### The authoring contract: four functions, one optional, one trait
 
-A [device](#g-device) is a
-user type subtyping the framework's neutral root, `MyDevice <: AbstractDevice`
-— one mandatory word that costs nothing (the [periphery](#g-periphery) has no competing
-hierarchy to inherit from) and buys `attach!`'s dispatch gate below; the
-framework asks for
+A [device](#g-device) is a user type subtyping the framework's neutral root:
+`MyDevice <: AbstractDevice`. That is one mandatory word, and it costs nothing
+— the [periphery](#g-periphery) has no competing hierarchy to inherit from.
+What it buys is `attach!`'s dispatch gate below. The framework asks for
 
 ```julia
 init!(dev)          # per-run resource acquisition — calling task, before spawn (§10.4)
@@ -3099,8 +3101,8 @@ needs_calling_task(dev)   # optional trait, default false: run the loop body on 
                           # constraint). At most one holder per roster (§9.3).
 ```
 
-and owns everything around them — the wrapper is the [§10.4][s10-4] protocol made
-structural:
+The framework owns everything around them. The wrapper is the shutdown
+protocol ([§10.4][s10-4]) made structural:
 
 ```julia
 init!(dev)                                   # its own bracket, pre-spawn (§10.4): a throw
@@ -3116,26 +3118,28 @@ end
 ```
 
 A `needs_calling_task` device runs the identical wrapper *inline* on the
-[calling task](#g-calling-task) — the invocation site, not the contract, is its only
-difference (the topology, [§9.1][s9-1]; the join exclusion, [§10.4][s10-4]).
+[calling task](#g-calling-task). The invocation site, not the contract, is its
+only difference (the topology, [§9.1][s9-1]; the join exclusion,
+[§10.4][s10-4]).
 
 **`shutdown!` must tolerate a partially initialized device.** The release
-guarantee holds on the one path *outside* this wrapper too: the initialization
-step ([§10.4][s10-4]) brackets each `init!` and hands a device that threw
-half-way through acquisition straight back to `shutdown!`, so nothing it did
+guarantee holds on the one path *outside* this wrapper too. The initialization
+step ([§10.4][s10-4]) brackets each `init!`, and a device that threw half-way
+through acquisition goes straight back to `shutdown!`, so nothing it did
 manage to open is leaked. The obligation that follows is "close only what is
 open" — the same defensiveness `shutdown!` already owes the crash path, where a
-loop body may die at any point in its own life — and `init!` is correspondingly
+loop body may die at any point in its own life. `init!` is correspondingly
 *not* asked to clean up after itself: the bracket does once, for every device,
 what would otherwise be duplicated in each and enforced in none.
 
 One discrimination in that wrapper: **an `InterruptException` is never a
 `DeviceCrash`.** Under the spawned-loop topology the calling task is the one
-running a device loop body inline — the GUI's ([§9.1][s9-1]) — so an operator
-Ctrl-C raises *there*, inside user code that did nothing wrong. The wrapper
-forwards the control-plane stop and lets the body leave through the ordinary
-`running(handle)` [predicate](#g-predicate) ([§10.4][s10-4](4)): no crash report for what is not a
-crash, and no `should_abort` consultation, a stop being already requested.
+running a device loop body inline — the GUI's ([§9.1][s9-1]). An operator
+Ctrl-C therefore raises *there*, inside user code that did nothing wrong. The
+wrapper forwards the control-plane stop and lets the body leave through the
+ordinary `running(handle)` [predicate](#g-predicate) ([§10.4][s10-4](4)). There
+is no crash report for what is not a crash, and no `should_abort`
+consultation, a stop being already requested.
 
 #### The author owns the loop body; the framework owns the bracket
 
@@ -3174,31 +3178,34 @@ function loop(dev::Telemetry, handle)            # boundary-driven output
 end
 ```
 
-A bidirectional peer composes both halves itself — an inner reader task
-inside its own domain — rather than forcing a select engine into the
+A bidirectional peer composes both halves itself, with an inner reader task
+inside its own domain, rather than forcing a select engine into the
 framework. Two idioms are author obligations the framework can only teach
 and diagnose, never force ([Appendix A][sA]): loop on `running(handle)`, and make
-blocking calls interruptible (`unblock!`, or timeouts) — a forgotten
-[predicate](#g-predicate) check surfaces as `DeviceJoinTimeout` with the device's name, a
-stall as a stale [§10.2][s10-2] heartbeat (liveness timestamps ride *inside* the
-handle primitives, which store them in the device's own [diagnostic cell](#g-diagnostic-cell)
-[§9.8][s9-8], so the framework observes activity without owning the
-loop). **`should_close` dissolves**: a window ✕ or peer EOT is the loop
-body returning; the wrapper's exit path releases the device's OS resources,
-marks it dead for the heartbeat and consults `should_abort` — [claims](#g-claim) and
-[roster](#g-roster) entry persist to run end (the freeze, [§9.3][s9-3]) — [§10.4][s10-4](6) is
-literally "the task body returned." The GUI implements the same contract; the framework calls its
-`loop` inline on the [calling task](#g-calling-task) instead of spawning (the
-pinning, [§9.1][s9-1]).
+blocking calls interruptible (`unblock!`, or timeouts). A forgotten
+[predicate](#g-predicate) check surfaces as `DeviceJoinTimeout` with the
+device's name; a stall surfaces as a stale heartbeat ([§10.2][s10-2]).
+Liveness timestamps ride *inside* the handle primitives, which store them in
+the device's own [diagnostic cell](#g-diagnostic-cell) ([§9.8][s9-8]), so the
+framework observes activity without owning the loop.
+
+**`should_close` dissolves**: a window ✕ or peer EOT is the loop body
+returning. The wrapper's exit path releases the device's OS resources, marks
+it dead for the heartbeat and consults `should_abort`; [claims](#g-claim) and
+[roster](#g-roster) entry persist to run end (the freeze, [§9.3][s9-3]).
+[§10.4][s10-4](6) is literally "the task body returned." The GUI implements
+the same contract; the framework calls its `loop` inline on the
+[calling task](#g-calling-task) instead of spawning (the pinning,
+[§9.1][s9-1]).
 
 #### The binding: framework-legible by enumeration, opaque in its mappings
 
-A binding is a value subtyping `AbstractBinding` — the second mandatory
-root — whose type declares which sides it has and enumerates what each side
-touches. The legible
-half is explicit methods returning data, called once at attach on the
-[calling task](#g-calling-task) (the task that invoked `run!`); the opaque half is called per
-datum on the [device](#g-device) task by the author's own loop:
+A binding is a value subtyping `AbstractBinding`, the second mandatory root.
+Its type declares which sides it has and enumerates what each side touches.
+The legible half is explicit methods returning data, called once at attach on
+the [calling task](#g-calling-task) (the task that invoked `run!`). The opaque
+half is called per datum on the [device](#g-device) task by the author's own
+loop:
 
 ```julia
 struct T16000MBinding <: AbstractBinding    # the roots are mandatory: attach! dispatches
@@ -3215,17 +3222,16 @@ reads(b)                               # output side: §14.4 selectors → one c
 map_output(nt, b)                      #              the gather's NamedTuple → wire datum
 ```
 
-The framework needs no [contract](#g-contract) on the datum's shape: the datum travels
-only between `loop` and `map_input`, written by the same author, and the
-framework's structural knowledge comes entirely from the declared traits and
-the enumeration methods — everything enumerable validates at attach,
-everything opaque is
-bounded at its runtime enforcement point (`map_input` by the staging
-checks, [§9.4][s9-4]; `map_output` receives exactly the compiled gather's
-NamedTuple, and what it puts on the wire is the peer's business).
-`map_input`/`map_output` are, precisely, **conventions of the author-owned
-loop idiom**: the framework never calls them, so they are taught
-([Appendix A][sA]) and never checked — a binding whose loop calls something else
+The framework needs no [contract](#g-contract) on the datum's shape. The datum
+travels only between `loop` and `map_input`, written by the same author, and
+the framework's structural knowledge comes entirely from the declared traits
+and the enumeration methods. Everything enumerable validates at attach;
+everything opaque is bounded at its runtime enforcement point. `map_input` is
+bounded by the staging checks ([§9.4][s9-4]). `map_output` receives exactly the
+compiled gather's NamedTuple, and what it puts on the wire is the peer's
+business. `map_input`/`map_output` are, precisely, **conventions of the
+author-owned loop idiom**: the framework never calls them, so they are taught
+([Appendix A][sA]) and never checked. A binding whose loop calls something else
 by another name is simply a binding with a different private helper.
 
 **Sides are declared; the obligations they create are enforced both ways.**
@@ -3248,79 +3254,83 @@ point rather than degrading into silence, and the attach runs a
 - A **specific** method of `claims` or `reads` defined for the binding type
   while its trait reads false ⇒ error, the converse direction of the same
   fact: a method written and never reached is exactly the drift the check
-  exists to catch. Detecting it is one `which` against the fallback method — the
-  reflection class ([§11.1][s11-1]; its shadowing check is an `isdefined`/`!==`
-  pair), run once at a stopped-sim service point, not inside any frame.
+  exists to catch. Detecting it is one `which` against the fallback method —
+  the reflection class ([§11.1][s11-1]), where the shadowing check is an
+  `isdefined`/`!==` pair. That check runs once at a stopped-sim service point,
+  not inside any frame.
 
 Every violation in that list reports `BindingContractMismatch`
-([Appendix C][sC]), naming the binding type, the trait, the method at fault and
-the direction (declared-but-missing, or defined-but-undeclared). **This is
-what closes the shadowing hole**: under detection-by-method-presence, a
-bidirectional binding whose `claims` was written without extending the
-framework's generic — the `using`-without-`import` trap ([§11.1][s11-1]), one
-level down — presented as output-only and degraded *silently*: the device
-attached, staked nothing, and wrote nothing, with every diagnostic pointing
-away from the missing import. With the side declared, the absent method has
+([Appendix C][sC]). The report names the binding type, the trait, the method
+at fault and the direction (declared-but-missing, or defined-but-undeclared).
+
+**This is what closes the shadowing hole.** Under the rejected alternative,
+detection by method presence (row 177), a bidirectional binding whose `claims`
+was written without extending the framework's generic presented as output-only
+and degraded *silently*. That omission is the `using`-without-`import` trap
+([§11.1][s11-1]), one level down. With the side declared, the absent method has
 something to contradict.
 
-Greediness stays orthogonal to `reads`: a
-greedy front end may also drive a
-compiled output gather (legal, currently uninstantiated; the plausible
-customer is a narrow-wire interactive surface — a motorized control board
-whose detents must be driven back out). The binding stays an `attach!` argument, never a device field: the
-same `T16000M` binds differently per aircraft, and narrowing the binding
-narrows the claim ([§9.3][s9-3]).
+Greediness stays orthogonal to `reads`: a greedy front end may also drive a
+compiled output gather. That combination is legal and currently
+uninstantiated; its plausible customer is a narrow-wire interactive surface, a
+motorized control board whose detents must be driven back out. The binding
+stays an `attach!` argument, never a device field: the same `T16000M` binds
+differently per aircraft, and narrowing the binding narrows the claim
+([§9.3][s9-3]).
 
 **Why the [periphery](#g-periphery) gets roots where [components](#g-component) have one.** [§11.5][s11-5] refuses
-a class supertype for two reasons, and neither reaches here: a component's
-single-inheritance [slot](#g-slot) is *already spoken for* by the domain hierarchies
-(`AbstractAircraft`, engine families), while a device's and a binding's are
-vacant — nothing else wants them; and a component's class is
-implementation detail behind its contract ([§11.3][s11-3]), while a binding's
-**sidedness is its public contract** — the one thing every consumer of it
-must know. Rejected, correspondingly (row 177): an abstract binding-type
-*taxonomy* encoding the sides, optional roots left unenforced, and a declared
-`sides(b)` trait returning the side set — the last **answered rather than
+a class supertype for two reasons, and neither reaches here. First, a
+component's single-inheritance [slot](#g-slot) is *already spoken for* by the
+domain hierarchies (`AbstractAircraft`, engine families), while a device's and
+a binding's are vacant — nothing else wants them. Second, a component's class
+is implementation detail behind its contract ([§11.3][s11-3]), while a
+binding's **sidedness is its public contract**, the one thing every consumer of
+it must know.
+
+Rejected, correspondingly (row 177): an abstract binding-type *taxonomy*
+encoding the sides, optional roots left unenforced, and a declared `sides(b)`
+trait returning the side set. The last of the three is **answered rather than
 repeated** by the design above, since redundancy *with a cross-check* is drift
-detection, which is what the bidirectional check turns the traits into: the
+detection. That is what the bidirectional check turns the traits into: the
 same fact stated twice, in two registers, with the framework paid to compare
 them.
 
 **`is_greedy` is a claim source, not a device class.** What the declaration
-buys is one computation at the attach point, after which the binding holds an
-ordinary claim set and every mechanism downstream (exclusivity and storage,
-[§9.3][s9-3]; shape, shim, merge, scatter and [drain](#g-drain), [§9.4][s9-4];
-[trace](#g-trace), [§9.5][s9-5]; detach's release) is blind to where the set
-came from. There is no derived surface shared among the writers that elected
-it, and no device class hanging off the marker. The standing
+buys is one computation at the attach point. After it the binding holds an
+ordinary claim set, and every mechanism downstream is blind to where the set
+came from: exclusivity and storage ([§9.3][s9-3]); shape, shim, merge, scatter
+and [drain](#g-drain) ([§9.4][s9-4]); [trace](#g-trace) ([§9.5][s9-5]);
+detach's release. There is no derived surface shared among the writers that
+elected it, and no device class hanging off the marker. The standing
 rejection is untouched: opportunistic writing to unclaimed faces
-"for any device" stays dead (row 44) — autonomous devices still enumerate,
+"for any device" stays dead (row 44). Autonomous devices still enumerate,
 and a maximal surface is what exactly one line of a binding asks
 for, in the open, checked like any other claim.
 
 **A second greedy attach stakes the empty remainder.** The complement is
-computed against the [roster](#g-roster) as it stands, so a greedy binding attached
-after another has already swallowed everything gets the empty claim — which
-is legal, being the honest may-write-nothing degenerate below, and useless,
-which is worth saying out loud: the attach succeeds and reports
-`EmptyGreedyClaim` ([Appendix C][sC], a service warning naming the device and its
-binding), the one honest reading of "you asked for what is left and nothing
-was left". **Several interactive
-front ends may be rostered at once** — a web console claiming the autopilot
-faces beside a local GUI claiming the stick faces — because with explicit
-claims they are simply two enumerated devices, partitioning the surface
-rather than sharing it; the one thing still limited to a single holder is
-`needs_calling_task` (the affinity check, [§9.3][s9-3]), a property of the task
-topology, not of interactivity.
+computed against the [roster](#g-roster) as it stands. A greedy binding attached
+after another has already swallowed everything therefore gets the empty claim.
+That claim is legal, being the honest may-write-nothing degenerate below, and
+it is useless, which is worth saying out loud. The attach succeeds and reports
+`EmptyGreedyClaim` ([Appendix C][sC], a service warning naming the device and
+its binding) — the one honest reading of "you asked for what is left and
+nothing was left".
+
+**Several interactive front ends may be rostered at once**, a web console
+claiming the autopilot faces beside a local GUI claiming the stick faces. With
+explicit claims they are simply two enumerated devices, partitioning the
+surface rather than sharing it. The one thing still limited to a single holder
+is `needs_calling_task` (the affinity check, [§9.3][s9-3]), which is a
+property of the task topology, not of interactivity.
 
 **The shipped GUI binding is a greedy one.** It declares `is_input` and
-`is_greedy` and stakes the computed claim — everything unclaimed at the moment it attaches —
-defining no `claims` of its own; it declares no `reads` either, because its
-read path is the handle's primitive
-read — VSync-paced, it reads `latest` afresh each render ([§10.3][s10-3]) with an
-ad-hoc, render-time read set over the whole [snapshot](#g-snapshot), the inspection
-register's shape ([§9.2][s9-2]) — so the compiled output gather has nothing to
-do for it. The same GUI device type is equally attachable under a binding
+`is_greedy` and stakes the computed claim — everything unclaimed at the moment
+it attaches — and defines no `claims` of its own. It declares no `reads`
+either, because its read path is the handle's primitive read. VSync-paced, it
+reads `latest` afresh each render ([§10.3][s10-3]), with an ad-hoc,
+render-time read set over the whole [snapshot](#g-snapshot) — the inspection
+register's shape ([§9.2][s9-2]). The compiled output gather therefore has
+nothing to do for it. The same GUI device type is equally attachable under a binding
 that returns explicit claims: greediness is the binding's declaration, not
 the device's nature. Every other interactive front end anyone might want (a
 web console, a remote panel) has both spellings available — attach with the
@@ -3328,27 +3338,25 @@ greedy binding where the GUI would have been, or with explicit claims
 beside other front ends.
 
 **The empty enumeration is not a back door.** `is_input(b) = true` with
-`claims(b) = ()` stays an
-honest degenerate — a device that may write nothing, its writes
-still binding-bounded, so drift onto any face is `OutOfClaimEntry` — and
-there is no privileged class for it to promote into: `claims`
-bodies are ordinary code (the idiom, [§11.5][s11-5]; comprehensions included),
-and an enumeration that came
-back empty by accident stays inert, exactly as written. The maximal surface
-is reachable only through the explicit `is_greedy(b) = true` declaration —
-the most privileged claim is the hardest to acquire by accident, and a
-declared trait is deliberate authorship. For the same reason `claims` never
-returns `nothing` or a sentinel to mean "compute it for me": the
-enumeration contract has one meaning, the trait carries the other, and a
-dual-meaning return would be exactly the ambiguity the declaration
+`claims(b) = ()` stays an honest degenerate: a device that may write nothing.
+Its writes are still binding-bounded, so drift onto any face is
+`OutOfClaimEntry`. There is no privileged class for it to promote into either.
+`claims` bodies are ordinary code (the idiom, [§11.5][s11-5]; comprehensions
+included), and an enumeration that came back empty by accident stays inert,
+exactly as written. The maximal surface is reachable only through the explicit
+`is_greedy(b) = true` declaration: the most privileged claim is the hardest to
+acquire by accident, and a declared trait is deliberate authorship. For the
+same reason, `claims` never returns `nothing` or a sentinel to mean "compute
+it for me". The enumeration contract has one meaning and the trait carries the
+other; a dual-meaning return would be exactly the ambiguity the declaration
 vocabulary is built to refuse.
 
 #### One shipped binding type; conditioning has an owner
 
-`TableBinding` is
-*data-driven* — the framework writes its `map_input` once, and a table
-value (axis/button entry → [face](#g-face), deadzone/expo parameters) is constructed
-per [device](#g-device) × aircraft pairing, where configurations are made:
+`TableBinding` is *data-driven*. The framework writes its `map_input` once,
+and a table value (axis/button entry → [face](#g-face), deadzone/expo
+parameters) is constructed per [device](#g-device) × aircraft pairing, where
+configurations are made:
 
 ```julia
 TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
@@ -3356,37 +3364,38 @@ TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
              trigger  = (face = "brake_count",))       # levels doctrine: a counter
 ```
 
-Its generic `map_input` *is* the shared pure conditioning helper ([§9.4][s9-4]), and
-its owner; the entry tuple rides in the type, so the mapping
-specializes per table with no dynamic dispatch. A *code-driven* binding (a
-JSON telecommand peer: `claims` returns the vocabulary, `map_input` parses
-bytes) looks identical to the framework. Purity note, taught in [Appendix A][sA]:
-cross-datum state — press counters, edge detection — lives in the device
-struct, maintained by the loop, arriving *inside* the datum; `map_input`
-stays pure.
+Its generic `map_input` *is* the shared pure conditioning helper
+([§9.4][s9-4]), and its owner. The entry tuple rides in the type, so the
+mapping specializes per table with no dynamic dispatch. A *code-driven*
+binding looks identical to the framework: a JSON telecommand peer whose
+`claims` returns the vocabulary and whose `map_input` parses bytes. Purity
+note, taught in [Appendix A][sA]: cross-datum state — press counters, edge
+detection — lives in the device struct, maintained by the loop, and arrives
+*inside* the datum. `map_input` stays pure.
 
 #### Bad datum versus bug: two classes, two fates
 
-A datum that cannot be
-mapped for environmental reasons — a truncated datagram, malformed JSON, an
-out-of-range field — is tolerated *in the loop body*: catch, stage nothing,
-`report!(handle, MalformedDatum(cause))`, continue — bounded by the [device](#g-device)'s
-own [diagnostic cell](#g-diagnostic-cell) (the ring and suppressed counts,
-[§9.8][s9-8]; the stream, [§13.2][s13-2]), visible next to a live heartbeat. Any
-other exception propagates,
-and the wrapper turns it into `DeviceCrash` ([§10.4][s10-4]). The classification is
-the author's — only they know their parser — exactly as FlightCore's
-`InputMappingError` docstring assigned it; what changes under the
-author-owned loop is that no framework per-iteration catch site exists, so
-the framework's contribution is the diagnostic channel, not the catch (a
-marked exception type is not provided — row 105). `report!(handle, ...)` writes
-device-attributed runtime warnings into that device's diagnostic [cell](#g-cell)
-— the [§13.2][s13-2] stream's
-single-writer entry point ([§9.8][s9-8]) — and nothing more; it is not a general
+A datum that cannot be mapped for environmental reasons — a truncated
+datagram, malformed JSON, an out-of-range field — is tolerated *in the loop
+body*: catch, stage nothing, `report!(handle, MalformedDatum(cause))`,
+continue. That tolerance is bounded by the [device](#g-device)'s own
+[diagnostic cell](#g-diagnostic-cell) (the ring and suppressed counts,
+[§9.8][s9-8]; the stream, [§13.2][s13-2]), and what it records is visible next
+to a live heartbeat. Any other exception propagates, and the wrapper turns it
+into `DeviceCrash` ([§10.4][s10-4]).
+
+The classification is the author's — only they know their parser — exactly as
+FlightCore's `InputMappingError` docstring assigned it. What changes under the
+author-owned loop is that no framework per-iteration catch site exists, so the
+framework's contribution is the diagnostic channel, not the catch; a marked
+exception type is not provided (row 105). `report!(handle, ...)` writes
+device-attributed runtime warnings into that device's diagnostic
+[cell](#g-cell), the single-writer entry point into the runtime warning stream
+([§13.2][s13-2], [§9.8][s9-8]), and nothing more. It is not a general
 user-diagnostics channel. Tolerating everything hides bugs as "device
-attached, nothing happens"; tolerating nothing kills a live telemetry link
-on its first truncated datagram — and since tasks are per-run artifacts
-(row 93), kills it for the rest of the run.
+attached, nothing happens"; tolerating nothing kills a live telemetry link on
+its first truncated datagram, and since tasks are per-run artifacts (row 93),
+kills it for the rest of the run.
 
 ### 9.7 The GUI write path: port resolution, peek, staging contract
 
@@ -3402,70 +3411,72 @@ Every input port has exactly one source ([§6.1][s6-1]), so the resolution is to
   [snapshot](#g-snapshot), visually distinct, with the source as provenance ("driven by
   `avionics/throttle_cmd`" — the canonical slash form of [§11.6][s11-6]).
 
-This retires FlightCore's dead-slider convention (the `Cessna172Xv1` throttle: the
-engine panel's slider visually live, silently overwritten by the avionics every
-cycle — who commands what living in the user's head) and replaces it with checked
-structure: **a widget is live exactly when the underlying input is yours to command
-in this configuration.** User-commandability is a wiring decision made where
-configurations are made; command-plus-manual-override is a mux component with a
-root-wired select — explicit structure, not two writers racing (the same race as
-the drag phase, [§15.3][s15-3], ruled out the same way). The obligation this
-places on the
+This retires FlightCore's dead-slider convention and replaces it with checked
+structure: **a widget is live exactly when the underlying input is yours to
+command in this configuration.** The dead slider is the `Cessna172Xv1`
+throttle: the engine panel's slider is visually live and the avionics silently
+overwrite it every cycle, so who commands what lives in the user's head.
+User-commandability is a wiring decision made where configurations are made.
+Command-plus-manual-override is a mux component with a root-wired select —
+explicit structure, not two writers racing (the same race as the drag phase,
+[§15.3][s15-3], ruled out the same way). The obligation this places on the
 GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
 
 **Liveness is a [derived property](#g-derived-liveness), and resolution is transitive.** A widget
-is live iff its port's feed chain — walked through wires and [boundary](#g-boundary) connections across *all*
-levels, not just the local assembly — terminates in a root slot, *and* that slot
-lies **inside the GUI's own [claim](#g-claim)** in the run's frozen surface partition
-([§9.3][s9-3] exclusivity) — whether that claim was computed from the unclaimed
-complement under `is_greedy` or enumerated [face](#g-face) by face by a partial-claims
-binding ([§9.6][s9-6]), so
-"live" reads as "inside the surface I declared for". Under
-the [roster](#g-roster) freeze, liveness is a static fact of the run: baked once, with the
+is live iff two things hold: its port's feed chain terminates in a root slot,
+*and* that slot lies **inside the GUI's own [claim](#g-claim)** in the run's
+frozen surface partition (slot exclusivity, [§9.3][s9-3]). The feed chain is
+walked through wires and [boundary](#g-boundary) connections across *all*
+levels, not just the local assembly. The claim may have been computed from the
+unclaimed complement under `is_greedy`, or enumerated [face](#g-face) by face
+by a partial-claims binding ([§9.6][s9-6]); either way, "live" reads as
+"inside the surface I declared for".
+
+Under the [roster](#g-roster) freeze, liveness is a static fact of the run: baked once, with the
 port resolution, when the run starts — never consulted against mutable claim
-state at render. There is no per-port
-"GUI-controlled" marking anywhere: the export chain is the marking, written by
-the one author entitled to write it (a component's ports become GUI-commandable
-exactly when the assemblies above surface them). The switch between "driven by
-its own panel" and "driven by an external provider" is therefore automatic — at
-build time by wiring archetype (a scripted `World` wires a [scenario component](#g-scenario-component)
-into the same faces the interactive `World` exports to root), at run start by
-roster claim state. Rejected: nominally-connected ports with a GUI *override*
-channel (row 45). The honest cost stands: **unexported ports are unpokeable** —
-FlightCore's poke-any-`u` workflow does not survive [contract](#g-contract)
-visibility ([§11.3][s11-3]), deliberately.
+state at render. There is no per-port "GUI-controlled" marking anywhere. The
+export chain is the marking, written by the one author entitled to write it: a
+component's ports become GUI-commandable exactly when the assemblies above
+surface them. The switch between "driven by its own panel" and "driven by an
+external provider" is therefore automatic. At build time it follows the wiring
+archetype — a scripted `World` wires a [scenario component](#g-scenario-component)
+into the same faces the interactive `World` exports to root — and at run start
+it follows roster claim state. Rejected: nominally-connected ports with a GUI
+*override* channel (row 45). The honest cost stands: **unexported ports are
+unpokeable** — FlightCore's poke-any-`u` workflow does not survive
+[contract](#g-contract) visibility ([§11.3][s11-3]), deliberately.
 
 **Peek rule:** a widget displays its **own pending write if any, else the snapshot
 value**. Own-[cell](#g-cell) only: another [device](#g-device)'s pending write is invisible
-by design, its applied value arriving via the snapshot one frame later
-(cross-device peek is rejected, row 26). While paused, staged edits display
+by design. Its applied value arrives via the snapshot one frame later, and
+cross-device peek is rejected (row 26). While paused, staged edits display
 indefinitely and apply at the un-pause [drain](#g-drain) (the frame-top swap that publishes
 staged device inputs into the root slots). Fan-out is consistent for free:
 widgets on ports resolving to the same slot peek the same pending value.
 
 **Staging contract: widgets stage on interaction events only.** Value widgets (sliders, drags) stage
-the new absolute level on edit; edge widgets (buttons) stage on [activation](#g-activation), as a
-level computed from the peek — a flaps button peeks the current counter `k` and
-stages `k+1`. The levels doctrine makes this safe by construction: repeated staging
-of the same level within a drain window is idempotent (no repeat-increment hazard),
-and multi-click within one window counts correctly through the own-pending-first
-peek (`k` → stage `k+1`; second click peeks pending `k+1` → stages `k+2`). Held
-buttons do not re-stage — after the drain applies and the snapshot catches up,
-re-staging from the peek would auto-repeat at frame rate; the activation edge is
-the intent.
+the new absolute level on edit. Edge widgets (buttons) stage on [activation](#g-activation), as a
+level computed from the peek: a flaps button peeks the current counter `k` and
+stages `k+1`. The levels doctrine makes this safe by construction. Repeated
+staging of the same level within a drain window is idempotent, so there is no
+repeat-increment hazard. Multi-click within one window counts correctly through
+the own-pending-first peek (`k` → stage `k+1`; second click peeks pending
+`k+1` → stages `k+2`). Held buttons do not re-stage: after the drain applies
+and the snapshot catches up, re-staging from the peek would auto-repeat at
+frame rate. The activation edge is the intent.
 
 The alternative — active widgets staging on *every* render pass — is rejected
 (row 26): under slot exclusivity ([§9.3][s9-3]) it has no motivation. Side
 benefit: staging traffic (and trace noise) drops from
-render-rate-while-grabbed to actual edits. No
-claim-transition policy exists, because no claim transition can occur
-mid-run (the freeze, [§9.3][s9-3]); the one liveness-adjacent display rule is the
-orphan case — a read-only widget whose claiming device's task has died
-renders the fact in its provenance ("claimed by `T16000M` — task dead", the
-heartbeat surfaced in place, [§10.2][s10-2]), so an orphaned slot is visible
-where
-the user is looking, not only in the status panel.
+render-rate-while-grabbed to actual edits.
+
+No claim-transition policy exists, because no claim transition can occur
+mid-run (the freeze, [§9.3][s9-3]). The one liveness-adjacent display rule is
+the orphan case: a read-only widget whose claiming device's task has died
+renders the fact in its provenance — "claimed by `T16000M` — task dead", the
+heartbeat surfaced in place ([§10.2][s10-2]). An orphaned slot is therefore
+visible where the user is looking, not only in the status panel.
 
 The panel-authoring calling convention — what the drawing context carries,
 how widgets name their component's ports, how an assembly's panel composes
