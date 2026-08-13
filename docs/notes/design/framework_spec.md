@@ -3877,8 +3877,8 @@ what the consumer *allows* to arrive there.
 
 (Names-only [contracts](#g-contract) were rejected: row 33.) Inputs are the
 component's *requirements*: the unconnected-input error ([§6.1][s6-1]),
-over-wiring detection and [did-you-mean](#g-did-you-mean) typo messages
-are only definable against them.
+over-wiring detection and [did-you-mean](#g-did-you-mean) typo messages (the offending name plus
+the list-in-hand it should have matched) are only definable against them.
 
 **Two clauses check a wire** ([§6.1][s6-1]). The **nominal bound check** is unchanged in
 force, now stated over evaluations: the producer's declaration at `Float64` must
@@ -4001,21 +4001,21 @@ says which leaves *can* carry them, the seed which directions do.
 **The forgotten-`T` account, stated openly.** The whole-signature variant — a
 continuous producer declared as though it were discrete, the nastiest member
 of the class while the plain form was itself the tier marker — is extinct by
-construction: the tier mandate catches it in [Stratum](#g-stratum) A, before any user code
-runs. What remains is per-leaf: an author writes `Float64` at a leaf that
-really participates. That bug **lurks, but is never silent** — no lossy
-`Dual → Float64` cast exists, so the first `Dual` activation of that [component](#g-component)
-fails at build, and the message carries the didactic hint ("if `F`
-participates in differentiation, declare it `T`"), an observed `Dual` at a
-declared-pinned leaf having exactly one honest cause. The lurk is contained by
-policy rather than machinery: **the test suite builds a `Dual` activation of
-every component** (the exhaustive set, [§12.4][s12-4] — an activation is a Stratum-C
-re-run, cheap enough to make this unremarkable in CI).
-What the form buys in exchange is **reader honesty**: participation is read off
-the declaration instead of reconstructed from a framework rule carried in the
-reader's head, and a genuinely frozen leaf can say so. (History: the
-`T`-signature was the original design (rows 33, 79); row 166 revived it and
-records the reversal grounds.)
+construction: the tier mandate catches it in [Stratum](#g-stratum) A (one of the build's
+three phases: structure, schedule, activation), before any user code runs. What
+remains is per-leaf: an author writes `Float64` at a leaf that really
+participates. That bug **lurks, but is never silent** — no lossy `Dual →
+Float64` cast exists, so the first `Dual` activation of that [component](#g-component) fails at
+build, and the message carries the didactic hint ("if `F` participates in
+differentiation, declare it `T`"), an observed `Dual` at a declared-pinned leaf
+having exactly one honest cause. The lurk is contained by policy rather than
+machinery: **the test suite builds a `Dual` activation of every component**
+(the exhaustive set, [§12.4][s12-4] — an activation is a Stratum-C re-run, cheap enough
+to make this unremarkable in CI). What the form buys in exchange is **reader
+honesty**: participation is read off the declaration instead of reconstructed
+from a framework rule carried in the reader's head, and a genuinely frozen leaf
+can say so. (History: the `T`-signature was the original design (rows 33, 79);
+row 166 revived it and records the reversal grounds.)
 
 **The stores keep their walk**; only the output side is evaluated. The type
 derived from a *continuous* leaf's `init_x` is walked exactly as a continuous
@@ -4149,17 +4149,17 @@ line, in exchange for "public" always meaning someone wrote it down.
   return fails at probe; missing from an *untaken* branch, it fails loudly at
   that branch's first execution via the always-on check.
 - **`w`'s regime is probe-observed, and that is sound precisely because `w` is
-  not a cell.** A cell needs a fixed type per [activation](#g-activation), which only a
-  declaration can supply; a value flowing between two functions in one fused
-  pass has no type contract to violate, and mixed branches are handled exactly
-  by promotion. So the probe takes `w` as it finds it: it checks that the
-  second return [slot](#g-slot) is a `NamedTuple` at all, and it checks the *consumer's*
-  reads against the observed field set, a destructured name that is not there
-  failing inside the framing diagnostic ([§13.2][s13-2]) with did-you-mean from the
-  actual fields. That is weaker than a declaration-backed message — it can say
-  "`f` of `Foo` reads `w.q_dny`; the producing stage returned `q_dyn`" but
-  cannot say which spelling was intended — and it is located, name-shaped and
-  costs no declaration.
+  not a cell.** A cell needs a fixed type per [activation](#g-activation) (a re-run of Stratum C
+  at a given scalar type), which only a declaration can supply; a value flowing
+  between two functions in one fused pass has no type contract to violate, and
+  mixed branches are handled exactly by promotion. So the probe takes `w` as it
+  finds it: it checks that the second return [slot](#g-slot) is a `NamedTuple` at all, and
+  it checks the *consumer's* reads against the observed field set, a
+  destructured name that is not there failing inside the framing diagnostic
+  ([§13.2][s13-2]) with did-you-mean from the actual fields. That is weaker than a
+  declaration-backed message — it can say "`f` of `Foo` reads `w.q_dny`; the
+  producing stage returned `q_dyn`" but cannot say which spelling was intended
+  — and it is located, name-shaped and costs no declaration.
 - **Branch-shape rule**: stage returns must have the same `NamedTuple` shape on
   every branch — which Julia's type-stability discipline already demands for
   performance; the framework merely makes it a stated rule with a good error.
@@ -4217,18 +4217,18 @@ the traces.
    error naming both endpoints and both [faces](#g-face).
 5. **Typo'd return field**, in its two [registers](#g-register). A typo'd *port*
    (`P_shft = ...` for a declared `P_shaft`) keeps the full strength of the
-   declaration: a probe error with [did-you-mean](#g-did-you-mean) against `output_types`, plus
-   the unproduced-`P_shaft` error with both the stage-product and state-field
-   lists in hand. A typo *inside* `w` (`q_dny` where the consumer reads
-   `q_dyn`) has no declaration to be checked against and surfaces one hop
-   later, at the consumer, as the framing diagnostic ([§13.2][s13-2]) carrying the
-   producing stage's observed field set ("`f` of `Foo` reads `w.q_dyn`; the
-   stage returned `q_dny`") — weaker than declaration-backed, since the
-   framework cannot know which of the two spellings was meant, but located at
-   the pair of lines that disagree and still name-shaped. That is the price of
-   the private channel, paid where no interface is at stake, and the remedy for
-   an intermediate worth stronger checking is the one [§11.3][s11-3] names: declare it
-   an output.
+   declaration: a probe error with [did-you-mean](#g-did-you-mean) (the offending name plus the
+   list-in-hand it should have matched) against `output_types`, plus the
+   unproduced-`P_shaft` error with both the stage-product and state-field lists
+   in hand. A typo *inside* `w` (`q_dny` where the consumer reads `q_dyn`) has
+   no declaration to be checked against and surfaces one hop later, at the
+   consumer, as the framing diagnostic ([§13.2][s13-2]) carrying the producing stage's
+   observed field set ("`f` of `Foo` reads `w.q_dyn`; the stage returned
+   `q_dny`") — weaker than declaration-backed, since the framework cannot know
+   which of the two spellings was meant, but located at the pair of lines that
+   disagree and still name-shaped. That is the price of the private channel,
+   paid where no interface is at stake, and the remedy for an intermediate
+   worth stronger checking is the one [§11.3][s11-3] names: declare it an output.
 
 ### 11.5 Assembly declaration: type-based, class by declaration shape
 
@@ -4301,16 +4301,17 @@ world = Group(
 One type, defined once; every ad-hoc topology is a *value* of it. The type
 parameters still carry the children's concrete types, so [Stratum](#g-stratum) C
 specialization and the compiled [executor](#g-executor) ([§12.7][s12-7]) work unchanged; wiring
-validation, did-you-mean errors and the two-producer check all run at build
-against the instance exactly as for a named assembly. What is given up
-relative to a named type is exactly what named types are *for* — dispatching
-domain code on `::Cessna172X`, a reusable identity for the topology — which
-the exploratory and programmatic composition `Group` serves does not want
-anyway. The framing that earns it its place (row 184): the builder rejection
-above was never about type-based *semantics* — it was about mutable recipes —
-and named types were simply the only spelled-out route; `Group` ships in the
-library the way Julia ships anonymous functions alongside named ones, serving
-the model assembler with a library addition and zero new declaration rules.
+validation, did-you-mean errors (the offending name plus the list-in-hand it
+should have matched) and the two-producer check all run at build against the
+instance exactly as for a named assembly. What is given up relative to a named
+type is exactly what named types are *for* — dispatching domain code on
+`::Cessna172X`, a reusable identity for the topology — which the exploratory
+and programmatic composition `Group` serves does not want anyway. The framing
+that earns it its place (row 184): the builder rejection above was never about
+type-based *semantics* — it was about mutable recipes — and named types were
+simply the only spelled-out route; `Group` ships in the library the way Julia
+ships anonymous functions alongside named ones, serving the model assembler
+with a library addition and zero new declaration rules.
 
 **No `AbstractAssembly`; one root `AbstractComponent`** (row 39). Julia's single
 inheritance is already spoken for by the domain hierarchies (`AbstractAircraft`,
@@ -4706,8 +4707,8 @@ organized as three strata:
   once and [pinned](#g-walked)), the `init_x`-derived state type [walked](#g-walked) as before, the probe chain run in topo order —
   threading each stage's `w` to its one-hop consumers ([§5.2][s5-2], [§12.3][s12-3]) — observed compared against
   declared, flat `x` [buffer](#g-buffer) and table laid out. The nominal `Float64`
-  activation runs at build; other activations re-run *only this stratum*
-  ([§12.4][s12-4]).
+  activation (a re-run of Stratum C at a given scalar type) runs at build;
+  other activations re-run *only this stratum* ([§12.4][s12-4]).
 
 Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm,
 `localization_tol`, `localization_budget`, `firing_budget`, harmonic-grid
@@ -5040,40 +5041,37 @@ the nominal activation — the only one that ever runs in real time — the chec
 is unchanged: exact type match, no convert-on-write, one baked `isa` that
 folds away (row 53). The error can afford to be
 didactic: "field `M_shaft`: expected `Float64`, got `Int64` — return
-`zero(x.ω)`, not `0`". Under a non-nominal activation the two leaf kinds the
-declaration ([§11.2][s11-2]) distinguishes are checked differently. A
-**declared-`T`
-leaf** — the author wrote `T` there — accepts exactly two types: the activation
-scalar (the fast path — the baked
-`isa` unchanged) or `Float64`, which the executor **embeds** as a
-zero-partial constant (`convert` through the leaf; struct-valued [ports](#g-port) use
-the standard cross-eltype constructor, a missing one failing loudly with
-both types named). Nothing else is accepted. A **declared-[pinned](#g-walked) leaf** — the
-author wrote a concrete type, `Float64` at the head of the list — takes the
-nominal-style exact check at *every* activation, its declaration having said the
-leaf never carries partials; an observed `Dual` there is the per-leaf
-forgotten-`T` error, with the didactic hint attached ("if `F` participates in
-differentiation, declare it `T`"), that being the one honest cause. The
-embedding is exact, not
-lenient: promotion is airtight and there is no lossy `Dual → Float64` cast,
-so a `Float64` observed at a declared-`T` leaf means no `Dual` entered its
-computation — its true derivative along every seeded direction is zero,
-which is precisely what the embedded constant says. This scopes the blanket
-convert-on-write rejection to the nominal check (row 53):
-the bug that rejection guards against — silently zeroed partials — cannot
-arise from honest code, because accidental `Float64`s from `Dual` operands
-are impossible (`MethodError` at the operation site). The residual is
-**deliberate stripping** (`ForwardDiff.value`): a stated intent to discard
-partials, producing a silent zero in the Jacobian — the stop-gradient idiom,
-occasionally legitimate (deliberately frozen couplings, opaque non-Julia
-wrappers), and equally invisible to a strict
-exact-match rule when applied mid-expression, so the leniency costs nothing.
-What it is no longer is invisible to the schema *by necessity*: **the
-declared-pinned leaf is the schema-visible freeze** — an author who means to
-strip declares the leaf `Float64` and strips inside the stage, and the check
-above holds [the freeze](#g-the-freeze) to its word at every activation. Stripping mid-expression
-at a leaf still declared `T` remains legal and remains unseen, as the sharp tool
-it is.
+`zero(x.ω)`, not `0`". Under a non-nominal activation (a re-run of Stratum C at
+a given scalar type) the two leaf kinds the declaration ([§11.2][s11-2]) distinguishes
+are checked differently. A **declared-`T` leaf** — the author wrote `T` there —
+accepts exactly two types: the activation scalar (the fast path — the baked
+`isa` unchanged) or `Float64`, which the executor **embeds** as a zero-partial
+constant (`convert` through the leaf; struct-valued [ports](#g-port) use the standard
+cross-eltype constructor, a missing one failing loudly with both types named).
+Nothing else is accepted. A **declared-[pinned](#g-walked) leaf** — the author wrote a
+concrete type, `Float64` at the head of the list — takes the nominal-style
+exact check at *every* activation, its declaration having said the leaf never
+carries partials; an observed `Dual` there is the per-leaf forgotten-`T` error,
+with the didactic hint attached ("if `F` participates in differentiation,
+declare it `T`"), that being the one honest cause. The embedding is exact, not
+lenient: promotion is airtight and there is no lossy `Dual → Float64` cast, so
+a `Float64` observed at a declared-`T` leaf means no `Dual` entered its
+computation — its true derivative along every seeded direction is zero, which
+is precisely what the embedded constant says. This scopes the blanket
+convert-on-write rejection to the nominal check (row 53): the bug that
+rejection guards against — silently zeroed partials — cannot arise from honest
+code, because accidental `Float64`s from `Dual` operands are impossible
+(`MethodError` at the operation site). The residual is **deliberate stripping**
+(`ForwardDiff.value`): a stated intent to discard partials, producing a silent
+zero in the Jacobian — the stop-gradient idiom, occasionally legitimate
+(deliberately frozen couplings, opaque non-Julia wrappers), and equally
+invisible to a strict exact-match rule when applied mid-expression, so the
+leniency costs nothing. What it is no longer is invisible to the schema *by
+necessity*: **the declared-pinned leaf is the schema-visible freeze** — an
+author who means to strip declares the leaf `Float64` and strips inside the
+stage, and the check above holds [the freeze](#g-the-freeze) to its word at every activation.
+Stripping mid-expression at a leaf still declared `T` remains legal and remains
+unseen, as the sharp tool it is.
 
 **`w` is checked at the nominal activation, and nowhere else.** A stage that
 returns the `(y, w)` pair ([§5.2][s5-2]) gets a second baked `isa` beside the first,
@@ -5147,17 +5145,17 @@ The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
 - **Trim** is a write-condition → [sweep](#g-sweep) → read loop on an [activation](#g-activation) — by
   default the `Dual` activation, decision variables seeded for exact residual
   Jacobians ([§14.7][s14-7]); the derivative-free fallback runs the same loop on the
-  nominal `Float64` activation with no new activation needed, and the
-  always-on checks ride along either way. Decision variables stay opaque to the
-  framework (only the assignment's *output* is framework vocabulary).
-  `assign!` inverts from in-place mutation + self-invoked `f_ode!` to a pure
-  function returning a [condition](#g-condition) value (state by path, modes, [slots](#g-slot) by [face](#g-face))
-  that the service writes and evaluates. Domain math — the pitch constraint,
-  `Kinematics.Initializer`, per-residual scalings and the equilibrium-subset
-  choice — survives aircraft-side, with one respelling: the initializer's
-  `atmosphere::Model` argument becomes a [field handle](#g-field-handle) ([§4.4][s4-4]), built at value
-  level by the atmosphere's [value-level constructor](#g-value-level-constructor) or held directly as a rig
-  slot value ([§14.1][s14-1], [§14.9][s14-9]).
+  nominal `Float64` activation (a re-run of Stratum C at a given scalar type)
+  with no new activation needed, and the always-on checks ride along either
+  way. Decision variables stay opaque to the framework (only the assignment's
+  *output* is framework vocabulary). `assign!` inverts from in-place mutation +
+  self-invoked `f_ode!` to a pure function returning a [condition](#g-condition) value (state
+  by path, modes, [slots](#g-slot) by [face](#g-face)) that the service writes and evaluates. Domain
+  math — the pitch constraint, `Kinematics.Initializer`, per-residual scalings
+  and the equilibrium-subset choice — survives aircraft-side, with one
+  respelling: the initializer's `atmosphere::Model` argument becomes a
+  [field handle](#g-field-handle) ([§4.4][s4-4]), built at value level by the atmosphere's
+  [value-level constructor](#g-value-level-constructor) or held directly as a rig slot value ([§14.1][s14-1], [§14.9][s14-9]).
 - **Linearization** is a `Dual` activation plus seeded sweeps: gather/scatter
   over the canonical layout replaces the hand-written
   `get_x_ss`/`assign_x_ss!` layer (the deletion discharged, [§7.1][s7-1]); root slots are
@@ -5176,17 +5174,16 @@ The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
 The [schedule](#g-schedule) exists in two representations at two lifecycle stages. In the
 `Build` it is plain printable data ([§12.2][s12-2]) — paths, stage names, order — the
 authoring and diagnostic form. At `Simulation` construction, and per
-[activation](#g-activation), that data is compiled into the execution form: **a
-concretely-typed tuple of entries over statically typed [cell](#g-cell) storage,
-traversed by a compile-time-unrolled walk**. This is a forced move, not a
-preference: the zero-allocation invariant ([§7.5][s7-5]), the fold-away
-conformance test ([§12.5][s12-5]) and the zero runtime graph logic
-([§5.1][s5-1]) are reachable only under full
-specialization (row 86). An entry carries what selects code — [component](#g-component) type, stage — in
-type parameters, and what is plain data — [tick](#g-tick) divisor and [phase](#g-phase), the
-[bundle](#g-bundle)'s `Δt`, layout offsets — in
-fields; gating compiles to `(idx − Φ) % D == 0` inside the specialized *[boundary](#g-boundary)*
-body, the interior bodies holding no discrete entries to test ([§8.5][s8-5]).
+[activation](#g-activation) (a re-run of Stratum C at a given scalar type), that data is
+compiled into the execution form: **a concretely-typed tuple of entries over
+statically typed [cell](#g-cell) storage, traversed by a compile-time-unrolled walk**.
+This is a forced move, not a preference: the zero-allocation invariant ([§7.5][s7-5]),
+the fold-away conformance test ([§12.5][s12-5]) and the zero runtime graph logic ([§5.1][s5-1])
+are reachable only under full specialization (row 86). An entry carries what
+selects code — [component](#g-component) type, stage — in type parameters, and what is plain
+data — [tick](#g-tick) divisor and [phase](#g-phase), the [bundle](#g-bundle)'s `Δt`, layout offsets — in fields;
+gating compiles to `(idx − Φ) % D == 0` inside the specialized *[boundary](#g-boundary)* body,
+the interior bodies holding no discrete entries to test ([§8.5][s8-5]).
 
 **Cells are stored per element type, not per cell.** The [signal table](#g-signal-table) is one
 contiguous [buffer](#g-buffer) per element type — the construction pointed at
@@ -5262,8 +5259,9 @@ activations bake into package images via ordinary precompile workloads — an
 aircraft package exercising build-plus-one-sweep per activation turns TTFX
 from a session tax into a CI artifact.
 
-**[Views](#g-view) are spelled rebuild-per-call.** Every entry constructs its bundle at
-its own position; there is no framework-maintained hoisting and therefore no
+**[Views](#g-view) are spelled rebuild-per-call.** Every entry constructs its bundle (the
+NamedTuple of zero-copy views a component function receives) at its own
+position; there is no framework-maintained hoisting and therefore no
 cache-invalidation obligation. Hoisting belongs to the code generator: CSE
 merges repeated loads exactly where no intervening store invalidates them —
 which is precisely the staleness rule — and the sweep-varying bundle fields
