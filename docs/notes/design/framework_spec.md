@@ -129,7 +129,7 @@
 
 This document specifies a modeling and simulation framework intended to
 replace `FlightCore` as the substrate for `FlightPhysics` and `FlightApps`.
-It is the normative statement of the design: what the framework *is*, in
+It is the [normative statement](#g-normative) of the design: what the framework *is*, in
 present tense. It is derived from `framework_design.md`, the historical
 original, which carries the full record of how the design was reached and
 survives in git history. The new framework must match or surpass `FlightCore` in
@@ -2936,7 +2936,7 @@ places on the
 GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
 
-**Liveness is a derived property, and resolution is transitive.** A widget
+**Liveness is a [derived property](#g-derived-liveness), and resolution is transitive.** A widget
 is live iff its port's feed chain — walked through wires and [boundary](#g-boundary) connections across *all*
 levels, not just the local assembly — terminates in a root slot, *and* that slot
 lies **inside the GUI's own [claim](#g-claim)** in the run's frozen surface partition
@@ -7399,7 +7399,7 @@ knowing them is what makes component and periphery code come out right, and
 not knowing them produces defensive delays, duplicated math or mistimed
 samples with no diagnostic firing anywhere (the author-knowledge note,
 [§15.5][s15-5], is the archetype).
-This appendix is an **[index, not a second home](#g-normative)** — one recall line per
+This appendix is an **index, not a second home** — one recall line per
 contract, with the normative statement staying in the owning section (one
 home per datum, applied to the document itself).
 
@@ -7507,7 +7507,7 @@ For periphery authors and consumers:
   everything else propagate — the wrapper makes it `DeviceCrash`.
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
-- **[Derived liveness](#g-derived-liveness)** ([§9.7][s9-7]). A widget is live iff its port's feed chain
+- **Derived liveness** ([§9.7][s9-7]). A widget is live iff its port's feed chain
   terminates in a root slot inside the GUI's own claim in the run's frozen
   partition; there is no per-port marking, and unexported ports are
   unpokeable.
