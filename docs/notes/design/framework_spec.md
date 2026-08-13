@@ -2280,14 +2280,20 @@ concurrency model generally, which [§8.3][s8-3] constrains but does not decide 
 
 ## 9. Runtime periphery: the data plane
 
-GUI, input [devices](#g-device), network I/O and logging, and how data crosses between them
-and the [§8][s8] loop: the architecture that replaces the shared mutable model
-([§9.1][s9-1]), outbound [snapshot](#g-snapshot) publication ([§9.2][s9-2]), the inbound path — root
-input [slots](#g-slot), [claims](#g-claim) and the [frozen roster](#g-roster) ([§9.3][s9-3]), per-device staging and the
-[drain](#g-drain) ([§9.4][s9-4]), the input [trace](#g-trace) ([§9.5][s9-5]) — the device authoring [contract](#g-contract)
-([§9.6][s9-6]), the GUI write path ([§9.7][s9-7]), and the third cross-task channel —
-runtime diagnostics and liveness ([§9.8][s9-8]). The machinery that drives the loop
-itself follows in [§10][s10].
+This chapter covers GUI, input [devices](#g-device), network I/O and logging, and how
+data crosses between them and the [§8][s8] loop:
+
+- the architecture that replaces the shared mutable model ([§9.1][s9-1]);
+- outbound [snapshot](#g-snapshot) publication ([§9.2][s9-2]);
+- the inbound path:
+  - root input [slots](#g-slot), [claims](#g-claim) and the [frozen roster](#g-roster) ([§9.3][s9-3]);
+  - per-device staging and the [drain](#g-drain) ([§9.4][s9-4]);
+  - the input [trace](#g-trace) ([§9.5][s9-5]);
+- the device authoring [contract](#g-contract) ([§9.6][s9-6]);
+- the GUI write path ([§9.7][s9-7]);
+- the third cross-task channel, runtime diagnostics and liveness ([§9.8][s9-8]).
+
+The machinery that drives the loop itself follows in [§10][s10].
 
 ### 9.1 No shared mutable model: staged writes, snapshot reads
 
@@ -2527,160 +2533,180 @@ quantity is a deliberate lie, not a drift).
 
 ### 9.3 Inbound: root input slots, claims and the frozen roster
 
-**The [write surface](#g-write-surface) is root input [slots](#g-slot)** — and a root slot *is* the root
-[assembly](#g-assembly)'s own input [face](#g-face), declared through `input_connections` ([§11.6][s11-6]): routed inward to consumers, produced by no
-[component](#g-component), fed by the parent's wire at every non-root level — and at the root
-there is no parent. (A root slot is usefully read as the output face of the
-one producer the build never sees — the [periphery](#g-periphery) and the services: slot
-exclusivity below is a producer's one-writer right, and the totality
-([§14.6][s14-6]) is its completeness obligation.) No dedicated vocabulary
-is needed. Slots are sources to the build-time scheduler, constants within
-a frame, and the *only* thing the periphery may write (the GUI reaches them
-through the resolution, [§9.7][s9-7]; control commands are not writes, [§10.1][s10-1]); [devices](#g-device),
-mappings, the [trace](#g-trace) and the GUI write path address them by **face name** ([§11.6][s11-6]):
-structural slash paths never cross the periphery's *write* [boundary](#g-boundary) — the write
-side speaks the root [contract](#g-contract)'s names only. (The read side chooses per
-binding: slash paths in the inspection register, face names in the
-integration register and in load-bearing service reads —
-[§9.2][s9-2]/[§13.5][s13-5]/[§14.4][s14-4].)
+**The [write surface](#g-write-surface) (the set of faces a writer's batch entries may reach)
+is root input [slots](#g-slot).** A root slot *is* the root [assembly](#g-assembly)'s own input
+[face](#g-face), declared through `input_connections` ([§11.6][s11-6]): routed inward to
+consumers, produced by no [component](#g-component). At every non-root level an input face
+is fed by the parent's wire, and at the root there is no parent. No dedicated
+vocabulary is needed.
+
+A root slot is usefully read as the output face of the one producer the build
+never sees: the [periphery](#g-periphery) and the services. On that reading, slot
+exclusivity (below) is that producer's one-writer right, and the totality
+([§14.6][s14-6]) is its completeness obligation.
+
+Slots are sources to the build-time scheduler, constants within a frame, and
+the *only* thing the periphery may write. The GUI reaches them through the
+resolution ([§9.7][s9-7]), and control commands are not writes ([§10.1][s10-1]).
+[Devices](#g-device), mappings, the [trace](#g-trace) and the GUI write path address slots by
+**face name** ([§11.6][s11-6]). Structural slash paths never cross the periphery's
+*write* [boundary](#g-boundary): the write side speaks the root [contract](#g-contract)'s names only.
+The read side chooses per binding — slash paths in the inspection register,
+face names in the integration register and in load-bearing service reads
+([§9.2][s9-2]/[§13.5][s13-5]/[§14.4][s14-4]).
 
 **Slot exclusivity: one writer per slot at any time** ([§15.4][s15-4]). A
-device [claims](#g-claim) its slots at attach; claiming an already-claimed slot is an
-attach-time error, and detaching releases the claims (a released slot's GUI
-widgets are live again from the next run, [§9.7][s9-7]). Exclusivity replaces any cross-device conflict *policy* —
-attachment-order precedence at [drain](#g-drain), say (row 44). Per-device
-[cells](#g-cell), the CAS merge and the atomicswap drain all stay — they serve atomicity and
-[coalescing](#g-coalescing), not arbitration.
+device [claims](#g-claim) its slots at attach, and claiming an already-claimed slot is
+an attach-time error. Detaching releases the claims: a released slot's GUI
+widgets are live again from the next run ([§9.7][s9-7]). Exclusivity replaces any
+cross-device conflict *policy* — attachment-order precedence at
+[drain](#g-drain), say (row 44). Per-device [cells](#g-cell), the CAS merge and the
+atomicswap drain all stay; they serve atomicity and [coalescing](#g-coalescing), not
+arbitration.
 
 **A claim is what a device *may* write, not what it will.** Data-dependent
 write-sets are ordinary: a UDP/JSON peer writes whichever subset of faces the
 incoming message names, and `map_input` is arbitrary user code the framework
 never inspects. Such a device therefore claims the **binding's enumerated
 allowed set** — the faces the binding table lists, whether or not any given
-batch touches them — and the claim is registered at attach exactly as a
-joystick's is. A broad claim costs liveness: every enumerated face is claimed
-for the device's whole attachment, so the derived-liveness rule ([§9.7][s9-7]) renders its
-GUI widget read-only even on faces the peer never writes. Narrow the binding to
-narrow the claim — the enumeration *is* the interface.
+batch touches them. The claim is registered at attach exactly as a joystick's
+is. A broad claim costs liveness: every enumerated face is claimed for the
+device's whole attachment. The derived-liveness rule ([§9.7][s9-7]) therefore renders
+the device's GUI widget read-only even on faces the peer never writes. Narrow
+the binding to narrow the claim — the enumeration *is* the interface.
 
 **Every writer has a write surface, and the periphery enforces it.** A batch
 entry reaches a slot **iff the named face is inside the writer's surface**;
 anything else is discarded with a runtime warning ([§13.2][s13-2]). Because surfaces
-are static per run (the [roster](#g-roster) freeze below), enforcement runs entirely at
-*staging* — the earliest site, on the writer's own task — and the drain
-performs no checks at all. **Every device's surface is its claim set**, and a
-claim set has two *sources*:
+are static per run (the [roster](#g-roster) freeze, below), enforcement runs entirely at
+*staging* — the earliest site, on the writer's own task. The drain performs no
+checks at all. **Every device's surface is its claim set**, and a claim set has
+two *sources*:
 
 - **Returned** — the binding enumerates the faces: it declares
   `is_input(b) = true`, `claims(b)` ([§9.6][s9-6]) is
-  called once at attach, and what it names is staked. Static for the
-  attachment, exclusively its own (claims are disjoint by construction), and
-  binding-bounded even where no one else is involved — a mapping that has
-  drifted onto an unenumerated face is a diagnosable anomaly
+  called once at attach, and what it names is staked. Such a claim is static
+  for the attachment and exclusively its own, since claims are disjoint by
+  construction. It is binding-bounded even where no one else is involved: a
+  mapping that has drifted onto an unenumerated face is a diagnosable anomaly
   (`OutOfClaimEntry`), never a silent write, claimed or not.
 - **Computed** — the binding declares `is_greedy(b) = true` ([§9.6][s9-6]) and the
   framework computes the claim at attach: all root input faces minus the
   union of the rostered claims, the unclaimed complement at that instant.
   This is the shipped GUI's claim ([§9.7][s9-7]) — everything unclaimed, without
-  configuration — and it is disjoint from every incumbent claim by
-  construction, so exclusivity validates trivially and nothing downstream
-  can tell the two sources apart.
+  configuration. It is disjoint from every incumbent claim by construction, so
+  exclusivity validates trivially and nothing downstream can tell the two
+  sources apart.
 
 One claim mechanism, two claim sources. The source is exhausted at the attach
 point: past it, validation, roster-entry storage, shape compilation
 ([§9.4][s9-4]), the drain, the trace and detach-releases-claims treat a computed
-claim exactly as a returned one, which is why the GUI is not an exception but
-an ordinary enumerated writer whose enumeration the framework performed.
+claim exactly as a returned one. The GUI is therefore not an exception but an
+ordinary enumerated writer whose enumeration the framework performed.
 Opportunistic writing by autonomous devices does not exist: a device that
 wants a face enumerates it, and greediness is an explicit declaration, never a
-default. Cross-writer races on one slot therefore cannot arise structurally —
-every claim is exclusive, whatever its source — which is what keeps drain
-order a diagnostic fact (below) and lets a drained GUI value simply stay
+default. Cross-writer races on one slot therefore cannot arise structurally:
+every claim is exclusive, whatever its source. That is what keeps drain order
+a diagnostic fact (below) and lets a drained GUI value simply stay
 ([§9.7][s9-7]).
 
 **One framework-owned remainder: the [harness register](#g-harness-register).** Beside the roster
-sits a **task-free entry point** — `stage!(sim, "face" => value, ...)`, which
-stages a batch from the [calling task](#g-calling-task) itself, the harness/REPL write path
-([§10.6][s10-6]) — and its always-present cell, drained, traced and
-surface-checked exactly as any device's. Its surface is the one thing in the
-design that is *derived* rather than claimed: the unclaimed complement, the
-faces no rostered device speaks for, recomputed at every stopped-sim roster
-change and therefore as fixed within a run as any claim set. A `stage!` write
-to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming the
-incumbent), and the one seam — a batch staged while stopped whose face a
+sits a **task-free entry point**, `stage!(sim, "face" => value, ...)`, the
+harness/REPL write path ([§10.6][s10-6]). It stages a batch from the
+[calling task](#g-calling-task) itself (the task that invoked `run!`). Its always-present
+cell is drained, traced and surface-checked exactly as any device's. The
+register's surface is the one thing in the design that is *derived* rather
+than claimed: the unclaimed complement, the faces no rostered device speaks
+for. That surface is recomputed at every stopped-sim roster change, and is
+therefore as fixed within a run as any claim set. A `stage!` write to a
+claimed face is rejected at staging (`ClaimedFaceEntry`, naming the
+incumbent). The one seam — a batch staged while stopped whose face a
 subsequent `attach!` claims — is renormalized away at the attach itself
 (below). The [harness cell](#g-harness-cell) (the always-present staging cell of the harness
 register) drains **last**, by convention: with every surface disjoint the order
 is unobservable, so the rule exists to make the trace read the same way every
 time, not to arbitrate anything.
 
-**Slot initial values are owned by the init/trim services** ([§15.4][s15-4]). Input declarations are bare types ([§11.2][s11-2]) and carry no defaults, but a
-slot unfed by any device must hold a defined value from the first frame (today's
-`U()` constructors provide these: `mixture = 0.5`). Export-entry defaults were
-rejected (row 47). `init!` establishes every slot and the
-[trace header](#g-trace-header) captures the result; totality is enforced pre-write at every
+**Slot initial values are owned by the init/trim services** ([§15.4][s15-4]).
+Input declarations are bare types ([§11.2][s11-2]) and carry no defaults, yet a
+slot unfed by any device must hold a defined value from the first frame.
+Today's `U()` constructors provide these (`mixture = 0.5`). Export-entry
+defaults were rejected (row 47). `init!` establishes every slot, and the
+[trace header](#g-trace-header) captures the result. Totality is enforced pre-write at every
 complete-world application — `init!`, trim setup, trim commit
 ([§14.6][s14-6]).
 
 **The roster is frozen per run: attach and detach are stopped-sim
 operations.** `attach!`/`detach!` are legal in the `built`, `initialized`
-and `stopped` states ([§10.6][s10-6]) and an error while `running`
-(`ServiceLifecycle`, [Appendix C][sC] — the same kind that gates the [§14][s14]
-services) — pause included: pause is a control-plane state *inside* a run
-([§10.1][s10-1]), and a surface that could move while paused would move mid-run. The roster —
-entries, claims, attachment order — is therefore a plain immutable value
-the loop reads once at `run!`, and the partition of the root face set into
-per-writer surfaces plus the harness remainder is a static,
-inspectable fact of the run — printable before it starts, valid until it ends
-(the provenance register, [§13.7][s13-7]). No republication machinery exists:
+and `stopped` states ([§10.6][s10-6]) and an error while `running`. That error is
+`ServiceLifecycle` ([Appendix C][sC]), the same kind that gates the [§14][s14]
+services. The prohibition includes pause: pause is a control-plane state
+*inside* a run ([§10.1][s10-1]), and a surface that could move while paused would
+move mid-run. The roster — entries, claims, attachment order — is therefore a
+plain immutable value the loop reads once at `run!`. The partition of the root
+face set into per-writer surfaces plus the harness remainder is a static,
+inspectable fact of the run: printable before it starts, valid until it ends
+(the provenance register, [§13.7][s13-7]). No republication machinery exists —
 no atomic roster reference, no per-frame acquire-load, no next-frame
-attachment granularity, no sequence numbers — attachment order is the
-roster's own order. The trace still tags entries with a stable device id,
-never a roster index — ids read across runs, where the roster does change.
+attachment granularity, no sequence numbers. Attachment order is the roster's
+own order. The trace still tags entries with a stable device id, never a
+roster index, because ids read across runs, where the roster does change.
 Attach validation, claim registration and the staging-shape compilation
-(below) all run at the attach point, making `attach!`/`detach!`
-stopped-sim configuration operations beside `init!` and trim ([§14][s14]): while
+(below) all run at the attach point, which makes `attach!`/`detach!`
+stopped-sim configuration operations beside `init!` and trim ([§14][s14]). While
 a simulation runs, its configuration — build, roster, claims, surfaces — is
-immutable, and the doctrine ([§10.5][s10-5]) extends to its final form — the running
+immutable. The doctrine ([§10.5][s10-5]) extends to its final form: the running
 periphery stages writes and issues control commands, *and nothing else
 changes*.
 
 **Device identity, ids and roster admission.** Identity is the device
-instance: the same object (`===`) may occupy at most one roster entry,
-while two instances of the same type (two joysticks) are two devices. The
-stable device id the trace, heartbeat and diagnostics speak is assigned
-at `attach!` — monotonic per `Simulation`, never reused — and lives
-exactly as long as the entry: across runs (roster persistence, [§10.6][s10-6]),
-until `detach!`. Admission is a three-part check at the attach point, in
-order: **identity** — an already-rostered instance is rejected
-(`AlreadyAttached`, naming the entry and its binding), because rebinding
-has an explicit spelling — `detach!` then `attach!`, both legal at any
-stopped-sim point — and either a silent no-op or a silent rebind would
-discard a binding the caller handed over; **affinity** — at most one
-rostered device may declare `needs_calling_task` (the topology, [§9.1][s9-1],
-makes the calling task a single-slot resource; `CallerTaskConflict`, naming
-both devices); **claims** — face exclusivity (`ClaimConflict`), which by
-running after the identity check always names two *distinct* devices,
-never a device colliding with its own earlier attachment.
+instance: the same object (`===`) may occupy at most one roster entry. Two
+instances of the same type — two joysticks — are two devices. The stable
+device id the trace, heartbeat and diagnostics speak is assigned at `attach!`,
+monotonic per `Simulation` and never reused. It lives exactly as long as the
+entry: across runs (roster persistence, [§10.6][s10-6]), until `detach!`.
+
+Admission is a three-part check at the attach point, in order:
+
+```
+# each line: the condition that rejects the attach → the diagnostic it raises
+identity   this instance is already rostered
+               → AlreadyAttached      (names the entry and its binding)
+affinity   this device declares needs_calling_task, and a rostered
+           device already declares it
+               → CallerTaskConflict   (names both devices)
+claims     face exclusivity: this device's claim set meets a rostered claim
+               → ClaimConflict        (names two distinct devices)
+```
+
+An already-rostered instance is rejected rather than silently absorbed because
+rebinding has an explicit spelling: `detach!` then `attach!`, both legal at
+any stopped-sim point. Either a silent no-op or a silent rebind would discard
+a binding the caller handed over. The affinity check admits at most one
+rostered device declaring `needs_calling_task`, because the topology
+([§9.1][s9-1]) makes the calling task a single-slot resource. Running the claims
+check after the identity check is what makes `ClaimConflict` always name two
+*distinct* devices, never a device colliding with its own earlier attachment.
 
 **Device death does not detach.** A mid-run crash, voluntary exit or unplug
 ([§9.6][s9-6], [§10.4][s10-4]) ends the device's *task*: the cell stops filling, the [§10.2][s10-2]
 heartbeat shows the death by name, and the roster entry — claims included —
 persists to the end of the run. The [orphaned claims](#g-orphaned-claims) are the accepted cost of
 [the freeze](#g-the-freeze): the device's slots hold their last-drained values and no other
-writer inherits them; the read-only widgets ([§9.7][s9-7]) render the orphan visibly
-("claimed by `T16000M` — task dead"), never mysteriously. Recovery is
-between runs — stop, `detach!`, and either `init!` (fresh trajectory) or
+writer inherits them. The read-only widgets ([§9.7][s9-7]) render the orphan visibly
+("claimed by `T16000M` — task dead"), never mysteriously. Recovery is between
+runs: stop, `detach!`, and either `init!` (fresh trajectory) or
 `replay!`-to-end then `run!` (continuation from the interrupted boundary,
-[§10.7][s10-7]) — and the anomaly is exactly that: an anomaly, not a surface event.
-One deliberate asymmetry is on record as a **[guarded addition](#g-guarded-addition)**: a pure
-reader (a binding declaring `is_output` alone, [§9.6][s9-6] — a visualizer, a telemetry
-tap) claims nothing, so attaching one mid-run would move no writer's
-surface; a dynamic reader list (touching only [§10.3][s10-3] wakeups, the heartbeat
-and the shutdown join — never the drain) is cleanly severable from the
-freeze should the join-a-running-session workflow find a customer. The
-[§10.2][s10-2] thread-budget warning runs once per `run!`, against the frozen
-population.
+[§10.7][s10-7]). The death is an anomaly, not a surface event.
+
+One deliberate asymmetry is on record as a **[guarded addition](#g-guarded-addition)** (a
+capability the design admits but does not build). A pure reader — a binding
+declaring `is_output` alone ([§9.6][s9-6]), a visualizer or a telemetry tap — claims
+nothing, so attaching one mid-run would move no writer's surface. A dynamic
+reader list would touch only [§10.3][s10-3] wakeups, the heartbeat and the shutdown
+join, never the drain, and is cleanly severable from the freeze should the
+join-a-running-session workflow find a customer. The [§10.2][s10-2] thread-budget
+warning runs once per `run!`, against the frozen population.
 
 ### 9.4 Inbound: per-device staging, representation and the drain
 
