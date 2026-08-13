@@ -3628,11 +3628,11 @@ but still illustrative in spelling. The sketches (`sketch_decoder.jl`,
 
 [Stage functions](#g-stage-function) are ordinary multiple-dispatch methods (the `GUI.draw!` precedent).
 Structural facts are declared through a small set of well-known functions returning
-plain values, defined alongside the methods. No macro DSL: generated code is opaque
-to the debugging, tooling and comprehension workflows the charter protects ([§1][s1]), and
-a macro can only ever *lower to* a layer like this one — so a convenience macro
-remains addable a posteriori as pure sugar (the `@kwdef` precedent), while never
-becoming load-bearing. Redundancy between declarations and function bodies is
+plain values, defined alongside the methods. No macro DSL: the charter's debugging,
+tooling and comprehension workflows ([§1][s1]) decide it (row 32). A macro can only
+ever *lower to* a layer like this one, so a convenience macro remains addable a
+posteriori as pure sugar (the `@kwdef` precedent), while never becoming
+load-bearing. Redundancy between declarations and function bodies is
 accepted deliberately, under one non-negotiable condition: **every inconsistency
 fails loudly**, at build time where possible, at first execution otherwise.
 The door stays open for the declaration layer specifically: a macro generating
@@ -3672,10 +3672,9 @@ distinct from the framework's, the message says so and names the missing
 import ("`MyEngine`'s module defines its own `f`, distinct from `Flight.f` —
 add `import Flight: f`"; a two-line `isdefined`/`!==` test on names the build
 already looks up). A convenience macro expanding to the import list remains
-addable-a-posteriori sugar per this section's macro doctrine; a re-export
-submodule is *not* an alternative — `using Flight.Declarations` would carry
-the identical silent-shadowing semantics, per-name `import` being the only
-extension register the language provides.
+addable-a-posteriori sugar per this section's macro doctrine; per-name `import`
+is the only extension register the language provides, so a re-export submodule
+is not an alternative (row 117).
 
 **The same trap has a local-scope sibling** (row 164): written inside a `let`,
 a function body or a `@testset`, `h_x(::MyComp, (; x)) = …` does not add a
@@ -3700,13 +3699,9 @@ evaluation *checks* conformance against them — never the reverse. The build [p
 user functions with real values (no reliance on compiler inference), compares
 observed against declared, and the same comparison runs on every subsequent
 evaluation for free (a `NamedTuple`-type check that constant-folds away when
-conformant). The rejected alternative — inference-by-evaluation as schema
-authority — fails on three counts, established by walkthrough ([§11.4][s11-4]): error
-*locality* inverts (failures surface inside correct code, pointed away from the
-wrong line); observed schemas are sample- and branch-dependent (the probe sees only
-the initial state's branch — the [§5.6][s5-6] hazard corrupting the schema instead of a
-diagnostic); and annotations have nowhere to live. Types by declaration, values by
-execution, conformance by comparison.
+conformant). Inference-by-evaluation as schema authority is rejected on three
+counts, established by walkthrough ([§11.4][s11-4]) and litigated in row 32. Types by
+declaration, values by execution, conformance by comparison.
 
 **[Contracts](#g-contract) are functions of the type, not of the instance.** A leaf's contract
 declarations — `input_types`, `output_types`, `events`, and the
@@ -3784,20 +3779,14 @@ The inventory, and where each schema fact gets its authority:
   allocation* — `workspace(::C, ::Type{T})` continuous, `workspace(::C)`
   discrete, the method being the allocator — because a workspace is not
   memory and none of the by-value arguments below cover it; [§7.3][s7-3].) This is the [boundary](#g-boundary) of legitimate derivation: deriving from another
-  declaration is sound; deriving from evaluated user code is not. Rejected:
-  declaring types here too, `input_types`-style, with [§12.3][s12-3]'s
-  `probe_value` synthesizing the initial values. The declared values are the
-  [condition](#g-condition) substrate's base layer ([§14.1][s14-1]'s overlays fall back to them leaf
-  by leaf, and the compiled store writers bake `merge(defaults, overlay)`),
-  so there must be an authored value under every leaf; synthesized initial
-  state would cross the [probe](#g-probe)-value barrier [§14.6][s14-6] makes structural (a
-  fabricated zero is a fine probe input and a terrible flight condition —
-  states no less than [slots](#g-slot)); and every field where synthesis picks wrong
-  (modes, `Ranged` values excluding zero, trim-sensitive states) would need
-  an authored default *beside* its type — the per-field two-register
-  protocol [§14.2][s14-2] kills for `initialize` specs, aggravated by types being
-  first-class values in Julia (the two registers distinguishable only by
-  `isa Type`). The asymmetry against `input_types`/`output_types` is one of kind, not
+  declaration is sound; deriving from evaluated user code is not. Declaring
+  types here too, `input_types`-style, with [§12.3][s12-3]'s
+  `probe_value` synthesizing the initial values, was rejected (row 73). The
+  declared values are the [condition](#g-condition) substrate's base layer —
+  [§14.1][s14-1]'s overlays fall back to them leaf by leaf, and the compiled store
+  writers bake `merge(defaults, overlay)` — so there must be an authored value
+  under every leaf.
+  The asymmetry against `input_types`/`output_types` is one of kind, not
   style: [contracts](#g-contract) describe table [cells](#g-cell), recomputed from scratch every
   [sweep](#g-sweep), needing only types; `init_*` describe [stores](#g-store) — the model's memory,
   which must have contents before the first sweep can run.
@@ -3842,8 +3831,8 @@ The inventory, and where each schema fact gets its authority:
     never the tool for eltype genericity: that is exactly what a `T` entry is, a
     promoting consumer writing `SVector{3, T}` rather than an abstract bound.
 
-  (Names-only [contracts](#g-contract) were rejected — they lose the wiring-time type error and
-  standalone checkability.) Inputs are the component's *requirements*: [§6.1][s6-1]'s
+  (Names-only [contracts](#g-contract) were rejected: row 33.) Inputs are the
+  component's *requirements*: [§6.1][s6-1]'s
   unconnected-input error, over-wiring detection and [did-you-mean](#g-did-you-mean) typo messages
   are only definable against them.
 
@@ -3860,8 +3849,8 @@ The inventory, and where each schema fact gets its authority:
   take the bound check only**, and that scope is load-bearing rather than tidy: a
   discrete stage reads exclusively at real [ticks](#g-tick) in the nominal world, a
   `Dual`-carrying cell existing only inside activations discrete stages never run
-  in ([§12.4][s12-4]), so continuous → discrete wires are unconditionally legal — unscoped,
-  the clause would reject the entire sensor → controller pattern.
+  in ([§12.4][s12-4]), so continuous → discrete wires are unconditionally legal; the
+  unscoped variant is rejected in row 167.
 
   Because entries are bounds, nothing is ever "overwritten": cell types are
   single-sourced from the producer side per activation ([§12.1][s12-1]), and a
@@ -3873,18 +3862,11 @@ The inventory, and where each schema fact gets its authority:
   **declarations record choices; obligations are checked** — the `T` entry records
   the tolerance choice, the probe checks the promotion.
 
-  **The two readings that stay rejected, and the one that escapes them** (rows 33,
-  167). The *predictive* reading — the entry saying what *will* arrive — is
-  impossible outright: an input's activation type depends on who feeds it (a
-  continuous producer delivers `Dual` under a `Dual` activation, a gated-off
-  discrete producer `Float64`), so a predictive declaration would force the
-  consumer to state its producer's tier and break substitution behind the same
-  face. The *envelope* reading — the entry as a promise to promote — is a
-  universal obligation every component owes anyway, hence a constant function
-  across components and zero information. The permissive reading is neither: it
-  predicts nothing, and it is not constant, pinned entries being rare but real.
-  That third reading is what the original adjudication never had on the table, and
-  it is what makes the `T` carry information here.
+  **The permissive reading is the operative one, and the two readings it escapes
+  stay rejected** (rows 33, 54, 167): the *predictive* reading — the entry saying
+  what *will* arrive — and the *envelope* reading — the entry as a promise to
+  promote. The permissive reading predicts nothing, and it is not constant, pinned
+  entries being rare but real, which is what makes the `T` carry information here.
 
   **Root slots are the one place an entry types a cell**: produced by no
   component, a slot has only the consumer declaration to take a type from. The
@@ -3906,8 +3888,7 @@ The inventory, and where each schema fact gets its authority:
   `SVector{3, Float64}`, so the slot *type* is unambiguous while the entries
   disagree about partials. That mixture is a legitimate model rather than a
   mistake: a command consumed by a promoting aerodynamics leaf and by an
-  AD-opaque table is the FFI door in use, and the only remedies an error could
-  offer are duplicating the slot or lying in a declaration. The slot therefore
+  AD-opaque table is the FFI door in use. The slot therefore
   takes the **meet** — pinned at every activation if *any* consumer's entry
   pins, following the scalar only when every consumer tolerates. The direction
   is forced by embedding: a pinned slot cell feeds a `T` entry lawfully (frozen
@@ -3987,13 +3968,9 @@ The inventory, and where each schema fact gets its authority:
   re-run, cheap enough to make this unremarkable in CI).
   What the form buys in exchange is **reader honesty**: participation is read off
   the declaration instead of reconstructed from a framework rule carried in the
-  reader's head, and a genuinely frozen leaf can say so. (History: this signature
-  was the original design, abandoned in favor of a plain nominal declaration plus
-  a framework [leaf walk](#g-leaf-walk) — rows 33 and 79 — and revived by row 166, whose grounds
-  are recorded there: reader-honesty revalued, and two of row 79's three grounds
-  dissolved independently in the meantime — class-by-declaration-shape ([§11.5][s11-5])
-  removed the tier-marker trap, and [§12.5][s12-5]'s embed-accept removed the
-  constant-branch detonation that made the `T`-form look fragile.)
+  reader's head, and a genuinely frozen leaf can say so. (History: the
+  `T`-signature was the original design (rows 33, 79); row 166 revived it and
+  records the reversal grounds.)
 
   **The stores keep their walk**; only the output side is evaluated. The type
   derived from a *continuous* leaf's `init_x` is walked exactly as a continuous
@@ -4119,8 +4096,7 @@ line, in exchange for "public" always meaning someone wrote it down.
   a stage product nor a state
   field errors with both lists in hand ("not produced by any stage and not a
   state field"). A *returned port field* declared nowhere is a build error at [probe](#g-probe)
-  with [did-you-mean](#g-did-you-mean) against `output_types` (under an observation-based
-  rule it would silently define a new cell instead — the
+  with [did-you-mean](#g-did-you-mean) against `output_types` (rows 34, 55 — the
   return-side analogue of [§11.4][s11-4] walkthrough 1). The forgotten-branch
   walkthrough holds: a declared `P` missing from the taken branch's
   return fails at probe; missing from an *untaken* branch, it fails loudly at
@@ -4158,8 +4134,7 @@ line, in exchange for "public" always meaning someone wrote it down.
   [guard](#g-guard) there: a `Float64` in `w` under a `Dual` activation is an honest
   zero-partial constant by the embedding guarantee ([§12.5][s12-5]), and its
   downstream promotion is exact. Walking the nominal observation to synthesize
-  non-nominal expectations was rejected as machinery kept alive for a check
-  that catches nothing the nominal one misses.
+  non-nominal expectations was rejected (row 165).
 - **[Schema authority](#g-schema-authority) is total over the table**: every *cell* [traces](#g-trace) to an
   authored declaration, the always-on check's expected type for `y` is fully
   declaration-derived, and return typos cannot silently define new cells.
@@ -4169,47 +4144,35 @@ line, in exchange for "public" always meaning someone wrote it down.
   cells* on two grounds — authority inversion, and the fact that one probe
   point cannot speak for branch-dependent types — and neither ground reaches
   `w`, which declares nothing and types nothing.
-- **What this rules out**: the `unlisted` flag ([§4.2][s4-2]) — presentational
-  hiding of connectable ports — and its satellite-function representation; the
-  RNG-state case that motivated it needs *nothing* here (`g` reads `x` directly,
-  [§5.2][s5-2]). Identity publication by default goes with it ([§7.4][s7-4] step 4): publication
-  driven by the contract replaces publication of everything with hiding
-  annotations on top. **Probe-observed private cells** and the
-  `Private(T)` fallback are rejected alongside — the former by the
-  authority-inversion argument above, the latter as obviated by `w` (a
-  wrapper inside `output_types` would break "declared = public" and introduce the
-  layer's first wrapper type, where the return channel encodes privacy by
-  where the value travels, with no declaration to write at all). So is the
-  opt-in variant with a `Float64`-under-`Dual` diagnostic —
-  it legislates an ambiguity that strictness dissolves. Rows 34, 55 and 165.
+- **What this rules out** (rows 16, 34, 55, 165): the `unlisted` flag
+  ([§4.2][s4-2]) and its satellite-function representation — the RNG-state
+  case that motivated it needs *nothing* here (`g` reads `x` directly,
+  [§5.2][s5-2]); identity publication by default ([§7.4][s7-4] step 4), since
+  publication driven by the [contract](#g-contract) replaces publication of
+  everything with hiding annotations on top; **probe-observed private cells**;
+  the `Private(T)` fallback, obviated by `w`; and the opt-in variant with a
+  `Float64`-under-`Dual` diagnostic.
 
 ### 11.4 Failure walkthroughs (the error-locality grounding)
 
 The five mistakes that decided declaration-vs-inference, with their failure sites
-under this layer (each was traced under inference-by-evaluation too; in every case
-the failure surfaced inside *correct* code, later, or never):
+under this layer. Each was traced under inference-by-evaluation too, and in every
+case the failure surfaced inside *correct* code, later, or never; row 32 carries
+the traces.
 
 1. **Typo'd wire** (`:throtle`): build error at the connection, "no input
-   `throtle`; did you mean `throttle`?" — vs. a missing-field error inside a
-   correct `h_xu` at [probe](#g-probe) time, with the input set silently *defined* by the typo.
-2. **Forgotten wire** (`fuel_available`, read only by a [guard](#g-guard)): [§6.1][s6-1] unconnected-input
-   error at build — vs. detection contingent on the probe exercising every guard,
-   framed as a missing field in event code.
-3. **Forgotten branch field** (`P` returned by one branch only): probe or
-   first-execution error naming the declared [port](#g-port) — vs. a schema silently derived
-   from whichever branch the initial state took, then a mid-run error (or a
-   silently absent port) at the first transition.
+   `throtle`; did you mean `throttle`?"
+2. **Forgotten wire** (`fuel_available`, read only by a [guard](#g-guard)): [§6.1][s6-1]
+   unconnected-input error at build.
+3. **Forgotten branch field** (`P` returned by one branch only): [probe](#g-probe) or
+   first-execution error naming the declared [port](#g-port).
 4. **Type mismatch** (a `Float64` fraction wired into a `Bool` input): wiring-time
-   error naming both endpoints and both [faces](#g-face) — vs. a `MethodError` deep inside
-   user math.
+   error naming both endpoints and both [faces](#g-face).
 5. **Typo'd return field**, in its two [registers](#g-register). A typo'd *port*
    (`P_shft = ...` for a declared `P_shaft`) keeps the full strength of the
    declaration: a probe error with [did-you-mean](#g-did-you-mean) against `output_types`, plus
    the unproduced-`P_shaft` error with both the stage-product and state-field
-   lists in hand — vs. the typo silently *defining* a new [cell](#g-cell) under
-   observation-authority, with the intended name's absence surfacing later as a
-   missing-field error inside correct `f`/guard code (the return-side twin of
-   walkthrough 1). A typo *inside* `w` (`q_dny` where the consumer reads
+   lists in hand. A typo *inside* `w` (`q_dny` where the consumer reads
    `q_dyn`) has no declaration to be checked against and surfaces one hop
    later, at the consumer, as [§13.2][s13-2]'s framing diagnostic carrying the
    producing stage's observed field set ("`f` of `Foo` reads `w.q_dyn`; the
@@ -4255,11 +4218,9 @@ plain fields (directly concrete or via type-parameter bounds, [§11.8][s11-8]'s
 immediate child names, hence legal keys; the bare field name is sugar for a
 uniform declaration across all elements.
 
-**The builder is rejected** (`Assembly()` + `add!`/`connect!`): the type you dispatch on and the recipe that defines its structure
-become two artifacts with nothing tying them together — [§11.1][s11-1]'s drift disease at
-assembly scale; it threads mutable state through declaration code; and it does not
-even buy source-location capture (a called function cannot see its caller's line
-any more than a returned value can). Its one real advantage, programmatic
+**The builder is rejected** (`Assembly()` + `add!`/`connect!`; row 39 —
+[§11.1][s11-1]'s drift disease at assembly scale, mutable state threaded through
+declaration code). Its one real advantage, programmatic
 generation, survives intact in the type-based form: a declaration is an ordinary
 function body — loops and comprehensions build the returned tuple.
 
@@ -4303,12 +4264,12 @@ and named types were simply the only spelled-out route; `Group` ships in the
 library the way Julia ships anonymous functions alongside named ones, serving
 the model assembler with a library addition and zero new declaration rules.
 
-**No `AbstractAssembly`; one root `AbstractComponent`.** Two facts kill a [class](#g-class)
-supertype: Julia's single inheritance is already spoken for by the domain
-hierarchies (`AbstractAircraft`, engine families — a [slot](#g-slot) `E <: AbstractEngine`
+**No `AbstractAssembly`; one root `AbstractComponent`** (row 39). Julia's single
+inheritance is already spoken for by the domain hierarchies (`AbstractAircraft`,
+engine families — a [slot](#g-slot) `E <: AbstractEngine`
 must accept a primitive `PistonEngine` and a composite turbofan assembly alike),
-and [§11.3][s11-3] says class is an implementation detail behind the contract — encoding it
-in public type identity is exactly what contract visibility exists to prevent.
+and [§11.3][s11-3] holds [class](#g-class) to be an implementation detail behind the
+contract.
 Class is instead declared by *which* well-known declarations a type defines:
 `child_connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
 precedent) makes an **assembly**; any leaf declaration makes a **primitive** —
@@ -4346,12 +4307,12 @@ type has component-typed fields ("holds components but declares no
 [assembly](#g-assembly) being declared, no leading slash; one canonical form, shared verbatim by
 declarations, error messages, [device](#g-device)/[trace](#g-trace) addressing ([§9.3][s9-3]) and the HDF5 log
 tree. [Container children](#g-container-children) ([§11.5][s11-5]) add index and key segments — `"aircraft/2"`,
-`"aircraft/red"` — ordinary segments, resolved against the container field. Rejected: instance navigation (`a.ldg.left` cannot yield a *path* —
-symmetric immutable siblings are `===`-identical, so path-from-instance is
-unrecoverable by construction; a path-tracking proxy remains addable sugar);
-tuples of symbols (structure without readability); dotted paths (a false
-Julia-property affordance — the last segment is a [contract](#g-contract) [port](#g-port), not a field;
-slashes say "named tree", which is the true model).
+`"aircraft/red"` — ordinary segments, resolved against the container field. Instance navigation,
+tuples of symbols and dotted paths were all rejected (row 40); a path-tracking
+proxy remains addable sugar. One fact from that adjudication is load-bearing
+downstream: symmetric immutable siblings are `===`-identical, so a path is
+unrecoverable from an instance — which is why [§11.8][s11-8]'s helpers name the child
+by path.
 
 **`child_connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
 pairs, strictly child-port → child-port; [§6.1][s6-1]'s rules apply (one wire per input,
@@ -4376,8 +4337,7 @@ write side (input devices, mappings, the trace, the GUI write path) speaks
 face names exclusively ([§9.3][s9-3]), and the read side speaks them wherever it
 wants meaning that outlives the build: integration bindings ([§9.2][s9-2]'s
 `get_face`) and load-bearing service reads ([§14.4][s14-4]).
-Pairs-of-strings rather than a NamedTuple also removes the `var"..."` noise that
-non-identifier names would force.
+The three declarations return pairs of strings rather than NamedTuples (row 46).
 
 One invariant spans all three declarations: every pair's arrow points the way the
 signal flows — the left side is a producer or entry point, the right side a
@@ -4389,18 +4349,15 @@ A mixed entry is no longer expressible, so that error class disappears with the
 single list that made it possible; two entries producing the same output face
 remain the ordinary two-producers error. Face *types and [tiers](#g-tier)* are derived from
 the internal endpoints — [§11.2][s11-2]'s [blessed](#g-blessed) derivation-from-declarations — and the
-derivation is forced, not merely convenient: an assembly is tier-neutral (it
-exports continuous-sourced and discrete-sourced ports side by side), so
-author-declared face types would need per-face tier annotations restating what
-each producer's [class](#g-class) already fixes ([§11.5][s11-5]; a face's [cells](#g-cell) follow the
-producer's own declaration, evaluated at the [activation](#g-activation) scalar on the
-continuous tier and [pinned](#g-walked) on the discrete). Rejected spellings: routing values under the leaf names
-`input_types`/`output_types` (a name-level pun — a discrete leaf's exact signature with
-alien value semantics, killing [§11.5][s11-5]'s name-level class split); leaf-style *typed*
-faces plus face wires inside `child_connections` (the tier problem above, plus
-face/child namespace collisions and the weakest class marker); routing-as-wires
-with derived types and no face list (facehood implicit in wiring — publicity is
-never implicit, [§11.3][s11-3]).
+derivation is forced, not merely convenient (row 41): an assembly is
+tier-neutral, exporting continuous-sourced and discrete-sourced ports side by
+side, and a face's [cells](#g-cell) follow the producer's own declaration
+([§11.5][s11-5]), evaluated at the [activation](#g-activation) scalar on the
+continuous tier and [pinned](#g-walked) on the discrete.
+Three alternative spellings were rejected (rows 41, 170): routing values under
+the leaf names `input_types`/`output_types`, leaf-style *typed* faces with face
+wires inside `child_connections`, and routing-as-wires with derived types and no
+face list. Publicity is never implicit ([§11.3][s11-3]).
 
 **Root [slots](#g-slot) fall out with no vocabulary**: at every non-root level an input face
 declared through `input_connections` is fed by the parent's wire; at the root there
@@ -4472,11 +4429,10 @@ legal key; the bare field name applies one declaration to every element. A
 `sample_times` key on a continuous child is a build error ([§8.5][s8-5]'s
 Δt-on-continuous error at declaration time). `Δt_base`, `h` and `n` appear in no
 declaration — they are deployment decisions fixed at `Simulation` construction
-([§12.1][s12-1]'s three sources for `Δt_base`). Rejected: the declaration carried on the
-child instance, FlightCore-`Subsampled`-style — it wraps the field type
-(polluting paths, dispatch and the child's [contract](#g-contract) as seen by wiring) and makes
-a per-instance value of what [§8.5][s8-5]'s own rationale calls a fact about the [assembly](#g-assembly)
-type: a design ratio, or a modeled [device](#g-device)'s intrinsic rate.
+([§12.1][s12-1]'s three sources for `Δt_base`). The declaration belongs to the
+[assembly](#g-assembly) type, not to the child instance: a sample time is a design ratio
+or a modeled [device](#g-device)'s intrinsic rate ([§8.5][s8-5]), never a per-instance value.
+The FlightCore-`Subsampled`-style instance wrapper is rejected in row 42.
 
 ### 11.8 Computed connections and generic boundaries
 
@@ -4606,16 +4562,8 @@ artifact, not defined away as the complement of the wire list.
 
 **The line not to cross** is deriving `except` from `child_connections` itself — a
 helper spelled `except = fed(s, "aero")`, reading the assembly's own wire
-list. That is auto-bubbling under another name (row 43): the author's explicit
-statement of which faces are fed would vanish, so a *forgotten* wire would no
-longer be a build-time unconnected-input error but a silent promotion of the
-face to a live root slot — caught at best later as an `UninitializedSlots`
-deployment error of misleading shape
-([§14.6][s14-6]),
-at worst not at all, once a GUI or a condition writes it.
-[§11.4][s11-4]'s walkthrough 2,
-inverted. The single source must be **authored data, never inferred
-structure**.
+list. That is auto-bubbling under another name (rows 43, 145). The single source
+must be **authored data, never inferred structure**.
 
 **[Generic holding](#g-generic-holding) = imposed contract.** A parent holding a child generically
 constrains it exactly through the faces its wires and boundary connections reference: build a
