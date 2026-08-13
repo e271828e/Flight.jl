@@ -56,10 +56,15 @@ const LABELLED = r"\[§(\d+)\](?:\(([^)#]*)#|\[)"
 const REFUSE = r"\]\[(s[A-D0-9][A-Za-z0-9-]*)\]"
 const REFDEF = r"^\[(s[A-D0-9][A-Za-z0-9-]*)\]:\s*(\S*)#(\S+)\s*$"
 
+"Explicit HTML anchor ids in a file (`<a id=\"…\">` — the glossary's g- anchors),
+which are link targets exactly like heading slugs."
+htmlids(path) = Set(m[1] for line in eachline(path)
+                    for m in eachmatch(r"<a id=\"([^\"]+)\">", line))
+
 function main()
     hs = headings(joinpath(DESIGN, SPEC))
     numbers = keys(targets(hs))
-    slugs = Set(h.slug for h in hs)
+    slugs = union(Set(h.slug for h in hs), htmlids(joinpath(DESIGN, SPEC)))
     dup = collisions(hs)
 
     println("outline of $SPEC: ", length(numbers), " citable headings (",
@@ -78,7 +83,7 @@ function main()
             continue
         end
         ownhs = headings(path)
-        own = Set(h.slug for h in ownhs)
+        own = union(Set(h.slug for h in ownhs), htmlids(path))
         ownnums = file in SELF_CITING ?
                   Set(h.number for h in ownhs
                       if h.number !== nothing && !occursin('.', h.number)) :
