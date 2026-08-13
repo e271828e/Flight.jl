@@ -4712,10 +4712,8 @@ The `Build` is the
 inspectable [contract](#g-contract) of the instantiation [§11.8][s11-8] gestures at — wire list, face
 table, [schedule](#g-schedule), root [slots](#g-slot) as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
-`attach!` validates [device](#g-device) [bindings](#g-binding) against it. Rejected: build living only
-inside the `Simulation` constructor — CI would construct simulations with
-dummy deployment parameters, and the phase outputs must exist as coherent
-intermediate data anyway; the artifact just names them.
+`attach!` validates [device](#g-device) [bindings](#g-binding) against it. Build living only inside the
+`Simulation` constructor was rejected (row 49).
 
 **The schedule the `Build` carries is anchor-relative; the `Simulation` binds
 it.** From [Stratum](#g-stratum) A the artifact gains two printable tables: the **[anchor](#g-anchor)
@@ -4747,10 +4745,9 @@ attribution**, each prime power of `1/Δt_base` traced to the pool entries
 whose denominators supply it, which pinpoints what an edit changed. When an
 offset is a driver, the message adds the nearest non-refining alternatives —
 the admissible offsets on the grid the rest of the pool supports — turning
-the diagnostic into a repair. A simple-fraction-of-its-period test is
-authoring guidance only, never the engine's: demand is relational (`τ = T/10`
-can cost nothing and `τ = T/15` cost 3×, depending on what else is declared),
-so blame is computed against the actual pool. The derivation path — the one
+the diagnostic into a repair. Blame is computed against the actual pool; a
+simple-fraction-of-its-period test stays authoring guidance and never becomes
+the engine's (row 187). The derivation path — the one
 place refinement happens silently — always prints the derived value with its
 drivers, and carries the one advisory: `GridUtilization` ([Appendix C][sC]),
 reporting `min_i Dᵢ` — base ticks between the fastest component's ticks — as
@@ -4811,14 +4808,8 @@ Physically silly values are acceptable by
 construction: the probe checks types, and return types that depend on input
 *values* are type instabilities (banned by the branch-shape rule); the [§4.3][s4-3]
 write-side granularity corollary keeps root slots predominantly scalar, so the
-surface is small. Rejected: inputs declared by value à la `init_x` (reads as
-an unwired-input default, [§6.1][s6-1]'s banned concept; every leaf pays for a
-root-only need; and it would need its own agreement rule for fan-out through an
-exported face, where the slot type already follows [§11.2][s11-2]'s rule — the unique
-concrete declaration among the consumers); NaN poison
-values (`Bool`/enums unpoisonable; [probe values](#g-probe-value) are meant to be read, so a
-sentinel that detonates on read has nothing legitimate to guard here);
-init-service values (the build is standalone; services post-date it).
+surface is small. Rejected (row 51): inputs declared by value à la `init_x`, NaN
+poison values, and init-service values.
 
 **Probe values are strictly probe-scoped.** Everything the probe writes is
 garbage once the build finishes; probe values never double as initial slot
@@ -4840,8 +4831,7 @@ inputs** — every probed user function (stages, `f`, `g`, guards, handlers,
 types. The domain is type-validity, not the probe's particular synthesized
 values: the branch-shape rule already bans value-dependent return types, so
 types are the only domain the framework can speak of, and the probe is the
-enforcement moment, not the reason — asking whether one can detect being probed
-reads the [contract](#g-contract) backwards. Two consequence sites, the same throw at both: at
+enforcement moment, not the reason (row 142). Two consequence sites, the same throw at both: at
 build it is a `UserCodeFraming`-wrapped build failure ([§13.1][s13-1]) whose diagnostic
 points at code that is "correct" on every trajectory it has ever seen; at
 runtime it is a `StepError` and the run ends `errored` ([§13.4][s13-4]) — exceptions from
@@ -4987,8 +4977,7 @@ equally why that diff never has to express one.
 **Exact match at nominal; embed-accept at declared-`T` leaves.** At
 the nominal activation — the only one that ever runs in real time — the check
 is unchanged: exact type match, no convert-on-write, one baked `isa` that
-folds away (`Int` sloppiness must fail at `Float64`, not lurk until a `Dual`
-activation makes "it runs" activation-dependent). The error can afford to be
+folds away (row 53). The error can afford to be
 didactic: "field `M_shaft`: expected `Float64`, got `Int64` — return
 `zero(x.ω)`, not `0`". Under a non-nominal activation the two leaf kinds
 [§11.2][s11-2]'s declaration distinguishes are checked differently. A **declared-`T`
@@ -5130,11 +5119,7 @@ concretely-typed tuple of entries over statically typed [cell](#g-cell) storage,
 traversed by a compile-time-unrolled walk**. This is a forced move, not a
 preference: [§7.5][s7-5]'s zero-allocation invariant, [§12.5][s12-5]'s fold-away conformance
 test and [§5.1][s5-1]'s zero runtime graph logic are reachable only under full
-specialization. A heterogeneous runtime vector of entries dispatches
-dynamically per entry and boxes every stage return — the framework itself
-would allocate, and [§7.5][s7-5]'s canary role (framework contribution exactly zero,
-so any model inference regression announces itself) would die with the
-invariant. An entry carries what selects code — [component](#g-component) type, stage — in
+specialization (row 86). An entry carries what selects code — [component](#g-component) type, stage — in
 type parameters, and what is plain data — [tick](#g-tick) divisor and [phase](#g-phase), the
 [bundle](#g-bundle)'s `Δt`, layout offsets — in
 fields; gating compiles to `(idx − Φ) % D == 0` inside the specialized *[boundary](#g-boundary)*
@@ -5149,12 +5134,8 @@ vocabulary earns its keep twice. This is the entry rule above paying rent: two
 instances of one component type then differ only in field values, share an
 entry type, and compile to **one** body — where a store enumerating every cell
 in its own type, addressed by index in the type domain, compiles one body per
-instance and grows the store type with the model. Measured rather than argued
-(row 162, `prototypes/cellstore_bench`): at 400 identical instances the two
-representations cost 1.1 s and 56 s of cold compile at equal zero allocation,
-and on the 8-partial `Dual` activation the per-element-type store's compile
-cost *saturates* — bounded by chunk-type count, not model size — where the
-type-domain one keeps climbing.
+instance and grows the store type with the model. The choice was measured
+rather than argued (row 162, `prototypes/cellstore_bench`).
 
 **[Phase bodies](#g-measurement-seam) are the outer decomposition, and they are semantically
 forced.** The [boundary sweep](#g-sweep)'s `h_x` block is order-free by definition (the
@@ -5173,9 +5154,8 @@ against the
 passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147,
 amending row 116). One gate serves all three tick-sensitive blocks — due-ness
 is per component, per boundary, never per stage — and `t*`'s empty due set is
-**arity selection, not an index trick**: no sentinel index fails every gate
-(a `D = 1, Φ = 0` entry passes at all of them), so the `t*` iteration runs
-the zero-arg arities, whose compiled bodies contain no discrete entries
+**arity selection, not an index trick** (rows 147, 185), so the `t*` iteration
+runs the zero-arg arities, whose compiled bodies contain no discrete entries
 ([§8.5][s8-5]). Across passes these bodies communicate only
 through the stores and the table, so the [seams](#g-seam) between passes cost
 nothing — no values cross them. **Within** a pass one kind of value does: a
@@ -5248,9 +5228,8 @@ branching in the measurement code. One
 promise, in the diagnostic register ([§13.5][s13-5]): **these are the bodies the loop
 runs** — not re-derivations, which is what makes the measurement honest, and
 why each callable carries the real in-loop argument types by construction
-(the thing a hand-built standalone test cannot reproduce, and the reason
-per-component tests cannot discharge the invariant: they never call the
-executor whose contribution the claim quantifies over). CI is
+(the thing a hand-built standalone test cannot reproduce; row 116 records why
+per-component tests cannot discharge the invariant). CI is
 warm-then-assert over the roster — one call compiles, then
 `@ballocated(body()) == 0` — at per-body granularity, each sweep arity asserted
 in its own right (the interior call bare, the boundary call at a due index), so
@@ -5264,14 +5243,6 @@ mutates the simulation's buffers outside any [frame](#g-frame) sequence (a tick 
 advances discrete state with no clock advance), leaving them valid but
 off-trajectory; a session that wants to continue meaningfully re-runs
 `init!`.
-
-Rejected (row 86): vector-of-abstract entries (dynamic dispatch boxes
-returns; union splitting rescues only toy scale and cannot close an open
-method set); type-erased call tables (`FunctionWrapper`-style — the same
-specialization count as chunk-of-one with extra machinery, no cross-entry
-optimization, and a load-bearing seam on internal ABI, the [§8.1][s8-1] lesson);
-framework-maintained view hoisting (lifetime obligations the compiler
-already discharges, where mis-scoping means silent stale-state reads).
 
 ---
 
