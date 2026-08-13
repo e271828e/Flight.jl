@@ -6,7 +6,7 @@ pipeline, runtime representation and diagnostics for **phase offsets** and **abs
 rate declarations**. It supersedes section 2 of the extensions charter
 (`framework_extensions.md`), which sketched the same territory before the pipeline was
 worked out. **Adopted 2026-08-12 as decision rows 185–187**, with the section 9
-amendments applied ([§8.5](framework_spec.md#85-multi-rate-tick-scheduling), [§11.7](framework_spec.md#117-rate-scopes), [§12.1](framework_spec.md#121-three-strata), [§12.2](framework_spec.md#122-the-build-artifact), [§12.7](framework_spec.md#127-the-compiled-executor), [§14.5](framework_spec.md#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions), [§14.8](framework_spec.md#148-the-trim-service-solver-seam-scratch-stores-commit-and-report), Appendices B/C —
+amendments applied ([§8.5][s8-5], [§11.7][s11-7], [§12.1][s12-1], [§12.2][s12-2], [§12.7][s12-7], [§14.5][s14-5], [§14.8][s14-8], Appendices B/C —
 the spec wins on any conflict) and two deltas from the proposal as written: the
 `ratespec` normalization of section 2 was **dropped** — the wrappers are the whole
 value vocabulary, a bare integer or bare quantity is a declaration error, and an
@@ -60,7 +60,7 @@ and the grid becomes 200 Hz, `avionics = 4`, `nav = 5`, `Δt_base = 1//200` — 
 coordinated edits at two sites to express one changed fact. The pain sits at the
 boundary where relative structure meets absolute facts, and the spec's own doctrine
 already names that boundary: "absolute rates are deployment decisions made once at
-the root" ([§8.5](framework_spec.md#85-multi-rate-tick-scheduling)).
+the root" ([§8.5][s8-5]).
 
 There is a second, subtler pain the root-only framing creates. Some absolute rates
 are not deployment decisions at all — they are **facts about the modeled system**. A
@@ -131,7 +131,7 @@ Design notes, each with its reason:
   0.5 Hz.
 - **Range validation belongs to Stratum A, not the constructors.** Constructor-side
   checks give instant REPL feedback but fail the *evaluation* of a `sample_times` body with
-  a raw exception, whereas Stratum A's charter ([§12.1](framework_spec.md#121-three-strata), [§13.1](framework_spec.md#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast)) is to *collect*
+  a raw exception, whereas Stratum A's charter ([§12.1][s12-1], [§13.1][s13-1]) is to *collect*
   declaration defects with path attribution ("`gnss` in `sample_times(::Sensors)`: phase 20
   not in `0 ≤ Φ < K = 20`"). Today's `K ≥ 1` check already lives there. One
   validation site, collected diagnostics; the constructors are plain data carriers.
@@ -160,7 +160,7 @@ n = Φ_s + (φ_c + l·K_c)·D_s  =  (Φ_s + φ_c·D_s) + l·(K_c·D_s)
 That is: `D_child = K_c·D_s` (the existing multiplicative rule, untouched) and
 `Φ_child = Φ_s + φ_c·D_s`. Multipliers compose multiplicatively, phases affinely,
 and both collapse at build into one `(D, Φ)` pair per discrete component — the same
-"all scoping compiles away" shape [§8.5](framework_spec.md#85-multi-rate-tick-scheduling) already has. The boundary sweep's gating test
+"all scoping compiles away" shape [§8.5][s8-5] already has. The boundary sweep's gating test
 changes from `idx % D == 0` to `(idx − Φ) % D == 0`. One subtraction; the lattice
 stays static.
 
@@ -224,7 +224,7 @@ have to state:
   the kind of fact the printable schedule of section 5.3 exists to answer (section 7
   shows a coincidence structure silently rewired by a 1/300 s offset edit).
 
-**The doctrinal line.** [§8.5](framework_spec.md#85-multi-rate-tick-scheduling) rejected absolute-first declaration because it welds
+**The doctrinal line.** [§8.5][s8-5] rejected absolute-first declaration because it welds
 deployment rates into reusable definitions. Mid-tree anchors are coherent only if
 the line moves to something sharper: **an absolute declaration inside a library type
 is legitimate when the rate is a fact about the modeled system, not a preference
@@ -237,7 +237,7 @@ answer for it. Absolute pinning *from outside* a subtree's contract stays reject
 as action at a distance. The framework cannot police the distinction; it becomes
 authoring doctrine, one paragraph next to the declaration forms.
 
-**What this does not damage.** [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s structural argument for never caching
+**What this does not damage.** [§8.5][s8-5]'s structural argument for never caching
 `Δt`-derived coefficients survives fully intact, and in a satisfying way: the
 pinning happens in the *enclosing assembly's* `sample_times` — the same site where `K`
 lives today. The component type itself remains rate-agnostic; its author still
@@ -250,7 +250,7 @@ other beyond sharing the base lattice, which the grid derivation guarantees.
 
 ### 5.1 The inversion: gate data, not due sets
 
-A run has millions of boundaries; no table of due sets is ever built. [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s "the
+A run has millions of boundaries; no table of due sets is ever built. [§8.5][s8-5]'s "the
 due set is a pure function of the frame index" means the due set exists only
 *intensionally*: compilation produces, per discrete component, a small amount of
 integer **gate data** — the `(D, Φ)` pair — and the due set at any boundary is "the
@@ -263,11 +263,11 @@ the runtime gate resolves every boundary flavor (5.5).
 ### 5.2 Stratum A: validation and the composition fold
 
 Stratum A already does "rates validation and compilation of relative multipliers
-into absolute divisors — everything except binding `Δt_base`" ([§12.1](framework_spec.md#121-three-strata)). The proposal
+into absolute divisors — everything except binding `Δt_base`" ([§12.1][s12-1]). The proposal
 keeps that shape and enriches the fold. During the tree walk, each scope's `sample_times`
 NamedTuple is read, normalized through `ratespec`, and validated per entry — `K ≥ 1`,
 `0 ≤ Φ < K`, `T > 0`, `0 ≤ τ < T`, keys matching the discrete/scope children — all
-collected with path attribution, per [§12.1](framework_spec.md#121-three-strata)'s usual register.
+collected with path attribution, per [§12.1][s12-1]'s usual register.
 
 The fold itself: each node carries a triple `(anchor, m, c)` — which anchor it hangs
 from, and its divisor and phase *in that anchor's tick units*. Treat the base grid
@@ -283,7 +283,7 @@ Then:
 
 The canonical-residue invariant of section 3 holds within each anchor's subtree by
 the same induction (`c < m` throughout, from the seed `(1, 0)`). The output, stored
-in the `Build` artifact as plain printable data ([§12.2](framework_spec.md#122-the-build-artifact)): an **anchor table** — each
+in the `Build` artifact as plain printable data ([§12.2][s12-2]): an **anchor table** — each
 anchor's exact `(T, τ)` rationals plus the declaring scope's path — and a
 **component table** of `(anchor, m, c)` triples with their declaration provenance
 (the `Relative`/`Absolute` chain down the tree). For a fully relative model the only
@@ -301,7 +301,7 @@ is one multiply-add per component, not a second composition walk.
 ### 5.3 Deployment binding: the pool, the rule, the resolution
 
 At `Simulation` construction, where `Δt_base`, `h`, `n` already bind and validate
-([§12.1](framework_spec.md#121-three-strata)), three new steps slot in.
+([§12.1][s12-1]), three new steps slot in.
 
 **The pool.** Collect every anchor's period and every nonzero offset — the
 **constraint pool**. A `Δt_base` is admissible **iff it divides every pool entry,
@@ -332,7 +332,7 @@ Action at a distance of exactly the kind the design refuses elsewhere. The rule:
 
 The refusal is not a dead end: the engine has everything needed to make it
 constructive — section 8 specifies the suggestion. Either way, validation failures
-are collected `DeploymentInvalid`s in [§12.1](framework_spec.md#121-three-strata)'s style, and with anchors the diagnostic
+are collected `DeploymentInvalid`s in [§12.1][s12-1]'s style, and with anchors the diagnostic
 gains error locality: "period `1//500` does not divide declared `Δt_base` — declared
 `Absolute(Hz(500))` at `Avionics`, for `sensors`," straight from the provenance
 column.
@@ -350,14 +350,14 @@ The residue invariant survives this last step too (`Φ_k < D_k` from `τ < T`, `
 from the fold, so `Φ ≤ (D_k − 1) + (m − 1)·D_k = D − 1`). The output is the **bound
 schedule**: per discrete component, `(D, Φ, Δt)` plus the anchor and provenance
 columns carried through. This deserves to be a **named, printable artifact on the
-`Simulation`** — it is the single source of truth for `Δt` ([§8.5](framework_spec.md#85-multi-rate-tick-scheduling)), the substrate of
+`Simulation`** — it is the single source of truth for `Δt` ([§8.5][s8-5]), the substrate of
 every diagnostic in section 8, and the table a user reads to answer "when does what
 run, and what coincides with what."
 
 ### 5.4 The execution form: entry fields and the gate
 
 At activation compile, the bound schedule bakes into the compiled executor, and
-[§12.7](framework_spec.md#127-the-compiled-executor) has already made the load-bearing choice: *"an entry carries what selects
+[§12.7][s12-7] has already made the load-bearing choice: *"an entry carries what selects
 code — component type, stage — in type parameters, and what is plain data — tick
 divisor, layout offsets — in fields."* `D`, `Φ` and `Δt` are exactly the second
 kind. Two instances of one controller type at different rates and phases differ only
@@ -384,10 +384,10 @@ boundary `sweep_hx(idx)`, boundary `sweep_hxu(idx)`, and `ticks(idx)` — since
 due-ness is per component, per boundary, not per stage. With the schedule tuple
 concretely typed, those field loads constant-fold in practice; either way it is the
 "one subtraction" over today's `idx % D == 0`. The interior (zero-arg) arities are
-untouched: discrete entries are *absent* from them at compile time ([§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s static
+untouched: discrete entries are *absent* from them at compile time ([§8.5][s8-5]'s static
 split), so the phase machinery adds literally nothing to the RK/localization hot
 path. `Δt` semantics are likewise unchanged: the bundle's `Δt` is still
-`D·Δt_base` — the offset shifts firing instants, never the period — so [§15.2](framework_spec.md#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade)'s
+`D·Δt_base` — the offset shifts firing instants, never the period — so [§15.2][s15-2]'s
 discretized laws and the never-cache-`Δt` rule are unaffected.
 
 ### 5.5 Boundary flavors: one gate, no special cases
@@ -397,8 +397,8 @@ flavors fall out of the same gate — the main evidence the representation is ri
 
 - **Frame top**: the loop passes the frame's tick index; the gates evaluate; the due
   set is whatever passes.
-- **Quiescence re-sweeps** ([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted)): every re-sweep of the boundary passes the *same*
-  index, so the gates return the same answers. [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s "the due set is computed once
+- **Quiescence re-sweeps** ([§8.6][s8-6]): every re-sweep of the boundary passes the *same*
+  index, so the gates return the same answers. [§8.5][s8-5]'s "the due set is computed once
   for the boundary" is a semantic fact — a pure function of an index that does not
   change within the boundary — not a memoized bitmask. Nothing to store, nothing to
   invalidate.
@@ -409,16 +409,16 @@ flavors fall out of the same gate — the main evidence the representation is ri
   every `Φ` is 0, so "at boundary zero everything is due" is the degenerate case of
   the same identity. This is what the residue invariant of section 3 buys: it makes
   index 0 honest. An offset component's first tick is at `Φ·Δt_base`; until then its
-  cells hold the values the build probe populated from `init_x` ([§12.3](framework_spec.md#123-probing-and-input-synthesis)) — a coherent
+  cells hold the values the build probe populated from `init_x` ([§12.3][s12-3]) — a coherent
   ZOH story, since those are exactly the values a tick at `t₀⁻` would have produced.
 - **`t*` boundaries**: the empty due set is **arity selection, not an index trick**.
   There is no sentinel index that fails all gates — a `D = 1, Φ = 0` component
   passes at *every* index — so the `t*` event iteration runs the zero-arg interior
   sweep arities (which contain no discrete entries) rather than the boundary arities
-  with a magic index. This is presumably *why* [§8.5](framework_spec.md#85-multi-rate-tick-scheduling) phrases the rule as "the due set
+  with a magic index. This is presumably *why* [§8.5][s8-5] phrases the rule as "the due set
   is a property of the boundary" rather than of the index: at `t*` the counter has
   not advanced, and the modulo image of the unadvanced index would wrongly re-admit
-  the previous frame's due set. The two-arity structure [§12.7](framework_spec.md#127-the-compiled-executor) already commits to is
+  the previous frame's due set. The two-arity structure [§12.7][s12-7] already commits to is
   the mechanism that implements the emptiness.
 
 ### 5.6 Why the due set is never materialized
@@ -471,7 +471,7 @@ what the children inherit; a child never sees seconds, only scope ticks:
   ms — 25 Hz, on the 3rd scope tick of each cycle of 20.
 
 The `Sensors` author declared ratios and a tick-count stagger; they did not know —
-could not know, preserving the [§8.5](framework_spec.md#85-multi-rate-tick-scheduling) property — that a scope tick would turn out to
+could not know, preserving the [§8.5][s8-5] property — that a scope tick would turn out to
 be 2 ms wide or displaced by 1 ms.
 
 **Timeline** (base index in milliseconds):
@@ -496,13 +496,13 @@ effect of a half-period stagger. Boundary by boundary:
   the previous odd boundary — data exactly 1 ms old, every time, deterministically.
 
 **What the offset bought.** With offset 0, sensors and ctrl coincide at every 20 ms
-boundary and [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s simultaneous-tick rule gives ctrl same-instant sensor data via
+boundary and [§8.5][s8-5]'s simultaneous-tick rule gives ctrl same-instant sensor data via
 topological order — the idealized synchronous-sampling picture. With the offset,
 that becomes "pipelined, deterministically 1 ms stale" — which is precisely the
 knob: a real ADC-plus-bus pipeline delivers data some fixed fraction of a sample
 period old, and the offset expresses that latency *structurally*, in the schedule,
 rather than through delay blocks. The second classic use is load shaping under
-real-time pacing ([§8.7](framework_spec.md#87-real-time-pacing)): with the stagger, no single 1 ms frame executes both the
+real-time pacing ([§8.7][s8-7]): with the stagger, no single 1 ms frame executes both the
 sensor stack and the control stack, so worst-case frame cost is the `max` of the two
 rather than their sum.
 
@@ -513,7 +513,7 @@ coincide, and the simultaneous-tick rule orders them topologically within one sw
 cascade with zero intra-suite latency). Meanwhile `ctrl`, reading at 20, 40, 60, 80
 … ms, sees gnss data aged alternately 13 ms and 33 ms (writes at 7, 47, …) — not an
 artifact but the honest schedule of a multi-rate system, and *fully determined at
-build* from the `(D, Φ)` table. That determinism suggests a diagnostic: the [§5.6](framework_spec.md#56-diagnostics-feedthrough-tracing)
+build* from the `(D, Φ)` table. That determinism suggests a diagnostic: the [§5.6][s5-6]
 feedthrough tracer could print per-wire data ages ("this connection delivers data
 aged 13–33 ms"), turning the staleness question from a debugging session into a
 table lookup.
@@ -757,30 +757,46 @@ didn't it fire" and "why is my data stale" — into lookups.
 
 All small, all honest; collected so a future increment can check them off:
 
-- **[§8.5](framework_spec.md#85-multi-rate-tick-scheduling), rate declaration.** The relative-declaration paragraph gains the two
+- **[§8.5][s8-5], rate declaration.** The relative-declaration paragraph gains the two
   registers and the severing rule (section 4); `K ≥ 1` is scoped to the relative
   register; the fastest-member convention is stated; the recorded limitation "no
   phase offsets in the first cut (no demonstrated use)" is replaced by a pointer
   here.
-- **[§8.5](framework_spec.md#85-multi-rate-tick-scheduling), boundary zero.** "At boundary zero the due set is everything" refines to
-  "everything with `Φ = 0`" — implemented by nothing, per section 5.5. [§14.5](framework_spec.md#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)'s
+- **[§8.5][s8-5], boundary zero.** "At boundary zero the due set is everything" refines to
+  "everything with `Φ = 0`" — implemented by nothing, per section 5.5. [§14.5][s14-5]'s
   boundary-zero transitions and the trim read-back need a sentence each
   acknowledging that offset components are not due there.
-- **[§12.1](framework_spec.md#121-three-strata).** Stratum A's "compilation of relative multipliers into absolute
+- **[§12.1][s12-1].** Stratum A's "compilation of relative multipliers into absolute
   divisors" becomes compilation into `(anchor, m, c)` triples; deployment binding
   gains the pool, the derive-vs-declare rule, and anchor resolution.
-- **[§12.2](framework_spec.md#122-the-build-artifact).** The `Build` gains the anchor table and the rate columns of section
+- **[§12.2][s12-2].** The `Build` gains the anchor table and the rate columns of section
   5.2; the bound schedule becomes a named printable artifact on the `Simulation`
   (section 5.3).
-- **[§12.7](framework_spec.md#127-the-compiled-executor).** Entry fields gain `Φ`; the gating sentence becomes
+- **[§12.7][s12-7].** Entry fields gain `Φ`; the gating sentence becomes
   `(idx − Φ) % D == 0`.
 - **`Δt` semantics**: explicitly unchanged — the bundle's `Δt` is still
   `D·Δt_base`; offsets shift firing instants, not the period.
-- **Documentation next to [§8.5](framework_spec.md#85-multi-rate-tick-scheduling)'s simultaneous-tick rule.** The choice between
+- **Documentation next to [§8.5][s8-5]'s simultaneous-tick rule.** The choice between
   coincident ticks (fresh same-instant reads via topological order) and staggered
   ticks (pipelined, deterministically aged reads) is a modeling decision with
   observable consequences — sections 6 and 7.4 — and should be documented where a
   user debugging "why does my controller see stale data" will find it.
-- **[Appendix C](framework_spec.md#appendix-c-the-diagnostic-kind-set)**: no new error kinds — `DeploymentInvalid` covers the new
+- **[Appendix C][sC]**: no new error kinds — `DeploymentInvalid` covers the new
   validation failures; one new *advisory* kind if the derivation path adopts the
   grid-utilization warning of section 8.2.
+
+<!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
+[s11-7]: framework_spec.md#117-rate-scopes
+[s12-1]: framework_spec.md#121-three-strata
+[s12-2]: framework_spec.md#122-the-build-artifact
+[s12-3]: framework_spec.md#123-probing-and-input-synthesis
+[s12-7]: framework_spec.md#127-the-compiled-executor
+[s13-1]: framework_spec.md#131-reporting-policy-collect-the-checks-fail-the-evaluations-fast
+[s14-5]: framework_spec.md#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions
+[s14-8]: framework_spec.md#148-the-trim-service-solver-seam-scratch-stores-commit-and-report
+[s15-2]: framework_spec.md#152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade
+[s5-6]: framework_spec.md#56-diagnostics-feedthrough-tracing
+[s8-5]: framework_spec.md#85-multi-rate-tick-scheduling
+[s8-6]: framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted
+[s8-7]: framework_spec.md#87-real-time-pacing
+[sC]: framework_spec.md#appendix-c-the-diagnostic-kind-set

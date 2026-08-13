@@ -1,9 +1,9 @@
 # Trim and the environment, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§4.4](framework_spec.md#44-function-valued-signals-environment-access) (field handles and the value-level constructor),
-[§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults) (the pre-sweep doctrine), [§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals) and [§14.9](framework_spec.md#149-mounting-problems-as-relocatable-values) (the trim problem and its
-mounting), [§12.6](framework_spec.md#126-stopped-sim-services-as-stratum-c-clients), and decision row 139, which settled all of it on
+`framework_spec.md` [§4.4][s4-4] (field handles and the value-level constructor),
+[§14.1][s14-1] (the pre-sweep doctrine), [§14.7][s14-7] and [§14.9][s14-9] (the trim problem and its
+mounting), [§12.6][s12-6], and decision row 139, which settled all of it on
 2026-08-05 during the round-4 dry-run adjudication (commit `daf3298d`). This
 document records the discussion that produced that row — the alternatives,
 the arguments, and the two shapes that were kept as legitimate options rather
@@ -40,13 +40,13 @@ v_eb_n   = v_ew_n + v_wb_n                        # the wind triangle
 ```
 
 Under the framework the initial condition is a *value* — a path-addressed
-overlay applied before the first sweep exists ([§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)) — and the condition
-function is `d -> trim_condition(ac, params, d)` ([§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)). It closes over the
+overlay applied before the first sweep exists ([§14.1][s14-1]) — and the condition
+function is `d -> trim_condition(ac, params, d)` ([§14.7][s14-7]). It closes over the
 aircraft component and a plain user `TrimParameters` record. It does not hold
 the atmosphere, which in a full world is the aircraft's *sibling*, not its
 child.
 
-[§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s pre-sweep doctrine, as originally written, admitted exactly two
+[§14.1][s14-1]'s pre-sweep doctrine, as originally written, admitted exactly two
 escapes for a would-be init value that seems to depend on swept outputs: the
 value is **caller-computable** (the doctrine's own example is trim's
 `α_filt = α_a` — α is a decision variable, so the value is known one level
@@ -57,10 +57,10 @@ component's output, needed before any sweep has run.
 
 The three workarounds that suggest themselves are each refused elsewhere in
 the design. Duplicating the atmosphere's output-stage math inside aircraft
-trim code is precisely the silent-drift class [§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)'s whole stage discipline
+trim code is precisely the silent-drift class [§5.3][s5-3]'s whole stage discipline
 exists to kill. Reading it through the problem's `reads` is circular — reads
 are gathered *after* the sweep the condition precedes. And a pre-application
-sweep is the "init as a third scheduled sweep" that [§14.2](framework_spec.md#142-fragment-composition-locality-without-schema) rejects by name.
+sweep is the "init as a third scheduled sweep" that [§14.2][s14-2] rejects by name.
 
 That is dry-run finding #3, and it is where the discussion started.
 
@@ -78,7 +78,7 @@ where A maps a position to an air state and S maps a ray to a surface
 intersection. A and S are **boundary conditions of the dynamics**, evaluated
 along the trajectory at points *the aircraft chooses* — the airflow stage
 queries at the vehicle pose, each gear strut at its own contact point, the
-ground-effect term at yet another. That is the whole reason [§4.4](framework_spec.md#44-function-valued-signals-environment-access) carries them
+ground-effect term at yet another. That is the whole reason [§4.4][s4-4] carries them
 as query objects rather than as sampled data: nobody but the consumer knows
 where to sample. And it is why baking a field into a component's parameters
 is wrong in principle rather than merely inconvenient: parameters are frozen
@@ -96,7 +96,7 @@ whose existence is a threading fixture, an `f_init!` at world level whose job
 is to order two initializations, and a trim assignment that takes a `Model`
 where it wants a function.
 
-[§4.4](framework_spec.md#44-function-valued-signals-environment-access) separates the two. What a consumer consumes is a **handle**: an
+[§4.4][s4-4] separates the two. What a consumer consumes is a **handle**: an
 immutable value with pure query functions on it (`ISAField(T_sl, p_sl,
 wind)`; `airdata(field, pos, vel)`; `ray_intersect(field, p, u)`). A handle
 is what the physics needs. A *producing component* is a separate question,
@@ -121,7 +121,7 @@ weaker but the same in kind — the query math must be *reachable* as a plain
 function; building a handle outside a build may then cost a resource load,
 which is acceptable because condition authoring is design-time code.
 
-With that in hand, [§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s first escape stretches to cover the case: the
+With that in hand, [§14.1][s14-1]'s first escape stretches to cover the case: the
 condition constructs the sweep's exact handle from the same values its
 `baseline` writes into the environment component's slots, and calls the same
 query function the consuming component calls. One implementation of the field
@@ -147,13 +147,13 @@ the blessed default for design tasks.
 **(b) Aircraft as root.** Leave the environment faces unconnected. Then, by
 the ordinary rules, each becomes a root input slot — one whose *value* is a
 handle. The `baseline` writes it like any other slot. Nothing new is
-required: [§4.4](framework_spec.md#44-function-valued-signals-environment-access) handles are immutable values carried by ordinary ports, and a
+required: [§4.4][s4-4] handles are immutable values carried by ordinary ports, and a
 slot holds a value.
 
 Three things are worth stating about the pair.
 
 It is legal *by construction*, not by dispensation. There is no rule that an
-input face must be wired rather than exported to the root; [§14.9](framework_spec.md#149-mounting-problems-as-relocatable-values)'s earlier
+input face must be wired rather than exported to the root; [§14.9][s14-9]'s earlier
 "the aircraft is never literally the root" was reporting a habit, not
 enforcing an invariant, and it is now written as a default rather than a
 doctrine.
@@ -326,7 +326,7 @@ trim!(sim, cruise; baseline)          #mounted at the root: no `at` needed
 
 Note that the *problem* is identical in both sketches — same `condition`,
 same `reads`, same residuals. Only the rig and the provenance of `atm`
-changed. That is [§14.9](framework_spec.md#149-mounting-problems-as-relocatable-values)'s relocatability doing its job, and it is the reason
+changed. That is [§14.9][s14-9]'s relocatability doing its job, and it is the reason
 the problem must never *write* the environment: a condition entry naming a
 wired input fails resolution by name (correctly), so a problem that wrote
 `"atm"` would apply only to rigs of shape (b).
@@ -462,7 +462,7 @@ against the requested targets. It costs one evaluation the service has
 already paid for, needs no new mechanism, and it catches every variant of
 this failure — mismatched wind, mismatched sea-level conditions, a params
 record left over from a different flight condition. It is not in the spec's
-trim service; it is recorded as a `TrimReport`-level nicety for [§16](framework_spec.md#16-open-axes)'s
+trim service; it is recorded as a `TrimReport`-level nicety for [§16][s16]'s
 migration outline, because the natural place for it is the same report that
 already names unbalanced equations and saturated decision variables.
 
@@ -497,17 +497,17 @@ honest under perturbation — change the wind and the trim moves rather than
 lying. What it pays is exactly what elimination banks: guess and bounds
 ergonomics, plus a longer residual vector of mixed units (accelerations,
 angular accelerations, a speed, two angles). The mixed units are a
-non-problem in practice — [§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)'s per-residual physical tolerances are
-per-equation numbers already, and [§12.6](framework_spec.md#126-stopped-sim-services-as-stratum-c-clients) keeps per-residual scalings
+non-problem in practice — [§14.7][s14-7]'s per-residual physical tolerances are
+per-equation numbers already, and [§12.6][s12-6] keeps per-residual scalings
 aircraft-side where they belong. And with the `Dual` activation seeding exact
-Jacobians ([§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals), [§14.8](framework_spec.md#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)), a 10×10 nonlinear least-squares problem is
+Jacobians ([§14.7][s14-7], [§14.8][s14-8]), a 10×10 nonlinear least-squares problem is
 unremarkable: the extra three columns are three more seeded directions
 through the same sweep.
 
 **The verdict.** Elimination is the practical **default** — the migration
-preserves today's 7×7 formulation verbatim as user math, which is what [§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)
+preserves today's 7×7 formulation verbatim as user math, which is what [§14.7][s14-7]
 already promises. Enlargement is the **doctrinal reference and the fallback**:
-it is what [§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults) now points at when closed-form enforcement is unwanted or
+it is what [§14.1][s14-1] now points at when closed-form enforcement is unwanted or
 impossible, it is the answer for an aircraft whose author has no analytic
 elimination to offer, and it is the shape to reach for when a trim is
 misbehaving and the two-path structure is under suspicion. The choice is
@@ -530,18 +530,18 @@ It is **rig-only**. In a full world of shape (a), the environment face is
 *wired*, so the handle is not in the baseline at all — the baseline carries
 the atmosphere's `T_sl`/`p_sl`/`wind` slots, not the handle those slots will
 eventually produce. Serving the condition a handle there would mean
-pre-sweeping the environment subtree, which is [§14.2](framework_spec.md#142-fragment-composition-locality-without-schema)'s rejected "init as a
+pre-sweeping the environment subtree, which is [§14.2][s14-2]'s rejected "init as a
 third scheduled sweep" under a new name, and it would additionally require
 the services to reason about which subtrees are state-independent and
 therefore safe to pre-sweep — graph reasoning they deliberately do not do.
 
-And it **reintroduces a hidden input one level up**. [§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)'s overlay-base
+And it **reintroduces a hidden input one level up**. [§14.1][s14-1]'s overlay-base
 decision — the base is always the declared defaults, never the stopped sim's
 current stores — exists precisely to keep a condition's meaning independent
 of history. A `condition(d, baseline)` seam makes every problem's meaning
 depend on the baseline it happens to be applied against: the same
 `TrimProblem` value, applied over two baselines, is two different problems.
-That also breaks the pure condition algebra that lets [§14.9](framework_spec.md#149-mounting-problems-as-relocatable-values)'s `at`-lifting be
+That also breaks the pure condition algebra that lets [§14.9][s14-9]'s `at`-lifting be
 five lines, because `p.condition` is no longer a function of `d` alone.
 
 It is recorded as rejected in row 139, alongside the pre-application sweep,
@@ -556,25 +556,38 @@ holds.
 
 For the record, commit `daf3298d`, decision row 139:
 
-- **[§4.4](framework_spec.md#44-function-valued-signals-environment-access)** gains the value-level constructor as a shipped component's
-  obligation, with the taught-contract entry in [Appendix A](framework_spec.md#appendix-a-taught-contracts-the-author-facing-index) and the glossary
-  entry in [Appendix D](framework_spec.md#appendix-d-glossary).
-- **[§14.1](framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults)**'s caller-computable escape is extended to cover environment
+- **[§4.4][s4-4]** gains the value-level constructor as a shipped component's
+  obligation, with the taught-contract entry in [Appendix A][sA] and the glossary
+  entry in [Appendix D][sD].
+- **[§14.1][s14-1]**'s caller-computable escape is extended to cover environment
   queries, and the environment-free fallback (enlargement) is recorded as
   already covered by the second escape. The detailed elimination-vs-enlargement
   material stayed out of the spec deliberately — it is this document, and then
-  [§16](framework_spec.md#16-open-axes)'s migration outline.
-- **[§14.7](framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)** and **[§14.9](framework_spec.md#149-mounting-problems-as-relocatable-values)** state the portability rule: handles ride in the user
+  [§16][s16]'s migration outline.
+- **[§14.7][s14-7]** and **[§14.9][s14-9]** state the portability rule: handles ride in the user
   parameter record, and a problem *receives* the environment and never writes
   it — which is what keeps one problem artifact valid across a full world and
   a thin rig.
-- **[§14.9](framework_spec.md#149-mounting-problems-as-relocatable-values)**'s "the aircraft is never literally the root" is softened from
+- **[§14.9][s14-9]**'s "the aircraft is never literally the root" is softened from
   doctrine to default, admitting the unconnected environment face as the
   test-rig register while keeping `design_world(ac)` as the shipped rig for
   design tasks.
-- **[§12.6](framework_spec.md#126-stopped-sim-services-as-stratum-c-clients)**'s claim that `Kinematics.Initializer` "survives untouched,
+- **[§12.6][s12-6]**'s claim that `Kinematics.Initializer` "survives untouched,
   aircraft-side" is corrected: it survives aircraft-side with its
   `atmosphere::Model` argument respelled as a field handle.
 
 Deferred, deliberately: the post-commit target read-back, which belongs to
-[§16](framework_spec.md#16-open-axes)'s migration outline as a `TrimReport`-level addition.
+[§16][s16]'s migration outline as a `TrimReport`-level addition.
+
+<!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
+[s12-6]: framework_spec.md#126-stopped-sim-services-as-stratum-c-clients
+[s14-1]: framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults
+[s14-2]: framework_spec.md#142-fragment-composition-locality-without-schema
+[s14-7]: framework_spec.md#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals
+[s14-8]: framework_spec.md#148-the-trim-service-solver-seam-scratch-stores-commit-and-report
+[s14-9]: framework_spec.md#149-mounting-problems-as-relocatable-values
+[s16]: framework_spec.md#16-open-axes
+[s4-4]: framework_spec.md#44-function-valued-signals-environment-access
+[s5-3]: framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries
+[sA]: framework_spec.md#appendix-a-taught-contracts-the-author-facing-index
+[sD]: framework_spec.md#appendix-d-glossary

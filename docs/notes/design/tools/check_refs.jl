@@ -13,6 +13,12 @@
 #      In-file anchors are checked against the file's own headings, which is what
 #      keeps the companions' self-references (a walkthrough citing its own `§N`)
 #      honest.
+#   3. Reference links (Phase 1.1 form, `[§9.4][s9-4]` + a generated definitions
+#      block) — every label used outside code has a definition in the same file,
+#      every definition's target resolves like an inline anchor, and every
+#      definition is used (an unused one means the block is stale: re-run
+#      linkify.jl). Labels are `s`-prefixed by construction, and fenced code is
+#      skipped, so array indexing in sketches never reads as a reference link.
 #
 # Plus one advisory, not an error: in the walkthroughs — the companions that cite
 # their own numbered sections — a link labelled `§N` that points at the spec while
@@ -46,7 +52,9 @@ const SELF_CITING = ["event_visibility_walkthrough.md",
 
 const CITATION = r"§([A-D]|\d+)(?:\.(\d+))?|Appendix ([A-D])(?![\w–—-])"
 const ANCHOR = r"\]\(([^)#]*)#([^)]+)\)"
-const LABELLED = r"\[§(\d+)\]\(([^)#]*)#"
+const LABELLED = r"\[§(\d+)\](?:\(([^)#]*)#|\[)"
+const REFUSE = r"\]\[(s[A-D0-9][A-Za-z0-9-]*)\]"
+const REFDEF = r"^\[(s[A-D0-9][A-Za-z0-9-]*)\]:\s*(\S*)#(\S+)\s*$"
 
 function main()
     hs = headings(joinpath(DESIGN, SPEC))
@@ -62,7 +70,7 @@ function main()
 
     bad = Tuple{String,Int,String,String}[]
     ambiguous = Tuple{String,Int,String}[]
-    tc = ta = 0
+    tc = ta = tr = 0
     for file in [SPEC; COMPANIONS]
         path = joinpath(DESIGN, file)
         if !isfile(path)
@@ -75,8 +83,12 @@ function main()
                   Set(h.number for h in ownhs
                       if h.number !== nothing && !occursin('.', h.number)) :
                   Set{String}()
-        nc = na = 0
+        nc = na = nr = 0
+        defs = Dict{String,Tuple{Int,String,String}}()   # label => (lineno, dest, slug)
+        uses = Dict{String,Int}()                        # label => first-use line
+        infence = false
         for (lineno, line) in enumerate(eachline(path))
+            startswith(line, "```") && (infence = !infence)
             for m in eachmatch(CITATION, line)
                 nc += 1
                 id = m[3] !== nothing ? m[3] :
@@ -94,14 +106,36 @@ function main()
                 end
             end
             for m in eachmatch(LABELLED, line)
-                m[2] == SPEC && m[1] in ownnums &&
+                (m[2] === nothing || m[2] == SPEC) && m[1] in ownnums &&
                     push!(ambiguous, (file, lineno, "§$(m[1])"))
             end
+            infence && continue                          # ref links: prose only
+            d = match(REFDEF, line)
+            d !== nothing && (defs[d[1]] = (lineno, d[2], d[3]))
+            for m in eachmatch(REFUSE, line)
+                nr += 1
+                haskey(uses, m[1]) || (uses[m[1]] = lineno)
+            end
         end
-        tc += nc; ta += na
-        println("  ", rpad(file, 42), lpad(nc, 5), " citations ", lpad(na, 5), " anchors")
+        for (l, lineno) in uses
+            haskey(defs, l) ||
+                push!(bad, (file, lineno, "[$l]", "undefined reference label"))
+        end
+        for (l, (lineno, dest, slug)) in defs
+            haskey(uses, l) ||
+                push!(bad, (file, lineno, "[$l]", "unused definition — re-run linkify.jl"))
+            pool = dest == "" ? own : dest == SPEC ? slugs : nothing
+            if pool === nothing
+                push!(bad, (file, lineno, "[$l]: $dest#$slug", "unknown link destination"))
+            elseif !(slug in pool)
+                push!(bad, (file, lineno, "[$l]: #$slug", "unknown anchor"))
+            end
+        end
+        tc += nc; ta += na; tr += nr
+        println("  ", rpad(file, 42), lpad(nc, 5), " citations ", lpad(na, 5),
+                " anchors ", lpad(nr, 5), " refs")
     end
-    println("total: ", tc, " citations, ", ta, " anchors")
+    println("total: ", tc, " citations, ", ta, " anchors, ", tr, " reference links")
 
     if !isempty(ambiguous)
         println("\nself-vs-spec advisory (", length(ambiguous),

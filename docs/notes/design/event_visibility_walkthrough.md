@@ -1,7 +1,7 @@
 # Event visibility at a boundary, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries) (step-boundary semantics), [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted) (event iteration)
+`framework_spec.md` [§5.3][s5-3] (step-boundary semantics), [§8.6][s8-6] (event iteration)
 and decision row 154, which settled the visibility rule below (the table is
 written only by sweeps; a component fires at most one event per round) on
 2026-08-07, superseding the round-3 rule of rows 16/100/152. If this document
@@ -9,7 +9,7 @@ and the spec ever disagree, the spec wins.*
 
 Everything here answers one question: **when several events fire at the same
 boundary, what world does each handler see?** The spec's one-sentence answer
-([§5.3](framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries)) is: *a handler executes against exactly the world its guard fired
+([§5.3][s5-3]) is: *a handler executes against exactly the world its guard fired
 on; one component's transition reaches everyone — itself included — through
 the next sweep.* This document builds up to that sentence and shows why it
 needs no mechanism at all.
@@ -17,7 +17,7 @@ needs no mechanism at all.
 ## 1. The primitive fact: cells hold references to immutable values
 
 A signal-table cell does not hold bytes that get mutated in place — it holds
-a *reference* to an immutable value ([§4.1](framework_spec.md#41-immutable-value-semantics), [§7](framework_spec.md#7-state-and-data-representation)). "Writing a cell" means
+a *reference* to an immutable value ([§4.1][s4-1], [§7][s7]). "Writing a cell" means
 replacing that reference with a reference to a *new* value:
 
 ```julia
@@ -28,14 +28,14 @@ table[battery_bus_voltage] = 0.0     # cell now → ref to 0.0
 
 The old value is untouched by the overwrite. Anyone who already loaded the
 old reference keeps a perfectly coherent view of `24.0` for as long as they
-hold it, and the GC keeps it alive. This is exactly the mechanism [§9.2](framework_spec.md#92-outbound-snapshot-publication) uses
+hold it, and the GC keeps it alive. This is exactly the mechanism [§9.2][s9-2] uses
 to publish snapshots across tasks; here the same property is what lets a
 handler's bundle stay meaningful no matter what later sweeps do.
 
 ## 2. Bundles and gathers
 
 Every user function is called as `fn(comp, args)`, where `args` is a
-NamedTuple bundle of views ([§5.2](framework_spec.md#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws)). Two of its fields are **gathers** — small
+NamedTuple bundle of views ([§5.2][s5-2]). Two of its fields are **gathers** — small
 compiled loops that load cell references into a NamedTuple — and they
 partition the table by ownership:
 
@@ -51,15 +51,15 @@ round's sweep left, because that is the only table there is.
 
 ## 3. The round, and who writes what
 
-At a step boundary the event phase iterates ([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted)): rounds of
+At a step boundary the event phase iterates ([§8.6][s8-6]): rounds of
 
 > re-run the boundary sweep → evaluate **all** guards once → fire the
 > eligible events, **at most one per component** → repeat until a round fires
 > nothing,
 
 with each declared event firing at most `firing_budget` times per boundary
-([§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted), default 4, eligibility read against its last-observed sample), and declaration
-order ([§11.2](framework_spec.md#112-the-declaration-inventory)) picking among a component's simultaneously-eligible events.
+([§8.6][s8-6], default 4, eligibility read against its last-observed sample), and declaration
+order ([§11.2][s11-2]) picking among a component's simultaneously-eligible events.
 Firing an event means `handler → project`. That is all.
 
 Now the structural fact the whole design leans on: **the signal table has a
@@ -68,7 +68,7 @@ function: it returns `(; x, m)` as immutable values, and the *framework*
 latches them into the component's state stores immediately after the return,
 before `project`. Latching writes *stores*, not cells; `project` normalizes
 those stores; auto-publication is a stage-1 sweep act like any other
-([§12.5](framework_spec.md#125-the-always-on-conformance-check)). Nothing — no user code, no framework step — writes the table
+([§12.5][s12-5]). Nothing — no user code, no framework step — writes the table
 between the sweep that opened a round and the sweep that opens the next.
 
 So the set of table cells that can change between a round's start and its
@@ -82,7 +82,7 @@ table before B's handler runs, then whether B sees pre- or post-transition A
 would depend on *execution order* — and "declaration order" orders events
 only within one component. Cross-component order would fall to the build's
 executor order, a schedule artifact that rewiring silently permutes: model
-semantics leaking from a build detail, the same disease [§8.6](framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted) diagnosed when
+semantics leaking from a build detail, the same disease [§8.6][s8-6] diagnosed when
 it rejected the single-pass cascade.
 
 Under [§3](#3-the-round-and-who-writes-what) the hazard has no way to arise. A's transition reaches nothing
@@ -92,7 +92,7 @@ there is nothing mid-round for order to observe. Swapping the execution order
 of A and B changes nothing observable, so **cross-component handler order
 stops being a semantic decision at all**. The framework still fixes a
 canonical order (the executor's component order, declaration order within a
-component) — but only so the [§13.4](framework_spec.md#134-runtime-failures-one-catch-site-an-execution-cursor) execution cursor ("event round *r*,
+component) — but only so the [§13.4][s13-4] execution cursor ("event round *r*,
 component *c*") and the diagnostics stream are deterministic and nameable,
 not because trajectories depend on it.
 
@@ -207,3 +207,14 @@ coherent world rather than a mid-transition one. This is the
 synchronous-languages position (transitions in a micro-step see the
 pre-state; effects appear at the next micro-step), and it is the trade this
 rule makes.
+
+<!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
+[s11-2]: framework_spec.md#112-the-declaration-inventory
+[s12-5]: framework_spec.md#125-the-always-on-conformance-check
+[s13-4]: framework_spec.md#134-runtime-failures-one-catch-site-an-execution-cursor
+[s4-1]: framework_spec.md#41-immutable-value-semantics
+[s5-2]: framework_spec.md#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws
+[s5-3]: framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries
+[s7]: framework_spec.md#7-state-and-data-representation
+[s8-6]: framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted
+[s9-2]: framework_spec.md#92-outbound-snapshot-publication
