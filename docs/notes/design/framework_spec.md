@@ -1393,9 +1393,9 @@ offending commit.
 
 ### 8.1 Loop ownership: the framework owns the simulation loop
 
-The simulation loop — the [§5.3][s5-3] boundary sequence, tick dispatch, event handling,
-logging, input staging, pacing — is **framework code, unconditionally**. The step-
-boundary contract is this design's central invariant; expressing it as an ordered
+The simulation loop — the [§5.3][s5-3] [boundary](#g-boundary) sequence, [tick](#g-tick) dispatch, event handling,
+logging, input staging, [pacing](#g-pacing) — is **framework code, unconditionally**. The step-
+boundary [contract](#g-contract) is this design's central invariant; expressing it as an ordered
 `CallbackSet` inside a third-party solver would put the framework's semantics back
 into convention territory, enforced by callback-registration order in a foreign event
 loop. That is the same "rigor by convention" failure mode the redesign exists to
@@ -1405,7 +1405,7 @@ The evidence that this is not hypothetical comes from FlightCore's own `sim.jl`:
 periodic callback is hand-rolled with explicit `add_tstop!` bookkeeping because a
 DiffEqCallbacks release moved `PeriodicCallback` onto `task_local_storage`, breaking
 the init-on-one-task/step-from-another pattern that interactive operation requires;
-the RHS wrapper copies state in and out of the integrator per evaluation; stateless
+the [RHS](#g-flow) wrapper copies state in and out of the integrator per evaluation; stateless
 models integrate a dummy `[0.0]`; log saving detours through `deepcopy` in a
 `SavingCallback`. Each is a tax paid to express our semantics in someone else's loop —
 and `run!` already drives the integrator interface manually anyway.
@@ -1415,10 +1415,10 @@ and `run!` already drives the integrator interface manually anyway.
 ### 8.2 The stepper seam
 
 The one delegated operation is *advance the continuous state from `t` by `h`*, behind
-a narrow internal interface (the **stepper seam**). Its contract:
+a narrow internal interface (the **[stepper seam](#g-seam)**). Its [contract](#g-contract):
 
-- **advance by arbitrary `h`** — required anyway to land on tick boundaries and to
-  resume from a localized event time;
+- **advance by arbitrary `h`** — required anyway to land on [tick](#g-tick) [boundaries](#g-boundary) and to
+  resume from a [localized](#g-localized) event time;
 - **dense output on demand over the last completed step** — required only by event
   localization ([§8.4][s8-4]), constructed lazily;
 - **one-step methods only** — event handlers reset state discontinuously, and a
@@ -1432,8 +1432,8 @@ integrate degenerates to advancing `t` to the next boundary, and the stepper is
 simply not called. No backend ever faces `N = 0`, and no backend contract has to
 say what it would do there. This finishes structurally what [§8.1][s8-1] argues — the
 dummy-`[0.0]` tax it charges to FlightCore is gone at the root, not just the
-buffer but the step over it. Everything else about such a model is ordinary: the
-boundary machinery — sweeps, events, ticks — runs unchanged.
+[buffer](#g-buffer) but the step over it. Everything else about such a model is ordinary: the
+boundary machinery — [sweeps](#g-sweep), events, ticks — runs unchanged.
 
 First cut ships **in-house fixed-step RK4 and Heun** over the flat state buffer:
 ~a hundred lines, trivially zero-allocation (auditable for the [§7.5][s7-5] CI invariant),
@@ -1452,7 +1452,7 @@ load-bearing for the whole axis):
    on every tick boundary regardless of method. Adaptive and high-order methods pay
    off exactly when steps can stretch; the execution model forbids the stretch by
    construction.
-2. **A piecewise-smooth RHS starves high order.** Linearly-interpolated lookup tables
+2. **A piecewise-smooth [RHS](#g-flow) starves high order.** Linearly-interpolated lookup tables
    (C¹-kinked at every knot), clamps, friction blends and mode branches deny
    high-order error estimators and implicit-solver Newton iterations the smoothness
    they assume. RK4 at 50 Hz already puts integration error orders of magnitude below
@@ -1468,41 +1468,41 @@ load-bearing for the whole axis):
 
 ### 8.3 Signal-table consistency is a boundary property
 
-During a step, RK stages evaluate the interior sweep ([§8.5][s8-5]) at internal
-stage states — the signal table is transiently **integrator scratch**. The boundary sweep in the [§5.3][s5-3] sequence
-is what restores consistency at each accepted boundary. The rule, binding for the periphery ([§9][s9]):
+During a step, RK stages evaluate the [interior sweep](#g-sweep) ([§8.5][s8-5]) at internal
+stage states — the [signal table](#g-signal-table) is transiently **integrator scratch**. The [boundary sweep](#g-sweep) in the [§5.3][s5-3] sequence
+is what restores consistency at each accepted [boundary](#g-boundary). The rule, binding for the [periphery](#g-periphery) ([§9][s9]):
 **external readers (GUI, logging, network output) observe the signal table only at
 step boundaries.** Mid-step contents carry no meaning.
 
 ### 8.4 Localization mechanics
 
-Trigger: a localized event's predicate was not-holding at $t_n$'s quiescence (its
+Trigger: a [localized](#g-localized) event's [predicate](#g-predicate) was not-[holding](#g-edge-semantics) at $t_n$'s [quiescence](#g-quiescence) (its
 prior, [§8.6][s8-6]) and is holding at $t_{n+1}$ — the directional edge of [§2.1][s2-1], never a
 bare sign change: a holding → not-holding transition neither fires nor localizes.
-The trigger check runs against the **arrival sweep** at $t_{n+1}$ — the sweep
+The trigger check runs against the **arrival [sweep](#g-sweep)** at $t_{n+1}$ — the sweep
 that closes the integration step — and therefore *before* the due-gated
-boundary sweep refreshes any discrete cell. This makes explicit an ordering the
-ZOH clause below already forces (probes must see the values the frame actually
+[boundary sweep](#g-sweep) refreshes any discrete [cell](#g-cell). This makes explicit an ordering the
+ZOH clause below already forces ([probes](#g-probe) must see the values the frame actually
 held) and fixes the sequencing at the top: every `t*` firing precedes
-$t_{n+1}$'s boundary sequence entirely.
+$t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
 
 - **The θ = 0 validation.** On trigger the *first* act is a probe at the left
-  end: write $x_n$ into the state buffer — already retained by the stepper for
-  the interpolant, so nothing new is kept — run one interior sweep, and
-  evaluate the guard to get $\sigma_0$. It runs before any interpolant cost
+  end: write $x_n$ into the state [buffer](#g-buffer) — already retained by the stepper for
+  the [interpolant](#g-interpolant), so nothing new is kept — run one [interior sweep](#g-sweep), and
+  evaluate the [guard](#g-guard) to get $\sigma_0$. It runs before any interpolant cost
   because $\hat{x}(0) = x_n$ identically, so no interpolant is needed to place
   it, and it pays for itself twice over: it is also the **left bracket value**
   the value-based root-finders need ($\sigma_1 = \sigma(t_{n+1})$ is retained
   from the arrival evaluation; $\sigma_0$ was otherwise unsourced), and it
-  **discriminates the edge's cause**. The vocabulary: an **input epoch** is a
-  maximal span of constant `u`, delimited by frame-top drains ([§9.4][s9-4]); within
+  **discriminates the edge's cause**. The vocabulary: an **[input epoch](#g-input-epoch)** is a
+  maximal span of constant `u`, delimited by [frame-top drains](#g-drain) ([§9.4][s9-4]); within
   an epoch a guard can change only through the trajectory, while at a seam it
   can jump without crossing anything. `u` is the *only* thing that can differ
   between the prior's evaluation context and this probe — `m` changes only via
   handlers at boundaries and priors are sampled at quiescence, after them;
   discrete cells ZOH-hold and the interior sweep excludes discrete entries
   ([§8.5][s8-5]); `t = tₙ` exactly, by the indexed-grid rule below; and sweeps are
-  deterministic — so under [§8.6][s8-6]'s honest priors the frame-top drain is the
+  deterministic — so under [§8.6][s8-6]'s [honest priors](#g-prior) the frame-top drain is the
   sole possible source of disagreement, which makes the discriminator
   conclusive:
   - $\sigma_0$ **not-holding** ⇒ a **trajectory-caused** edge: a genuine
@@ -1513,7 +1513,7 @@ $t_{n+1}$'s boundary sequence entirely.
     exists to find. The localization is **discarded** and the event fires
     inside $t_{n+1}$'s ordinary iteration — mechanically, *not localizing is
     the action*: fall through, and the boundary iteration detects and fires it
-    like any boundary-detected event. This path costs one interior sweep,
+    like any [boundary-detected](#g-boundary-detected) event. This path costs one interior sweep,
     never $\dot{x}_{n+1}$ and never an interpolant, consumes no
     `localization_budget`, and **warns nothing** — input timing is a frame
     fact (the same doctrine that forbids draining at `t*`, below) and boundary
@@ -1531,8 +1531,8 @@ $t_{n+1}$'s boundary sequence entirely.
   probing.
 - **Probes run the interior sweep.** Guards read `y`, so evaluating a guard at an interpolated
   state means writing $\hat{x}(\theta)$ into the state buffer and running the interior sweep — the same
-  rule as the RHS ([§8.5][s8-5]): a probe is a mid-step evaluation, so discrete cells hold
-  their tick values through localization and a guard reading a sampled output sees
+  rule as the [RHS](#g-flow) ([§8.5][s8-5]): a probe is a mid-step evaluation, so discrete cells hold
+  their [tick](#g-tick) values through localization and a guard reading a sampled output sees
   what the controller is holding. One interior sweep per probe.
 - **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
   acceptable fallback). The observed not-holding/holding bracket *is* an unconditional
@@ -1551,8 +1551,8 @@ $t_{n+1}$'s boundary sequence entirely.
   in bisection's worst case.
 - **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
   invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
-  `t*` with the remainder step targeting `tₙ₊₁` → re-check guards on the remainder,
-  under the per-frame localization budget with a chattering diagnostic. Multiple
+  `t*` with the [remainder step](#g-remainder-step) targeting `tₙ₊₁` → re-check guards on the remainder,
+  under the per-frame [localization budget](#g-chattering) with a chattering diagnostic. Multiple
   events localizing in one step fire at the *earliest* `t*` (ties fire
   together at that boundary, declaration order within the iteration, [§8.6][s8-6]);
   later crossings re-localize on the remainder.
@@ -1565,7 +1565,7 @@ $t_{n+1}$'s boundary sequence entirely.
 `localization_budget`, the second deployment keyword this section fixes: an integer
 count of localizations permitted within one frame, defaulting to **8**. A
 legitimate multi-event frame — three landing-gear struts touching down inside
-one step — needs three or four; chattering needs tens; 8 bounds the pathology
+one step — needs three or four; [chattering](#g-chattering) needs tens; 8 bounds the pathology
 without ever binding on a healthy model. When a step spends its event
 budget, localization stops for the remainder of that frame: the remainder step
 completes, and any further crossings fire in the next boundary's ordinary
@@ -1589,15 +1589,15 @@ algorithm ([§12.1][s12-1], [Appendix B][sB]), validated with their siblings —
 tolerance, an integer budget ≥ 1 — and collected into `DeploymentInvalid`
 ([Appendix C][sC]); [§8.6][s8-6]'s `firing_budget` stands beside them in every
 one of these lists — same validation, same `DeploymentInvalid`, same trace
-header, same replay comparison. They are grid-independent, so neither enters [§8.5][s8-5]'s
+header, same [replay](#g-replay) comparison. They are grid-independent, so neither enters [§8.5][s8-5]'s
 harmonic-grid check. And being trajectory-determining they are **recorded**:
-they ride the trace header's deployment block and join the set replay compares
+they ride the [trace header](#g-trace-header)'s deployment block and join the set replay compares
 up front, exactly as `h` and the algorithm do ([§9.5][s9-5], [§10.7][s10-7]). The
 replays-identically promise above is empty otherwise — a run that does not
 record what its localizer was told to do cannot be re-driven through the same
 localization outcomes.
 
-**Projection's reach is the boundary, not the probe.** Guard probes evaluate the
+**[Projection](#g-projection)'s reach is the boundary, not the probe.** Guard probes evaluate the
 raw interpolated state — the same rule RK-stage RHS evaluations already live
 under, being equally off-manifold, so sweeps must tolerate near-manifold states
 and already do. Authority rests with the `t*` boundary: projection runs there,
@@ -1611,15 +1611,15 @@ drift far below the localization tolerance.
 **`t*` is a boundary, not a frame.** A *frame* is a grid step
 `[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top ([§9.4][s9-4]), pacer
 deadlines ([§8.7][s8-7]), tick eligibility ([§8.5][s8-5]). A *boundary* is a published
-consistency point — where the [§8.6][s8-6] macro-sequence completes and a snapshot
-goes out. Every grid point is a boundary; `t*` and boundary zero ([§14.5][s14-5]) are
-boundaries that are not frame tops. At `t*` the full [§8.6][s8-6] event phase runs —
+consistency point — where the [§8.6][s8-6] macro-sequence completes and a [snapshot](#g-snapshot)
+goes out. Every grid point is a boundary; `t*` and [boundary zero](#g-boundary-zero) (the initialization
+boundary at `t₀`, [§14.5][s14-5]) are boundaries that are not frame tops. At `t*` the full [§8.6][s8-6] event phase runs —
 [sweep → guards → handlers] iterated to quiescence, **firing-budget
 accounting scoped to this boundary** (fresh again at `tₙ₊₁`, and at a second
 `t*` on the remainder) — and the settled state is **published**: snapshot,
 [§10.3][s10-3] boundary-counter increment, `stop_on` check ([§13.5][s13-5]) — a crash localized
 at `t*` ends the run from that snapshot. What does *not* happen at `t*`:
-ticks are never due (`t*` is off the harmonic grid by construction; discrete
+ticks are never due (`t*` is off the [harmonic grid](#g-harmonic-grid) by construction; discrete
 cells ZOH-hold through the sweep), and staged inputs are not drained — input
 timing is a frame fact, and replay determinism must not depend on
 localization arithmetic. The publication is not separately paced: the pacer
@@ -1658,23 +1658,23 @@ else is computed from.
 
 ### 8.5 Multi-rate tick scheduling
 
-**Harmonic grid.** Every discrete component's period is an integer multiple of a base
-tick period `Δt_base`, itself an integer multiple of the continuous step
-($\Delta t_{\mathrm{base}} = n \cdot h$, $n \ge 1$). Ticks therefore land on step boundaries — the only place
+**[Harmonic grid](#g-harmonic-grid).** Every discrete [component](#g-component)'s period is an integer multiple of a base
+[tick](#g-tick) period `Δt_base`, itself an integer multiple of the continuous step
+($\Delta t_{\mathrm{base}} = n \cdot h$, $n \ge 1$). Ticks therefore land on step [boundaries](#g-boundary) — the only place
 anything discrete ever happens. Rejected: arbitrary periods via a time-ordered tick
 queue, which forces variable-length steps and irregular real-time frames for a
 generality nothing demonstrated wants.
 
 **Discrete stages are gated to tick instants.** A discrete component's `h_x`/`h_xu`
-run only at its own ticks; its cells hold in between (ZOH, stated in sweep terms). The
+run only at its own ticks; its [cells](#g-cell) hold in between (ZOH, stated in [sweep](#g-sweep) terms). The
 alternative — re-running its stages at every boundary — would let outputs drift
 between ticks as fresh continuous inputs flow in, silently un-sampling a sampled-data
 controller. Delivering that hold takes **two statically distinct sweep variants,
 compiled from one entry list** — discreteness is a build-time fact, so the split is
 static, not a runtime test (row 147):
 
-- The **interior sweep** walks *continuous entries only*. RK stage evaluations
-  ([§8.3][s8-3]) and localization guard probes ([§8.4][s8-4]) run this variant, so the ZOH holds
+- The **[interior sweep](#g-sweep)** walks *continuous entries only*. RK stage evaluations
+  ([§8.3][s8-3]) and localization [guard](#g-guard) [probes](#g-probe) ([§8.4][s8-4]) run this variant, so the ZOH holds
   mid-step **by construction**: discrete entries are not gated out at runtime, they
   are absent from the walk at compile time, and the hot path carries no gating test
   at all. Counter-modulo gating alone cannot deliver it — at divisor 1 (the common
@@ -1683,23 +1683,23 @@ static, not a runtime test (row 147):
   stage and the `f` reading its cell would integrate a continuously re-sampled
   controller: exactly the un-sampling this rule forbids, and invisible — such a run
   is as type-stable, allocation-free and replayable as the correct one.
-- The **boundary sweep** walks the full list, with discrete entries gated by
+- The **[boundary sweep](#g-sweep)** walks the full list, with discrete entries gated by
   `(idx − Φ) % D` against the boundary's tick index. It is the variant the [§8.6][s8-6] macro-sequence
   runs, and it is not one fixed list: different boundaries run different subsets of
-  the schedule.
+  the [schedule](#g-schedule).
 
-The split applies to **both sweep blocks**: the discrete tier's `h_x` entries are absent
+The split applies to **both sweep blocks**: the discrete [tier](#g-tier)'s `h_x` entries are absent
 from the interior stage-1 walk exactly as its `h_xu` entries are absent from the interior
 stage-2 walk. The arity distinction that carries it into the phase-body surface —
 zero-arg interior, tick-indexed boundary — is [§12.7][s12-7]'s.
 
-**The due set is a property of the boundary,** not of the sweep call: computed once
-for the boundary and reused by every re-sweep of its quiescence iteration ([§8.6][s8-6]), a
+**The [due](#g-due) set is a property of the boundary,** not of the sweep call: computed once
+for the boundary and reused by every re-sweep of its [quiescence](#g-quiescence) iteration ([§8.6][s8-6]), a
 due component being at its tick instant for the whole boundary rather than for one
 round of it. At a frame top it is the gate's image of the frame index. At a
 `t*` boundary it is **empty** — the tick counter has not advanced there, no component
 is at a tick instant, and a modulo test against the unadvanced index would wrongly
-re-admit the previous frame's due set. At boundary zero it is **everything with
+re-admit the previous frame's due set. At [boundary zero](#g-boundary-zero) it is **everything with
 `Φ = 0`**: at `idx = 0` the gate reads `(0 − Φ) % D == 0`, which by the canonical
 residue `0 ≤ Φ < D` holds iff `Φ = 0` — the rule is implemented by nothing, falling
 out of the ordinary gate. An offset component's first tick is at `Φ·Δt_base`; until
@@ -1719,17 +1719,17 @@ Coincident ticks give a consumer fresh same-instant reads via topological order 
 the idealized synchronous-sampling picture; a phase stagger makes the same reads
 pipelined and deterministically aged, the structural expression of an acquisition
 pipeline's latency (no delay blocks), and a load-shaping tool under real-time
-pacing ([§8.7][s8-7]: staggered stacks never share a frame, so worst-case frame cost is a
+[pacing](#g-pacing) ([§8.7][s8-7]: staggered stacks never share a [frame](#g-frame), so worst-case frame cost is a
 `max`, not a sum). Both patterns — and how silently an offset edit rewires a
 coincidence structure — are worked in `sample_time_proposal.md`; the bound
 schedule and its hyperperiod chart ([§12.2][s12-2]) are how a user audits which one they
 actually have.
 
-**Assemblies: virtual for execution, rate scopes for declaration.** There are no
+**[Assemblies](#g-assembly): virtual for execution, [rate scopes](#g-rate-scope) for declaration.** There are no
 atomic assemblies, and no opt-in variant. Execution atomicity coarsens the schedulable
-unit, which is exactly how artificial algebraic loops are manufactured — [§5.4][s5-4] at
+unit, which is exactly how artificial [algebraic loops](#g-algebraic-loop) are manufactured — [§5.4][s5-4] at
 assembly scale, a hazard Simulink documents for its Atomic Subsystems — while the
-thing it protects, non-interleaved execution, protects nothing here: the signal table
+thing it protects, non-interleaved execution, protects nothing here: the [signal table](#g-signal-table)
 makes interleaving semantically invisible (consumers read cells whose freshness is
 guaranteed by topological order, not contiguity). Its other Simulink roles — code
 generation units, enabled/triggered execution — have no counterpart in the consumers;
@@ -1740,7 +1740,7 @@ not a design requirement; the signal table dissolves it.
 
 **Sample-time declaration: two registers, one concept.** A discrete component or
 sub-assembly is scheduled by a `sample_times` entry in its enclosing assembly
-([§11.7][s11-7]), declaring one (period, phase) pair in one of two unit systems — the
+([§11.7][s11-7]), declaring one (period, [phase](#g-phase)) pair in one of two unit systems — the
 wrapper type names the unit system. `Relative(K, Φ = 0)` is the pair in *scope
 ticks*: fire on every `K`-th tick of the enclosing scope starting from its `Φ`-th,
 with `K ≥ 1` and `0 ≤ Φ < K` (so `K = 1` admits no stagger; two same-rate siblings
@@ -1755,8 +1755,8 @@ float argument throws the teaching error naming the exact spelling
 a bare integer or bare quantity is a declaration error — and an unlisted discrete
 child defaults to `Relative(1)`: the common case costs nothing, and a multiplied
 or anchored child always appears explicitly. Validation (`K ≥ 1`, `0 ≤ Φ < K`,
-`T > 0`, `0 ≤ τ < T`, keys naming discrete or scope children) belongs to Stratum
-A, collected with path attribution ([§12.1][s12-1], [§13.1][s13-1]); the constructors are plain data
+`T > 0`, `0 ≤ τ < T`, keys naming discrete or scope children) belongs to [Stratum](#g-stratum)
+A (the build's declaration-validation stratum), collected with path attribution ([§12.1][s12-1], [§13.1][s13-1]); the constructors are plain data
 carriers — constructor-side checks would fail the evaluation of a declaration body
 with a raw exception, against [§13.1][s13-1]'s policy.
 
@@ -1778,7 +1778,7 @@ structural properties confine grid cost to the other register: a relative phase
 selects among scope ticks that already exist, so it never refines the base grid;
 and it cannot place a tick *between* scope ticks — staggering off-grid means
 declaring the offset in seconds, or declaring the scope base finer than its
-fastest member so unused slots exist.
+fastest member so unused [slots](#g-slot) exist.
 
 **The absolute register anchors, and anchoring severs.** An `Absolute` entry may
 appear in any scope's `sample_times`, not only the root's; the `(T, τ)` pair it
@@ -1789,7 +1789,8 @@ corollaries: `K ≥ 1` reads "a child cannot tick faster than the scope it is
 fastest-member convention counts relative members only; and phase relationships
 between an anchored child and its relative siblings are **deployment-emergent** —
 whether their ticks ever coincide depends on how the grid derivation works out,
-which is what the printable bound schedule ([§12.2][s12-2]) exists to answer. Relative
+which is what the printable [bound schedule](#g-bound-schedule) (the deployment's
+per-component `(D, Φ, Δt)` table, [§12.2][s12-2]) exists to answer. Relative
 children *of* an anchored subtree compose against the anchor exactly as against
 the root grid, and a nested anchor simply severs again ([§12.1][s12-1]'s fold). Absolute
 periods and nonzero offsets jointly constrain the base grid — they join the
@@ -1807,15 +1808,15 @@ narrower: **an absolute declaration inside a library type is legitimate when the
 rate is a fact about the modeled system, not a preference about the simulation.**
 A GPS receiver emitting at 1 Hz, a bus schedule, an ADC pipeline's fixed
 conversion offset are as intrinsic to the assembly as its wiring, and forcing them
-to the root breaks encapsulation — the root would have to know device internals to
+to the root breaks encapsulation — the root would have to know [device](#g-device) internals to
 re-declare them. "Run the controller at 400 Hz in this study" remains a deployment
 choice, and the existing idiom — the assembly exposes its multiplier as a
 constructor parameter — remains its answer; absolute pinning *from outside* a
-subtree's contract stays rejected as action at a distance. The framework cannot
+subtree's [contract](#g-contract) stays rejected as action at a distance. The framework cannot
 police the distinction; it is authoring doctrine, recorded here. Anchoring leaves
 the never-cache-`Δt` argument fully intact: the pinning happens in the enclosing
 assembly's `sample_times` — the same site where the multiplier lives — so the
-component type itself remains rate-agnostic and still consumes the bundle's `Δt`.
+component type itself remains rate-agnostic and still consumes the [bundle](#g-bundle)'s `Δt`.
 
 **`Δt` has a single source of truth: the compiled schedule.** Each discrete
 component's effective period arrives read-only as the `Δt` field of every
@@ -1844,16 +1845,16 @@ staggering.
 
 ### 8.6 Event iteration at boundaries: to quiescence, budgeted
 
-Resolves the question deferred in [§5.3][s5-3]. At each boundary, the event phase **iterates**:
-rounds of *(re-run the boundary sweep → evaluate all guards → fire the eligible
-events, at most one per component, each `handler → project`)* until a round fires
+Resolves the question deferred in [§5.3][s5-3]. At each [boundary](#g-boundary), the event phase **iterates**:
+rounds of *(re-run the [boundary sweep](#g-sweep) → evaluate all [guards](#g-guard) → fire the eligible
+events, at most one per [component](#g-component), each `handler → project`)* until a round fires
 nothing, under the rule that **each declared event fires at most `firing_budget`
 times per boundary** — a `Simulation` deployment keyword, an integer ≥ 1
 defaulting to **4**. Eligibility within the boundary is an edge like any other,
 read against the event's **last-observed sample** rather than against the
-boundary's entry prior: the sample is initialized from the prior when the
+boundary's entry [prior](#g-prior): the sample is initialized from the prior when the
 boundary opens and refreshed every round, so an event is eligible in a round
-when that round observes its predicate holding and the last observation before
+when that round observes its [predicate](#g-predicate) [holding](#g-edge-semantics) and the last observation before
 it was not-holding. A predicate that simply keeps holding therefore fires once;
 a predicate genuinely falsified and re-enabled inside the boundary — its effect
 reverted by another handler's cascade — fires again, at this boundary, against
@@ -1865,16 +1866,16 @@ with h an execution parameter. That is model semantics depending on the integrat
 step size — the same footgun class [§2.2][s2-2] cited when killing `f_step!` — and [§3.1][s3-1]'s
 blessing of externalized FSM components makes cross-component cascades the expected
 idiom, not a corner case. Orthodoxy concurs: hybrid automata take sequences of
-instantaneous transitions at one time point; Modelica iterates events to quiescence;
-Stateflow runs charts to completion within a tick. (Boundary-detection timing remains
+instantaneous transitions at one time point; Modelica iterates events to [quiescence](#g-quiescence);
+Stateflow runs charts to completion within a [tick](#g-tick). (Boundary-detection timing remains
 h-dependent — that is the *resolution* at which a physical crossing is noticed; the
 cascade delay would have been structure the framework inserts between transitions the
 model declares simultaneous.)
 
-**Why a full re-sweep per round.** A transition reaches the signal table *only*
+**Why a full re-sweep per round.** A transition reaches the [signal table](#g-signal-table) *only*
 through a sweep: a handler writes its component's state stores and nothing else, so
-neither the transitioning component's own ports nor the downstream stage-2 chains
-reading them have moved. A round therefore re-runs the whole gated schedule. Sweeps
+neither the transitioning component's own [ports](#g-port) nor the downstream stage-2 chains
+reading them have moved. A round therefore re-runs the whole gated [schedule](#g-schedule). Sweeps
 are microseconds and rounds beyond the first require an actual cascade, so the cost
 is noise.
 
@@ -1883,10 +1884,10 @@ single writer: **sweeps**. A handler writes nothing to it — it returns
 transitions, the framework latches them into the component's state stores,
 and `project` normalizes them; auto-publication is a sweep act like any
 other stage-1 write ([§12.5][s12-5]). Nothing moves the table mid-round.
-Hence the epoch rule, which is the whole of this section's content:
+Hence the [epoch rule](#g-input-epoch), which is the whole of this section's content:
 **a handler executes against exactly the world its guard fired on** — own
 `y`, foreign `u`, own `x`/`m` are all the firing round's sweep, so
-`y = h(x)` holds at every handler entry, with no bundle straddling two
+`y = h(x)` holds at every handler entry, with no [bundle](#g-bundle) straddling two
 epochs. Serialization is what delivers it: a component's state stores are
 written only by its own handlers, and it fires **at most one event per
 round**, so no same-round writer precedes any handler's entry.
@@ -1899,7 +1900,7 @@ simply does not fire, which under a within-round sequence it would have done
 on the stale premise. Across components, handler order within a round is
 **semantically unobservable** for the stronger reason that there is no
 delivering mechanism at all: nothing writes the table mid-round, so there is
-nothing for order to observe. The execution order — executor component
+nothing for order to observe. The execution order — [executor](#g-executor) component
 order, declaration order within a component — is fixed only to keep the
 [§13.4][s13-4] cursor and the diagnostics stream deterministic, never
 something a trajectory depends on. The natural single-pass executor, building
@@ -1969,12 +1970,12 @@ held.
 The prior is updated at each boundary's quiescence from the final
 post-iteration samples — unconditionally, with no exception: it is always an
 honest observation of the settled boundary, which is what makes
-[§8.4][s8-4]'s θ = 0 discriminator conclusive — the frame-top drain is then the
+[§8.4][s8-4]'s θ = 0 discriminator conclusive — the [frame-top drain](#g-drain) is then the
 sole possible source of disagreement between the prior and the probed left
 end. All three registers are detection
 bookkeeping, not model memory — correctly *not* in any state store: not
 captured, not traced, reconstructed deterministically; the cost is one `Bool`
-and one small counter per event beyond the prior. **Boundary zero establishes
+and one small counter per event beyond the prior. **[Boundary zero](#g-boundary-zero) establishes
 every prior as not-holding**, so a predicate already holding in the authored
 state fires at `t₀` — [§14.5][s14-5]'s behavior, derived rather than asserted —
 and a warm restart (`init!` re-runs boundary zero, [§14.5][s14-5]) resets all three
@@ -2017,9 +2018,9 @@ The boundary macro-sequence, final form (boundary zero — initialization — is
 the same sequence with an empty integrate, [§14.5][s14-5]):
 
 > integrate → project → **[sweep → guards → handlers]** iterated to quiescence
-> (under the firing budget) → all due `g` updates → logging / I/O staging.
+> (under the [firing budget](#g-firing-budget)) → all due `g` updates → logging / I/O staging.
 
-The mixed case — a continuous component's handler and its discrete observers' ticks
+The mixed case — a [continuous component](#g-continuous-component)'s handler and its discrete observers' ticks
 landing on one boundary (engine `starting → running` under a 50 Hz FCS) — is decided
 by the sequence: the transition fires in the iteration segment, the re-sweep re-runs
 the FCS's stages against `running`-mode ports, and its `g` then updates from
@@ -2027,12 +2028,12 @@ post-transition values.
 
 ### 8.7 Real-time pacing
 
-**The invariant: pacing is outside the semantics.** The pacer inserts waits between
-completed frames and never reorders, skips or alters the boundary sequence. A
-paced and an unpaced run with identical input traces produce bit-identical
-trajectories — deterministic replay ([§2.2][s2-2]) extends over pace. Interactive runs differ
+**The invariant: [pacing](#g-pacing) is outside the semantics.** The pacer inserts waits between
+completed [frames](#g-frame) and never reorders, skips or alters the [boundary](#g-boundary) sequence. A
+paced and an unpaced run with identical input [traces](#g-trace) produce bit-identical
+trajectories — deterministic [replay](#g-replay) ([§2.2][s2-2]) extends over pace. Interactive runs differ
 only because their *inputs* differ. Detection policy is inside the semantics:
-Event localization runs identically paced or unpaced, its sweep cost
+Event localization runs identically paced or unpaced, its [sweep](#g-sweep) cost
 absorbed as debt like any other expensive frame ([§2.1][s2-1]).
 
 **Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
@@ -2044,7 +2045,7 @@ long session). Un-pause re-anchors for the same reason. Debt is cleared at re-an
 a deliberate user action is a natural sync point, and the counters record what was
 forgiven.
 
-**Deadline law: absolute schedule with bounded debt.** Frame deadlines come from
+**Deadline law: absolute [schedule](#g-schedule) with bounded [debt](#g-pacing).** Frame deadlines come from
 the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent frames
 repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
 (GC, scheduler) are invisible. Debt beyond a threshold — **five frames' worth of
@@ -2056,7 +2057,7 @@ threshold. Rejected: relative deadlines (next = last completion +
 budget), under which every overrun permanently slips sim time against wall time.
 
 **`p = ∞` is pacer-off, not a limit value.** FlightCore's arithmetic trick
-(`τ_next = τ_last + dt/∞` collapses the wait predicate) does not survive debt
+(`τ_next = τ_last + dt/∞` collapses the wait [predicate](#g-predicate)) does not survive debt
 accounting: every deadline would sit perpetually in the past and the diagnostics
 would faithfully report garbage. Unpaced mode is the explicit *absence* of deadlines —
 no waits, no debt, no warnings; by the invariant, the same execution with the waits
@@ -2065,7 +2066,7 @@ deleted.
 **Wait mechanism: hybrid sleep-then-spin, one knob.** Non-realtime OSes guarantee
 only a lower bound on sleep: the thread becomes runnable no earlier than requested;
 the wake-up is best-effort (timer granularity, scheduler load, macOS timer
-coalescing), with no hard upper bound. Measured on the dev machine (idle, 2 ms
+[coalescing](#g-coalescing)), with no hard upper bound. Measured on the dev machine (idle, 2 ms
 requests, 2026-07): Julia `sleep` overshoots ≈ 1.4 ms median — libuv's
 millisecond-granularity timers; sub-ms requests are accepted and rounded up —
 and `Libc.systemsleep` ≈ 0.5 ms; spikes under load are unbounded. The pacer therefore
@@ -2101,10 +2102,10 @@ task-yielding `sleep` vs. thread-blocking `Libc.systemsleep` — is settled in [
 the coarse phase uses task-yielding `sleep`, with `margin` absorbing its overshoot.
 
 **Diagnostics.** Overrun count, current and peak debt, forgiven-debt events, wait
-statistics — published as framework status for GUI and logs (today's `SimControl`
+statistics — published as [framework status](#g-framework-status) for GUI and logs (today's `SimControl`
 fields are the precedent).
 
-**Forward pointers.** The wait interval is the natural staging slot for externally
+**Forward pointers.** The wait interval is the natural staging [slot](#g-slot) for externally
 injected inputs, applied at the next boundary; the staging rules — and the
 concurrency model generally, which [§8.3][s8-3] constrains but does not decide — belong to
 [§9][s9], [§10][s10].
@@ -2113,74 +2114,75 @@ concurrency model generally, which [§8.3][s8-3] constrains but does not decide 
 
 ## 9. Runtime periphery: the data plane
 
-GUI, input devices, network I/O and logging, and how data crosses between them
+GUI, input [devices](#g-device), network I/O and logging, and how data crosses between them
 and the [§8][s8] loop: the architecture that replaces the shared mutable model
-([§9.1][s9-1]), outbound snapshot publication ([§9.2][s9-2]), the inbound path — root
-input slots, claims and the frozen roster ([§9.3][s9-3]), per-device staging and the
-drain ([§9.4][s9-4]), the input trace ([§9.5][s9-5]) — the device authoring contract
+([§9.1][s9-1]), outbound [snapshot](#g-snapshot) publication ([§9.2][s9-2]), the inbound path — root
+input [slots](#g-slot), [claims](#g-claim) and the [frozen roster](#g-roster) ([§9.3][s9-3]), per-device staging and the
+[drain](#g-drain) ([§9.4][s9-4]), the input [trace](#g-trace) ([§9.5][s9-5]) — the device authoring [contract](#g-contract)
 ([§9.6][s9-6]), the GUI write path ([§9.7][s9-7]), and the third cross-task channel —
 runtime diagnostics and liveness ([§9.8][s9-8]). The machinery that drives the loop
 itself follows in [§10][s10].
 
 ### 9.1 No shared mutable model: staged writes, snapshot reads
 
-FlightCore's periphery is one big lock: `SimControl` and the live `Model`, guarded by
+FlightCore's [periphery](#g-periphery) is one big lock: `SimControl` and the live `Model`, guarded by
 `io_lock`, with one task per attached interface reading or mutating the model under it
-(sim.jl). The lock does enforce [§8.3][s8-3]'s boundary-visibility rule — it is only ever
+(sim.jl). The lock does enforce [§8.3][s8-3]'s [boundary](#g-boundary)-visibility rule — it is only ever
 free between steps — but its costs are structural:
 
 - **The loop's frame budget is hostage to its readers.** A slow GUI frame or a stalled
   `extract_output` holds the lock and the sim cannot step; blocking time is
   indistinguishable from overrun in any accounting.
 - **Input timing is scheduler-determined and unrecorded.** Writes land between
-  whichever boundaries the OS interleaving produced; there is no defined input trace,
-  so [§8.7][s8-7]'s bit-identical replay is unachievable *in principle* for interactive runs.
+  whichever boundaries the OS interleaving produced; there is no defined input [trace](#g-trace),
+  so [§8.7][s8-7]'s bit-identical [replay](#g-replay) is unachievable *in principle* for interactive runs.
 - **It protects an idiom that no longer exists.** `assign_input!` and GUI widgets poke
-  the live model; under the immutable signal table there is nothing to poke — the
+  the live model; under the immutable [signal table](#g-signal-table) there is nothing to poke — the
   periphery needs a defined write path regardless.
 
 The replacement has five planes. (Vocabulary, anchored here: a **frame** is one
-iteration of the loop — drain, integrate, boundary sequence, publication — the
+iteration of the loop — [drain](#g-drain), integrate, boundary sequence, publication — the
 unit `step!` counts, the trace's ordinal keys, and "per frame" means throughout
 this document. Distinct from the kinematic *reference frames* of the aircraft
 domain, which always appear compounded: the b frame, the ECEF frame.)
 
-1. **Staging (inbound):** devices submit pending input writes at any wall-clock
-   moment, never touching live slots ([§9.4][s9-4]).
+1. **Staging (inbound):** [devices](#g-device) submit pending input writes at any wall-clock
+   moment, never touching live [slots](#g-slot) ([§9.4][s9-4]).
 2. **The drain:** exactly one point, at the top of each frame — never at a `t*`
    boundary ([§8.4][s8-4]) — where the
    loop takes the staged batches and applies them to the root input slots. Between
    drains the loop owns its data exclusively — no lock is held during stepping, ever.
 3. **Publication (outbound):** at the end of each boundary sequence the loop publishes
-   an immutable snapshot; readers observe it without coordinating with the loop
+   an immutable [snapshot](#g-snapshot); readers observe it without coordinating with the loop
    ([§9.2][s9-2]).
 4. **Control:** pause/pace/stop on a separate few-word atomic surface ([§10.1][s10-1]).
 5. **Task topology:** one loop, one task per rostered device except the
    calling-task device, all run-scoped: `run!` spawns one task per other
-   roster entry after device `init!`, and [§10.4][s10-4] joins them all at every stop ([§10.6][s10-6]).
+   [roster](#g-roster) entry after device `init!`, and [§10.4][s10-4] joins them all at every stop ([§10.6][s10-6]).
    `attach!` never spawns — it registers, in a stopped-sim state only
    ([§9.3][s9-3]), and the task appears at the next `run!`. **The calling-task
    device is pinned; the loop is the movable piece.** Calling-task
    affinity is a device trait (`needs_calling_task`, default `false`,
    [§9.6][s9-6]) with at most one holder per roster ([§9.3][s9-3]'s admission checks);
    the shipped GUI declares it — CImGui ties rendering to the calling
-   (main) task. The topology is derived from the frozen roster alone —
+   (main) task. The topology is derived from the [frozen roster](#g-roster) alone —
    as device `init!` leaves it, a failed calling-task holder returning the
-   loop to the calling task ([§10.4][s10-4]) — and
+   loop to the [calling task](#g-calling-task) ([§10.4][s10-4]) — and
    never from `run!`'s keywords: with a calling-task device rostered the
    loop moves to a spawned task for the duration of the run and the
    calling task runs that device's loop body — inline, inside the same
    [§9.6][s9-6] wrapper as any spawned device's — otherwise the loop runs on the
    calling task — the unattended register, what [§13.4][s13-4]'s synchronous rethrow
-   presupposes, and what lets parallel unattended sweeps thread `run!` inline
+   presupposes, and what lets parallel unattended [sweeps](#g-sweep) thread `run!` inline
    with no nested task fan-out (one immutable `Build` shared across the
-   workers, [§12.2][s12-2], each `Simulation` owning its own buffers; pre-materializing
-   the sweep's activations — `build(world; activations = …)`, [§12.4][s12-4] — leaves no
+   workers, [§12.2][s12-2], each `Simulation` owning its own [buffers](#g-buffer); pre-materializing
+   the sweep's [activations](#g-activation) (its per-eltype executable sets:
+   `build(world; activations = …)`, [§12.4][s12-4]) leaves no
    worker synchronizing on anything). Either way `run!` blocks its caller until
    the run ends; what varies is what the calling task spends the run
    doing. Spawn-inside-`run!` *is* the start gate — a task exists only
    once the run it serves exists — and any first-boundary synchronization a
-   device needs is [§10.3][s10-3]'s counter-plus-condition predicate wait, never an
+   device needs is [§10.3][s10-3]'s counter-plus-condition [predicate](#g-predicate) wait, never an
    `Event` latch: FlightCore's `io_start` gate is the once-per-run version of
    exactly the race [§10.3][s10-3] rejects, and inheriting it would re-import that
    race for [§10.6][s10-6]'s re-run cycle.
@@ -2202,17 +2204,17 @@ Two rules bind the implementation:
   mitigation.)
 
 Consequence, recorded because it collapses an API axis: interactive and unattended
-simulation stop being different execution modes. An unattended run is the same loop with
+simulation stop being different execution modes. An [unattended run](#g-unattended-run) is the same loop with
 empty staging and no snapshot readers; a replayed interactive session is the same
 loop with staging fed from a recording ([§9.5][s9-5], [§10.7][s10-7]).
 
 ### 9.2 Outbound: snapshot publication
 
-The loop builds each snapshot — boundary-consistent signal table, `t`, framework
+The loop builds each [snapshot](#g-snapshot) — [boundary](#g-boundary)-consistent [signal table](#g-signal-table), `t`, framework
 status — in private memory, then publishes it with a single
 release-store to an `@atomic latest` reference; readers acquire-load and then work
 with an immutable, coherent world for as long as they like. `latest(sim)`
-hands the same value to the calling task — [§10.6][s10-6]'s inspection register.
+hands the same value to the [calling task](#g-calling-task) — [§10.6][s10-6]'s inspection register.
 Wait-free in both
 directions: a wedged reader cannot delay publication by a nanosecond; the loop cannot
 tear a reader's view. Publication happens only after the boundary sequence completes
@@ -2222,35 +2224,35 @@ tear a reader's view. Publication happens only after the boundary sequence compl
 The table's immutable values ([§4.1][s4-1], [§7][s7]) make the compiler enforce most of it; the
 rule is what the soundness of lock-free reading rests on.
 
-**The framework status is a concrete frozen value, not a window onto live
+**The [framework status](#g-framework-status) is a concrete frozen value, not a window onto live
 bookkeeping** — [§8.7][s8-7]'s pacer diagnostics, plus the per-writer diagnostic
 batches, suppressed and cumulative counters and liveness timestamps the loop
 takes at frame top ([§9.8][s9-8]). The binding rule is what forces that shape: a
 status referencing an accumulator its writers are still filling would be a
 snapshot whose contents change after publication.
 
-The captured table is the whole table — declared ports and auto-published fields,
+The captured table is the whole table — declared [ports](#g-port) and auto-published fields,
 every one of them public ([§11.3][s11-3]), so no presentation layer has anything to
-filter. Private intermediates are not in it, never having been cells at all
+filter. Private intermediates are not in it, never having been [cells](#g-cell) at all
 ([§5.2][s5-2]); the inspection path for one is **promotion to a declared output** — a line
 in `output_types` and the value appears in the snapshot, the log, the GUI and the
 wiring alike, its visibility an authored fact like every other. **It also includes
-the root slots** ([§15.4][s15-4]): slots are source cells of the
+the root [slots](#g-slot)** ([§15.4][s15-4]): slots are source cells of the
 table, not state stores, so they ride along — and this is load-bearing, not
-incidental: the [§9.7][s9-7] peek's else-snapshot fallback is what an idle live widget
+incidental: the [§9.7][s9-7] [peek](#g-peek)'s else-snapshot fallback is what an idle live widget
 displays, and read-only mirrors of claimed slots (the axis sliders under joystick
-claim) show the applied slot value from the snapshot. Slot values in the log are
-derived data (recomputable from the trace), which is consistent — snapshots are
+[claim](#g-claim)) show the applied slot value from the snapshot. Slot values in the log are
+derived data (recomputable from the [trace](#g-trace)), which is consistent — snapshots are
 derived wholesale. The snapshot
 deliberately does **not** carry the state stores (`x`, `m`): the state
-trajectory is *derived* data — recomputable from the trace header plus the batches
-([§9.5][s9-5]) by bit-identical replay — and per-boundary capture would systematically
+trajectory is *derived* data — recomputable from the [trace header](#g-trace-header) plus the batches
+([§9.5][s9-5]) by bit-identical [replay](#g-replay) — and per-boundary capture would systematically
 record derived data, the same asymmetry the trace-default decision (row 29) refuses
 in the other direction. "What was the private state at t = 37.2?" is answered by
 replaying to 37.2 and inspecting the live stores; a state field wanted in logs or
 GUI has the honest remedy of being declared public (one auto-published cell per
-sweep). Post-run continuation reads the live stores directly; periodic full-state
-checkpoints (warm restart without replay-from-zero) are a guarded addition shaped as
+[sweep](#g-sweep)). Post-run continuation reads the live stores directly; periodic full-state
+checkpoints (warm restart without replay-from-zero) are a [guarded addition](#g-guarded-addition) shaped as
 an opt-in log policy, and a dev-mode flag auto-publishing all state fields is a
 possible future diagnostic.
 
@@ -2259,10 +2261,10 @@ references — same objects, zero extra copies; the per-step `deepcopy` detour o
 `SavingCallback` disappears. Cost: one snapshot allocation per boundary, on the
 framework side of the [§7.5][s7-5] scope (which already carved out logging); logged snapshots
 are not garbage at all, unlogged ones die young. Rejected: preallocated snapshot
-buffers (double/triple ring) — reuse reintroduces exactly the reader-liveness proof
+[buffers](#g-buffer) (double/triple ring) — reuse reintroduces exactly the reader-liveness proof
 the GC provides for free, to save an allocation profiling has not indicted.
 
-**Retention: the trace's kill switch, plus decimation.** The log takes the same
+**Retention: the trace's kill switch, plus [decimation](#g-decimation).** The log takes the same
 plain on/off switch the trace has ([§9.5][s9-5]), and additionally a keep-every-kth
 policy (`log_every`, [Appendix B][sB]). What makes decimation admissible here and not
 there is the derived/primary split (row 38): the log is recomputable from the
@@ -2279,7 +2281,7 @@ ends in an out-of-memory nobody was warned about. So the log takes a
 **retention bound** beside its switch and its stride: `log_max`, the maximum
 number of retained snapshot references, default **65536** (2¹⁶), with `Inf`
 the explicit opt-out. **A count, not a memory budget** — snapshots are
-immutable object graphs with internal sharing ([§4.1][s4-1]), and [§4.4][s4-4] field handles
+immutable object graphs with internal sharing ([§4.1][s4-1]), and [§4.4][s4-4] [field handles](#g-field-handle)
 ride as references to build-time-frozen data ([§7.5][s7-5]), so byte accounting over
 them is fuzzy and platform-dependent, while a count is exact and converts to
 memory through one number the user can measure once (`Base.summarysize` of a
@@ -2334,11 +2336,11 @@ neither records nor compares it ([§9.5][s9-5], [§10.7][s10-7]). Sizing follows
 `sizehint!` for the expected duration is now naturally capped by `log_max`,
 which is also what defines the hint when `t_end = Inf`.
 
-**Output-device bindings are snapshot bindings.** An output device (telemetry, the XPlane visualizer, disk
+**Output-[device](#g-device) bindings are snapshot bindings.** An output device (telemetry, the XPlane visualizer, disk
 streaming) consumes snapshots via [§10.3][s10-3] and addresses what it reads with
-[§14.4][s14-4]'s selectors — any cell, the diagnostic register admitting deep
+[§14.4][s14-4]'s [selectors](#g-selector) — any cell, the diagnostic register admitting deep
 paths — resolved at attach against the `Build` with
-did-you-mean and compiled to one gather (the output half of [§9.6][s9-6]'s binding
+[did-you-mean](#g-did-you-mean) and compiled to one gather (the output half of [§9.6][s9-6]'s binding
 interface), so `map_output` receives a labeled
 NamedTuple rather than performing its own path lookups ([§15.4][s15-4]'s obligation: a
 substitution that breaks a binding fails at attach, not with silent garbage
@@ -2349,7 +2351,7 @@ reachable, the table being public throughout ([§11.3][s11-3]), and an intermedi
 device wants to stream is one promoted to a declared output. **A binding chooses
 its register**: a deep path is the
 *inspection* register — zero promises, free access, right for looking at
-*this* build; an exported output face (spelled `get_face(name)`, [§14.4][s14-4]) is
+*this* build; an exported output [face](#g-face) (spelled `get_face(name)`, [§14.4][s14-4]) is
 the *integration* register — named,
 curated, meaning-stable under substitution ([§15.4][s15-4]'s writer-independent
 semantics), right for consumers that outlive the build they were configured
@@ -2367,32 +2369,32 @@ quantity is a deliberate lie, not a drift).
 
 ### 9.3 Inbound: root input slots, claims and the frozen roster
 
-**The write surface is root input slots** — and a root slot *is* the root
-assembly's own input face, declared through `input_connections` ([§11.6][s11-6]): routed inward to consumers, produced by no
-component, fed by the parent's wire at every non-root level — and at the root
+**The [write surface](#g-write-surface) is root input [slots](#g-slot)** — and a root slot *is* the root
+[assembly](#g-assembly)'s own input [face](#g-face), declared through `input_connections` ([§11.6][s11-6]): routed inward to consumers, produced by no
+[component](#g-component), fed by the parent's wire at every non-root level — and at the root
 there is no parent. (A root slot is usefully read as the output face of the
-one producer the build never sees — the periphery and the services: slot
+one producer the build never sees — the [periphery](#g-periphery) and the services: slot
 exclusivity below is a producer's one-writer right, and [§14.6][s14-6]'s totality is
 its completeness obligation.) No dedicated vocabulary survives (`add_input!` in the early
 sketches is dead). Slots are sources to the build-time scheduler, constants within
 a frame, and the *only* thing the periphery may write (the GUI reaches them
-through [§9.7][s9-7]'s resolution; control commands are not writes, [§10.1][s10-1]); devices,
-mappings, the trace and the GUI write path address them by **face name** ([§11.6][s11-6]):
-structural slash paths never cross the periphery's *write* boundary — the write
-side speaks the root contract's names only. (The read side chooses per
+through [§9.7][s9-7]'s resolution; control commands are not writes, [§10.1][s10-1]); [devices](#g-device),
+mappings, the [trace](#g-trace) and the GUI write path address them by **face name** ([§11.6][s11-6]):
+structural slash paths never cross the periphery's *write* [boundary](#g-boundary) — the write
+side speaks the root [contract](#g-contract)'s names only. (The read side chooses per
 binding: slash paths in the inspection register, face names in the
 integration register and in load-bearing service reads —
 [§9.2][s9-2]/[§13.5][s13-5]/[§14.4][s14-4].)
 
 **Slot exclusivity: one writer per slot at any time** ([§15.4][s15-4]). A
-device claims its slots at attach; claiming an already-claimed slot is an
+device [claims](#g-claim) its slots at attach; claiming an already-claimed slot is an
 attach-time error, and detaching releases the claims (a released slot's GUI
 widgets are live again from the next run, [§9.7][s9-7]). Exclusivity replaces any cross-device conflict *policy* —
-attachment-order precedence at drain, say — because such a policy resolves races the
+attachment-order precedence at [drain](#g-drain), say — because such a policy resolves races the
 case study shows nobody wants: every dual-writer field in the C172X demo is a joystick stream
 shadowed by a GUI mirror, where simultaneous live writing is a bug. Per-device
-cells, the CAS merge and the atomicswap drain all stay — they serve atomicity and
-coalescing, not arbitration.
+[cells](#g-cell), the CAS merge and the atomicswap drain all stay — they serve atomicity and
+[coalescing](#g-coalescing), not arbitration.
 
 **A claim is what a device *may* write, not what it will.** Data-dependent
 write-sets are ordinary: a UDP/JSON peer writes whichever subset of faces the
@@ -2408,7 +2410,7 @@ narrow the claim — the enumeration *is* the interface.
 **Every writer has a write surface, and the periphery enforces it.** A batch
 entry reaches a slot **iff the named face is inside the writer's surface**;
 anything else is discarded with a runtime warning ([§13.2][s13-2]). Because surfaces
-are static per run (the roster freeze below), enforcement runs entirely at
+are static per run (the [roster](#g-roster) freeze below), enforcement runs entirely at
 *staging* — the earliest site, on the writer's own task — and the drain
 performs no checks at all. **Every device's surface is its claim set**, and a
 claim set has two *sources*:
@@ -2440,9 +2442,9 @@ every claim is exclusive, whatever its source — which is what keeps drain
 order a diagnostic fact (below) and lets a drained GUI value simply stay
 ([§9.7][s9-7]).
 
-**One framework-owned remainder: the harness register.** Beside the roster
+**One framework-owned remainder: the [harness register](#g-harness-register).** Beside the roster
 sits a **task-free entry point** — `stage!(sim, "face" => value, ...)`, which
-stages a batch from the calling task itself, the harness/REPL write path
+stages a batch from the [calling task](#g-calling-task) itself, the harness/REPL write path
 ([§10.6][s10-6]) — and its always-present cell, drained, traced and
 surface-checked exactly as any device's. Its surface is the one thing in the
 design that is *derived* rather than claimed: the unclaimed complement, the
@@ -2451,7 +2453,7 @@ change and therefore as fixed within a run as any claim set. A `stage!` write
 to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming the
 incumbent), and the one seam — a batch staged while stopped whose face a
 subsequent `attach!` claims — is renormalized away at the attach itself
-(below). The harness cell drains **last**, by convention: with every surface
+(below). The [harness cell](#g-harness-cell) drains **last**, by convention: with every surface
 disjoint the order is unobservable, so the rule exists to make the trace read
 the same way every time, not to arbitrate anything.
 
@@ -2460,7 +2462,7 @@ slot unfed by any device must hold a defined value from the first frame (today's
 `U()` constructors provide these: `mixture = 0.5`). Export-entry defaults were
 rejected: the trim service writes slot values it *solved for* (throttle,
 elevator) — not declaration constants. `init!` establishes every slot and the
-trace header captures the result; totality is enforced pre-write at every
+[trace header](#g-trace-header) captures the result; totality is enforced pre-write at every
 complete-world application — `init!`, trim setup, trim commit
 ([§14.6][s14-6]).
 
@@ -2508,14 +2510,14 @@ never a device colliding with its own earlier attachment.
 **Device death does not detach.** A mid-run crash, voluntary exit or unplug
 ([§9.6][s9-6], [§10.4][s10-4]) ends the device's *task*: the cell stops filling, the [§10.2][s10-2]
 heartbeat shows the death by name, and the roster entry — claims included —
-persists to the end of the run. The orphaned claims are the accepted cost of
-the freeze: the device's slots hold their last-drained values and no other
+persists to the end of the run. The [orphaned claims](#g-orphaned-claims) are the accepted cost of
+[the freeze](#g-the-freeze): the device's slots hold their last-drained values and no other
 writer inherits them; [§9.7][s9-7]'s read-only widgets render the orphan visibly
 ("claimed by `T16000M` — task dead"), never mysteriously. Recovery is
 between runs — stop, `detach!`, and either `init!` (fresh trajectory) or
 `replay!`-to-end then `run!` (continuation from the interrupted boundary,
 [§10.7][s10-7]) — and the anomaly is exactly that: an anomaly, not a surface event.
-One deliberate asymmetry is on record as a **guarded addition**: a pure
+One deliberate asymmetry is on record as a **[guarded addition](#g-guarded-addition)**: a pure
 reader (a binding declaring `is_output` alone, [§9.6][s9-6] — a visualizer, a telemetry
 tap) claims nothing, so attaching one mid-run would move no writer's
 surface; a dynamic reader list (touching only [§10.3][s10-3] wakeups, the heartbeat
@@ -2526,12 +2528,12 @@ population.
 
 ### 9.4 Inbound: per-device staging, representation and the drain
 
-**Staging: one atomic cell per attached device, one coalescing policy — CAS
-merge, newest wins per face.** Each cell has a single writer — its own
-device task — and holds that device's latest pending batch of slot writes.
+**Staging: one atomic [cell](#g-cell) per attached [device](#g-device), one [coalescing](#g-coalescing) policy — CAS
+merge, newest wins per [face](#g-face).** Each cell has a single writer — its own
+device task — and holds that device's latest pending [batch](#g-batch) of [slot](#g-slot) writes.
 Staging merges the incoming batch into the pending one: untouched faces
 survive, re-staged faces take the newest level — the per-face ZOH. The CAS
-can fail only because a drain intercepted the old batch, so the retry is
+can fail only because a [drain](#g-drain) intercepted the old batch, so the retry is
 bounded and the failure case is precisely correct — intercepted writes are
 already applied and must not be re-staged. Merge is the *only* policy
 because it is always correct: for a **complete** writer (a joystick: full
@@ -2547,14 +2549,14 @@ pending-read and a small tuple rebuild per staging, on the device task —
 not worth a declarable promise whose false direction loses writes.
 
 **The staged representation is fixed per attachment, compiled at attach.**
-An enumerated writer's claim set and slot types are both known at attach
-(`claims(binding)`, [§9.6][s9-6], against the root contract), so the framework
+An enumerated writer's [claim](#g-claim) set and slot types are both known at attach
+(`claims(binding)`, [§9.6][s9-6], against the root [contract](#g-contract)), so the framework
 fixes the cell's content type there: a positional tuple over the claim
 set, `Union{Nothing, T}` per face (isbits unions — pointer-free), with
 `nothing` meaning *not touched this time*, never "reset" — the levels
 doctrine is untouched, slots only ever receive the non-`nothing`
 positions, and the `Union` never reaches the model. The face-name →
-position schema lives in the roster entry. The consequences are each
+position schema lives in the [roster](#g-roster) entry. The consequences are each
 mechanical: the merge is positional (`incoming[i] === nothing ? pending[i]
 : incoming[i]`) — straight-line, union-split; the drain applies each cell
 through an attach-compiled **scatter** (position → slot cell, statically
@@ -2564,13 +2566,13 @@ face ⇒ value pairs for whatever the datum touched, and `stage!` normalizes
 through an attach-compiled shim (name → position, convert to the slot's
 declared type, fill `nothing`), confining the residual name-shaped
 dynamism to one framework-owned conversion on the device task, at the
-boundary where wire-shaped data becomes system-shaped data. (Author-built
+[boundary](#g-boundary) where wire-shaped data becomes system-shaped data. (Author-built
 total tuples were rejected as a padding form — ten explicit `nothing`s to
 say "one face touched" — the same disease row 74 and the handler return
 law refuse.) A **greedy entry needs no special treatment here**: its claim
 was computed at the attach point and is an ordinary claim set by the time
 shapes are compiled ([§9.3][s9-3]), so the GUI's cell is compiled exactly as a
-joystick's. The **harness cell gets the same treatment**: under the roster
+joystick's. The **[harness cell](#g-harness-cell) gets the same treatment**: under the roster
 freeze its derived surface — the unclaimed complement — is as static as any
 claim set, so it too is compiled to a positional shape, recompiled at each
 `attach!`/`detach!` (a stopped-sim point), with the same shim, merge and
@@ -2590,7 +2592,7 @@ Face-name validity, surface membership and value convertibility are all
 static facts of the run, so every check runs in `stage!`'s normalization,
 on the writer's own task: a device's out-of-claim face has no
 position in the schema and is rejected (`OutOfClaimEntry` — an earlier,
-better-attributed site than the drain; same kind, same payload — the GUI
+better-attributed site than the drain; same kind, same [payload](#g-payload) — the GUI
 included, its claim being an ordinary one); a **harness** write to a claimed
 face is rejected the same way
 (`ClaimedFaceEntry`, naming the incumbent device); and a value that cannot
@@ -2613,15 +2615,15 @@ that the frame's outcome is a pure function of the drained batches. Because
 the roster is a fixed value at `run!`, the drain is fully compilable: the
 cells and their scatters form a heterogeneous but *known* tuple the frame
 function can specialize on — zero dynamic dispatch at frame top — the same
-per-configuration compile trade [§12.7][s12-7]'s executor already makes, now incurred
+per-configuration compile trade [§12.7][s12-7]'s [executor](#g-executor) already makes, now incurred
 only at stopped-sim attach points. (The specialization is an implementation
-freedom the freeze creates, not an obligation; iterating a roster array
+freedom [the freeze](#g-the-freeze) creates, not an obligation; iterating a roster array
 costs a handful of dispatches per frame and remains acceptable.)
 
 Rejected shapes (both torture-tested in [§15.3][s15-3]): **per-slot atomic cells** — the
 simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
 but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
-phase (run-to-run behavioral variance, [§15.3][s15-3]), peeks are cross-device, the trace
+phase (run-to-run behavioral variance, [§15.3][s15-3]), [peeks](#g-peek) are cross-device, the [trace](#g-trace)
 loses provenance, and wide slot types hit Julia's atomic-width lock fallback; **a
 shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity and
 the richest trace, but conflict order is still temporal (push order), and pending
@@ -2642,32 +2644,32 @@ through a deadzone would be absurd); this GUI-parity test is what places
 conditioning upstream. Aircraft-semantic derivation (the C172X `q_ref = q_sf ·
 axis` fan-out) must *not* ride along: it is FCS design and lives in-model — in
 the avionics, or accepted as a small per-aircraft×device mapping entry (an
-aircraft-design fork, [§15.4][s15-4]). The trace records post-conditioning levels —
-exactly what the model consumed, so replay is exact; raw-stick provenance (re-run
+aircraft-design fork, [§15.4][s15-4]). The [trace records](#g-trace-record) post-conditioning levels —
+exactly what the model consumed, so [replay](#g-replay) is exact; raw-stick provenance (re-run
 a session through *different* curves) is the known, accepted loss. Edge logic
 follows the levels doctrine: devices stage monotonic press counters; accumulators
 (trim offsets, flap detents) are model state, not mapping state ([§15.4][s15-4]).
 
 ### 9.5 Inbound: the input trace
 
-**The input trace** is the sequence of drained, device-tagged batches per frame. It
+**The input [trace](#g-trace)** is the sequence of drained, [device](#g-device)-tagged batches per frame. It
 extends [§8.7][s8-7]'s determinism end-to-end: replaying a recorded interactive session —
 staging fed from the recording, no devices or mappings present — reproduces the
 trajectory bit-identically.
 
-**One record format: every batch is retained sparse.** At the drain, each
-drained cell is scanned and recorded as (position ⇒ value) pairs for its
-non-`nothing` entries, against the writer's face-name → position schema in
+**One record format: every batch is retained sparse.** At the [drain](#g-drain), each
+drained [cell](#g-cell) is scanned and recorded as (position ⇒ value) pairs for its
+non-`nothing` entries, against the writer's [face](#g-face)-name → position schema in
 the header (below) — an O(surface-width) scan and one small allocation per
 drained batch. The rule is uniform because the alternative is not
-statable any more: a claim's *width* is a fact about one binding, not about
-a class of writers — a greedy claim is enumerated and as wide as the root
-contract ([§9.3][s9-3]) — so a density dichotomy could only be re-keyed on the
+statable any more: a [claim](#g-claim)'s *width* is a fact about one binding, not about
+a class of writers — a [greedy claim](#g-greedy-claim) is enumerated and as wide as the root
+[contract](#g-contract) ([§9.3][s9-3]) — so a density dichotomy could only be re-keyed on the
 claim source, which is precisely the distinction nothing downstream of
 attach is allowed to see. Uniformity is what the consumers get paid in: one
 record format at the trace's edge, no per-entry format flag, one decoder in
-the what-if register, in disk serialization and in human inspection, and one
-inverse conversion in replay — paid once, up front, off the loop
+the [what-if register](#g-what-if-register) (replay with edited inputs), in disk serialization and in human inspection, and one
+inverse conversion in [replay](#g-replay) — paid once, up front, off the loop
 ([§10.7][s10-7]). The conversion site is the drain and not the staging
 shim because the drained tuple is the *coalesced* truth — a shim-side
 sparse log would need its own merge.
@@ -2677,25 +2679,25 @@ conversion is what keeps the trace honest: a tuple as wide as the unclaimed
 surface carrying one edit would otherwise make trace size track surface
 width rather than information (at hundreds of faces, render-rate dragging
 inflates the trace past the two-orders-below-the-log budget that justifies
-trace-on-by-default, row 29). On the dense component it costs **about 2×** —
+trace-on-by-default, row 29). On the dense [component](#g-component) it costs **about 2×** —
 a position beside every value where the positional tuple carried the value
 alone — which changes no order of magnitude and leaves row 29's budget
 standing for every writer at once. The allocation is in-class with what
-[§7.5][s7-5]'s retention carve-out already admits and smaller per boundary
-than the log's snapshot, the carve-out's standing occupant (the one
+[§7.5][s7-5]'s retention carve-out already admits and smaller per [boundary](#g-boundary)
+than the log's [snapshot](#g-snapshot), the carve-out's standing occupant (the one
 qualified exception to retains-what-was-already-allocated). And the decision
 is **reversible as pure implementation**: the conversion is lossless in both
 directions, so verbatim retention could return as a per-entry storage
 optimization — under the same record semantics, the same header and the same
 replay path — if a marathon-session measurement ever asks for it.
 
-**The trace header captures the full initial state** `(x, m)` **plus the
-initial root-slot values** at `init!` — captured **after `apply!` and the slot
+**The [trace header](#g-trace-header) captures the full initial state** `(x, m)` **plus the
+initial root-[slot](#g-slot) values** at `init!` — captured **after `apply!` and the slot
 writes, before the boundary-zero sequence runs** ([§14.5][s14-5]). Both halves of that
 placement are load-bearing: the header holds the *resolved* stores and slots
 as values, never the sparse authored overlay (replay must survive edits to
 declared defaults — row 38's primary-data doctrine), and never the
-post-transition result — boundary zero is re-executed under replay ([§10.7][s10-7]),
+post-transition result — [boundary zero](#g-boundary-zero) is re-executed under replay ([§10.7][s10-7]),
 so a post-sequence capture would re-fire authored-condition events on top of
 already-latched state. (An unfed `mixture = 0.5` never appears in any batch,
 so replay is broken without the slots; the init/trim services own slot
@@ -2738,8 +2740,8 @@ sleep). With no lock, the protocol the taxonomy encoded has no referent.
 
 #### Every attached device receives the same handle
 
-**Every attached device receives the same handle**, carrying the two primitive
-capabilities — read (latest snapshot; optionally wait-for-next-boundary, [§10.3][s10-3]) and
+**Every attached [device](#g-device) receives the same handle**, carrying the two primitive
+capabilities — read (latest [snapshot](#g-snapshot); optionally wait-for-next-[boundary](#g-boundary), [§10.3][s10-3]) and
 stage —
 plus control access (observe running, request shutdown). **`should_abort` is an
 `attach!` keyword**, defaulting to `false`: per-attachment, never a device
@@ -2759,9 +2761,9 @@ widgets ([§9.7][s9-7]).
 
 #### The authoring contract: four functions, one optional, one trait
 
-**The authoring contract: four functions, one optional, one trait.** A device is a
+**The authoring [contract](#g-contract): four functions, one optional, one trait.** A [device](#g-device) is a
 user type subtyping the framework's neutral root, `MyDevice <: AbstractDevice`
-— one mandatory word that costs nothing (the periphery has no competing
+— one mandatory word that costs nothing (the [periphery](#g-periphery) has no competing
 hierarchy to inherit from) and buys `attach!`'s dispatch gate below; the
 framework asks for
 
@@ -2792,7 +2794,7 @@ end
 ```
 
 A `needs_calling_task` device runs the identical wrapper *inline* on the
-calling task — the invocation site, not the contract, is its only
+[calling task](#g-calling-task) — the invocation site, not the contract, is its only
 difference ([§9.1][s9-1]'s topology, [§10.4][s10-4]'s join exclusion).
 
 **`shutdown!` must tolerate a partially initialized device.** The release
@@ -2810,18 +2812,18 @@ One discrimination in that wrapper: **an `InterruptException` is never a
 running a device loop body inline — the GUI's ([§9.1][s9-1]) — so an operator
 Ctrl-C raises *there*, inside user code that did nothing wrong. The wrapper
 forwards the control-plane stop and lets the body leave through the ordinary
-`running(handle)` predicate ([§10.4][s10-4](4)): no crash report for what is not a
+`running(handle)` [predicate](#g-predicate) ([§10.4][s10-4](4)): no crash report for what is not a
 crash, and no `should_abort` consultation, a stop being already requested.
 
 #### The author owns the loop body; the framework owns the bracket
 
 **The author owns the loop body; the framework owns the bracket.** The fork
-is decided by FlightCore's own history: its eight device hooks were never
+is decided by FlightCore's own history: its eight [device](#g-device) hooks were never
 sufficient alone — the framework loop calling them came in three flavors,
-and the *taxonomy* carried the loop-shape information. One device contract
+and the *taxonomy* carried the loop-shape information. One device [contract](#g-contract)
 therefore means author-owned loop bodies. A framework-owned hook loop must
 ask each device what it waits on — a poll timer, a blocking socket, the
-[§10.3][s10-3] boundary counter — and that declaration is the taxonomy resurrected
+[§10.3][s10-3] [boundary counter](#g-boundary-counter) — and that declaration is the taxonomy resurrected
 as a trait; the bidirectional peer (one socket, one lifecycle — the
 no-taxonomy headline case) needs two waits at once, which a hook loop cannot
 serve without a select engine; and the GUI's render loop fits no hook set
@@ -2862,16 +2864,16 @@ inside its own domain — rather than forcing a select engine into the
 framework. Two idioms are author obligations the framework can only teach
 and diagnose, never force ([Appendix A][sA]): loop on `running(handle)`, and make
 blocking calls interruptible (`unblock!`, or timeouts) — a forgotten
-predicate check surfaces as `DeviceJoinTimeout` with the device's name, a
+[predicate](#g-predicate) check surfaces as `DeviceJoinTimeout` with the device's name, a
 stall as a stale [§10.2][s10-2] heartbeat (liveness timestamps ride *inside* the
-handle primitives, which store them in the device's own diagnostic cell
+handle primitives, which store them in the device's own [diagnostic cell](#g-diagnostic-cell)
 [§9.8][s9-8], so the framework observes activity without owning the
 loop). **`should_close` dissolves**: a window ✕ or peer EOT is the loop
 body returning; the wrapper's exit path releases the device's OS resources,
-marks it dead for the heartbeat and consults `should_abort` — claims and
-roster entry persist to run end ([§9.3][s9-3]'s freeze) — [§10.4][s10-4](6) is now
+marks it dead for the heartbeat and consults `should_abort` — [claims](#g-claim) and
+[roster](#g-roster) entry persist to run end ([§9.3][s9-3]'s freeze) — [§10.4][s10-4](6) is now
 literally "the task body returned." The GUI implements the same contract; the framework calls its
-`loop` inline on the calling task instead of spawning ([§9.1][s9-1]'s pinning,
+`loop` inline on the [calling task](#g-calling-task) instead of spawning ([§9.1][s9-1]'s pinning,
 unchanged).
 
 #### The binding: framework-legible by enumeration, opaque in its mappings
@@ -2881,7 +2883,7 @@ A binding is a value subtyping `AbstractBinding` — the second mandatory
 root — whose type declares which sides it has and enumerates what each side
 touches. The legible
 half is explicit methods returning data, called once at attach on the
-calling task; the opaque half is called per datum on the device task by the
+[calling task](#g-calling-task); the opaque half is called per datum on the [device](#g-device) task by the
 author's own loop:
 
 ```julia
@@ -2899,7 +2901,7 @@ reads(b)                               # output side: §14.4 selectors → one c
 map_output(nt, b)                      #              the gather's NamedTuple → wire datum
 ```
 
-The framework needs no contract on the datum's shape: the datum travels
+The framework needs no [contract](#g-contract) on the datum's shape: the datum travels
 only between `loop` and `map_input`, written by the same author, and the
 framework's structural knowledge comes entirely from the declared traits and
 the enumeration methods — everything enumerable validates at attach,
@@ -2918,10 +2920,10 @@ declared side whose method was never written fails loudly at the attach
 point rather than degrading into silence, and the attach runs a
 **bidirectional conformance check** over the pair (trait, method):
 
-- `is_input && !is_greedy` ⇒ `claims(b)` is called once and its faces staked;
+- `is_input && !is_greedy` ⇒ `claims(b)` is called once and its [faces](#g-face) staked;
   the fallback firing here means "you declared an input side and wrote no
   enumeration".
-- `is_input && is_greedy` ⇒ the claim is computed ([§9.3][s9-3]), and a `claims`
+- `is_input && is_greedy` ⇒ the [claim](#g-claim) is computed ([§9.3][s9-3]), and a `claims`
   method defined for this binding is an error: the two sources are
   alternatives, not layers.
 - `is_output` ⇒ `reads(b)` is called and the gather compiled.
@@ -2955,9 +2957,9 @@ whose detents must be driven back out). The binding stays an `attach!` argument,
 same `T16000M` binds differently per aircraft, and narrowing the binding
 narrows the claim ([§9.3][s9-3]).
 
-**Why the periphery gets roots where components have one.** [§11.5][s11-5] refuses
+**Why the [periphery](#g-periphery) gets roots where [components](#g-component) have one.** [§11.5][s11-5] refuses
 a class supertype for two reasons, and neither reaches here: a component's
-single-inheritance slot is *already spoken for* by the domain hierarchies
+single-inheritance [slot](#g-slot) is *already spoken for* by the domain hierarchies
 (`AbstractAircraft`, engine families), while a device's and a binding's are
 vacant — nothing else wants them; and a component's class is
 implementation detail behind its contract ([§11.3][s11-3]), while a binding's
@@ -2979,15 +2981,15 @@ justify — a *derived* surface elected by a marker, shared among the
 writers that elected it — no longer exists: what the declaration buys is
 one computation at the attach point, after which the binding holds an
 ordinary claim set and every mechanism downstream ([§9.3][s9-3]'s exclusivity
-and storage, [§9.4][s9-4]'s shape, shim, merge, scatter and drain, [§9.5][s9-5]'s
-trace, detach's release) is blind to where the set came from. The standing
+and storage, [§9.4][s9-4]'s shape, shim, merge, scatter and [drain](#g-drain), [§9.5][s9-5]'s
+[trace](#g-trace), detach's release) is blind to where the set came from. The standing
 rejection is untouched by that: opportunistic writing to unclaimed faces
 "for any device" stays dead (row 44) — autonomous devices still enumerate,
 and a maximal surface is now something exactly one line of a binding asks
 for, in the open, checked like any other claim.
 
 **A second greedy attach stakes the empty remainder.** The complement is
-computed against the roster as it stands, so a greedy binding attached
+computed against the [roster](#g-roster) as it stands, so a greedy binding attached
 after another has already swallowed everything gets the empty claim — which
 is legal, being the honest may-write-nothing degenerate below, and useless,
 which is worth saying out loud: the attach succeeds and reports
@@ -3006,7 +3008,7 @@ topology, not of interactivity.
 defining no `claims` of its own; it declares no `reads` either, because its
 read path is the handle's primitive
 read — VSync-paced, it reads `latest` afresh each render ([§10.3][s10-3]) with an
-ad-hoc, render-time read set over the whole snapshot, the inspection
+ad-hoc, render-time read set over the whole [snapshot](#g-snapshot), the inspection
 register's shape ([§9.2][s9-2]) — so the compiled output gather has nothing to
 do for it. The same GUI device type is equally attachable under a binding
 that returns explicit claims: greediness is the binding's declaration, not
@@ -3035,8 +3037,8 @@ vocabulary is built to refuse.
 
 **One shipped binding type; conditioning has an owner.** `TableBinding` is
 *data-driven* — the framework writes its `map_input` once, and a table
-value (axis/button entry → face, deadzone/expo parameters) is constructed
-per device × aircraft pairing, where configurations are made:
+value (axis/button entry → [face](#g-face), deadzone/expo parameters) is constructed
+per [device](#g-device) × aircraft pairing, where configurations are made:
 
 ```julia
 TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
@@ -3055,11 +3057,11 @@ stays pure.
 
 #### Bad datum versus bug: two classes, two fates
 
-**Bad datum versus bug: two classes, two fates.** A datum that cannot be
+**[Bad datum](#g-bad-datum) versus bug: two classes, two fates.** A datum that cannot be
 mapped for environmental reasons — a truncated datagram, malformed JSON, an
 out-of-range field — is tolerated *in the loop body*: catch, stage nothing,
-`report!(handle, MalformedDatum(cause))`, continue — bounded by the device's
-own diagnostic cell ([§9.8][s9-8]'s ring and suppressed counts, [§13.2][s13-2]'s
+`report!(handle, MalformedDatum(cause))`, continue — bounded by the [device](#g-device)'s
+own [diagnostic cell](#g-diagnostic-cell) ([§9.8][s9-8]'s ring and suppressed counts, [§13.2][s13-2]'s
 stream), visible next to a live heartbeat. Any other exception propagates,
 and the wrapper turns it into `DeviceCrash` ([§10.4][s10-4]). The classification is
 the author's — only they know their parser — exactly as FlightCore's
@@ -3068,7 +3070,7 @@ author-owned loop is that no framework per-iteration catch site exists, so
 the framework's contribution is the diagnostic channel, not the catch (a
 marked exception type with no framework consumer would be vestigial and is
 not provided). `report!(handle, ...)` writes device-attributed runtime
-warnings into that device's diagnostic cell — the [§13.2][s13-2] stream's
+warnings into that device's diagnostic [cell](#g-cell) — the [§13.2][s13-2] stream's
 single-writer entry point ([§9.8][s9-8]) — and nothing more; it is not a general
 user-diagnostics channel. Tolerating everything hides bugs as "device
 attached, nothing happens"; tolerating nothing kills a live telemetry link
@@ -3077,16 +3079,16 @@ on its first truncated datagram — and since tasks are per-run artifacts
 
 ### 9.7 The GUI write path: port resolution, peek, staging contract
 
-Panels remain per-component extensions in FlightCore's style — `GUI.draw!(ctx,
-::LowPassFilter)`, discovered by walking the assembly — but widgets name **the
-component's own ports**, never root slots. The build-time wiring answers, statically
+Panels remain per-[component](#g-component) extensions in FlightCore's style — `GUI.draw!(ctx,
+::LowPassFilter)`, discovered by walking the [assembly](#g-assembly) — but widgets name **the
+component's own [ports](#g-port)**, never root [slots](#g-slot). The build-time wiring answers, statically
 and exactly: *is this port transitively driven by a root input slot, and which one?*
 Every input port has exactly one source ([§6.1][s6-1]), so the resolution is total:
 
-- **root-driven → live widget**: peeks and stages the resolved slot through the
-  GUI's own staging cell;
+- **root-driven → live widget**: [peeks](#g-peek) and stages the resolved slot through the
+  GUI's own [staging cell](#g-staging-cell);
 - **component-driven → read-only rendering**: displays the driven value from the
-  snapshot, visually distinct, with the source as provenance ("driven by
+  [snapshot](#g-snapshot), visually distinct, with the source as provenance ("driven by
   `avionics/throttle_cmd`" — the canonical slash form of [§11.6][s11-6]).
 
 This retires FlightCore's dead-slider convention (the `Cessna172Xv1` throttle: the
@@ -3101,40 +3103,40 @@ GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
 
 **Liveness is a derived property, and resolution is transitive.** A widget
-is live iff its port's feed chain — walked through wires and boundary connections across *all*
+is live iff its port's feed chain — walked through wires and [boundary](#g-boundary) connections across *all*
 levels, not just the local assembly — terminates in a root slot, *and* that slot
-lies **inside the GUI's own claim** in the run's frozen surface partition
+lies **inside the GUI's own [claim](#g-claim)** in the run's frozen surface partition
 ([§9.3][s9-3] exclusivity) — whether that claim was computed from the unclaimed
-complement under `is_greedy` or enumerated face by face by a partial-claims
+complement under `is_greedy` or enumerated [face](#g-face) by face by a partial-claims
 binding ([§9.6][s9-6]), so
 "live" reads as "inside the surface I declared for". Under
-the roster freeze, liveness is a static fact of the run: baked once, with the
+the [roster](#g-roster) freeze, liveness is a static fact of the run: baked once, with the
 port resolution, when the run starts — never consulted against mutable claim
 state at render. There is no per-port
 "GUI-controlled" marking anywhere: the export chain is the marking, written by
 the one author entitled to write it (a component's ports become GUI-commandable
 exactly when the assemblies above surface them). The switch between "driven by
 its own panel" and "driven by an external provider" is therefore automatic — at
-build time by wiring archetype (a scripted `World` wires a scenario component
+build time by wiring archetype (a scripted `World` wires a [scenario component](#g-scenario-component)
 into the same faces the interactive `World` exports to root), at run start by
 roster claim state. Rejected: nominally-connected ports with a GUI
 *override* channel — a second write path that breaks the
-pure-function-of-drained-batches frame semantics, needs a parallel trace and
-replay mechanism, and cannot resolve the producer conflict (either a dead widget
+pure-function-of-drained-batches frame semantics, needs a parallel [trace](#g-trace) and
+[replay](#g-replay) mechanism, and cannot resolve the producer conflict (either a dead widget
 or a silently discarded wire); made safe — staged, frame-top, traced, exclusive —
 it collapses into the root-slot mechanism it tried to bypass. The honest cost
 stands: **unexported ports are unpokeable** — FlightCore's poke-any-`u` workflow
-does not survive contract visibility ([§11.3][s11-3]), deliberately.
+does not survive [contract](#g-contract) visibility ([§11.3][s11-3]), deliberately.
 
 **Peek rule:** a widget displays its **own pending write if any, else the snapshot
-value**. Own-cell only: another device's pending write is invisible by design (its
+value**. Own-[cell](#g-cell) only: another [device](#g-device)'s pending write is invisible by design (its
 applied value arrives via the snapshot one frame later); cross-device peek would
 re-couple devices for sub-perceptual benefit. While paused, staged edits display
-indefinitely and apply at the un-pause drain. Fan-out is consistent for free:
+indefinitely and apply at the un-pause [drain](#g-drain). Fan-out is consistent for free:
 widgets on ports resolving to the same slot peek the same pending value.
 
 **Staging contract: widgets stage on interaction events only.** Value widgets (sliders, drags) stage
-the new absolute level on edit; edge widgets (buttons) stage on activation, as a
+the new absolute level on edit; edge widgets (buttons) stage on [activation](#g-activation), as a
 level computed from the peek — a flaps button peeks the current counter `k` and
 stages `k+1`. The levels doctrine makes this safe by construction: repeated staging
 of the same level within a drain window is idempotent (no repeat-increment hazard),
@@ -3174,19 +3176,19 @@ loop; and assembly panels compose children by path.
 
 The chapter's two data channels are specified down to their memory ordering.
 The runtime warning stream ([§13.2][s13-2]) and the liveness heartbeat ([§10.2][s10-2]) are
-a third, and they cross the same task boundaries: they are written by the
-device tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
+a third, and they cross the same task [boundaries](#g-boundary): they are written by the
+[device](#g-device) tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
 at staging ([§9.4][s9-4]), `MalformedDatum` from the author's loop body via
 `report!(handle, …)` ([§9.6][s9-6]) — and by the loop itself (`ChatteringBudget`,
 `FiringBudget`, `DebtReanchor`), and read by the loop, which folds them into
-the published framework status ([§9.2][s9-2]) and hence into every snapshot. An
+the published [framework status](#g-framework-status) ([§9.2][s9-2]) and hence into every [snapshot](#g-snapshot). An
 unspecified structure with those writers is exactly the arbitrary shared
 mutable state [§9.1][s9-1]'s two rules exist to eliminate, so it gets the mechanism
 [§9.4][s9-4] already established, not one of its own.
 
-**One diagnostic cell per writer — one per rostered device, one for the loop
-itself.** Each cell has a single writer, the same ownership argument as the
-staging cells: no locking, no arbitration, no new primitive. The cell holds a
+**One [diagnostic cell](#g-diagnostic-cell) per writer — one per rostered device, one for the loop
+itself.** Each [cell](#g-cell) has a single writer, the same ownership argument as the
+[staging cells](#g-staging-cell): no locking, no arbitration, no new primitive. The cell holds a
 **bounded accumulation** — a small ring of diagnostic values, capacity **16**,
 plus a per-kind count of what the ring could not hold — and one atomic
 liveness timestamp.
@@ -3197,12 +3199,12 @@ count increments; the drop policy is earliest-in-frame retained, excess
 becomes counts — the first occurrences are the ones with diagnostic content,
 the hundredth is noise the count already reports. [§13.2][s13-2]'s "rate-limited
 wherever its source can repeat" is therefore not a policy layered over the
-stream but a structural property of the channel that carries it: a chattering
+stream but a structural property of the channel that carries it: a [chattering](#g-chattering)
 model or a peer flooding malformed datagrams costs at most sixteen retained
 values and one integer increment per kind per frame, whatever its source
 does, and no writer can starve another — the cells are disjoint.
 
-**The drain is [§9.4][s9-4]'s drain.** One `atomicswap` per cell at frame top, at
+**The [drain](#g-drain) is [§9.4][s9-4]'s drain.** One `atomicswap` per cell at frame top, at
 the same point and under the same indivisible-take argument as the staging
 drain; what the loop swaps *in* is a shared **empty sentinel**, so a quiet
 frame swaps the sentinel in and gets the sentinel back — no allocation, and
@@ -3242,7 +3244,7 @@ belongs to whoever renders. The channel's own bound, above, is the one that
 is normative.
 
 **The terminal snapshot carries the run's final cumulative counters**
-([§10.4][s10-4], [§13.5][s13-5]), so an unattended run that nobody watched still
+([§10.4][s10-4], [§13.5][s13-5]), so an [unattended run](#g-unattended-run) that nobody watched still
 answers "what went wrong, and how often" from the value its own shutdown
 published.
 
@@ -3257,15 +3259,15 @@ drained non-empty ring is frozen into the snapshot and can never be written
 again, so the writer allocates a fresh ring lazily at its next emission —
 that cost, too, landing on the writer's task — which is the same
 GC-over-reuse trade [§9.2][s9-2] makes when it rejects preallocated snapshot
-buffers. The rate limit is therefore an allocation bound as well: one ring of
+[buffers](#g-buffer). The rate limit is therefore an allocation bound as well: one ring of
 sixteen entries per writer per boundary is the worst case, everything past it
 an integer increment. [§7.5][s7-5]'s zero-allocation invariant, scoped to the model
-sweep, is untouched — the cells sit on the framework side of that scope with
+[sweep](#g-sweep), is untouched — the cells sit on the framework side of that scope with
 publication and logging.
 
 Composition with the log, worth stating once: because the log retains
 snapshot references ([§9.2][s9-2]), `totals` is monotone across logged snapshots,
-so `log_every` decimation loses *which* boundary within a skipped stretch an
+so `log_every` [decimation](#g-decimation) loses *which* boundary within a skipped stretch an
 occurrence fell on, never *how many* occurrences there were.
 
 Rejected: **a shared queue under a lock** — cross-task contention on the
@@ -3284,10 +3286,10 @@ has to survive, and the drop policy is what a bound buys.
 
 ## 10. Runtime periphery: lifecycle and orchestration
 
-Where [§9][s9] fixes how data crosses the loop boundary, this chapter covers the
-machinery that drives the loop itself: the control plane and the scheduling
+Where [§9][s9] fixes how data crosses the loop [boundary](#g-boundary), this chapter covers the
+machinery that drives the loop itself: the [control plane](#g-control-plane) and the scheduling
 primitives, the shutdown protocol, and the run lifecycle from `init!` through
-replay.
+[replay](#g-replay).
 
 ### 10.1 Control plane
 
@@ -3297,12 +3299,12 @@ surface, consulted by the loop at frame top and inside its wait and pause states
 `margin` ([§8.7][s8-7]) rides here for the same reason `pace` does — it tunes the
 wait, never the arithmetic — so retuning the coarse/spin split mid-run is safe
 by construction. The stop's issuers are the operator's channels — GUI button,
-device handle, calling code — and, in an interactive session, Ctrl-C: an
-operator interrupt is caught at one of the loop's unmask points and sets exactly
+[device](#g-device) handle, calling code — and, in an interactive session, Ctrl-C: an
+[operator interrupt](#g-operator-interrupt) is caught at one of the loop's unmask points and sets exactly
 this stop, no separate entry point involved ([§10.4][s10-4]).
-**Not staging, structurally:** staged writes apply at drains, and a paused loop
+**Not staging, structurally:** staged writes apply at [drains](#g-drain), and a paused loop
 drains nothing — un-pause via staging would deadlock by construction. Riding outside
-the drain/trace path is safe for determinism precisely because [§8.7][s8-7] put pacing
+the drain/[trace](#g-trace) path is safe for determinism precisely because [§8.7][s8-7] put [pacing](#g-pacing)
 outside the semantics: control changes *when* frames execute, never what they
 compute (stop merely truncates the trajectory). While paused the loop blocks on a
 condition (notified on un-pause and stop), not a spin.
@@ -3312,22 +3314,22 @@ condition (notified on un-pause and stop), not a spin.
 **Coarse phase = task-yielding `sleep`; no `systemsleep` variant.** The precision
 argument for `Libc.systemsleep` (≈0.5 ms vs ≈1.4 ms median overshoot, [§8.7][s8-7]) is
 worth ~1.5 ms of `margin` — a few percent of one core at 50 Hz. Against it: `sleep`
-releases the loop's thread, making the pacer's wait slot the natural scheduling
-window for co-resident device tasks (the design already spends that slot twice:
-[§8.7][s8-7]'s staging slot, [§9.4][s9-4]'s drain source); `systemsleep` turns the slot into dead
-time and makes the periphery correct only when every device task has its own
+releases the loop's thread, making the pacer's wait [slot](#g-slot) the natural scheduling
+window for co-resident [device](#g-device) tasks (the design already spends that slot twice:
+[§8.7][s8-7]'s staging slot, [§9.4][s9-4]'s [drain](#g-drain) source); `systemsleep` turns the slot into dead
+time and makes the [periphery](#g-periphery) correct only when every device task has its own
 thread — resurrecting FlightCore's hard `nthreads` check as a correctness
 precondition. The failure asymmetry decides: `sleep`'s worst case is a late
 wake-up → an overrun → absorbed as debt and *diagnosed*; `systemsleep`'s is starved
 device tasks → silent functional degradation. And [§8.7][s8-7] committed to `margin` as
-the single knob; a primitive selector is a second knob hiding inside the first (its
+the single knob; a primitive [selector](#g-selector) is a second knob hiding inside the first (its
 two settings differ by a margin recalibration). A `systemsleep` variant for
-dedicated-thread hard-RT deployments is a guarded addition.
+dedicated-thread hard-RT deployments is a [guarded addition](#g-guarded-addition).
 
 **Yield rule: with devices attached, every frame yields at least once** —
 implicitly via the coarse-phase `sleep` when it runs, via an explicit `yield()`
 otherwise (unpaced runs; pure-spin frames with budget ≤ margin). Zero semantic
-cost: pacing, hence yielding, is outside the semantics ([§8.7][s8-7]). The spin phase
+cost: [pacing](#g-pacing), hence yielding, is outside the semantics ([§8.7][s8-7]). The spin phase
 itself never yields — that would trade its µs precision for scheduler noise.
 Consequence: the loop occupies a thread for at most one frame before the scheduler
 can run anyone else, so the thread-monopolist precondition for Julia's
@@ -3338,24 +3340,24 @@ structurally absent from framework tasks.
 error.** FlightCore's `nthreads` error was honest for its architecture: under-lock
 blocking plus a busy-wait pacer wedges *totally* when tasks share threads — the GUI
 queues on the lock behind the stall, the window freezes, no escape and no message.
-Here the freeze cannot reproduce: the loop yields every frame, nothing couples a
-stall to anyone else (the GUI waits on nothing, ever — snapshot acquire-load, own
-staging cell, atomic control), and the GUI runs on the *calling* task, so it cannot
+Here [the freeze](#g-the-freeze) cannot reproduce: the loop yields every frame, nothing couples a
+stall to anyone else (the GUI waits on nothing, ever — [snapshot](#g-snapshot) acquire-load, own
+[staging cell](#g-staging-cell), atomic control), and the GUI runs on the *calling* task, so it cannot
 fail to be scheduled: under any starvation the window keeps rendering and the stop
 button keeps working. Undersized sessions degrade to laggy inputs and stale
 snapshots — visible, recoverable states. `run!` warns when `Threads.nthreads()` is
 tight for the attached population — one check per run, against the frozen
-roster ([§9.3][s9-3]) — naming the `julia -t` remedy; sizing guidance:
+[roster](#g-roster) ([§9.3][s9-3]) — naming the `julia -t` remedy; sizing guidance:
 one thread for the loop, the main thread for the GUI, headroom for compute-heavy or
 blocking-ccall devices (libuv-backed I/O yields; raw blocking ccalls pin their
 thread for the duration). No pinning, no sticky tasks.
 
 **Liveness heartbeat.** Since starvation is survivable it must be diagnosable: the
-published framework status includes per-device liveness (last-staged / last-read
+published [framework status](#g-framework-status) includes per-device liveness (last-staged / last-read
 wall time, task state) next to the pacer diagnostics. The mechanism is
-[§9.8][s9-8]'s per-writer cell and nothing besides — an atomic timestamp field
+[§9.8][s9-8]'s per-writer [cell](#g-cell) and nothing besides — an atomic timestamp field
 the device task stores on every loop pass from inside the handle primitives
-([§9.6][s9-6]) and the loop acquire-loads at the frame-top drain, alongside that
+([§9.6][s9-6]) and the loop acquire-loads at the [frame-top drain](#g-drain), alongside that
 device's diagnostics. A starved, blocked or crashed
 device task shows in the GUI as a stale heartbeat with a name on it, not as
 mysteriously frozen physics. **Stale means a liveness timestamp more than 2 s
@@ -3366,15 +3368,15 @@ between rare data.
 
 ### 10.3 The next-snapshot wait
 
-Rate-matched output devices (telemetry, disk streaming) act once per boundary
-without polling: a monotonic **boundary counter** published with the
-snapshot — counting *published boundaries* (grid, `t*`, boundary zero; [§8.4][s8-4]),
+Rate-matched output [devices](#g-device) (telemetry, disk streaming) act once per [boundary](#g-boundary)
+without polling: a monotonic **[boundary counter](#g-boundary-counter)** published with the
+[snapshot](#g-snapshot) — counting *published boundaries* (grid, `t*`, [boundary zero](#g-boundary-zero); [§8.4][s8-4]),
 not frames, so consecutive wakes are not necessarily `h` apart — plus one
 `Threads.Condition`. The loop's publication is `lock; counter += 1; notify;
 unlock` — nanoseconds of framework-only code, never blocked by waiters (a waiter
 parked in `wait` has released the lock as part of parking). The device-side
 `wait_next_snapshot(handle)` blocks until `counter > last_seen && running` under
-the canonical predicate-loop idiom, which handles waiters at different paces,
+the canonical [predicate](#g-predicate)-loop idiom, which handles waiters at different paces,
 frames skipped while transmitting, and shutdown ([§10.4][s10-4] wakes all waiters; each
 predicate routes its owner out) with no per-frame reset. An `Event` latch is the
 wrong primitive here: recurring signals require un-latching, and the reset has no
@@ -3384,7 +3386,7 @@ race). Conditions carry no facts, only "look again"; the facts (counter, running
 live in state each waiter tests privately.
 
 **Counter home and publication order.** The boundary index is carried *in* the
-snapshot (with `t`), so any holder of one — the log, an error's replay pointer
+snapshot (with `t`), so any holder of one — the log, an error's [replay](#g-replay) pointer
 ([§13.4][s13-4]), a post-run inspector — indexes it without consulting the loop; the
 loop additionally mirrors it in the state the wait predicate tests. The order
 of the two publications is normative: the release-store of `latest` ([§9.2][s9-2])
@@ -3394,7 +3396,7 @@ wake onto a stale snapshot. The converse — observing a *newer* snapshot than
 the increment that woke you — is expected and correct: newest-wins.
 
 **Semantics: newest-wins, no queues.** A slow consumer skips frames and always
-receives the current world. This mirrors the inbound side: coalescing to the
+receives the current world. This mirrors the inbound side: [coalescing](#g-coalescing) to the
 newest batch (in) and to the newest snapshot (out) are the same ZOH decision; no
 backpressure exists in either direction, and the loop never waits on anyone.
 Rejected: per-consumer every-boundary queues (unbounded under a slow consumer —
@@ -3403,11 +3405,11 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 
 ### 10.4 Shutdown protocol
 
-1. **Initiation:** `t_end` reached, a control-plane stop (GUI, device handle,
-   code, or an operator interrupt — Ctrl-C, below), or a `stop_on` face
-   reading `true` in the just-published snapshot
+1. **Initiation:** `t_end` reached, a control-plane stop (GUI, [device](#g-device) handle,
+   code, or an [operator interrupt](#g-operator-interrupt) — Ctrl-C, below), or a `stop_on` [face](#g-face)
+   reading `true` in the just-published [snapshot](#g-snapshot)
    (model-detected termination, [§13.5][s13-5]). The loop always completes the current
-   boundary sequence — never stops mid-frame — publishes the final snapshot,
+   [boundary](#g-boundary) sequence — never stops mid-frame — publishes the final snapshot,
    then sets the sticky stopped status.
    Publishing first guarantees output devices can flush the true final state,
    and that final status carries the run's cumulative diagnostic counters
@@ -3432,7 +3434,7 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    This demotes FlightCore's EOT convention from load-bearing shutdown mechanism
    to an optional wire-protocol courtesy between remote peers.
 4. **Loop bodies exit:** the author's `while running(handle)` ([§9.6][s9-6]'s
-   contract — the predicate check and interruptible blocking are the two
+   [contract](#g-contract) — the [predicate](#g-predicate) check and interruptible blocking are the two
    taught obligations) with all blocking points
    interruptible per (2)–(3); the wrapper's `finally shutdown!(device)` is
    guaranteed on every exit path.
@@ -3442,7 +3444,7 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    GUI window teardown and socket closes, and short enough that an abandoned
    join reads as a diagnosed timeout rather than a hang.
    The calling-task device — the GUI — having no spawned task ([§9.1][s9-1]), is
-   outside the join: its loop body is the calling task's own occupation of
+   outside the join: its loop body is the [calling task](#g-calling-task)'s own occupation of
    `run!`, exits by the same `running(handle)` predicate as any device
    loop, and `run!` returns after the joins. One honest asymmetry: the
    abandonment protocol cannot cover it — nothing can abandon the task
@@ -3453,10 +3455,10 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 6. **Device-initiated paths:** voluntary exit — the loop body returns
    (window ✕, peer EOT; no `should_close` hook exists, [§9.6][s9-6]); with
    `should_abort` set the wrapper's exit path also requests a sim stop,
-   otherwise the sim continues with the device's *task* absent: its cell
-   stops filling — the loop is structurally indifferent — while its roster
-   entry and claims persist to run end ([§9.3][s9-3]'s freeze: death is not
-   detach; the orphaned slots hold their last-drained values, visibly,
+   otherwise the sim continues with the device's *task* absent: its [cell](#g-cell)
+   stops filling — the loop is structurally indifferent — while its [roster](#g-roster)
+   entry and [claims](#g-claim) persist to run end ([§9.3][s9-3]'s freeze: death is not
+   detach; the orphaned [slots](#g-slot) hold their last-drained values, visibly,
    [§9.7][s9-7]). A crashing device task is caught by the
    framework wrapper and follows the same path, logged with the device's name
    (`DeviceCrash`, [Appendix C][sC]).
@@ -3508,7 +3510,7 @@ is handed back to `shutdown!` right there, so its partially acquired OS
 resources are released rather than leaked — which is exactly why `shutdown!`
 owes tolerance of a partially initialized device ([§9.6][s9-6]'s taught obligation).
 The report is the ordinary `DeviceCrash` ([Appendix C][sC]), not a kind of its own:
-its payload — device id, the cause exception, whether `should_abort` was set —
+its [payload](#g-payload) — device id, the cause exception, whether `should_abort` was set —
 already carries everything an init-time failure has to say. It is written
 through the ordinary `report!(address, diagnostic)` entry point, addressed by
 the roster entry rather than by a handle, there being no device task to hold one
@@ -3516,12 +3518,13 @@ before the spawn; the address supplies the device identity either way, which is
 why no call passes a device id ([§9.8][s9-8]). The name is
 honest, a device that cannot acquire its resources having crashed before it
 lived. No task is spawned for a failed device, so it is **dead from boundary
-zero**, and that needs no machinery: its diagnostic cell never receives a
+zero**, and that needs no machinery: its [diagnostic cell](#g-diagnostic-cell) never receives a
 heartbeat timestamp, so it reads stale against [§10.2][s10-2]'s threshold from the
 first frame ([§9.8][s9-8]). Its **claims persist to run end** — [§9.3][s9-3]'s
 death-is-not-detach disposition, applied one step earlier than (6)'s: the
 roster is frozen for the run, and the orphaned slots hold their initial values,
-well-defined by [§14.6][s14-6]'s slot totality where an orphan of (6) holds a last
+well-defined by [§14.6][s14-6]'s [slot totality](#g-slot-totality) (every root slot
+must hold a value) where an orphan of (6) holds a last
 drained batch.
 
 **The run's disposition splits on `should_abort`, uniformly with (6).** Clear —
@@ -3529,7 +3532,7 @@ the default ([§9.6][s9-6]) — the remaining entries initialize, the run starts
 the sim runs with that device absent from frame zero: (6)'s "the sim continues
 with the device's task absent", shifted to `t₀`. Set, the failure requests a
 control-plane stop, and that stop is simply *already pending* when the run
-reaches boundary zero — a path this protocol already has, since [§13.5][s13-5]'s
+reaches [boundary zero](#g-boundary-zero) — a path this protocol already has, since [§13.5][s13-5]'s
 boundary-zero check ends a run at `t₀` with that snapshot final, integrating
 nothing. No new exit protocol, therefore: the remaining entries still
 initialize — every rostered device gets its `init!`/`shutdown!` pair, uniformly
@@ -3553,12 +3556,12 @@ stop, and ends `stopped` — boundary-consistent, fully serviceable by the [§14
 stopped-sim services, resumable by the next `run!` ([§10.6][s10-6]). It is the escape
 from a run nothing else can end — deviceless, `t_end = Inf`, empty `stop_on`
 ([Appendix C][sC]'s `UnboundedRun`) — and it needs no entry point of its own: the
-control plane already carries the stop ([§10.1][s10-1]), and [§13][s13]'s
+[control plane](#g-control-plane) already carries the stop ([§10.1][s10-1]), and [§13][s13]'s
 exceptions-are-abnormal doctrine is untouched, being about *model* code, while
 this is the one exception whose meaning the framework knows.
 **Masking across the boundary is normative**, not an implementation hint. An
 `InterruptException` is delivered asynchronously, so an interrupt landing
-mid-sweep would destroy the boundary this protocol is built on completing and
+mid-[sweep](#g-sweep) would destroy the boundary this protocol is built on completing and
 leave half-written stores ([§13.6][s13-6]) — forcing a choice between `stopped` with
 dirty stores and a terminal `errored`, and the `stopped`-with-consistent-stores
 guarantee is exactly what the masking buys. The loop therefore masks delivery
@@ -3574,7 +3577,7 @@ escalation shortens the tail, never reclassifies the run. It cannot repair (5)'s
 honest asymmetry either, since nothing can abandon the task `run!` stands on.
 **Interactive-session scope**, stated plainly: outside the REPL, Julia's default
 (`exit_on_sigint(true)`) kills the process on SIGINT before any of this
-machinery runs, and the framework flips nothing process-global — unattended runs
+machinery runs, and the framework flips nothing process-global — [unattended runs](#g-unattended-run)
 rely on `t_end` and `stop_on`, as they already must.
 
 ### 10.5 Scripts and the mid-run mutation doctrine
@@ -3587,34 +3590,34 @@ references, flaps, wind). Both write only `u` fields; no demo, test or GUI path
 pokes `x`/`s` mid-run, and `init!`/trim appear only between construction and
 `run!` (c172_demos.jl:303).
 
-**Sim-time scripts are model behavior: scenario components.** Both archetypes are
-clocked by *sim time* (`t`, the trajectory). Mapping them to devices fails
+**Sim-time scripts are model behavior: [scenario components](#g-scenario-component).** Both archetypes are
+clocked by *sim time* (`t`, the trajectory). Mapping them to [devices](#g-device) fails
 outright unpaced — the demos run at `pace = Inf`, where frames take microseconds
 and a wall-clock task's staging lands at scheduler-determined sim times,
 differently every run. The clock is the criterion: **sim-time scripts →
-source/supervisor components** (periodic discrete, `K = 1` for today's
+source/supervisor [components](#g-component)** (periodic discrete, `K = 1` for today's
 `dt = 0.02` callbacks), executed synchronously in the loop, deterministic paced or
-unpaced, replayed by recomputation with no trace; **wall-clock interactions →
+unpaced, replayed by recomputation with no [trace](#g-trace); **wall-clock interactions →
 devices**, traced and replayed from the trace. The component mapping is strictly
 richer than the callback it replaces: the `Ref(:init)` phase closure becomes
-honest `x` (visible in snapshots, logs and plots); inputs arrive same-boundary
+honest `x` (visible in [snapshots](#g-snapshot), logs and plots); inputs arrive same-[boundary](#g-boundary)
 fresh by topological order (the callback ran post-step, one boundary staler);
-the pure timetable script is a one-liner reading its bundle's clock
-(`h_xu(s, (; t)) = (; offset = profile(t))` — exact at its own ticks, no
+the pure timetable script is a one-liner reading its [bundle](#g-bundle)'s clock
+(`h_xu(s, (; t)) = (; offset = profile(t))` — exact at its own [ticks](#g-tick), no
 latching); and
-in a scenario configuration the script drives the avionics' input ports, so [§9.7][s9-7]
+in a scenario configuration the script drives the avionics' input [ports](#g-port), so [§9.7][s9-7]
 renders the corresponding GUI widgets read-only with provenance — today's
 demo-vs-GUI dead-slider fight, resolved by the port-resolution rule.
 
-**`user_callback!` is eliminated.** It is the periphery's `f_step!`: arbitrary
-unrecorded mutation, ordered by convention, invisible to replay ([§2.2][s2-2]). Its
+**`user_callback!` is eliminated.** It is the [periphery](#g-periphery)'s `f_step!`: arbitrary
+unrecorded mutation, ordered by convention, invisible to [replay](#g-replay) ([§2.2][s2-2]). Its
 historical justification was FlightCore's composition cost — a supervisor required
 a full `System` declaration against a ten-line closure; this framework prices a
 component at roughly the closure's weight, removing the pressure. Its call sites
 migrate to scenario components, not devices.
 
-**Manual event triggering needs no mechanism:** a root input slot plus a boundary-detected
-guard reading it (levels doctrine: latched commands or counters), already
+**Manual event triggering needs no mechanism:** a root input [slot](#g-slot) plus a [boundary-detected](#g-boundary-detected)
+[guard](#g-guard) reading it (levels doctrine: latched commands or counters), already
 expressible in settled machinery — the demos' engine start/stop buttons are
 `u`-writes today.
 
@@ -3622,7 +3625,7 @@ expressible in settled machinery — the demos' engine start/stop buttons are
 Initialization and trim are stopped-sim workflows ([§14][s14]'s first-class services),
 where no concurrency perimeter exists — no loop, no devices, plain single-task
 code. The guarded-addition shape is on record should demand appear: a traced,
-boundary-executed intervention command applied through project → sweep → publish,
+boundary-executed intervention command applied through project → [sweep](#g-sweep) → publish,
 so no consumer ever observes un-decoded state.
 
 **The doctrine, final form:** while a simulation runs, the periphery stages
@@ -3630,34 +3633,34 @@ root-input writes and issues control commands — nothing else, structurally.
 Anything that wants to poke the model mid-run is an *input* in disguise (wire a
 slot and guard), *model behavior* in disguise (add a scenario component), or a
 *wall-clock interaction* (attach a device). Graceful termination follows the
-same shape ([§13.5][s13-5]): a declared stop face in the model plus `stop_on` policy at
+same shape ([§13.5][s13-5]): a declared stop [face](#g-face) in the model plus `stop_on` policy at
 deployment — never a callback, never a thrown exception.
 
 ### 10.6 Run lifecycle and partial advance
 
 A `Simulation` moves through five states: **built** (stores allocated,
-nothing authored), **initialized** (`init!` completed boundary zero, [§14.5][s14-5]),
+nothing authored), **initialized** (`init!` completed [boundary zero](#g-boundary-zero), [§14.5][s14-5]),
 **running**, and terminally **stopped** or **errored** ([§13.4][s13-4]). `init!` is
-mandatory: `run!` or `step!` on a simulation whose boundary zero has not
+mandatory: `run!` or `step!` on a simulation whose [boundary](#g-boundary) zero has not
 completed is an error in [§13.2][s13-2]'s kind set naming `init!` — distinct from
 `UninitializedSlots`, which fires *inside* `init!` ([§14.6][s14-6]). (`replay!` is
-the one alternative entry: it runs boundary zero from a trace header,
+the one alternative entry: it runs boundary zero from a [trace header](#g-trace-header),
 [§10.7][s10-7].) The loop runs on
-the calling task unless a calling-task device — the GUI — is rostered
-([§9.1][s9-1]'s roster-derived topology); deviceless, `run!` is fully
+the [calling task](#g-calling-task) unless a calling-task [device](#g-device) — the GUI — is rostered
+([§9.1][s9-1]'s [roster](#g-roster)-derived topology); deviceless, `run!` is fully
 synchronous — the unattended
-register ([§9.1][s9-1]: an unattended run is the same loop with empty staging), and what
+register ([§9.1][s9-1]: an [unattended run](#g-unattended-run) is the same loop with empty staging), and what
 [§13.4][s13-4]'s synchronous rethrow presupposes.
 
 **Partial advance.** `step!(sim; frames = 1)` advances whole frames
-synchronously through the ordinary frame sequence — drain, integrate,
+synchronously through the ordinary frame sequence — [drain](#g-drain), integrate,
 boundaries, publication — and returns; a stepped simulation is bit-identical
 to the same frames under `run!`. `step!(sim; t_plus = 10.0)` is the duration
 spelling, mutually exclusive with `frames`: whole frames until the boundary
 time first covers the duration — the migration suite's advance-by-duration
-idiom. This is the test-harness register (advance,
+idiom. This is the test-[harness register](#g-harness-register) (advance,
 assert, advance) and the REPL register (fly a while, inspect, continue);
-neither is a script, so [§10.5][s10-5]'s scenario-component doctrine does not absorb
+neither is a script, so [§10.5][s10-5]'s scenario-[component](#g-component) doctrine does not absorb
 them.
 
 A stepping session is **deviceless by construction**: device tasks are
@@ -3665,25 +3668,25 @@ per-`run!` artifacts ([§9.1][s9-1]) and a device loop's `while running(handle)`
 false outside a run. Between `step!` calls the simulation is in a
 stopped-sim state (`initialized`, below), so `attach!` is legal there and
 does what it always does — registers ([§9.3][s9-3]); the task appears at the next
-`run!`. The frame-top drain still runs — `step!` frames stay
+`run!`. The [frame-top drain](#g-drain) still runs — `step!` frames stay
 bit-identical to `run!` frames — and what it drains is the **harness
-cell**: `stage!(sim, "face" => value, ...)`, [§9.3][s9-3]'s harness
+[cell](#g-cell)**: `stage!(sim, "face" => value, ...)`, [§9.3][s9-3]'s harness
 write path with the calling task as writer. Staged batches are ordinary
-batches — traced, so replay and bit-identity hold; applied at the next frame
+batches — traced, so [replay](#g-replay) and bit-identity hold; applied at the next frame
 top; surface-checked like any writer's ([§9.3][s9-3]). The read half is
-`latest(sim)`: the same immutable snapshot value a device handle acquires
+`latest(sim)`: the same immutable [snapshot](#g-snapshot) value a device handle acquires
 ([§9.2][s9-2]), navigated directly for assertions. Advance-assert-advance is
 `stage!` → `step!` → `latest`. Both entry points work under `run!` too — the
-harness cell is not step-scoped — and an inspection accessor leaves
+[harness cell](#g-harness-cell) is not step-scoped — and an inspection accessor leaves
 [§13.5][s13-5]'s rejection of closure-based termination untouched.
 
-**Status, termination and the `run!` seam.** Between `step!` calls a simulation
+**Status, termination and the `run!` [seam](#g-seam).** Between `step!` calls a simulation
 reports **initialized**: no loop task exists, so `running` would lie, and
 nothing is terminal, so `stopped` would too — the state reads "boundary-
 consistent and ready to advance", not "sitting at boundary zero". `run!` may
 therefore follow `step!`, continuing from the current boundary; so may another
 `step!`. Termination policy is honored throughout, as bit-identity requires:
-`t_end` reached, or a `stop_on` face holding at frame 3 of `step!(sim; frames =
+`t_end` reached, or a `stop_on` [face](#g-face) [holding](#g-edge-semantics) at frame 3 of `step!(sim; frames =
 10)`, ends the run there through the ordinary [§10.4][s10-4] tail and leaves the
 simulation `stopped`. `step!` therefore returns the number of frames
 **actually advanced** — the requested count in the ordinary case, fewer when
@@ -3692,11 +3695,11 @@ truncation without inspecting the clock.
 
 **Re-running.** `stopped → init! → run!` is the supported cycle: `init!`
 re-runs boundary zero from its condition (warm restart = `capture` → tweak →
-`init!`, [§14.1][s14-1]) and clears the trace, the log, *and* any batches still in
-staging cells — the recorders restart with the run they record, and
+`init!`, [§14.1][s14-1]) and clears the [trace](#g-trace), the log, *and* any batches still in
+[staging cells](#g-staging-cell) — the [recorders](#g-recorders) restart with the run they record, and
 no stale batch survives to clobber the boundary zero it predates. Device attachments persist across
 re-initialization — attachment is orthogonal to the run lifecycle ([§9.3][s9-3]) —
-and persistence means *roster* persistence: binding, claims and device id
+and persistence means *roster* persistence: binding, [claims](#g-claim) and device id
 survive; tasks and OS resources do not ([§9.1][s9-1]'s per-run topology, [§10.4][s10-4]'s
 teardown). Each `run!` re-initializes every rostered device and spawns its
 task; `attach!` while stopped only registers — the task appears at the next
@@ -3726,7 +3729,7 @@ reproduction is trace replay ([§10.7][s10-7]), not resurrection.
 
 ### 10.7 Replay: the trace re-drives the ordinary loop
 
-The entry point the [§9.5][s9-5] trace exists for:
+The entry point the [§9.5][s9-5] [trace](#g-trace) exists for:
 
 ```julia
 trc  = trace(sim)                     # the recorded session: header + per-frame batches
@@ -3737,22 +3740,22 @@ replay!(sim2, trc; to_boundary = k)   # partial: the §13.4 replay-pointer regis
 
 `replay!` is **the ordinary loop with exactly two substitutions** — not a
 separate execution mode, which is what keeps every property proved of the
-loop true of replay:
+loop true of [replay](#g-replay):
 
-- **Boundary zero from the header.** `replay!` stands in the `init!`
+- **[Boundary zero](#g-boundary-zero) from the header.** `replay!` stands in the `init!`
   position of [§10.6][s10-6]'s lifecycle: it applies the header's resolved stores
-  and slot values directly — no condition resolution; [§14.6][s14-6]'s totality holds
-  by capture — and then executes the ordinary boundary-zero sequence
+  and [slot](#g-slot) values directly — no condition resolution; [§14.6][s14-6]'s totality holds
+  by capture — and then executes the ordinary [boundary](#g-boundary)-zero sequence
   ([§14.5][s14-5]). Authored-condition events re-fire identically: the header
   predates the sequence ([§9.5][s9-5]'s capture placement), so nothing is applied
   twice and nothing is skipped.
-- **The drain reads the trace.** Each frame top applies the recording's
-  batches for that **frame ordinal** instead of swapping the roster's
-  staging cells. Ordinal keying is exact because the frame sequence is
+- **The [drain](#g-drain) reads the trace.** Each frame top applies the recording's
+  batches for that **[frame ordinal](#g-frame-ordinal)** instead of swapping the [roster](#g-roster)'s
+  [staging cells](#g-staging-cell). Ordinal keying is exact because the frame sequence is
   itself deterministic under replay (`t*` boundaries derive from state,
   [§8.4][s8-4]): frame *k* of the replay *is* frame *k* of the recording. Recorded
   batches apply **verbatim, with no surface re-check** — the write-surface
-  rule ([§9.3][s9-3]) ran at recording time, and claims are a live-roster fact of
+  rule ([§9.3][s9-3]) ran at recording time, and [claims](#g-claim) are a live-roster fact of
   the recorded session that replay does not reconstruct.
 
 Everything else is the loop as already specified:
@@ -3762,7 +3765,7 @@ Everything else is the loop as already specified:
   pointer, defined as running **through the frame whose execution published
   boundary `k`**, so replay always halts at a frame top. For a grid boundary
   that is exactly at `k` (the frame that publishes one ends at it), and
-  [§13.4][s13-4]'s frame-entry pointer lands the same way; a localized `t*`
+  [§13.4][s13-4]'s frame-entry pointer lands the same way; a [localized](#g-localized) `t*`
   boundary inside the frame is reproduced but not stoppable-at
   ([§8.4][s8-4]'s separation: the trace stays frame-indexed, boundaries are
   the reporting index) — or earlier still under the ordinary policies: `t_end` and
@@ -3780,21 +3783,21 @@ Everything else is the loop as already specified:
   inherits the old header and accumulates the re-drained batches — a
   bit-identical prefix — so a replayed-then-continued session leaves behind
   a complete, valid trace of *itself*, with no special stitching.
-- **Pacing and the control plane are unchanged** ([§8.7][s8-7], [§10.1][s10-1]): pacing sits
+- **[Pacing](#g-pacing) and the [control plane](#g-control-plane) are unchanged** ([§8.7][s8-7], [§10.1][s10-1]): pacing sits
   outside the semantics, so paused, slow-motion or real-time replay is free —
   paced replay with an attached visualizer *is* session playback. Stop
   truncates, as anywhere.
-- **Devices are readers.** Rostered devices init and spawn normally ([§9.1][s9-1])
-  and consume snapshots ([§9.2][s9-2], [§10.3][s10-3]) — the visualizer case — but no live
-  staging cell is drained while the trace feeds the loop: a batch found
+- **[Devices](#g-device) are readers.** Rostered devices init and spawn normally ([§9.1][s9-1])
+  and consume [snapshots](#g-snapshot) ([§9.2][s9-2], [§10.3][s10-3]) — the visualizer case — but no live
+  staging [cell](#g-cell) is drained while the trace feeds the loop: a batch found
   staged is discarded with a rate-limited warning
   (`ReplayDiscardedStaging`, [Appendix C][sC]). Mixing live writes into a replay
   would destroy the property replay exists to provide; a session that wants
   live input is a continuation (`run!` after replay), not a replay.
 - **Validation is loud and up front.** Before the first frame, the header is
-  validated against the `Build` (store layout, slot faces) and the trace's
+  validated against the `Build` (store layout, slot [faces](#g-face)) and the trace's
   batch entries against the root input-face list — attach-style, with
-  did-you-mean (`ReplayHeaderMismatch`, `ReplayUnknownFace`, [Appendix C][sC]).
+  [did-you-mean](#g-did-you-mean) (`ReplayHeaderMismatch`, `ReplayUnknownFace`, [Appendix C][sC]).
   The same pass pays the trace-record conversion in reverse: every writer's
   sparse records ([§9.5][s9-5]) are normalized to positional batches
   against the header's schemas, once, off the loop — replay has the whole
@@ -3803,7 +3806,7 @@ Everything else is the loop as already specified:
   per frame under replay either.
   *Structural* mismatch is an error; *parametric* difference is not:
   replaying against the same structure with changed parameters is the
-  **what-if register** — deterministic re-driving of the recorded inputs
+  **[what-if register](#g-what-if-register)** — deterministic re-driving of the recorded inputs
   through a modified model. Bit-identity is promised only against the
   identical build; the what-if register promises determinism, never
   reproduction.
