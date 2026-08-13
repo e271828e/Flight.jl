@@ -2029,7 +2029,9 @@ normatively:
   what the boundary's *first* round tests against;
 - the **last-observed sample** — initialized from the prior when the boundary
   opens and overwritten by every round's evaluation, which is what every later
-  round tests against;
+  round tests against; the one exception is an event that was eligible but
+  blocked (below), whose sample stands — blocking defers its edge rather than
+  consuming it;
 - the boundary's **firing count** — incremented at each firing and reset when the
   boundary ends.
 
@@ -2042,6 +2044,20 @@ no further not-holding → holding edge, so it fires once, at the boundary where
 first held. And a predicate genuinely falsified and re-enabled inside the
 boundary — its effect reverted by another handler's cascade — fires again, at
 this boundary, against a fresh sweep (row 181).
+
+One boundary's iteration, sketched:
+
+```julia
+# entering the boundary, per event:  last ← prior,  count ← 0
+while the previous round fired something   # the first round always runs
+    boundary sweep                         # whole gated schedule, due set fixed for the boundary
+    per event:      eligible ← last not-holding && now holding && count < firing_budget
+    per component:  firing ← its first eligible event, in declaration order
+    per event:      last ← now, unless eligible and not firing   # a blocked edge stays unconsumed
+    fire the firing events                 # handler → project, count += 1
+end                                        # the exit condition is quiescence
+per event:  prior ← last                   # the settled boundary's honest sample
+```
 
 **The prior is updated at each boundary's quiescence, from the final
 post-iteration samples.** That update is unconditional, with no exception. Every
@@ -2104,7 +2120,14 @@ writer precedes any handler's entry.
 in the next round, against the post-transition sweep. Declaration order is
 therefore a **priority with re-decision** rather than a simultaneity. An event
 whose premise the earlier transition falsified simply does not fire; under a
-within-round sequence it would have fired on the stale premise.
+within-round sequence it would have fired on the stale premise. Blocking is
+register-visible (row 191): an eligible-but-blocked event is the one case whose
+last-observed sample is *not* overwritten, so the edge it presented stands
+unconsumed. A guard that keeps holding therefore fires in the next round on that
+same edge; one the transition falsified records not-holding as usual, and any
+later re-rise is a fresh edge. The prior stays honest for free: the quiescent
+round fires nothing, hence blocks nothing, so every sample takes its final
+update before the prior is written.
 
 **Across components, handler order within a round is semantically unobservable**
 for the stronger reason that there is no delivering mechanism at all: nothing
@@ -2942,81 +2965,95 @@ mapping state ([§15.4][s15-4]).
 
 **The input [trace](#g-trace)** is the sequence of drained,
 [device](#g-device)-tagged batches per frame. It extends the determinism
-([§8.7][s8-7]) end-to-end: replaying a recorded interactive session —
-staging fed from the recording, no devices or mappings present — reproduces the
-trajectory bit-identically.
+([§8.7][s8-7]) end-to-end. Replaying a recorded interactive session reproduces
+the trajectory bit-identically, with staging fed from the recording and no
+devices or mappings present.
 
-**One record format: every batch is retained sparse.** At the [drain](#g-drain), each
-drained [cell](#g-staging-cell) is scanned and recorded as (position ⇒ value) pairs for its
-non-`nothing` entries, against the writer's [face](#g-face)-name → position schema in
-the header (below) — an O(surface-width) scan and one small allocation per
-drained batch. The rule is uniform because a [claim](#g-claim)'s *width* is a
-fact about one binding, not about a class of writers — a
+**One record format: every batch is retained sparse.** At the
+[drain](#g-drain) — the frame-top swap that publishes staged device inputs
+into the root slots — each drained [cell](#g-staging-cell) is scanned. Its
+non-`nothing` entries are recorded as (position ⇒ value) pairs, against the
+writer's [face](#g-face)-name → position schema in the header (below). That is
+an O(surface-width) scan and one small allocation per drained batch.
+
+**Why.** The rule is uniform because a [claim](#g-claim)'s *width* is a fact
+about one binding, not about a class of writers. A
 [greedy claim](#g-greedy-claim) is enumerated and as wide as the root
-[contract](#g-contract) ([§9.3][s9-3]) — so keying retention by claim source is
-rejected (row 176). Uniformity is what the consumers get paid in: one
-record format at the trace's edge, no per-entry format flag, one decoder in
-the [what-if register](#g-what-if-register) (replay with edited inputs), in disk serialization and in human inspection, and one
-inverse conversion in [replay](#g-replay) — paid once, up front, off the loop
-([§10.7][s10-7]). The conversion site is the drain and not the staging
-shim because the drained tuple is the *coalesced* truth — a shim-side
-sparse log would need its own merge.
+[contract](#g-contract) ([§9.3][s9-3]), so keying retention by claim source is
+rejected (row 176). Every consumer then handles one format instead of two:
+one record format at the trace's edge, no per-entry format flag, one decoder
+in the [what-if register](#g-what-if-register) (replay with edited inputs), in
+disk serialization and in human inspection, and one inverse conversion in
+[replay](#g-replay). That work is paid once, up front, off the loop
+([§10.7][s10-7]). The conversion site is the drain and not the staging shim
+because the drained tuple is the *coalesced* truth: a shim-side sparse log
+would need its own merge.
 
 **The costs are recorded rather than argued away.** On the wide writers the
-conversion is what keeps the trace honest: a tuple as wide as the unclaimed
+conversion is what keeps the trace honest. A tuple as wide as the unclaimed
 surface carrying one edit would otherwise make trace size track surface
-width rather than information (at hundreds of faces, render-rate dragging
+width rather than information; at hundreds of faces, render-rate dragging
 inflates the trace past the two-orders-below-the-log budget that justifies
-trace-on-by-default, row 29). On the dense [component](#g-component) it costs **about 2×** —
-a position beside every value where the positional tuple carried the value
-alone — which changes no order of magnitude and leaves the budget (row 29)
-standing for every writer at once. The allocation is in-class with what the
-retention carve-out ([§7.5][s7-5]) already admits and smaller per
-[boundary](#g-boundary)
-than the log's [snapshot](#g-snapshot), the carve-out's standing occupant (the one
-qualified exception to retains-what-was-already-allocated). And the decision
-is **reversible as pure implementation**: the conversion is lossless in both
-directions, so verbatim retention could return as a per-entry storage
-optimization — under the same record semantics, the same header and the same
-replay path — if a marathon-session measurement ever asks for it.
+trace-on-by-default (row 29). On the dense [component](#g-component) it costs
+**about 2×** — a position beside every value where the positional tuple
+carried the value alone. That changes no order of magnitude, and it leaves
+the budget (row 29) standing for every writer at once. The allocation is
+in-class with what the retention carve-out ([§7.5][s7-5]) already admits, and
+per [boundary](#g-boundary) it is smaller than the log's [snapshot](#g-snapshot),
+the carve-out's standing occupant — the one qualified exception to
+retains-what-was-already-allocated. And the decision is **reversible as pure
+implementation**: the conversion is lossless in both directions, so verbatim
+retention could return as a per-entry storage optimization if a
+marathon-session measurement ever asks for it. Such a return would leave the
+record semantics, the header and the replay path exactly as they are.
 
 **The [trace header](#g-trace-header) captures the full initial state** `(x, m)` **plus the
-initial root-[slot](#g-slot) values** at `init!` — captured **after `apply!` and the slot
-writes, before the boundary-zero sequence runs** ([§14.5][s14-5]). Both halves of that
-placement are load-bearing: the header holds the *resolved* stores and slots
-as values, never the sparse authored overlay (replay must survive edits to
-declared defaults — the primary-data doctrine, row 38), and never the
-post-transition result — [boundary zero](#g-boundary-zero) is re-executed under replay ([§10.7][s10-7]),
-so a post-sequence capture would re-fire authored-condition events on top of
-already-latched state. (An unfed `mixture = 0.5` never appears in any batch,
-so replay is broken without the slots; the init/trim services own slot
-initialization ([§14.6][s14-6]), and the header capture extends naturally.) The header
-also carries **each writer's face-name → position schema** — the run's frozen
-surface partition — since positional records are meaningless without it and
-replay does not reconstruct claims ([§10.7][s10-7]). And it carries the run's
-**deployment block**: `t₀`, `Δt_base`, `h`, `n`, the algorithm identifier,
-`localization_tol`, `localization_budget` ([§8.4][s8-4]), `firing_budget` ([§8.6][s8-6])
-and the effective `t_end`/`stop_on` pair, captured at the same instant as the
-stores. The trajectory depends on these exactly as it depends on the stores —
-the deployment binding ([§12.1][s12-1]) sits outside the `Build`, and `t₀` post-dates
-even deployment ([§14.5][s14-5]) — so a header without them could not back the
-bit-identity claim ([§10.7][s10-7]). This block is also the artifact **run
-metadata** names ([§13.5][s13-5], [Appendix B][sB]): the recorded home of the
-effective termination pair. This is the one
-full-state capture in a normal run, and the other half of what "given the
-initial state and the trace, the log is recomputable" requires. Header plus batches
-are the *primary* record; everything else, the state trajectory included, is
-derived ([§9.2][s9-2]).
+initial root-[slot](#g-slot) values** at `init!`. The capture happens **after `apply!`
+and the slot writes, before the boundary-zero sequence runs** ([§14.5][s14-5]). Both
+halves of that placement are load-bearing:
 
-**Trace recording is on by default** (cleared at `init!`, retrievable after the run,
-plain kill switch for memory-constrained marathon sessions). The asymmetry that
-decides the default: the trace is *primary* data and the log *derived* — given the
-initial state and the trace, the log is recomputable (that is what bit-identical
-replay means), while an untraced interactive session is unreproducible, permanently.
-The cost supports it: the trace retains one small sparse record per drained
-batch (above), at
-drain-rate × device-count — tens of MB per hour worst case, two orders of magnitude
-below the snapshot log. No sampling, no rolling window (row 29).
+- the header holds the *resolved* stores and slots as values, never the sparse
+  authored overlay — replay must survive edits to declared defaults, the
+  primary-data doctrine (row 38);
+- and it never holds the post-transition result, since
+  [boundary zero](#g-boundary-zero) is re-executed under replay ([§10.7][s10-7]):
+  a post-sequence capture would re-fire authored-condition events on top of
+  already-latched state.
+
+The slots are as load-bearing as the stores. An unfed `mixture = 0.5` never
+appears in any batch, so replay is broken without them; the init/trim services
+own slot initialization ([§14.6][s14-6]), and the header capture extends
+naturally. The header carries two further things:
+
+- **each writer's face-name → position schema** — the run's frozen surface
+  partition — since positional records are meaningless without it and replay
+  does not reconstruct claims ([§10.7][s10-7]);
+- **the run's deployment block**: `t₀`, `Δt_base`, `h`, `n`, the algorithm
+  identifier, `localization_tol`, `localization_budget` ([§8.4][s8-4]),
+  `firing_budget` ([§8.6][s8-6]) and the effective `t_end`/`stop_on` pair,
+  captured at the same instant as the stores.
+
+The trajectory depends on the deployment block exactly as it depends on the
+stores. The deployment binding ([§12.1][s12-1]) sits outside the `Build`, and
+`t₀` post-dates even deployment ([§14.5][s14-5]). A header without them could
+therefore not back the bit-identity claim ([§10.7][s10-7]). This block is also
+what the artifact's **run metadata** names ([§13.5][s13-5], [Appendix B][sB]) —
+the recorded home of the effective termination pair. The header capture is the
+one full-state capture in a normal run, and the other half of what "given the
+initial state and the trace, the log is recomputable" requires. Header plus
+batches are the *primary* record; everything else, the state trajectory
+included, is derived ([§9.2][s9-2]).
+
+**Trace recording is on by default.** The trace is cleared at `init!` and
+retrievable after the run, and a plain kill switch covers memory-constrained
+marathon sessions. The asymmetry that decides the default is that the trace is
+*primary* data and the log *derived*: given the initial state and the trace,
+the log is recomputable, which is what bit-identical replay means. An untraced
+interactive session, by contrast, is unreproducible, permanently. The cost
+supports the default. The trace retains one small sparse record per drained
+batch (above), at drain-rate × device-count — tens of MB per hour worst case,
+two orders of magnitude below the snapshot log. No sampling, no rolling window
+(row 29).
 
 ### 9.6 Devices: one authoring contract, no taxonomy
 
