@@ -5746,12 +5746,8 @@ inputs are authored conditions (`trim!`'s scratch world is built from
 [`override`](#g-override)`(baseline, condition(guess))`, [§14.8][s14-8], never from the sim's
 stores); `linearize` inherits `capture`'s precondition when its operating
 point defaults to `capture(sim)`, and `init!`'s legality with an explicit
-`about` ([§14.10][s14-10]). **`errored` is terminal for all four** (row 59): the
-errored sim's stores may hold mid-boundary values ([§13.6][s13-6]), and a captured
-condition is indistinguishable from a healthy one once produced —
-`capture(errored) → init!` would be resurrection with extra steps, and
-`linearize` about a half-written point the warn-but-assign failure mode
-[§14.8][s14-8] exists to kill. Post-mortem inspection of an errored sim's stores,
+`about` ([§14.10][s14-10]). **`errored` is terminal for all four** (rows 59, 108).
+Post-mortem inspection of an errored sim's stores,
 log and [trace](#g-trace) stays available as a diagnostic read; it may not become a
 condition value. A violation is `ServiceLifecycle` ([Appendix C][sC] — the
 operation, the current status, the legal statuses), the same kind
@@ -5771,19 +5767,11 @@ list, violations collected, one `BuildError`.
 **Overlay base = the declared defaults, always.** Every [store](#g-store) has a declared
 initial value (declaration-by-initial-value, [§11.2][s11-2]), so conditions are
 naturally sparse: applying one means "fresh run from the `init_*` defaults,
-with these overrides." The alternative base — the stopped sim's current
-stores — was rejected: it makes the result depend on run history, exactly the
-hidden input the [trace](#g-trace)-header discipline exists to kill. Warm restart needs no
+with these overrides" (row 63). Warm restart needs no
 second semantics: a `capture` service reads the current stores **and root
 slots** back *as a condition value* (capture → tweak → apply) — slot coverage
 is what makes the captured condition total, hence re-applicable under [§14.6][s14-6] —
 the same gather the [trace header](#g-trace-header) already needs. One mechanism, two uses.
-
-**The mirror-tree spelling was rejected** (nested NamedTuples shaped like the
-[assembly](#g-assembly)): the same information, but a second spelling of structure that must
-be zipped against the real one, ragged under partial specification, and
-outside the path vocabulary that `child_connections`, diagnostics and the `Build`'s
-provenance tables already speak.
 
 **Doctrine.** This does not reopen [§13.5][s13-5]'s observation-by-path rejection:
 that was *runtime* coupling — a root-authored predicate reaching through
@@ -5812,23 +5800,11 @@ whatsoever.
 
 ### 14.2 Fragment composition: locality without schema
 
-The rejected alternative deserves its argument, because it names a real need.
-`initialize(::C, spec)` as a schema entry — today's `f_init!` reborn
-declaratively, with an [assembly](#g-assembly)-level rule routing sub-specs to children —
-would keep init knowledge [component](#g-component)-local (the engine knows
-`n_eng → ω = n_eng·ω_rated`). Rejected on three counts: the routing rule
-makes specs a tree that must mirror the assembly tree — the two-artifact
-drift that killed the assembly builder (row 39), and call-tree composition
-where this design uses data composition everywhere else; spec types with
-`@kwdef` defaults are a *second home* for every store's default, competing
-with `init_x`; and partial overlays would need a per-field "unspecified"
-protocol, while [slots](#g-slot) (root-[face](#g-face) vocabulary) would still need the path layer
-beside it — two mechanisms where one suffices. The kill shot on its
-motivating example: the aero filter's "`α_filt` must equal `α`" is knowledge
-about a *swept output* — a component-local `initialize` computing it would
-need its inputs already swept, turning init into a third scheduled [sweep](#g-sweep).
-Today's code doesn't do that either: the value is passed down from where it
-is known ([§14.1][s14-1]'s pre-sweep doctrine).
+Init knowledge is [component](#g-component)-local — the engine knows
+`n_eng → ω = n_eng·ω_rated`, and nothing above it should have to. Making that
+locality a schema entry (`initialize(::C, spec)`, today's `f_init!` reborn
+declaratively, with an [assembly](#g-assembly)-level rule routing sub-specs to
+children) was rejected (row 64).
 
 What preserves the locality is an idiom, not schema: **[fragment](#g-fragment) functions** —
 ordinary functions, shipped beside the component, dispatched on it:
@@ -5881,8 +5857,7 @@ are [§13.7][s13-7] standard-library material — ordinary artifacts, no privile
 [Merge](#g-merge) collisions — two entries on one leaf — are errors at resolution
 reporting *both* provenance chains, and the message names the layering
 combinator: "`merge` is collision-intolerant by design — use
-`override(base, patch)` to layer." Last-writer-wins was rejected in the same
-spirit as slot exclusivity (a silent merge is almost certainly a bug) — which
+`override(base, patch)` to layer." Last-writer-wins was rejected (row 65) — which
 is exactly where this `merge` parts company with `Base.merge`, last-wins on
 NamedTuples; the two share a name and not a semantics, and dispatch on the node
 types keeps them apart mechanically. The mixed call is closed explicitly: a
@@ -6052,10 +6027,10 @@ parity is exact, not approximate. Piece by piece:
 - **Events run.** A condition landing a guard [predicate](#g-predicate) in [holding](#g-edge-semantics) territory
   (an authored stall flag, a strut authored into contact) fires visibly at `t₀` rather
   than one step later — grounded by the [prior](#g-prior) rule ([§8.6][s8-6]):
-  [boundary zero](#g-boundary-zero) establishes every guard prior as not-holding. Suppression
-  would delay the identical firings while hiding the diagnostic that the
-  authored condition was not quiescent — [§9.7][s9-7]'s [stage-on-interaction](#g-stage-on-interaction) lesson
-  (insurance that masks invariant violations is anti-diagnostic). The header
+  [boundary zero](#g-boundary-zero) establishes every guard prior as not-holding;
+  suppressing those firings was rejected (row 67), on [§9.7][s9-7]'s
+  [stage-on-interaction](#g-stage-on-interaction) lesson (insurance that masks invariant
+  violations is anti-diagnostic). The header
   records the *resolved pre-sequence* stores and slots ([§9.5][s9-5]), so replay
   re-executes [boundary](#g-boundary) zero from the same starting point and whatever fires
   at `t₀` fires again identically ([§10.7][s10-7]) — the firings are recomputed,
@@ -6073,13 +6048,11 @@ parity is exact, not approximate. Piece by piece:
   `g` at `t_{-1}`
   produced a discrete leaf's `x(0)` — the condition did. The outgoing work all runs: `g` at
   `t₀` computes `x(1)` from `t₀` samples, its only opportunity — `x(1)` must
-  sit in the store before `t₁`'s gated stages read it. Skipping `g` at
-  boundary zero would not preserve the authored `x(0)` — that is already
-  preserved, published in the `t₀` snapshot — it would *delete the `t₀`
-  sample from the discrete dynamics*: an accumulator
+  sit in the store before `t₁`'s gated stages read it, and an accumulator
   $x_{k+1} = x_k + \Delta t \, e_k$ authored with $x_0 = 0$ under nonzero $e(t_0)$
-  would first integrate $e(t_1)$, the whole sampled-data lattice one period
-  late. (The continuous-tier analogue of `g`-at-`t₀` is not the empty incoming
+  would otherwise first integrate $e(t_1)$, the whole sampled-data lattice one
+  period late (row 67). The authored `x(0)` needs no protection: it is published
+  in the `t₀` snapshot regardless. (The continuous-tier analogue of `g`-at-`t₀` is not the empty incoming
   integrate but the first *outgoing* one, $t_0 \to t_0 + h$: both authored values
   are the published initial conditions of their outgoing transitions.)
 - **`t₀` is an init-service argument** (default `0.0`), never a condition
@@ -6115,9 +6088,7 @@ parity is exact, not approximate. Piece by piece:
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
 [Slots](#g-slot) are the one initialized datum without declared defaults — [§9.3][s9-3]'s
-bare-types decision, upheld here: a default inside a [face](#g-face) declaration would
-scatter condition data into the wiring [contract](#g-contract) and recreate the
-competing-defaults problem that [§14.2][s14-2] killed for `initialize` specs. So a
+bare-types decision, upheld here (row 68). So a
 slot's only source before [boundary zero](#g-boundary-zero) is the condition, and three
 consequences follow.
 
@@ -6161,11 +6132,7 @@ sources ("patch overrode base's `throttle`"); collisions *within* one
 layer remain errors; variadic layering
 (`override(campaign, aircraft, todays_case)`) composes. Trim uses it on
 day one: the committed condition is `override(baseline, solution)` — the
-solver's handful of values over full coverage. Rejected alternative: a
-service-level base keyword (`init!(sim, patch; base = ...)`) — flatter,
-but it hard-codes exactly two layers and moves a composition decision out
-of the condition algebra, the one place every other composition decision
-lives.
+solver's handful of values over full coverage (row 68).
 
 ### 14.7 The trim problem: NamedTuple decisions, declared reads, named residuals
 
@@ -6215,12 +6182,10 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   substituting the pitch constraint, filter and actuator equilibria imposed
   by construction, the minimal 7-variable search) — is correct and survives
   verbatim as user math. What changes is the numerics: trim is a square
-  root-find that FlightCore had to pose as derivative-free scalar
-  minimization (BOBYQA over $\|r\|^2$ — a flat quadratic valley near the
-  solution, `stopval = 1e-16` as a hand-scaled absolute threshold,
-  thousands of evaluations, no per-equation diagnostics) because Jacobians
-  through the mutating `f_ode!` chain and the assignment math were out of
-  reach. Here the `Dual` [activation](#g-activation) seeds the decision variables through
+  root-find, and FlightCore's derivative-free scalar minimization over
+  $\|r\|^2$ against a hand-scaled absolute `stopval` was the rational choice
+  only because Jacobians through the mutating `f_ode!` chain and the
+  assignment math were out of reach (row 69). Here the `Dual` [activation](#g-activation) seeds the decision variables through
   the `T`-generic assignment, [sweep](#g-sweep) and `f`; the seeds survive the condition
   write boundary because [§14.3][s14-3] selects the baked converter per leaf from the
   shape — a decision-descended leaf is `Dual`-typed there and takes the
@@ -6325,8 +6290,7 @@ backend that ignores bounds ignores two vectors, not a missing argument.
 *may* stop on (that is the service's per-register translation, below) and
 decisive of nothing. Returned: `d`, the solution; `status::Symbol`, from a
 deliberately **open** set, recorded verbatim in the report — the verdict is
-the service's, so a closed enum would buy nothing and would launder foreign
-solvers' vocabularies back into per-backend meaning; and `nevals`/`niters`,
+the service's (row 158); and `nevals`/`niters`,
 diagnostic counts. The name `solve` is subject to the [§16][s16] naming audit like
 every other API spelling. The backend sees vectors and never names, so the
 solution it returns unpacks by the same order it was given.
