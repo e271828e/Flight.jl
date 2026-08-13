@@ -2297,82 +2297,103 @@ The machinery that drives the loop itself follows in [§10][s10].
 
 ### 9.1 No shared mutable model: staged writes, snapshot reads
 
-FlightCore's [periphery](#g-periphery) is one big lock: `SimControl` and the live `Model`, guarded by
-`io_lock`, with one task per attached interface reading or mutating the model under it
-(sim.jl). The lock does enforce the [boundary](#g-boundary)-visibility rule ([§8.3][s8-3]) — it is only ever
-free between steps — but transplanting it here was rejected on three structural costs
-(row 22), of which one is load-bearing for everything below: under a lock, input timing
-is scheduler-determined and unrecorded, so there is no defined input [trace](#g-trace) and
-the bit-identical [replay](#g-replay) ([§8.7][s8-7]) is unachievable *in principle* for interactive runs.
+Everything in the [periphery](#g-periphery) — GUI, input [devices](#g-device), network I/O, logging —
+runs on tasks the loop does not control, and every one of them wants the data
+the loop is stepping. FlightCore's answer is one big lock: `SimControl` and the
+live `Model`, guarded by `io_lock`, with one task per attached interface
+reading or mutating the model under it (sim.jl). That lock does enforce the
+[boundary](#g-boundary)-visibility rule ([§8.3][s8-3]), being only ever free between steps.
+Transplanting it here was nevertheless rejected, on three structural costs
+(row 22). One of the three is load-bearing for everything below: under a lock,
+input timing is scheduler-determined and unrecorded. There is then no defined
+input [trace](#g-trace), and bit-identical [replay](#g-replay) ([§8.7][s8-7]) is unachievable *in principle*
+for interactive runs.
 
-The replacement has five planes. (Vocabulary, anchored here: a **frame** is one
-iteration of the loop — [drain](#g-drain), integrate, boundary sequence, publication — the
-unit `step!` counts, the trace's ordinal keys, and "per frame" means throughout
-this document. Distinct from the kinematic *reference frames* of the aircraft
-domain, which always appear compounded: the b frame, the ECEF frame.)
+The replacement has five planes. Its unit of account is the [frame](#g-frame) (one
+iteration of the loop: [drain](#g-drain), integrate, boundary sequence, publication), the
+grid step [§8.4][s8-4] names. A frame is what `step!` counts, and the ordinal that
+keys the trace; "per frame" means this throughout the document. The kinematic
+*reference frames* of the aircraft domain are a different word, and always
+appear compounded: the b frame, the ECEF frame.
 
-1. **Staging (inbound):** [devices](#g-device) submit pending input writes at any wall-clock
+1. **Staging (inbound):** devices submit pending input writes at any wall-clock
    moment, never touching live [slots](#g-slot) ([§9.4][s9-4]).
-2. **The drain:** exactly one point, at the top of each frame — never at a `t*`
-   boundary ([§8.4][s8-4]) — where the
-   loop takes the staged batches and applies them to the root input slots. Between
-   drains the loop owns its data exclusively — no lock is held during stepping, ever.
-3. **Publication (outbound):** at the end of each boundary sequence the loop publishes
-   an immutable [snapshot](#g-snapshot); readers observe it without coordinating with the loop
-   ([§9.2][s9-2]).
-4. **Control:** pause/pace/stop on a separate few-word atomic surface ([§10.1][s10-1]).
+2. **The drain:** exactly one point in each frame, at its top, where the loop
+   takes the staged batches and applies them to the root input slots. Never at
+   a `t*` boundary ([§8.4][s8-4]). Between drains the loop owns its data
+   exclusively, and no lock is held during stepping, ever.
+3. **Publication (outbound):** at the end of each boundary sequence the loop
+   publishes an immutable [snapshot](#g-snapshot). Readers observe it without coordinating
+   with the loop ([§9.2][s9-2]).
+4. **Control:** pause, pace and stop on a separate few-word atomic surface
+   ([§10.1][s10-1]).
 5. **Task topology:** one loop, one task per rostered device except the
-   calling-task device, all run-scoped: `run!` spawns one task per other
-   [roster](#g-roster) entry after device `init!`, and [§10.4][s10-4] joins them all at every stop ([§10.6][s10-6]).
-   `attach!` never spawns — it registers, in a stopped-sim state only
-   ([§9.3][s9-3]), and the task appears at the next `run!`. **The calling-task
-   device is pinned; the loop is the movable piece.** Calling-task
-   affinity is a device trait (`needs_calling_task`, default `false`,
-   [§9.6][s9-6]) with at most one holder per roster (the admission checks, [§9.3][s9-3]);
-   the shipped GUI declares it — CImGui ties rendering to the calling
-   (main) task. The topology is derived from the [frozen roster](#g-roster) alone —
-   as device `init!` leaves it, a failed calling-task holder returning the
-   loop to the [calling task](#g-calling-task) ([§10.4][s10-4]) — and
-   never from `run!`'s keywords: with a calling-task device rostered the
-   loop moves to a spawned task for the duration of the run and the
-   calling task runs that device's loop body — inline, inside the same
-   [§9.6][s9-6] wrapper as any spawned device's — otherwise the loop runs on the
-   calling task — the unattended register, what the synchronous rethrow
-   ([§13.4][s13-4]) presupposes, and what lets parallel unattended
-   [sweeps](#g-sweep) thread `run!` inline
-   with no nested task fan-out (one immutable [`Build`](#g-build) shared across the
-   workers, [§12.2][s12-2], each `Simulation` owning its own [buffers](#g-buffer); pre-materializing
-   the sweep's [activations](#g-activation) (its per-eltype [executable sets](#g-executable-set):
-   `build(world; activations = …)`, [§12.4][s12-4]) leaves no
-   worker synchronizing on anything). Either way `run!` blocks its caller until
-   the run ends; what varies is what the calling task spends the run
-   doing. Spawn-inside-`run!` *is* the start gate — a task exists only
-   once the run it serves exists — and any first-boundary synchronization a
-   device needs is the counter-plus-condition [predicate](#g-predicate) wait ([§10.3][s10-3]), never an
-   `Event` latch: FlightCore's `io_start` gate is the once-per-run version of
-   exactly the race [§10.3][s10-3] rejects, and inheriting it would re-import that
-   race for the re-run cycle ([§10.6][s10-6]).
+   calling-task device, all run-scoped.
+
+The fifth plane carries the most machinery, and the rest of this section spells
+it out.
+
+**Device tasks are run-scoped.** `run!` spawns one task per other [roster](#g-roster) entry
+after device `init!`, and [§10.4][s10-4] joins them all at every stop ([§10.6][s10-6]).
+`attach!` never spawns: it registers, in a stopped-sim state only ([§9.3][s9-3]), and
+the task appears at the next `run!`.
+
+**The calling-task device is pinned; the loop is the movable piece.**
+Calling-task affinity is a device trait — `needs_calling_task`, default `false`
+([§9.6][s9-6]) — held by at most one device per roster (the admission checks,
+[§9.3][s9-3]). The shipped GUI declares it, because CImGui ties rendering to the
+calling (main) task. With such a device rostered, the loop moves to a spawned
+task for the duration of the run, and the [calling task](#g-calling-task) (the task that invoked
+`run!`) runs that device's loop body. It runs it inline, inside the same
+[§9.6][s9-6] wrapper that brackets any spawned device's loop body. With no such
+device rostered, the loop runs on the calling task.
+
+| | no calling-task device | calling-task device rostered |
+|---|---|---|
+| the calling task runs | the loop | that device's loop body, inline |
+| spawned tasks | one per rostered device | the loop, plus one per other rostered device |
+
+The loop-on-the-calling-task case is the unattended register. It is what the synchronous
+rethrow ([§13.4][s13-4]) presupposes, and what lets parallel unattended [sweeps](#g-sweep) thread
+`run!` inline with no nested task fan-out: one immutable [`Build`](#g-build) is shared
+across the workers ([§12.2][s12-2]), and each `Simulation` owns its own [buffers](#g-buffer).
+Pre-materializing the sweep's [activations](#g-activation) — its per-eltype
+[executable sets](#g-executable-set), `build(world; activations = …)` ([§12.4][s12-4]) — then leaves no
+worker synchronizing on anything. Either way `run!` blocks its caller until the
+run ends; what varies is what the calling task spends the run doing.
+
+**Topology is derived after initialization**, from the [frozen roster](#g-roster) plus the
+outcomes of device `init!`, and never from `run!`'s keywords. [§10.4][s10-4] carries
+the rule and the case that motivates it: a calling-task holder whose `init!`
+failed returns the loop to the calling task.
+
+**Spawn-inside-`run!` is the start gate.** A task exists only once the run it
+serves exists. Any first-boundary synchronization a device needs is the
+counter-plus-condition [predicate](#g-predicate) wait ([§10.3][s10-3]), never an `Event` latch
+(row 93).
 
 Two rules bind the implementation:
 
-- **Every handoff is one atomic reference operation.** Both shared structures reduce
-  their mutable surface to single words (release/acquire `@atomic` fields), and the
-  GC is the reclamation mechanism: an object a reader still holds is reachable and
-  therefore never recycled, which dissolves the reclamation problem (hazard pointers,
-  epochs, RCU grace periods) that makes these patterns hard in non-GC languages.
-  Deep immutability of the exchanged objects is what makes this sound.
+- **Every handoff is one atomic reference operation.** Both shared structures
+  reduce their mutable surface to single words: release/acquire `@atomic`
+  fields. The GC is the reclamation mechanism, since an object a reader still
+  holds is reachable and therefore never recycled. That dissolves the
+  reclamation problem (hazard pointers, epochs, RCU grace periods) which makes
+  these patterns hard in non-GC languages. Deep immutability of the exchanged
+  objects is what makes this sound.
 - **No user code, no unbounded work, ever, inside a framework critical section.**
-  FlightCore's pathologies are all "arbitrary code under a shared lock"; here
+  FlightCore's pathologies are all "arbitrary code under a shared lock". Here
   mappings run on device tasks, rendering runs against snapshots, and the loop's
   frame contains framework and model code only. A stalled device produces stale
-  snapshots and late staging; it cannot stall the loop. (Residual, pre-existing
-  exposures: GC pauses and OS scheduling — the pacer's debt absorption is the
-  mitigation.)
+  snapshots and late staging; it cannot stall the loop. Two exposures are
+  residual and pre-existing: GC pauses and OS scheduling, for which the pacer's
+  debt absorption is the mitigation.
 
-Consequence, recorded because it collapses an API axis: interactive and unattended
-simulation stop being different execution modes. An [unattended run](#g-unattended-run) is the same loop with
-empty staging and no snapshot readers; a replayed interactive session is the same
-loop with staging fed from a recording ([§9.5][s9-5], [§10.7][s10-7]).
+One consequence is recorded here because it collapses an API axis: interactive
+and unattended simulation stop being different execution modes. An
+[unattended run](#g-unattended-run) is the same loop with empty staging and no snapshot readers. A
+replayed interactive session is the same loop with staging fed from a recording
+([§9.5][s9-5], [§10.7][s10-7]).
 
 ### 9.2 Outbound: snapshot publication
 
