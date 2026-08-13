@@ -2770,118 +2770,173 @@ warning runs once per `run!`, against the frozen population.
 
 ### 9.4 Inbound: per-device staging, representation and the drain
 
-**Staging: one atomic [cell](#g-cell) per attached [device](#g-device), one [coalescing](#g-coalescing) policy — CAS
-merge, newest wins per [face](#g-face).** Each cell has a single writer — its own
-device task — and holds that device's latest pending [batch](#g-batch) of [slot](#g-slot) writes.
-Staging merges the incoming batch into the pending one: untouched faces
-survive, re-staged faces take the newest level — the per-face ZOH. The CAS
-can fail only because a [drain](#g-drain) intercepted the old batch, so the retry is
-bounded and the failure case is precisely correct — intercepted writes are
-already applied and must not be re-staged. Merge is the *only* policy
-because it is always correct: for a **complete** writer (a joystick: full
-write-set every poll) every incoming batch covers every face, so merge and
-overwrite are provably the same operation — overwrite is a degenerate fast
-path, not a second semantics — while for a **sparse** writer (the GUI, a
-JSON peer: only what was touched) overwrite is a silent lost-write bug
-([§15.3][s15-3]'s hazard: a pending `flaps` edit clobbered by an unrelated `gear`
-message, undrained, undiagnosable). A user-facing overwrite opt-in
-(`complete(binding)`) is closed (row 104).
+A device produces writes on its own task, whenever its hardware or its peer
+hands it a datum; the loop consumes them at frame top. Between those two rates
+something has to hold each device's pending writes and hand the loop a value
+it can apply. That something is the staging cell. This section fixes the
+policy under which a device writes into its cell, the shape the cell holds,
+and the [drain](#g-drain) (the frame-top swap that publishes staged device
+inputs into the root slots) that empties it.
 
-**The staged representation is fixed per attachment, compiled at attach.**
-An enumerated writer's [claim](#g-claim) set and slot types are both known at attach
-(`claims(binding)`, [§9.6][s9-6], against the root [contract](#g-contract)), so the framework
-fixes the cell's content type there: a positional tuple over the claim
-set, `Union{Nothing, T}` per face (isbits unions — pointer-free), with
-`nothing` meaning *not touched this time*, never "reset" — the levels
-doctrine is untouched, slots only ever receive the non-`nothing`
-positions, and the `Union` never reaches the model. The face-name →
-position schema lives in the [roster](#g-roster) entry. The consequences are each
-mechanical: the merge is positional (`incoming[i] === nothing ? pending[i]
-: incoming[i]`) — straight-line, union-split; the drain applies each cell
-through an attach-compiled **scatter** (position → slot cell, statically
-typed, `nothing` skips) — the exact mirror of the compiled output gather
-([§9.2][s9-2]); and authors never build the shape by hand — `map_input` returns
-face ⇒ value pairs for whatever the datum touched, and `stage!` normalizes
-through an attach-compiled shim (name → position, convert to the slot's
-declared type, fill `nothing`), confining the residual name-shaped
-dynamism to one framework-owned conversion on the device task, at the
-[boundary](#g-boundary) where wire-shaped data becomes system-shaped data. (Author-built
-total tuples are rejected as a padding form, the same disease row 74 and
-the handler return law refuse — row 104.) A **greedy entry needs no
-special treatment here**: its claim
-was computed at the attach point and is an ordinary claim set by the time
-shapes are compiled ([§9.3][s9-3]), so the GUI's cell is compiled exactly as a
-joystick's. The **[harness cell](#g-harness-cell) gets the same treatment**: under the roster
-freeze its derived surface — the unclaimed complement — is as static as any
-claim set, so it too is compiled to a positional shape, recompiled at each
-`attach!`/`detach!` (a stopped-sim point), with the same shim, merge and
-scatter; always present, it gets the compilation unasked, and it is the one
-cell whose shape the framework derives rather than receives. One
-representation, one mechanism; the
-name-keyed dynamic path the mutable surface used to force does not exist,
-and no face name is ever resolved inside the loop's frame. The
-recompilation has one seam: a pending harness batch staged *before* a
-stopped-sim `attach!` may hold the old shape, or name a face the new claim
-covers — the attach renormalizes it (reshape, discard newly-claimed faces
-with `ClaimedFaceEntry`), so the run always starts with cells matching the
-run's schemas.
+**Rule.** Staging keeps one atomic [cell](#g-cell) per attached
+[device](#g-device) under one [coalescing](#g-coalescing) policy: CAS merge,
+newest wins per [face](#g-face). Each cell has a single writer, its own device
+task, and holds that device's latest pending [batch](#g-batch) of
+[slot](#g-slot) writes. Staging merges the incoming batch into the pending
+one. Untouched faces survive; re-staged faces take the newest level, the
+per-face ZOH. The CAS can fail only because a drain intercepted the old batch,
+so the retry is bounded. The failure case is precisely correct as well:
+intercepted writes are already applied, and must not be re-staged.
 
-**Diagnostic sites follow the compilation — all of them to staging.**
-Face-name validity, surface membership and value convertibility are all
-static facts of the run, so every check runs in `stage!`'s normalization,
-on the writer's own task: a device's out-of-claim face has no
-position in the schema and is rejected (`OutOfClaimEntry` — an earlier,
-better-attributed site than the drain; same kind, same [payload](#g-payload) — the GUI
-included, its claim being an ordinary one); a **harness** write to a claimed
-face is rejected the same way
-(`ClaimedFaceEntry`, naming the incumbent device); and a value that cannot
-convert to its slot's declared type is discarded with `EntryTypeMismatch`
-([Appendix C][sC]) at the same spot. Nothing remains at the drain: with surfaces
-frozen for the run, there is no fact only the drain can know, and the
-drain is pure application.
+**Why.** Merge is the *only* policy because it is always correct. A
+**complete** writer covers every face in every batch it stages — a joystick
+delivering its full write-set every poll is the type case. For such a writer
+merge and overwrite are provably the same operation, which makes overwrite a
+degenerate fast path rather than a second semantics. A **sparse** writer — the
+GUI, a JSON peer, each staging only what was touched — loses writes silently
+under overwrite instead. [§15.3][s15-3] works that hazard through: a pending
+`flaps` edit clobbered by an unrelated `gear` message, undrained and
+undiagnosable. A user-facing overwrite opt-in (`complete(binding)`) is closed
+(row 104).
 
-**Doctrine: staged values are levels, never deltas** (`press_count = 17`, never
-`presses += 1`) — levels are idempotent and survive coalescing; button edges ride as
-monotonic counters.
+**Rule.** The staged representation is fixed per attachment, compiled at
+attach. An enumerated writer's [claim](#g-claim) set and slot types are both
+known at attach, `claims(binding)` ([§9.6][s9-6]) read against the root
+[contract](#g-contract). So the framework fixes the cell's content type there:
+a positional tuple over the claim set, `Union{Nothing, T}` per face. Those
+unions are isbits, hence pointer-free. `nothing` means *not touched this
+time*, never "reset". The levels doctrine is therefore untouched, slots only
+ever receive the non-`nothing` positions, and the `Union` never reaches the
+model. The face-name → position schema lives in the [roster](#g-roster) entry.
 
-**The drain** (frame top): one `atomicswap(cell, nothing)` per device — an
-indivisible take, no lost-write window — every cell applied through its
-compiled scatter, **in attachment order**, retained
-as a deterministic application order (under slot exclusivity, cross-device writes
-to one slot cannot arise; the order matters only for diagnostics). Which
-*frame* a write lands in remains wall-clock reality; what the drain guarantees is
-that the frame's outcome is a pure function of the drained batches. Because
-the roster is a fixed value at `run!`, the drain is fully compilable: the
-cells and their scatters form a heterogeneous but *known* tuple the frame
-function can specialize on — zero dynamic dispatch at frame top — the same
-per-configuration compile trade the [executor](#g-executor) ([§12.7][s12-7]) already makes, now incurred
-only at stopped-sim attach points. (The specialization is an implementation
-freedom [the freeze](#g-the-freeze) creates, not an obligation; iterating a roster array
-costs a handful of dispatches per frame and remains acceptable.)
+In sketch form:
 
-Rejected shapes, both torture-tested in [§15.3][s15-3]: per-slot atomic cells,
-and a shared lock-free [batch](#g-batch) stack (row 24).
+```julia
+# claim set enumerated f₁ … fₙ; Tᵢ = declared type of the slot behind fᵢ
 
-**Mappings run on the device task**: today's `assign_input!(mdl, mapping, data)`
-becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
-executes inside the loop's frame, and the trace consists of slot-level batches.
+# attach fixes the cell's content type:
+Tuple{Union{Nothing,T₁}, …, Union{Nothing,Tₙ}}
+
+# stage!, on the device task: the shim turns the author's face ⇒ value pairs
+# into `incoming` — name → position, convert to Tᵢ, fill nothing
+
+# staging merges into the pending batch, newest wins per face:
+merged[i] = incoming[i] === nothing ? pending[i] : incoming[i]
+
+# the drain scatters, nothing skipped:
+batch[i] === nothing || (the slot at position i receives batch[i])
+```
+
+The consequences are each mechanical. The merge is positional
+(`incoming[i] === nothing ? pending[i] : incoming[i]`), so it compiles
+straight-line and union-split. The drain applies each cell through an
+attach-compiled **scatter**: position → slot cell, statically typed, `nothing`
+skipped. That scatter is the exact mirror of the compiled output gather
+([§9.2][s9-2]).
+
+Authors never build the shape by hand. `map_input` returns face ⇒ value pairs
+for whatever the datum touched, and `stage!` normalizes those pairs through an
+attach-compiled shim. The shim does three things: name → position, convert to
+the slot's declared type, fill `nothing`. It thereby confines the residual
+name-shaped dynamism to one framework-owned conversion on the device task, at
+the [boundary](#g-boundary) where wire-shaped data becomes system-shaped data.
+Author-built total tuples are rejected as a padding form, the same disease
+row 74 and the handler return law refuse (row 104).
+
+**A greedy entry needs no special treatment here.** Its claim was computed at
+the attach point, and by the time shapes are compiled it is an ordinary claim
+set ([§9.3][s9-3]). The GUI's cell is compiled exactly as a joystick's.
+
+**The [harness cell](#g-harness-cell) (the always-present staging cell of the
+harness register) gets the same treatment.** Under the roster freeze its
+derived surface — the unclaimed complement — is as static as any claim set, so
+it too is compiled to a positional shape. That shape is recompiled at each
+`attach!`/`detach!`, both stopped-sim points, and it carries the same shim,
+merge and scatter. Being always present, the harness cell gets the
+compilation unasked. It is also the one cell whose shape the framework derives
+rather than receives.
+
+One representation, one mechanism. The name-keyed dynamic path the mutable
+surface used to force does not exist, and no face name is ever resolved inside
+the loop's frame.
+
+The recompilation has one seam. A pending harness batch staged *before* a
+stopped-sim `attach!` may hold the old shape, or may name a face the new claim
+covers. The attach renormalizes that batch: it is reshaped, and newly-claimed
+faces are discarded with `ClaimedFaceEntry`. So the run always starts with
+cells matching the run's schemas.
+
+**Rule.** Diagnostic sites follow the compilation, all of them to staging.
+Face-name validity, surface membership and value convertibility are all static
+facts of the run. Every check therefore runs in `stage!`'s normalization, on
+the writer's own task. A device's out-of-claim face has no position in the
+schema and is rejected with `OutOfClaimEntry`. Staging is an earlier,
+better-attributed site than the drain for that rejection, and the kind and
+[payload](#g-payload) are the same either way. The GUI is included, its claim
+being an ordinary one. A **harness** write to a claimed face is rejected the
+same way, with `ClaimedFaceEntry` naming the incumbent device. And a value
+that cannot convert to its slot's declared type is discarded with
+`EntryTypeMismatch` ([Appendix C][sC]), at the same spot.
+
+Nothing remains at the drain. With surfaces frozen for the run, there is no
+fact only the drain can know, and the drain is pure application.
+
+**Doctrine: staged values are levels, never deltas** (`press_count = 17`,
+never `presses += 1`). Levels are idempotent and survive coalescing. Button
+edges ride as monotonic counters.
+
+**Rule.** At frame top the drain takes each device's cell with one
+`atomicswap(cell, nothing)`. The swap is an indivisible take, so there is no
+lost-write window. Each taken cell is then applied through its compiled
+scatter, **in attachment order**. Attachment order is retained as a
+deterministic application order. Under slot exclusivity, cross-device writes
+to one slot cannot arise, so the order matters only for diagnostics.
+
+Which *frame* a write lands in remains wall-clock reality. What the drain
+guarantees is that the frame's outcome is a pure function of the drained
+batches.
+
+Because the roster is a fixed value at `run!`, the drain is fully compilable.
+The cells and their scatters form a heterogeneous but *known* tuple the frame
+function can specialize on, which means zero dynamic dispatch at frame top.
+That is the same per-configuration compile trade the [executor](#g-executor)
+([§12.7][s12-7]) already makes, now incurred only at stopped-sim attach
+points. The specialization is an implementation freedom
+[the freeze](#g-the-freeze) creates, not an obligation. Iterating a roster
+array costs a handful of dispatches per frame and remains acceptable.
+
+Two shapes were rejected, both torture-tested in [§15.3][s15-3]: per-slot
+atomic cells, and a shared lock-free [batch](#g-batch) stack (row 24).
+
+**Mappings run on the device task.** Today's
+`assign_input!(mdl, mapping, data)` becomes the pure
+`map_input(data, mapping) → batch`. User-extensible code thereby never
+executes inside the loop's frame, and the trace consists of slot-level
+batches.
 
 **Mappings are binding data, not shaping code** ([§15.4][s15-4]). A mapping is
-a declarative table — axis/button → slot path, plus per-axis conditioning
-parameters (deadzone, expo strength) applied by the shipped `TableBinding`'s
-generic `map_input` on the
-device task ([§9.6][s9-6] — the shared pure helper, with an owner). The boundary is set by the face contract: **a face's meaning is
-writer-independent**, so faces carry *post-conditioning* semantics — a GUI slider
-or a script writes the same command a curved stick delivers (running a mouse drag
-through a deadzone would be absurd); this GUI-parity test is what places
-conditioning upstream. Aircraft-semantic derivation (the C172X `q_ref = q_sf ·
-axis` fan-out) must *not* ride along: it is FCS design and lives in-model — in
-the avionics, or accepted as a small per-aircraft×device mapping entry (an
-aircraft-design fork, [§15.4][s15-4]). The [trace records](#g-trace-record) post-conditioning levels —
-exactly what the model consumed, so [replay](#g-replay) is exact; raw-stick provenance (re-run
-a session through *different* curves) is the known, accepted loss. Edge logic
-follows the levels doctrine: devices stage monotonic press counters; accumulators
-(trim offsets, flap detents) are model state, not mapping state ([§15.4][s15-4]).
+a declarative table: axis/button → slot path, plus per-axis conditioning
+parameters (deadzone, expo strength). The shipped `TableBinding` applies those
+parameters in its generic `map_input`, on the device task ([§9.6][s9-6] — the
+shared pure helper, with an owner).
+
+The boundary is set by the face contract: **a face's meaning is
+writer-independent**. Faces therefore carry *post-conditioning* semantics. A
+GUI slider or a script writes the same command a curved stick delivers, and
+running a mouse drag through a deadzone would be absurd. This GUI-parity test
+is what places conditioning upstream.
+
+Aircraft-semantic derivation must *not* ride along, the C172X
+`q_ref = q_sf · axis` fan-out being the case in point. It is FCS design and
+lives in-model, in the avionics. Alternatively it is accepted as a small
+per-aircraft×device mapping entry, an aircraft-design fork ([§15.4][s15-4]).
+
+The [trace records](#g-trace-record) post-conditioning levels. Those are
+exactly what the model consumed, so [replay](#g-replay) is exact. Raw-stick
+provenance — re-running a session through *different* curves — is the known,
+accepted loss. Edge logic follows the levels doctrine: devices stage monotonic
+press counters. Accumulators (trim offsets, flap detents) are model state, not
+mapping state ([§15.4][s15-4]).
 
 ### 9.5 Inbound: the input trace
 
