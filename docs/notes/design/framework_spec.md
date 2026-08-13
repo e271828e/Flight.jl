@@ -2006,163 +2006,194 @@ offset shifting firing instants and never the period, so the discretized laws
 
 ### 8.6 Event iteration at boundaries: to quiescence, budgeted
 
-Resolves the question deferred in [§5.3][s5-3]. At each [boundary](#g-boundary), the event phase **iterates**:
-rounds of *(re-run the [boundary sweep](#g-sweep) → evaluate all [guards](#g-guard) → fire the eligible
-events, at most one per [component](#g-component), each `handler → project`)* until a round fires
-nothing, under the rule that **each declared event fires at most `firing_budget`
-times per boundary** — a `Simulation` deployment keyword, an integer ≥ 1
-defaulting to **4**. Eligibility within the boundary is an edge like any other,
-read against the event's **last-observed sample** rather than against the
-boundary's entry [prior](#g-prior): the sample is initialized from the prior when the
-boundary opens and refreshed every round, so an event is eligible in a round
-when that round observes its [predicate](#g-predicate) [holding](#g-edge-semantics) and the last observation before
-it was not-holding. A predicate that simply keeps holding therefore fires once;
-a predicate genuinely falsified and re-enabled inside the boundary — its effect
-reverted by another handler's cascade — fires again, at this boundary, against
-a fresh sweep (row 181).
+This section settles what [§5.3][s5-3] leaves open: how far the event phase runs
+at a [boundary](#g-boundary), and how often each event may fire while it does.
+The phase **iterates**. One round re-runs the [boundary sweep](#g-sweep),
+evaluates all [guards](#g-guard) against it, and fires the eligible events — at
+most one per [component](#g-component), each firing being `handler → project`.
+Rounds continue to **[quiescence](#g-quiescence)** (the fixed point where a round
+of handlers fires nothing).
+
+**Rule.** An event fires in an iteration round iff three things are true: its
+[predicate](#g-predicate) is observed holding in that round, the sample observed
+before it was not-holding, and the event's firing count for this boundary is
+below `firing_budget`. That is the whole of "newly-fired". The predicate is the
+one [§2.1][s2-1] defines: the `Bool` form true, or `σ ≥ 0`. `firing_budget` is a
+`Simulation` deployment keyword, an integer ≥ 1 defaulting to **4**, and it caps
+how many times each declared event may fire at one boundary.
+
+The per-event **loop state** that decides the rule is three registers, all named
+normatively:
+
+- the **[prior](#g-prior)** — the previous boundary's quiescent sample, which is
+  what the boundary's *first* round tests against;
+- the **last-observed sample** — initialized from the prior when the boundary
+  opens and overwritten by every round's evaluation, which is what every later
+  round tests against;
+- the boundary's **firing count** — incremented at each firing and reset when the
+  boundary ends.
+
+Eligibility inside a boundary is therefore an [edge](#g-edge-semantics) like any
+other: a not-holding → holding transition, never a bare sign change. What differs
+is the reference sample — the edge is read against the last-observed sample, not
+against the boundary's entry prior. Two consequences follow directly. Sticky
+predicates need no special case: an event that fires and *keeps* holding presents
+no further not-holding → holding edge, so it fires once, at the boundary where it
+first held. And a predicate genuinely falsified and re-enabled inside the
+boundary — its effect reverted by another handler's cascade — fires again, at
+this boundary, against a fresh sweep (row 181).
+
+One boundary's iteration, sketched:
+
+```julia
+# entering the boundary, per event:  last ← prior,  count ← 0
+while the previous round fired something   # the first round always runs
+    boundary sweep                         # whole gated schedule, due set fixed for the boundary
+    per event:  eligible ← last not-holding && now holding && count < firing_budget
+    per event:  last ← now
+    fire the eligible events               # ≤ 1 per component; handler → project, count += 1
+end                                        # the exit condition is quiescence
+per event:  prior ← last                   # the settled boundary's honest sample
+```
+
+**The prior is updated at each boundary's quiescence, from the final
+post-iteration samples.** That update is unconditional, with no exception. Every
+prior is therefore an honest observation of a settled boundary, which is what
+makes the θ = 0 discriminator ([§8.4][s8-4]) conclusive: the
+[frame-top drain](#g-drain) is the sole possible source of disagreement between
+the prior and the probed left end.
+
+All three registers are detection bookkeeping, not model memory. They are
+correctly *not* in any state store — not captured, not traced, reconstructed
+deterministically. Beyond the prior, the cost is one `Bool` and one small counter
+per event.
+
+**[Boundary zero](#g-boundary-zero) establishes every prior as not-holding.** A
+predicate already holding in the authored state therefore fires at `t₀`, and that
+behavior ([§14.5][s14-5]) is derived rather than asserted. A warm restart resets
+all three registers from scratch, `init!` re-running boundary zero
+([§14.5][s14-5]): predicates holding in the newly applied state fire again at the
+new `t₀`.
 
 **Why iterate.** Under a single pass, a cascade of N logically-simultaneous
-transitions (supervisor FSM → subordinate FSM → …) completes in N steps: latency N·h,
-with h an execution parameter. That is model semantics depending on the integrator's
-step size — the same footgun class [§2.2][s2-2] cited when killing `f_step!` —
-and the blessing of externalized FSM components ([§3.1][s3-1]) makes
-cross-component cascades the expected
-idiom, not a corner case. Orthodoxy concurs: hybrid automata take sequences of
-instantaneous transitions at one time point; Modelica iterates events to [quiescence](#g-quiescence);
-Stateflow runs charts to completion within a [tick](#g-tick). (Boundary-detection timing remains
-h-dependent — that is the *resolution* at which a physical crossing is noticed; the
-cascade delay would have been structure the framework inserts between transitions the
-model declares simultaneous.)
+transitions (supervisor FSM → subordinate FSM → …) completes in N steps, at
+latency N·h. That makes model semantics depend on the integrator's step size,
+`h` being an execution parameter — the same footgun class [§2.2][s2-2] cited when
+killing `f_step!`. Cascades are not a corner case either: the blessing of
+externalized FSM components ([§3.1][s3-1]) makes cross-component ones the
+expected idiom. Orthodoxy concurs. Hybrid automata take sequences of
+instantaneous transitions at one time point, Modelica iterates events to
+quiescence, and Stateflow runs charts to completion within a [tick](#g-tick).
 
-**Why a full re-sweep per round.** A transition reaches the [signal table](#g-signal-table) *only*
-through a sweep: a handler writes its component's state stores and nothing else, so
-neither the transitioning component's own [ports](#g-port) nor the downstream stage-2 chains
-reading them have moved. A round therefore re-runs the whole gated [schedule](#g-schedule). Sweeps
-are microseconds and rounds beyond the first require an actual cascade, so the cost
-is noise.
+Boundary-detection timing remains h-dependent, but that is a different quantity:
+the *resolution* at which a physical crossing is noticed. The cascade delay would
+have been structure the framework inserts between transitions the model declares
+simultaneous.
 
-**Within-round visibility: one writer, one epoch.** The signal table has a
-single writer: **sweeps**. A handler writes nothing to it — it returns
-transitions, the framework latches them into the component's state stores,
-and `project` normalizes them; auto-publication is a sweep act like any
-other stage-1 write ([§12.5][s12-5]). Nothing moves the table mid-round.
-Hence the [epoch rule](#g-input-epoch), which is the whole of this section's content:
-**a handler executes against exactly the world its guard fired on** — own
-`y`, foreign `u`, own `x`/`m` are all the firing round's sweep, so
-`y = h(x)` holds at every handler entry, with no [bundle](#g-bundle) straddling two
-epochs. Serialization is what delivers it: a component's state stores are
-written only by its own handlers, and it fires **at most one event per
-round**, so no same-round writer precedes any handler's entry.
+**Why a full re-sweep per round.** A transition reaches the
+[signal table](#g-signal-table) *only* through a sweep. A handler writes its
+component's state stores and nothing else, so neither the transitioning
+component's own [ports](#g-port) nor the downstream stage-2 chains reading them
+have moved. A round therefore re-runs the whole gated [schedule](#g-schedule).
+The cost is noise: sweeps are microseconds, and rounds beyond the first require
+an actual cascade.
 
-A component's other eligible events are not lost, only *blocked*: each is
-re-decided in the next round against the post-transition sweep. Declaration
-order is therefore a **priority with re-decision** rather than a
-simultaneity — an event whose premise the earlier transition falsified
-simply does not fire, which under a within-round sequence it would have done
-on the stale premise. Across components, handler order within a round is
-**semantically unobservable** for the stronger reason that there is no
-delivering mechanism at all: nothing writes the table mid-round, so there is
-nothing for order to observe. The execution order — [executor](#g-executor) component
-order, declaration order within a component — is fixed only to keep the
-[§13.4][s13-4] cursor and the diagnostics stream deterministic, never
-something a trajectory depends on. The natural single-pass executor, building
-each handler's bundle at dispatch from the live table, is exactly correct:
-no pre-materialization, no staging pass, no carrier — no shadow table, no
-allocation, trivially.
+**Within-round visibility: the signal table has a single writer, and it is the
+sweep.** A handler writes nothing to the table. It returns transitions, the
+framework latches them into the component's state stores, and `project`
+normalizes them; auto-publication is a sweep act like any other stage-1 write
+([§12.5][s12-5]). Nothing moves the table mid-round.
 
-The trade, recorded openly: a handler cannot opt into seeing a same-round
-foreign transition — same-instant sequential coupling across components is a
-cascade, one round per link, deterministic; coupling tighter than that
-belongs inside one component, where declaration order gives exact sequencing
-across rounds (the synchronous-languages position: a micro-step sees the
-pre-state, effects appear at the next micro-step). The cost of serializing
-same-component firings is one extra intra-boundary sweep per event so
-serialized — microseconds, on the rare boundary that fires at all. The
-rejected shapes are row 154's: the per-event re-decode with a frozen
-round-start `u` (rows 16, 100, 152), live-table
-reads under the canonical execution order, a table copy per firing round
-(row 100), and handlers stripped of their own `y`.
+Hence the [epoch rule](#g-input-epoch), which is the whole of this section's
+content: **a handler executes against exactly the world its guard fired on.** Own
+`y`, foreign `u`, own `x`/`m` are all the firing round's sweep, so `y = h(x)`
+holds at every handler entry. No [bundle](#g-bundle) — the NamedTuple of
+zero-copy views a component function receives — ever straddles two epochs.
+Serialization is what delivers it: a component's state stores are written only by
+its own handlers, and it fires **at most one event per round**, so no same-round
+writer precedes any handler's entry.
+
+**A component's other eligible events are blocked, not lost.** Each is re-decided
+in the next round, against the post-transition sweep. Declaration order is
+therefore a **priority with re-decision** rather than a simultaneity. An event
+whose premise the earlier transition falsified simply does not fire; under a
+within-round sequence it would have fired on the stale premise.
+
+**Across components, handler order within a round is semantically unobservable**
+for the stronger reason that there is no delivering mechanism at all: nothing
+writes the table mid-round, so there is nothing for order to observe. Execution
+order is fixed all the same — [executor](#g-executor) component order, then
+declaration order within a component — to keep the [§13.4][s13-4] cursor and the
+diagnostics stream deterministic. No trajectory depends on it. The natural
+single-pass executor is thereby exactly correct: it builds each handler's bundle
+at dispatch, from the live table. No pre-materialization, no staging pass, no
+carrier — no shadow table, no allocation, trivially.
+
+**The trade, recorded openly: a handler cannot opt into seeing a same-round
+foreign transition.** Same-instant sequential coupling across components is a
+cascade, one round per link, deterministic. Coupling tighter than that belongs
+inside one component, where declaration order gives exact sequencing across
+rounds. That is the synchronous-languages position: a micro-step sees the
+pre-state, and effects appear at the next micro-step. The cost of serializing
+same-component firings is one extra intra-boundary sweep per event so serialized,
+which is microseconds on the rare boundary that fires at all. The rejected shapes
+are recorded in row 154: the per-event re-decode with a frozen round-start `u`
+(rows 16, 100, 152), live-table reads under the canonical execution order, a
+table copy per firing round (row 100), and handlers stripped of their own `y`.
 
 **Why a per-event budget.** A re-enabled event fires at its *true* boundary,
 against a fresh sweep; the deferral design and the per-round cap are both
-rejected (rows 20, 181). Priors stay honest as a consequence:
-every prior is a sample actually taken, never a value recorded to make a rule
-work out. Termination is then budget-bounded rather than structural — at most
-`firing_budget · E` firings per boundary for `E` declared events, hence a
-bounded number of rounds, deterministically and independently of pace. A
-livelock (two FSMs toggling each other) does not resolve silently: each
-toggler spends its budget, warns (below), and the run proceeds and replays
-identically — degradation, not an error, per the doctrine ([§8.4][s8-4]) — and the
-warning names the actual chatterer while every other event's iteration
-continues untouched. The trade is recorded openly: termination is
-budget-bounded rather than structural, so the arbitrary-K objection lives on in
-`firing_budget`. What that buys is the absence of deferral machinery — no
-manufactured prior, no re-arm flag, no `EventDeferred` warning, no one-step
-artifact, and no collapse of several intra-boundary re-arms into a single later
-firing.
+rejected (rows 20, 181). Priors stay honest as a consequence: every prior is a
+sample actually taken, never a value recorded to make a rule work out.
 
-**Guard priors and firing semantics.** "Newly-fired" means precisely this:
-an event fires in an iteration round iff its predicate ([§2.1][s2-1]: the `Bool` form
-true, or `σ ≥ 0`) is observed holding in that round, the sample observed
-before it was not-holding, and the event's firing count for this boundary is
-below `firing_budget`. The per-event **loop state** that decides it is three
-registers, all named normatively: the **prior** — the previous boundary's
-quiescent sample, which is what the boundary's *first* round tests against;
-the **last-observed sample**, initialized from the prior when the boundary
-opens and overwritten by every round's evaluation, which is what every later
-round tests against; and the boundary's **firing count**, incremented at each
-firing and reset when the boundary ends. Sticky predicates need no special
-case: an event that fires and *keeps* holding presents no further
-not-holding → holding edge, so it fires once, at the boundary where it first
-held.
+Termination is then budget-bounded rather than structural. For `E` declared
+events a boundary admits at most `firing_budget · E` firings, hence a bounded
+number of rounds, deterministically and independently of pace. A livelock — two
+FSMs toggling each other — does not resolve silently. Each toggler spends its
+budget and warns (below), and the run proceeds and replays identically:
+degradation, not an error, per the doctrine ([§8.4][s8-4]). The warning names the
+actual chatterer, while every other event's iteration continues untouched.
 
-The prior is updated at each boundary's quiescence from the final
-post-iteration samples — unconditionally, with no exception: it is always an
-honest observation of the settled boundary, which is what makes the θ = 0
-discriminator ([§8.4][s8-4]) conclusive — the [frame-top drain](#g-drain) is
-then the
-sole possible source of disagreement between the prior and the probed left
-end. All three registers are detection
-bookkeeping, not model memory — correctly *not* in any state store: not
-captured, not traced, reconstructed deterministically; the cost is one `Bool`
-and one small counter per event beyond the prior. **[Boundary zero](#g-boundary-zero) establishes
-every prior as not-holding**, so a predicate already holding in the authored
-state fires at `t₀` — the behavior ([§14.5][s14-5]), derived rather than asserted —
-and a warm restart (`init!` re-runs boundary zero, [§14.5][s14-5]) resets all three
-registers from scratch: predicates holding in the newly applied state fire
-again at the new `t₀`.
+The trade is recorded openly. Termination being budget-bounded rather than
+structural, the arbitrary-K objection lives on in `firing_budget`. What that buys
+is the absence of deferral machinery — no manufactured prior, no re-arm flag, no
+`EventDeferred` warning, no one-step artifact, and no collapse of several
+intra-boundary re-arms into a single later firing.
 
 **Budget exhaustion degrades; it does not throw.** When an event has fired
-`firing_budget` times at a boundary, its further edges there are **lost** for
-the remainder of that boundary — it is skipped by the eligibility test while
-every other event iterates normally — under a `FiringBudget` warning
-([§13.2][s13-2], [Appendix C][sC]) carrying the component path, the event name, the
-boundary time and the exhausted budget beside the boundary's firing count,
-emitted at most once per event per boundary. The default of **4** is chosen
-the way [§8.4][s8-4]'s is: a legitimate re-enable is one or two firings deep, a
-toggling FSM pair chatters without bound, and 4 separates them without ever
-binding on a healthy model. Like every other degradation here it is a
-function of the trajectory alone, so the run replays identically.
+`firing_budget` times at a boundary, its further edges there are **lost** for the
+remainder of that boundary: it is skipped by the eligibility test while every
+other event iterates normally. Exhaustion emits a `FiringBudget` warning
+([§13.2][s13-2], [Appendix C][sC]), at most once per event per boundary. The
+warning carries the component path, the event name, the boundary time and the
+exhausted budget beside the boundary's firing count.
 
-**Ticks stay outside the iteration, after quiescence.** The two possible couplings
-resolve asymmetrically:
+The default of **4** is chosen the way [§8.4][s8-4]'s is: a legitimate re-enable
+is one or two firings deep, a toggling FSM pair chatters without bound, and 4
+separates them without ever binding on a healthy model. Like every other
+degradation here it is a function of the trajectory alone, so the run replays
+identically.
 
-- *Events → ticks: handled by machinery already in place.* Due discrete components'
-  output stages (`h_x`/`h_xu`) are gated *into* the boundary sweep against a due set
-  fixed for the whole iteration ([§8.5][s8-5]), so every
-  iteration round refreshes them for free — same `x` (their `g` has not run), post-transition inputs. At
-  quiescence, their published outputs reflect the settled boundary instant, which is
-  exactly what "sampling at t" should mean for a logically-instantaneous cascade.
-  Earlier rounds' tentative values are internal scratch, like RK stage evaluations;
-  [§8.3][s8-3] extends naturally: external readers observe the table only after the boundary
-  sequence *completes*.
-- *Ticks → events: structurally impossible.* A tick's output stages contribute nothing
-  guards have not already seen (they run inside the sweep, from current `x`); its `g`
-  update writes `x⁺` after the sweep, and `x⁺` is first decoded at the owner's *next*
-  tick, so it is invisible to every reader within the boundary — the standard
-  one-sample `z⁻¹` delay of sampled-data control, here enforced by
-  construction. Nothing that happens after quiescence can flip a guard, so no combined event/tick fixed point exists to
-  iterate.
+**Ticks stay outside the iteration, after quiescence.** The two possible
+couplings resolve asymmetrically:
+
+- *Events → ticks: handled by machinery already in place.* Due discrete
+  components' output stages (`h_x`/`h_xu`) are gated *into* the boundary sweep
+  against a due set fixed for the whole iteration ([§8.5][s8-5]). Every iteration
+  round therefore refreshes them for free, against the same `x` — their `g` has
+  not run — and post-transition inputs. At quiescence, their published outputs
+  reflect the settled boundary instant, which is exactly what "sampling at t"
+  should mean for a logically-instantaneous cascade. Earlier rounds' tentative
+  values are internal scratch, like RK stage evaluations. [§8.3][s8-3] extends
+  naturally: external readers observe the table only after the boundary sequence
+  *completes*.
+- *Ticks → events: structurally impossible.* A tick's output stages contribute
+  nothing guards have not already seen, since they run inside the sweep, from
+  current `x`. Its `g` update writes `x⁺` after the sweep, and `x⁺` is first
+  decoded at the owner's *next* tick, so it is invisible to every reader within
+  the boundary — the standard one-sample `z⁻¹` delay of sampled-data control,
+  here enforced by construction. Nothing that happens after quiescence can flip a
+  guard, so no combined event/tick fixed point exists to iterate.
 
 The boundary macro-sequence, final form (boundary zero — initialization — is
 the same sequence with an empty integrate, [§14.5][s14-5]):
@@ -2170,11 +2201,12 @@ the same sequence with an empty integrate, [§14.5][s14-5]):
 > integrate → project → **[sweep → guards → handlers]** iterated to quiescence
 > (under the [firing budget](#g-firing-budget)) → all due `g` updates → logging / I/O staging.
 
-The mixed case — a [continuous component](#g-continuous-component)'s handler and its discrete observers' ticks
-landing on one boundary (engine `starting → running` under a 50 Hz FCS) — is decided
-by the sequence: the transition fires in the iteration segment, the re-sweep re-runs
-the FCS's stages against `running`-mode ports, and its `g` then updates from
-post-transition values.
+The sequence decides the mixed case: a
+[continuous component](#g-continuous-component)'s handler and its discrete
+observers' ticks landing on one boundary. Take an engine's `starting → running`
+transition under a 50 Hz FCS. The transition fires in the iteration segment, the
+re-sweep re-runs the FCS's stages against `running`-mode ports, and its `g` then
+updates from post-transition values.
 
 ### 8.7 Real-time pacing
 
@@ -2199,10 +2231,10 @@ the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent fra
 repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
 (GC, scheduler) are invisible. Debt beyond a threshold — **five frames' worth of
 budget, `5·h/p`** — is forgiven by re-anchor plus warning, so long stalls
-(debugger, laptop sleep) do not trigger catch-up bursts. Five: comfortably above
-the ms-scale hiccups debt exists to absorb silently, and far below the
-seconds-to-minutes stalls forgiveness exists for, so neither case lands near the
-threshold.
+(debugger, laptop sleep) do not trigger catch-up bursts. Five frames' worth sits
+comfortably above the ms-scale hiccups debt exists to absorb silently, and far
+below the seconds-to-minutes stalls forgiveness exists for, so neither case lands
+near the threshold.
 
 **`p = ∞` is pacer-off, not a limit value** (row 21). Unpaced mode is the explicit
 *absence* of deadlines — no waits, no debt, no warnings; by the invariant, the same
@@ -2211,11 +2243,12 @@ execution with the waits deleted.
 **Wait mechanism: hybrid sleep-then-spin, one knob.** Non-realtime OSes guarantee
 only a lower bound on sleep: the thread becomes runnable no earlier than requested;
 the wake-up is best-effort (timer granularity, scheduler load, macOS timer
-[coalescing](#g-coalescing)), with no hard upper bound. Measured on the dev machine (idle, 2 ms
-requests, 2026-07): Julia `sleep` overshoots ≈ 1.4 ms median — libuv's
-millisecond-granularity timers; sub-ms requests are accepted and rounded up —
-and `Libc.systemsleep` ≈ 0.5 ms; spikes under load are unbounded. The pacer therefore
-sleeps toward `deadline − margin` and spins the remainder:
+[coalescing](#g-coalescing)), with no hard upper bound. Measured on the dev machine, idle,
+against 2 ms requests (2026-07): Julia `sleep` overshoots by ≈ 1.4 ms median, and
+`Libc.systemsleep` by ≈ 0.5 ms. Behind the `sleep` figure are libuv's
+millisecond-granularity timers; sub-ms requests are accepted and rounded up.
+Spikes under load are unbounded. The pacer therefore sleeps toward
+`deadline − margin` and spins the remainder:
 
 ```julia
 remaining = deadline - margin - τ()
@@ -2246,9 +2279,10 @@ deadline are overruns, absorbed as debt. Which primitive the coarse phase uses �
 task-yielding `sleep` vs. thread-blocking `Libc.systemsleep` — is settled in [§10.2][s10-2]:
 the coarse phase uses task-yielding `sleep`, with `margin` absorbing its overshoot.
 
-**Diagnostics.** Overrun count, current and peak debt, forgiven-debt events, wait
-statistics — published as [framework status](#g-framework-status) for GUI and logs (today's `SimControl`
-fields are the precedent).
+**Diagnostics.** Overrun count, current and peak debt, forgiven-debt events and wait
+statistics are published as [framework status](#g-framework-status) (the frozen
+diagnostics value each snapshot carries beside the table) for GUI and logs.
+Today's `SimControl` fields are the precedent.
 
 **Forward pointers.** The wait interval is the natural staging [slot](#g-slot) for externally
 injected inputs, applied at the next boundary; the staging rules — and the
