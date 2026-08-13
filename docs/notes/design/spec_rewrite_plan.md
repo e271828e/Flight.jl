@@ -1,0 +1,223 @@
+# `framework_spec.md` rewrite plan
+
+*Drafted 2026-08-13. Supersedes the abandoned `rewrite_test/` attempt and the
+deleted `tools/restructure_plan.md`.*
+
+## Goal and non-goals
+
+**Goal.** Make the spec readable for its actual use case — a designer returning
+cold to one section — without losing a single normative claim. Five defects to
+fix, plus supporting improvements:
+
+1. Overloaded sentences (rule + qualification + rejected alternative + citations
+   in one breath); two named idioms to eliminate: the *possessive citation*
+   ("the arity distinction … is §12.7's") and the *aphoristic lead-in* ("the
+   absolute register anchors, and anchoring severs").
+2. Rule-first ordering where background-first would serve; Part II (Execution)
+   before Part III (Authoring and build) despite depending on it.
+3. Adversarial rationale (rejections) inlined instead of living in the decision
+   log.
+4. Definite-article coinages ("the drain", "the epoch rule") used far from
+   their definitions with no local gloss.
+5. No links into the glossary (and no anchors in the glossary to link to).
+
+**Non-goals.** No design changes of any kind. The decision log changes only to
+*receive* migrated rationale and to track renumbered section references.
+Companion documents change only where they cite spec section numbers.
+
+## Ground rules
+
+- **Content preservation is verified, not assumed.** Every style-pass section
+  gets a normative-claim inventory extracted *before* rewriting and checked
+  *after* (Phase 3 procedure). Cheap global invariants are scripted: the set of
+  `row N` citations, the set of link labels, glossary coverage.
+- **The spec stays ground truth at every commit.** No half-migrated states
+  across commits; each commit is a complete, self-consistent pass over a stated
+  scope (a section, a chapter, or one mechanical transformation).
+- **Per-batch approval.** Claude proposes each batch as a diff; Miguel approves;
+  then commit. One-sentence commit subjects, no attribution trailers.
+- **Sequencing: mechanical → migration → style → structure.** The reorder comes
+  last because it renumbers sections and touches every citing document; doing
+  it over stable content makes it one mechanical move instead of a moving
+  target.
+
+## Phase 0 — Preparation
+
+**P0.1 Style guide.** Write `tools/spec_style.md` (short, ~1 page): the rules
+the style pass enforces, so the pass stays consistent across sessions and
+context windows. Contents:
+
+- One burden per sentence: a sentence states a rule, *or* qualifies one, *or*
+  cites — not all three. Target register: rigorous but pedagogical, economical
+  but not terse.
+- Topic sentences are findable claims, not aphorisms.
+- Ban the possessive-citation idiom; spell out what the cited section provides.
+- Coined terms: gloss (5–10 words) + glossary link on first use *per section*;
+  bare term afterward within the section.
+- Section template: **context** (what problem this section solves) →
+  **rule** (normative, visually marked) → **mechanism / example** (code sketch
+  where prose runs long) → **consequences and pointers**.
+- Labeling convention for the template roles (proposed: sparing bold
+  **Rule.** / **Why.** / **Example.** markers — see open decision 5).
+- Constructive vs. adversarial rationale: constructive (why the rule is shaped
+  as it is) stays in the spec under *Why*; adversarial (why alternative X
+  loses) lives in the decision log, cited as "(row N)".
+
+**P0.2 Coinage inventory.** Build the list of coined terms: start from the
+glossary's bold terms, then sweep the spec for definite-article terms not in
+the glossary. Terms found missing get glossary entries added (flagged for
+approval — these are the one place Phase 1 adds content).
+
+**P0.3 Audit and adapt the existing tooling.** `tools/` already has
+`check_refs.jl`, `linkify.jl`, `sweep_refs.jl`, `slugs.jl` from the abandoned
+attempt. Audit them; keep what fits, rewrite what doesn't. Required checks
+(run before every commit of every phase):
+
+- *Link check*: every reference-style label is defined exactly once; every
+  defined label is used; every anchor target exists in the file.
+- *Row-citation set*: the multiset of `row N` citations in the spec, diffed
+  against the pre-phase baseline; any change must be explained by the batch.
+- *Glossary coverage*: every inventory term has an anchor; every glossary
+  anchor is linked from at least one body section.
+
+**Done when:** style guide approved, inventory list approved, checks run green
+on the untouched spec (baseline established).
+
+## Phase 1 — Mechanical passes (content-neutral)
+
+**P1.1 Reference-style links.** Convert every inline
+`[§8.6](#86-event-iteration-…)` to `[§8.6][s8-6]` with a link-definition table
+at file bottom. Scriptable end-to-end (adapt `linkify.jl`); one commit for the
+whole file. This is what makes Phase 4's renumbering tractable — cross-ref
+updates become edits to one table.
+
+**P1.2 Glossary anchors.** Give every glossary entry an anchor. Proposed
+scheme: `<a id="g-drain"></a>**drain** — …` (explicit anchors keep entries as
+bold terms rather than promoting them to headings and bloating the TOC).
+Scriptable from the glossary's own bold-term structure; one commit.
+
+**P1.3 Glossary links and first-use glosses.** Semi-manual, batched per Part:
+at each coined term's first use in a section, add the gloss and the
+`[drain][g-drain]` link. Overlap warning: Phase 3 will reword some of these
+glosses — accepted, they're cheap, and the readability win is immediate for
+ongoing consultation of the spec.
+
+**Done when:** checks green; spec renders identically in content, differs only
+in link plumbing, anchors, glosses.
+
+## Phase 2 — Rationale migration
+
+Scope: the ~76 inline "rejected" passages. Procedure per site:
+
+1. Classify: *adversarial* (litigates an alternative) or *constructive*
+   (explains the rule's shape). Constructive stays.
+2. For adversarial: find the row it cites (or should cite). Compare depth.
+   - Row already carries the argument (the common case — spot-checks show rows
+     17–24 are already dense): reduce the spec text to "(row N)".
+   - Spec's inline version is richer: enrich the row first (approval batch on
+     `framework_decisions.md`), then reduce the spec text.
+   - No row exists: propose a new row (numbers append-only), then reduce.
+3. Batch per chapter; run the row-citation check — the citation *set* must not
+   shrink (every deleted argument leaves its "(row N)" behind).
+
+**Done when:** no adversarial litigation remains inline; decision log is the
+single home of "what we rejected and why"; checks green.
+
+## Phase 3 — Style pass (the bulk)
+
+**P3.1 Triage.** Skim all ~70 sections and rate each: *ok* (leave alone),
+*light* (sentence surgery only), *full* (rewrite to template). Produces the
+work list and a realistic effort picture before committing to it. Expected
+worst offenders from sampling: §8.5–8.6, §9.3–9.5, parts of §14.
+
+**P3.2 Per-section procedure** (the content-preservation core):
+
+1. Extract the section's normative claims as a bullet inventory (scratchpad,
+   not committed).
+2. Rewrite to the template: context first, rule marked, mechanism with a code
+   sketch where the section is prose-heavy (candidate sketches: a
+   `sample_times` declaration next to its compiled `(D, Φ)` pairs for §8.5; a
+   staging/drain timeline for §9.4).
+3. Re-verify every inventory claim against the rewrite; diff the section's row
+   citations and glossary links.
+4. Present diff → approval → commit (one commit per section or small cluster).
+
+**P3.3 Work order.** Recommended: chapter-linear within a part, starting with
+Part II (worst offender, and the part most consulted during kernel
+increments), then Part III, I, IV, V, appendices. See open decision 4.
+
+**Done when:** every *light*/*full* section rewritten and verified; glossary
+entries re-checked against their (possibly reworded) owning sections — the
+owning-section-wins precedence makes stale glossary compression a real risk
+here.
+
+## Phase 4 — Structural reorder
+
+**P4.1 The part swap.** Move Part III (Authoring and build) before Part II
+(Execution). Stopped-sim services *stay* after Execution: §14.5 defines
+boundary zero in terms of §8.6's boundary machinery, and the services'
+semantics are parameterized by run semantics — chronology loses to dependency
+direction here. Recorded as the rationale so the question stays settled.
+
+**P4.2 Renumbering fallout.** Sections renumber (§8–10 ↔ §11–12). Update, in
+order: the spec's own headings and TOC; the link-definition table (Phase 1's
+payoff — body text barely changes); the decision log's ~140 § citations;
+`sample_time_proposal.md` (~32); the walkthrough docs
+(`localization_validation_walkthrough.md`, `event_visibility_walkthrough.md`,
+`inbound_periphery_walkthrough.md`, `frozen_discrete_walkthrough.md`,
+`trim_environment_walkthrough.md`) and `framework_extensions.md`. Scriptable
+as an old→new section-number map applied everywhere (adapt `sweep_refs.jl`);
+one commit, plus a manual skim for prose that *describes* order ("as Part II
+established…").
+
+**P4.3 Within-part ordering and roadmaps.** Fix section-internal
+rule-before-background orderings that Phase 3 flagged but couldn't fix locally
+(most background-first fixes land in Phase 3; this catches cross-section
+moves). Add a short roadmap paragraph at the top of each Part: what it covers,
+in what order, what it assumes from earlier parts.
+
+**Done when:** every § citation in every document resolves to the section it
+meant before the move; forward references in the spec are the rare exception
+rather than the rule.
+
+## Phase 5 — Final verification
+
+- Full linear read-through of the spec (fresh session, reader's stance).
+- All Phase 0 checks green; row-citation set identical to the Phase 2 exit
+  baseline; glossary bidirectional check (every entry linked from body, every
+  body coinage in glossary).
+- Confirm companion walkthroughs' quoted spec passages (if any quote verbatim)
+  still match.
+- Delete `rewrite_test/` (see open decision 3) and retire any `tools/` scripts
+  that were one-shot.
+
+## Open decisions (Miguel)
+
+1. **Single file vs. split per part.** Recommend keeping the single file:
+   whole-document search is the dominant workflow, and the link plumbing
+   assumes one anchor namespace. Revisit only if the file becomes hostile to
+   editors.
+2. **Renumbering policy.** Recommend plain renumbering in Phase 4 (numbers
+   stay meaningful and ordered) over stable section IDs (permanent confusion
+   between order and identity). The old→new map is kept in the Phase 4 commit
+   message-adjacent notes for archaeology.
+3. **Fate of `rewrite_test/`.** Recommend deleting it in Phase 5 once this
+   plan has delivered; it was to be ignored, not mined.
+4. **Phase 3 work order.** Recommend Part II first (worst text, highest
+   consultation value during kernel work) rather than strictly linear.
+5. **Template markers.** Recommend literal sparing bold markers (**Rule.**,
+   **Why.**, **Example.**) over an unmarked convention — skimmability is the
+   point, and unmarked conventions drift.
+
+## Effort shape (rough)
+
+- Phase 0–1: one to two sessions (mostly scripted).
+- Phase 2: one to two sessions (~76 sites, batched per chapter).
+- Phase 3: the bulk — several sessions; triage (P3.1) gives the real number.
+- Phase 4: one session (scripted sweep + manual skim).
+- Phase 5: one session.
+
+Kernel increment 3 stays blocked behind nothing here in principle — the spec
+is normatively unchanged throughout — but Phases 2–4 churn the text badly
+enough that interleaving spec-citing design work mid-phase is not worth the
+merge pain. Finish a phase, then interleave if needed.
