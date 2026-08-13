@@ -6931,9 +6931,11 @@ surface, with each item's home:
   display/slot-sync sugar only.
 - **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
   masses, terrain surface enum, sea-level T/p, wind NED): ordinary [component](#g-component)
-  inputs exported to root faces; the GUI writes them under its [greedy claim](#g-greedy-claim) via
-  [§9.7][s9-7]; no machinery. The interactive surface is *not* one thing: pilot commands cluster
-  under a prefix; environment knobs stay with their components' panels.
+  inputs exported to root faces; the GUI writes them under its [greedy claim](#g-greedy-claim)
+  (the unclaimed complement, computed by the framework instead of returned) via
+  [§9.7][s9-7]; no machinery. The interactive surface is *not* one thing: pilot
+  commands cluster under a prefix; environment knobs stay with their
+  components' panels.
 - **The Xv1 actuator sliders**: FlightCore's dead sliders; resolved read-only by
   [§9.7][s9-7]. No action.
 - **Outbound** (XPlane12: control-surface angles, nose-wheel steering, prop
@@ -7190,14 +7192,14 @@ g(s::IMUSampler, (; u)) = (Θ = u.Θ, q = u.q, Υ = u.Υ, V = u.V)   # the latch
 
 The `IMU` [assembly](#g-assembly) wires the four integral [ports](#g-port) across, holds the error model as
 a discrete sibling consuming `sample`, and leaves the sampler at `K = 1` in its
-own scope — the parent sets the IMU's rate ([§11.7][s11-7]). `Δt` in the stage [bundle](#g-bundle) is
-the [§8.5][s8-5] single source of truth, put there for exactly this kind of discretized
-law. (Initialization
-consistency — the sampler's `x` must equal the initial integrals or the `t₀` sample is
-wrong — holds by default at zeros/identity, and [boundary zero](#g-boundary-zero) discharges the
-rest: its [due](#g-due) `g` latches `x ← integrals(t₀)` for every subsequent sample, so
-only the `t₀` sample itself depends on the authored `x` — a [condition](#g-condition)-authoring
-obligation under trim, [§14.5][s14-5].)
+own scope — the parent sets the IMU's rate ([§11.7][s11-7]). `Δt` in the stage [bundle](#g-bundle)
+(the NamedTuple of zero-copy views a component function receives) is the [§8.5][s8-5]
+single source of truth, put there for exactly this kind of discretized law.
+(Initialization consistency — the sampler's `x` must equal the initial
+integrals or the `t₀` sample is wrong — holds by default at zeros/identity, and
+[boundary zero](#g-boundary-zero) discharges the rest: its [due](#g-due) `g` latches `x ← integrals(t₀)` for
+every subsequent sample, so only the `t₀` sample itself depends on the authored
+`x` — a [condition](#g-condition)-authoring obligation under trim, [§14.5][s14-5].)
 
 #### Why `u.V` is fresh — the line that would silently zero
 
