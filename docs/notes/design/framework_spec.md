@@ -5575,19 +5575,19 @@ The fail-fast vs. compiler-style question dissolves once the build's failure
 sites are split into their two populations:
 
 - **Declarative checks over collected structure** — unconnected inputs,
-  two-producers, wire typos and type mismatches, face-name uniqueness,
+  two-producers, wire typos and type mismatches, [face](#g-face)-name uniqueness,
   `output_types`/state-field consistency, `sample_times` validation. Each is a
   pass over a list; the whole-tree obligation check literally computes *the
   set of* inputs whose obligation chain never terminates. Reporting every
   violation is the natural output of the pass — truncating to the first would
   be extra work — and these failures cluster in practice (a freshly written
-  assembly has five unwired inputs; a renamed port breaks three wires).
+  [assembly](#g-assembly) has five unwired inputs; a renamed [port](#g-port) breaks three wires).
   **These passes collect:** each returns its full violation list.
-- **User-code evaluation** — boundary-connection bodies (Stratum A), the stage-1 probes
+- **User-code evaluation** — [boundary](#g-boundary)-connection bodies ([Stratum](#g-stratum) A), the stage-1 [probes](#g-probe)
   (B), the probe chain (C). When user code throws there is no meaningful
   rest-of-collection: a failed `input_connections` leaves the parent's face derivation
   undefined; a failed stage-2 probe starves every downstream probe of its wired
-  inputs (probe values flow topologically, [§12.3][s12-3]). Continuing past these
+  inputs ([probe values](#g-probe-value) flow topologically, [§12.3][s12-3]). Continuing past these
   requires genuine compiler machinery — poisoned nodes, cascade suppression,
   dependent-check skipping — and buys little, because user-code failures are
   typically singular. **The first user-code exception aborts the phase.**
@@ -5601,27 +5601,27 @@ across a failure, the machinery [§12][s12]'s strata would otherwise need — ne
 materializes.
 
 **No cascade suppression within a stratum** — a deliberate simplification. A
-typo'd wire (`:throtle`) produces both the did-you-mean error and an
+typo'd wire (`:throtle`) produces both the [did-you-mean](#g-did-you-mean) error and an
 unconnected-input error for the intended `throttle`; both are reported. They
 render adjacently (diagnostics sort by path), the pairing is self-explanatory,
 and suppression heuristics are exactly the fussy machinery this split avoids.
 
 ### 13.2 Diagnostics: structured values, one carrier exception
 
-A diagnostic is a plain value from a **small closed set of kinds**, enumerated
-normatively in **[Appendix C][sC]** — kind name, payload fields, owning section,
+A diagnostic is a plain value from a **small closed set of [kinds](#g-kind)**, enumerated
+normatively in **[Appendix C][sC]** — kind name, [payload](#g-payload) fields, owning section,
 severity — which is the artifact the [§11.4][s11-4] acceptance tests and the
-error-message work are written against. Each kind carries its structured payload: endpoint paths, face names,
-expected/observed types, the *list-in-hand* for did-you-mean rendering, and a
-severity. Checking passes return diagnostics; the stratum barrier throws a
+error-message work are written against. Each kind carries its structured payload: endpoint paths, [face](#g-face) names,
+expected/observed types, the *list-in-hand* for [did-you-mean](#g-did-you-mean) rendering, and a
+severity. Checking passes return diagnostics; the [stratum](#g-stratum) barrier throws a
 single `BuildError` wrapping the collection; `showerror` renders it compiler-style,
 grouped by kind and sorted by path. A user-code exception is wrapped in a
-framing diagnostic — component path, which function, the probe context
+framing diagnostic — [component](#g-component) path, which function, the [probe](#g-probe) context
 including synthesized inputs — with the original exception as `cause`, so the
 didactic frame renders first and the raw throw second. One class is recognized
 rather than merely framed: a `FieldError` — type and field carried as data —
-matched against the bundle's own NamedTuple type becomes [§5.2][s5-2]'s bundle-law
-did-you-mean, with the legal set and the undeclared-store / wrong-tier /
+matched against the [bundle](#g-bundle)'s own NamedTuple type becomes [§5.2][s5-2]'s bundle-law
+did-you-mean, with the legal set and the undeclared-store / wrong-[tier](#g-tier) /
 illegal-for-this-function classification. Nothing is recovered by reading
 message text.
 
@@ -5633,27 +5633,27 @@ Two rendering rules are doctrine, not style:
 
 - **Strings, never instances.** Diagnostics carry paths and names as strings —
   never component instances, never model types (the `compact_backtrace`
-  lesson). Expected/observed *port* types are the payload exception, and they
+  lesson). Expected/observed *[port](#g-port)* types are the payload exception, and they
   are small: `Float64` vs. `Bool`, a NamedTuple field diff.
-- **The didactic register is policy.** Every diagnostic states the fix or the
+- **The didactic [register](#g-register) is policy.** Every diagnostic states the fix or the
   lists-in-hand, not just the violation: "return `zero(x.ω)`, not `0`"; "no
   input `throtle`; did you mean `throttle`?"; the child's face list alongside
   the unknown `except` entry.
 
-**Two warning streams, scoped separately.** The *build* diagnostic stream is
+**Two [warning streams](#g-warning-streams), scoped separately.** The *build* diagnostic stream is
 the one [Appendix C][sC]'s build kinds ride: warnings there carry warning severity,
 render with the collection, and never trigger the throw. That stream's warning set
 is **currently empty** — the unconnected-output warning having been rejected as
 its sole candidate ([§6.1][s6-1], row 84) — and better an empty, trusted stream than a
 noisy one; a warnings-as-errors CI switch is addable, not built. The *runtime*
 status/log stream is a different channel and is not empty: it is
-per-occurrence, carried by [§9.8][s9-8]'s per-writer diagnostic cells — which is
+per-occurrence, carried by [§9.8][s9-8]'s per-writer [diagnostic cells](#g-diagnostic-cell) — which is
 where the rate limit lives, as a structural bound (a bounded ring plus
 per-kind suppressed counts, drained at frame top) rather than a policy
 layered over the stream, so "rate-limited wherever its source can repeat"
 holds of every kind below without any kind arranging it — and surfaced
-through the published framework status ([§9.2][s9-2]) alongside the [§8.7][s8-7] pacer
-diagnostics and the [§10.2][s10-2] liveness heartbeats, which ride in the same cells
+through the published [framework status](#g-framework-status) ([§9.2][s9-2]) alongside the [§8.7][s8-7] pacer
+diagnostics and the [§10.2][s10-2] liveness heartbeats, which ride in the same [cells](#g-cell)
 — never collected, since there is
 no collection to join. Nothing in row 84's argument applies to it: that decision is
 about what the *build* warns on. A *service* warning (`TrimCommitEvents`,
@@ -5663,27 +5663,27 @@ stopped-sim service call's return beside the value it returns, its payload
 duplicated as plain report fields — no carrier cell, no collection, no rate
 limit to arrange. The committed runtime warnings, in one place:
 
-- **chattering / localization-budget exhaustion** ([§8.4][s8-4]) — a localized event
-  whose bracketing budget runs out at a boundary;
+- **[chattering](#g-chattering) / localization-budget exhaustion** ([§8.4][s8-4]) — a [localized](#g-localized) event
+  whose bracketing budget runs out at a [boundary](#g-boundary);
 - **firing-budget exhaustion** ([§8.6][s8-6]) — an event that has spent its
   `firing_budget` at a boundary, its further edges there dropped;
 - **forgiven-debt re-anchor** ([§8.7][s8-7]) — the pacer abandoning accumulated debt
-  and re-anchoring its schedule;
+  and re-anchoring its [schedule](#g-schedule);
 - **the write-surface and entry violations** ([§9.3][s9-3]), all at staging — the
-  drain checks nothing: `OutOfClaimEntry` (an
+  [drain](#g-drain) checks nothing: `OutOfClaimEntry` (an
   enumerated surface's binding drift — no position in
   the attach-compiled schema), `ClaimedFaceEntry` (a harness write to
   a face claimed in the run's frozen partition, naming the incumbent; also
-  fired by the stopped-sim attach renormalizing a pending batch) and
+  fired by the stopped-sim attach renormalizing a pending [batch](#g-batch)) and
   `EntryTypeMismatch` (a value unconvertible to its
-  slot's declared type, rejected at staging for every writer);
-- **a tolerated device-side datum failure** ([§9.6][s9-6], [§13.4][s13-4]):
+  [slot](#g-slot)'s declared type, rejected at staging for every writer);
+- **a tolerated [device](#g-device)-side datum failure** ([§9.6][s9-6], [§13.4][s13-4]):
   `MalformedDatum` — emitted by the author's loop via `report!(handle, …)`
   into the device's own cell ([§9.8][s9-8]), the `InputMappingError` successor;
-- **staging discarded during replay** ([§10.7][s10-7]): `ReplayDiscardedStaging` —
-  a live batch found staged while the trace feeds the drain;
+- **staging discarded during [replay](#g-replay)** ([§10.7][s10-7]): `ReplayDiscardedStaging` —
+  a live batch found staged while the [trace](#g-trace) feeds the drain;
 - **thread-budget tightness** ([§10.2][s10-2]) — once per `run!`, against the frozen
-  roster;
+  [roster](#g-roster);
 - **device join timeout** ([§10.4][s10-4]) — a device task exceeding the shutdown
   join timeout, abandoned by name rather than hanging `run!`;
 - **device crash** ([§10.4][s10-4], [§13.4][s13-4]) — a device task's failure caught by the
@@ -5696,37 +5696,37 @@ limit to arrange. The committed runtime warnings, in one place:
 The [§11.8][s11-8] sketch's primitives, made normative:
 
 - `resolve(asm, path::String) → AbstractComponent` — the getfield walk along
-  `/`-segments. Its one non-obvious duty is enforcing [§6.1][s6-1]'s generic-boundary
+  `/`-segments. Its one non-obvious duty is enforcing [§6.1][s6-1]'s generic-[boundary](#g-boundary)
   rule: it walks *declared field types* alongside instances, and a segment
   that traverses **past** a generically-held field (non-concrete declared
   type) is a diagnostic even though the concrete instance in hand would
-  resolve it — resolving *to* a generic child is port-level access and legal.
+  resolve it — resolving *to* a generic child is [port](#g-port)-level access and legal.
   An unknown segment errors with the sibling field list in hand.
-  **The duty is register-scoped** — row 83's load-bearing/diagnostic line
+  **The duty is [register](#g-register)-scoped** — row 83's load-bearing/diagnostic line
   carried into resolution, client policy riding on one primitive exactly as
   in [§14.4][s14-4]:
-    - *Structural* (wiring resolution, Stratum A): the strict rule above,
+    - *Structural* (wiring resolution, [Stratum](#g-stratum) A): the strict rule above,
       verbatim — the register [§6.1][s6-1]'s law lives in.
-    - *Load-bearing* (condition entries, trim `reads`, taps — [§14.3][s14-3], [§14.7][s14-7],
+    - *Load-bearing* ([condition](#g-condition) entries, trim `reads`, [taps](#g-taps) — [§14.3][s14-3], [§14.7][s14-7],
       [§14.10][s14-10]): strict, evaluated **at the authoring or mount level**. The
       locality law is an authoring-level law ([§14.2][s14-2]: absolute paths are a
       compiled derivative), and a mount prefix is checked by the mount
       itself ([§14.9][s14-9] validates the problem's declared type against the mount
-      point's contract) — this register checks the authored path below it.
-    - *Diagnostic* (device read bindings, GUI panels, snapshot and log
-      inspection — [§9.2][s9-2], [§9.7][s9-7]): the instance walk. A generic seam is not an
+      point's [contract](#g-contract)) — this register checks the authored path below it.
+    - *Diagnostic* ([device](#g-device) read [bindings](#g-binding), GUI panels, [snapshot](#g-snapshot) and log
+      inspection — [§9.2][s9-2], [§9.7][s9-7]): the instance walk. A generic [seam](#g-seam) is not an
       error for a client that never claimed substitutability — "what is in
       *this* build" is the inspection register's defining question — and
       drift stays loud: an unknown path is an attach-time
-      `ReadBindingUnresolved` with did-you-mean.
+      `ReadBindingUnresolved` with [did-you-mean](#g-did-you-mean).
   Which register a client resolves under is internal framework fact, never
   user-facing API — the same status as [§14.4][s14-4]'s two `apply!` registers.
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — the stringified keys of
   a leaf's `input_types` (the key set is `T`-independent); the entries of
-  `input_connections(c)` / `output_connections(c)` for an assembly. Declaration order is preserved: deterministic
+  `input_connections(c)` / `output_connections(c)` for an [assembly](#g-assembly). Declaration order is preserved: deterministic
   printouts, stable diagnostics.
 - `resolve_terminal(asm, path) → (component, name)` — splits a terminal
-  path's final segment (unambiguous: face names may contain dots, never
+  path's final segment (unambiguous: [face](#g-face) names may contain dots, never
   slashes, [§11.6][s11-6]) and resolves the prefix through `resolve`. First-class
   because five clients share it across the three registers — wiring
   resolution (structural); condition addressing ([§14.3][s14-3]) and tap
@@ -5736,35 +5736,35 @@ The [§11.8][s11-8] sketch's primitives, made normative:
 
 ### 13.4 Runtime failures: one catch site, an execution cursor
 
-**Where caught.** The loop wraps each execution of the boundary macro-sequence
-(integrate → project → event iteration → ticks → publication) in a single
-`try` — never per stage or per component, which would salt the hot path with
+**Where caught.** The loop wraps each execution of the [boundary](#g-boundary) macro-sequence
+(integrate → project → event iteration → [ticks](#g-tick) → publication) in a single
+`try` — never per stage or per [component](#g-component), which would salt the hot path with
 exception frames for no benefit. Framing information does not need to be
-*caught* into existence: the executor maintains an **execution cursor**, a
-plain mutable field in the loop state recording where in the compiled schedule
+*caught* into existence: the [executor](#g-executor) maintains an **[execution cursor](#g-execution-cursor)**, a
+plain mutable field in the loop state recording where in the compiled [schedule](#g-schedule)
 it is — component path (schedule index), which function
-(`h_x`/`h_xu`/`f`/`g`/guard/handler/`project`), and the boundary phase
-(integration stage *k*, event round *r*, localization probe at trial
+(`h_x`/`h_xu`/`f`/`g`/[guard](#g-guard)/handler/`project`), and the boundary phase
+(integration stage *k*, event round *r*, localization [probe](#g-probe) at trial
 time, tick). One cheap store per dispatch on a single-tasked executor — no
 allocation, no exception frames — and it covers every user-code surface
-uniformly, including the forgettable ones: RHS evaluations at interior RK
+uniformly, including the forgettable ones: [RHS](#g-flow) evaluations at interior RK
 stage points, guard evaluations inside ITP/Brent probes, environment closures.
 
 **How handled.** The catch site wraps the original exception in `StepError` —
-the runtime counterpart of `BuildError` — carrying the cursor's frame, the
-boundary time, the **frame-entry boundary index** (the replay pointer: the
-frame-top boundary — grid or boundary zero — at which the failing frame
+the runtime counterpart of `BuildError` — carrying the cursor's [frame](#g-frame), the
+boundary time, the **frame-entry boundary index** (the [replay](#g-replay) pointer: the
+frame-top boundary — grid or [boundary zero](#g-boundary-zero) — at which the failing frame
 began, always a legal replay halt, [§10.7][s10-7]), and the original
 exception as `cause`, rendered with compact frames per [§13.2][s13-2]'s doctrine. The
 [§12.5][s12-5] conformance failure needs no separate path: it is thrown as its typed
 diagnostic at the table-write point and arrives at the same catch site, a
-species of `StepError` with the field-diff payload. Reproducibility holds by
-construction: staged inputs are drained and recorded to the trace at the frame
+species of `StepError` with the field-diff [payload](#g-payload). Reproducibility holds by
+construction: staged inputs are drained and recorded to the [trace](#g-trace) at the frame
 top, *before* the boundary executes, so the failing boundary's inputs are
 already in the trace when it fails — the error names the frame-entry
 boundary `k` to replay to, and `replay!(sim2, trc; to_boundary = k)` halts
 exactly at that frame top; `step!` then re-executes the failing frame under
-instrumentation, localized boundaries included ([§10.7][s10-7]).
+instrumentation, [localized](#g-localized) boundaries included ([§10.7][s10-7]).
 
 **The one exception never wrapped.** An `InterruptException` is not model code
 failing but the operator's stop command ([§10.4][s10-4]), so the catch site discriminates
@@ -5776,7 +5776,7 @@ sequence — and it is kept defensively because the cost of being wrong about th
 is a terminally errored session in place of a clean stop.
 
 **Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
-`errored` — with the exception retrievable. A synchronous unattended run rethrows
+`errored` — with the exception retrievable. A synchronous [unattended run](#g-unattended-run) rethrows
 after the shutdown tail completes, so CI fails honestly; an interactive
 session logs the rendered error and surfaces the status through the control
 plane and GUI.
@@ -5784,7 +5784,7 @@ plane and GUI.
 **The nonfinite check.** Divergence is not termination: dynamics that blow up
 (ground penetration, an unstable gain) produce NaNs that defeat guards — NaN
 comparisons are false — so no declared condition will catch them. A loop-level
-`isfinite` sweep over `x` at boundaries fails fast as a `StepError` species
+`isfinite` [sweep](#g-sweep) over `x` at boundaries fails fast as a `StepError` species
 naming the offending component's state block and the boundary. It catches
 diverging models generally, not just post-terminal ones.
 
@@ -5795,8 +5795,8 @@ diverged. Run later, the NaN has already propagated: it reaches an innocent
 downstream component through the ordinary signal path and surfaces as that
 component's lookup-table `DomainError` or an `InexactError` in its
 conversion — [§11.4][s11-4]'s error-locality inversion, designed out of the build
-tier and quietly reintroduced at runtime. One `isfinite` pass over a flat
-buffer is cheap enough that placement, not cost, decides.
+[tier](#g-tier) and quietly reintroduced at runtime. One `isfinite` pass over a flat
+[buffer](#g-buffer) is cheap enough that placement, not cost, decides.
 
 *Scope: `ẋ` does not participate.* A nonfinite derivative contaminates its own
 state block's step result within that very step, so the `x` check at the next
@@ -5805,7 +5805,7 @@ boundary is the same detection with identical component attribution — the
 integrator scratch: written per stage, meaningful only inside a step, and not
 boundary-consistent in the sense the check is stated over.
 
-**Domain separation.** Device-side user code — loop bodies and mappings run
+**Domain separation.** [Device](#g-device)-side user code — loop bodies and mappings run
 on the device task ([§9.4][s9-4], [§9.6][s9-6]) — fails in the device's own domain, and in
 two classes: a genuine bug takes the per-device crash path (liveness
 heartbeat, `DeviceCrash`) while the sim keeps running; an unmappable datum
@@ -5817,35 +5817,35 @@ the no-shared-mutable-model decision bought.
 
 FlightCore's `SimulationTermination` idiom — model code throws, the loop
 catches and logs it as informational — has **no counterpart here**. It sits badly
-in this design: a mid-sweep throw aborts a boundary halfway, and [§10.4][s10-4] is built on
+in this design: a mid-[sweep](#g-sweep) throw aborts a [boundary](#g-boundary) halfway, and [§10.4][s10-4] is built on
 completing one. The discipline: **exceptions from model code are always
 abnormal**; graceful termination is model *state*, reaching the loop through
 declared machinery:
 
-- **Detection** is ordinary guard/handler/mode machinery. Declare the
-  predicate as a sign-form (hence localized) event if the stop should be
+- **Detection** is ordinary [guard](#g-guard)/handler/mode machinery. Declare the
+  [predicate](#g-predicate) as a sign-form (hence [localized](#g-localized)) event if the stop should be
   localized — touchdown
   overload is precisely a zero-crossing: the boundary is localized to the
-  crossing, the handler sets `m.crashed`, and the snapshot at the crossing
+  crossing, the handler sets `m.crashed`, and the [snapshot](#g-snapshot) at the crossing
   instant carries the touchdown state.
-- **Publication** is an ordinary `Bool` output face, exported to the root.
+- **Publication** is an ordinary `Bool` output [face](#g-face), exported to the root.
   Within concretely-declared structure, deep wires gather the condition at its
   owning boundary in one visible block ([§6.1][s6-1]): `Ldg` ORs its three legs through
   a junction ([§6.2][s6-2]'s ownership idiom, [§13.7][s13-7]'s library) and exports one `damaged`
-  face; intermediate assemblies are untouched. Each *generic* seam costs one
-  output connection entry — and that hop is the substitutability contract doing its job,
+  face; intermediate [assemblies](#g-assembly) are untouched. Each *generic* [seam](#g-seam) costs one
+  output connection entry — and that hop is the substitutability [contract](#g-contract) doing its job,
   not plumbing ([§11.8][s11-8]'s imposed contract).
 - **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
   names root-exported `Bool` output faces, OR-combined, validated against the
-  `Build`, recorded in the run metadata (the trace header's deployment block,
+  `Build`, recorded in the [run metadata](#g-run-metadata) (the [trace header](#g-trace-header)'s deployment block,
   [§9.5][s9-5]). After *every* published boundary —
-  grid, `t*` ([§8.4][s8-4]) and boundary zero ([§14.5][s14-5]) alike — the
+  grid, `t*` ([§8.4][s8-4]) and [boundary zero](#g-boundary-zero) ([§14.5][s14-5]) alike — the
   loop reads the named faces in the snapshot it just published; the first
   `true` initiates [§10.4][s10-4] shutdown with *this* snapshot as the final one — the
   terminal snapshot is the terminal state, no roll-back, nothing [§10.4][s10-4] doesn't
   already do (and its status carries the run's final cumulative diagnostic
   counters, [§9.8][s9-8]). `run!` therefore checks the boundary-zero snapshot before the
-  first step: an authored condition already terminal ends the run at `t₀`
+  first step: an authored [condition](#g-condition) already terminal ends the run at `t₀`
   with that snapshot final, integrating nothing. Default: no stop faces, run
   to `t_end` — `stop_on` is `t_end`'s model-declared sibling at the same
   declaration site.
@@ -5869,17 +5869,17 @@ which the precedence rule above is what settles.
 **The termination record names the source.** Where run metadata carries the
 effective *policy*, the run's termination record carries its *outcome*: which of
 the four sources ended the run — `t_end` reached, a named `stop_on` face reading
-`true`, a control-plane stop (GUI button, device handle, calling code), or an
-operator interrupt ([§10.4][s10-4]) — so a `stopped` simulation answers "why did it
+`true`, a control-plane stop (GUI button, [device](#g-device) handle, calling code), or an
+[operator interrupt](#g-operator-interrupt) ([§10.4][s10-4]) — so a `stopped` simulation answers "why did it
 stop?" without its consumer reconstructing the answer from the clock. The
-interrupt is a tag on an ordinary stop, not a diagnostic kind of its own
+interrupt is a tag on an ordinary stop, not a diagnostic [kind](#g-kind) of its own
 ([Appendix C][sC] gains nothing here): nothing failed.
 
 Taught contract: **stop faces are sampled at completed boundaries; declare a
 sign-form event if you need the stop localized.** Both stop-flag shapes work without
 framework latching — a handler-set `m` flag is sticky by nature, a transient
 stage-2 Bool is caught because the loop reacts to the first `true`. Compound
-stop logic composes in-model — a monitor component reading the relevant
+stop logic composes in-model — a monitor [component](#g-component) reading the relevant
 signals and outputting one Bool — the same move [§10.5][s10-5] made for scripts.
 
 Post-terminal dynamics are the model's job, and that is a feature: today
@@ -5904,7 +5904,7 @@ Rejected mechanisms:
   services don't step at all. (A root-declared *default* overridable at the
   ctor remains the one variant worth reopening if migration shows the ctor
   argument chronically forgotten.)
-- **Blessed terminal types/names scanned from the tree, and `terminal` event
+- **[Blessed](#g-blessed) terminal types/names scanned from the tree, and `terminal` event
   flags**: action at a distance — a deep declaration halts the world, the
   root contract says nothing, substituting an aircraft silently changes when
   runs end, and per-deployment disabling needs masking machinery. The
@@ -5918,8 +5918,8 @@ Rejected mechanisms:
 - **Observation-by-path** (`stop_on` naming a deep path into any public
   output): rejected on a line worth recording as doctrine. **Diagnostic
   observation** — the log retaining the full table, GUI panels rendering a
-  component's ports, replay inspection — is human-facing, has no effect on
-  run semantics, and legitimately sees every public cell. **Load-bearing
+  component's [ports](#g-port), [replay](#g-replay) inspection — is human-facing, has no effect on
+  run semantics, and legitimately sees every public [cell](#g-cell). **Load-bearing
   observation** — a read that changes what the run *does* — must speak the
   contract. A deep `stop_on` path makes termination semantics depend on
   internals no contract mentions: precisely the knowledge violation [§6.1][s6-1]
@@ -5933,18 +5933,18 @@ Rejected mechanisms:
   why it alone must speak the contract.
 
 The wall-clock channel — GUI stop button, device handle, code — is orthogonal
-and untouched: that is the control plane's operator path. The sim-time,
+and untouched: that is the [control plane](#g-control-plane)'s operator path. The sim-time,
 model-detected channel specified here meets it at [§10.4][s10-4] and nowhere else.
 
 ### 13.6 Abnormal shutdown: one tail, two entries
 
-Why a `StepError` cannot break [§10.4][s10-4]: **the boundary is all-or-nothing outside
-the sim task**. Sweeps write into table buffers, integration intermediates
-live in framework-owned integrator buffers (never any component's `workspace`
-in [§7.3][s7-3]'s sense), and the only externally visible act is snapshot publication
+Why a `StepError` cannot break [§10.4][s10-4]: **the [boundary](#g-boundary) is all-or-nothing outside
+the sim task**. [Sweeps](#g-sweep) write into table [buffers](#g-buffer), integration intermediates
+live in framework-owned integrator buffers (never any [component](#g-component)'s `workspace`
+in [§7.3][s7-3]'s sense), and the only externally visible act is [snapshot](#g-snapshot) publication
 at the very end of the sequence. A boundary that throws has published nothing;
 the last *published* snapshot — a complete, consistent boundary by
-construction — is still the newest thing any device, logger or waiter has
+construction — is still the newest thing any [device](#g-device), logger or waiter has
 seen. The abnormal path is therefore: **discard the failed boundary, promote
 the previous snapshot to final, and rejoin the ordinary tail.** The protocol
 becomes one tail with two entry points — graceful entry after a *completed*
@@ -5960,10 +5960,10 @@ caught-and-logged — shutdown runs to completion even if a device's hook
 misbehaves — and the join timeout already bounds a hook that hangs rather
 than throws.
 
-What is lost is quarantined: the state stores may hold mid-boundary values (a
+What is lost is quarantined: the state [stores](#g-store) may hold mid-boundary values (a
 half-written `m`, integration intermediates). They are retained on the
 errored `Simulation` for post-mortem inspection, but an errored sim is
-terminally stopped, not resumable — the reproduction tool is trace replay,
+terminally stopped, not resumable — the reproduction tool is [trace](#g-trace) [replay](#g-replay),
 not resurrection, and the stopped-sim services enforce it by refusing an
 errored simulation outright (`ServiceLifecycle`, [§14][s14]). The published record (snapshot chain, log, trace) ends at
 the last consistent boundary; nothing downstream of the sim ever sees half a
@@ -5971,25 +5971,25 @@ boundary.
 
 ### 13.7 Tooling consequences: provenance and the component library
 
-Computed boundary connections gain protagonism under this section — termination chains are
-their second structural customer after generic-boundary contracts — and two
+Computed [boundary](#g-boundary) connections gain protagonism under this section — termination chains are
+their second structural customer after generic-boundary [contracts](#g-contract) — and two
 commitments, a library and an idiom follow:
 
 - **The `input_passthrough` helper family grows deliberately.** Predicate-based selection
   (an `endswith`-style filter alongside `except`/`only`) is a natural
   extension: still explicit at the declaration site, still evaluated at
-  build, still printable — the blessed side of the auto-bubbling line, where
+  build, still printable — the [blessed](#g-blessed) side of the auto-bubbling line, where
   the author writes down the *rule* and the build evaluates it into
   inspectable data.
-- **The `Build` printer owes face provenance.** For every root face, the
+- **The `Build` printer owes [face](#g-face) provenance.** For every root face, the
   resolved chain down to the producing terminal (`"crashed" →
   aircraft/monitor/out ← systems/ldg/{left,right,nose}/damaged`). Once faces
   are computed rather than hand-listed, "what does this face actually reach"
   is a question the artifact must answer, not the reader — and the same
   rendering serves the wiring diagnostics, which already carry endpoint
   paths.
-- **A standard component library** makes good on [§6.2][s6-2]'s junction promise: when
-  reduce-ports were rejected, the argument leaned on explicit junctions being
+- **A standard [component](#g-component) library** makes good on [§6.2][s6-2]'s junction promise: when
+  reduce-[ports](#g-port) were rejected, the argument leaned on explicit junctions being
   *cheap*, and a junction hand-written per arity per type is not. Starting
   inventory strictly from demonstrated need — wrench/scalar summing
   junctions, the Bool gates the termination chains use, `UnitDelay`, the
@@ -5997,19 +5997,19 @@ commitments, a library and an idiom follow:
   `Constant{V}`, the source block — growing by migration demand only
   (Simulink's library is a language; this is a toolbox). One member is
   admitted by persona rather than migration demand: `Group`, the on-the-fly
-  assembly, whose declaration-layer treatment lives in [§11.5][s11-5] (row 184) — it
+  [assembly](#g-assembly), whose declaration-layer treatment lives in [§11.5][s11-5] (row 184) — it
   serves the model assembler, for whom topology is data rather than a named
   type, and it needs no rule the declaration layer does not already have.
   Doctrine: **library blocks are ordinary components** — no
-  framework privileges, no special vocabulary — which keeps schema authority
-  total and makes the library a permanent ergonomics torture test: if a
+  framework privileges, no special vocabulary — which keeps [schema authority](#g-schema-authority)
+  total and makes the library a permanent ergonomics [torture test](#g-torture-test): if a
   three-input OR gate is painful to write under the declaration rules, the
   rules are wrong. Arity comes from a type parameter (`Or{N}` builds
   `(in1 = Bool, …, inN = Bool)` programmatically — [§11.2][s11-2]-blessed derivation,
   and an early validation that the contract functions support parametric
-  components). Tier-transparency falls out of settled semantics: a stateless
-  continuous `h_xu` recomputes every sweep, so fed ZOH-held discrete signals
-  its output changes only at ticks — no tier-neutral class needed.
+  components). [Tier](#g-tier)-transparency falls out of settled semantics: a stateless
+  continuous `h_xu` recomputes every [sweep](#g-sweep), so fed ZOH-held discrete signals
+  its output changes only at [ticks](#g-tick) — no tier-neutral class needed.
   `UnitDelay{V}` is a **discrete** leaf at `K = 1`: `init_x = (v = zero(V),)`,
   `h_x` publishing the stored value and `g` storing the incoming one — the
   tier's native `z⁻¹` ([§8.6][s8-6], the shape [§15.2][s15-2]'s `sat_out_0` hand-writes), no
@@ -6024,9 +6024,9 @@ commitments, a library and an idiom follow:
   and a stage-1 body returning
   the value the instance holds — a stateless continuous leaf, so the
   tier-transparency argument above already covers discrete consumers and no
-  discrete variant is needed. The declaration takes the activation scalar and
+  discrete variant is needed. The declaration takes the [activation](#g-activation) scalar and
   ignores it, which is the point: the block's output *is* its stored value, so
-  the leaf is **deliberately pinned** at that value's own type — a
+  the leaf is **deliberately [pinned](#g-walked)** at that value's own type — a
   `Constant{Float64}` declares a `Float64` port and means it, and
   [§11.2][s11-2]'s embedding turns it into the zero-partial constant it already was
   under any `Dual` activation. The honest pin is now spelled rather than
@@ -6035,15 +6035,15 @@ commitments, a library and an idiom follow:
   required aggregate input has no physical contributor and the zero total
   must be spelled as a wire, and the rig stub below. Its value is instance
   data, like junction arity — not an overridable default: a configuration
-  wanting an externally settable source uses a root slot ([§9.3][s9-3]), which
+  wanting an externally settable source uses a root [slot](#g-slot) ([§9.3][s9-3]), which
   keeps the block from drifting into a back-door input default. A
   migration-phase deliverable.
-- **The component test rig** is the library's companion idiom: a one-child
+- **The [component test rig](#g-component-test-rig)** is the library's companion idiom: a one-child
   assembly whose `input_connections` surface the child's entire input face set —
   `input_passthrough(rig, "child")` verbatim ([§11.8][s11-8]) — so any component can be built
   and simulated in isolation: every input becomes a root slot fed by
-  ordinary conditions and devices, and every output is observable in the
-  snapshot table. One qualification, from [§11.2][s11-2]'s root-slot rule: an
+  ordinary conditions and [devices](#g-device), and every output is observable in the
+  [snapshot](#g-snapshot) table. One qualification, from [§11.2][s11-2]'s root-slot rule: an
   *abstract* input entry (`terrain = AbstractTerrainField`, [§4.4][s4-4]) cannot
   surface as a root slot — abstract-at-root is a build error — so the rig
   satisfies it *inside* the rig: a concrete stub child (a
@@ -6053,7 +6053,7 @@ commitments, a library and an idiom follow:
   source block's first shipped instance — with bespoke stubs remaining
   ordinary components wherever the double must compute something.
   Zero new machinery — wiring and `except` already exist — and it is the
-  substitutability contract doing its job: an abstract entry declares that
+  substitutability contract doing its job: an [abstract entry](#g-abstract-entry) declares that
   a substitute must be chosen, and the rig choosing its test double
   explicitly, as ordinary inspectable code, is precisely the isolation the
   rig exists to provide. `design_world`'s little sibling ([§14.9][s14-9]): where
@@ -6067,16 +6067,16 @@ commitments, a library and an idiom follow:
 
 ## 14. Stopped-sim services
 
-[§12.6][s12-6] previewed the services — initialization, trim, linearization, capture —
-as Stratum-C clients. Everything they share reduces to one artifact: the
-**condition value**, the datum that says "set this build to this state."
+[§12.6][s12-6] previewed the services — initialization, trim, linearization, [capture](#g-capture) —
+as [Stratum](#g-stratum)-C clients. Everything they share reduces to one artifact: the
+**[condition](#g-condition) value**, the datum that says "set this build to this state."
 [§14.1][s14-1]–[§14.4][s14-4] settle its representation, composition and application;
-[§14.5][s14-5]–[§14.6][s14-6] the boundary-zero sequence and slot totality; [§14.7][s14-7]–[§14.9][s14-9] the
+[§14.5][s14-5]–[§14.6][s14-6] the [boundary](#g-boundary)-zero sequence and [slot totality](#g-slot-totality); [§14.7][s14-7]–[§14.9][s14-9] the
 trim service in full; [§14.10][s14-10] linearization and `capture`.
 
 **Lifecycle preconditions.** Every service requires a non-running
-simulation — pause included, by the roster freeze's own doctrine ([§9.3][s9-3],
-[§10.1][s10-1]): while a run exists the loop owns the stores between drains, and a
+simulation — pause included, by the [roster](#g-roster) freeze's own doctrine ([§9.3][s9-3],
+[§10.1][s10-1]): while a run exists the loop owns the [stores](#g-store) between [drains](#g-drain), and a
 service reading or writing them would race it. Within the stopped-sim
 states, legality follows each service's inputs: `capture` requires
 `initialized` or `stopped` (it reads committed, boundary-consistent
@@ -6091,55 +6091,55 @@ condition is indistinguishable from a healthy one once produced —
 `capture(errored) → init!` would be resurrection with extra steps, and
 `linearize` about a half-written point the warn-but-assign failure mode
 [§14.8][s14-8] exists to kill. Post-mortem inspection of an errored sim's stores,
-log and trace stays available as a diagnostic read; it may not become a
+log and [trace](#g-trace) stays available as a diagnostic read; it may not become a
 condition value. A violation is `ServiceLifecycle` ([Appendix C][sC] — the
 operation, the current status, the legal statuses), the same kind
-`attach!`/`detach!` raise while `running` ([§9.3][s9-3]): one register for "this
+`attach!`/`detach!` raise while `running` ([§9.3][s9-3]): one [register](#g-register) for "this
 operation is illegal in the current lifecycle state," distinct from
 `MissingInit`, which names a missing prior step.
 
 ### 14.1 Conditions are path-addressed overlays on the declared defaults
 
-A condition may specify: state fields (`x`, on either tier) and modes (`m`,
-continuous components only, [§3.2][s3-2]) — addressed by
+A [condition](#g-condition) may specify: state fields (`x`, on either [tier](#g-tier)) and modes (`m`,
+[continuous components](#g-continuous-component) only, [§3.2][s3-2]) — addressed by
 [§11.6][s11-6] slash path plus field name — and root
-input slots, addressed by face. Never outputs (derived data) and never
-workspace (scratch). Entries are validated in the [§13.1][s13-1] collecting register: full
+input [slots](#g-slot), addressed by [face](#g-face). Never outputs (derived data) and never
+[workspace](#g-workspace) (scratch). Entries are validated in the [§13.1][s13-1] collecting [register](#g-register): full
 list, violations collected, one `BuildError`.
 
-**Overlay base = the declared defaults, always.** Every store has a declared
+**Overlay base = the declared defaults, always.** Every [store](#g-store) has a declared
 initial value (declaration-by-initial-value, [§11.2][s11-2]), so conditions are
 naturally sparse: applying one means "fresh run from the `init_*` defaults,
 with these overrides." The alternative base — the stopped sim's current
 stores — was rejected: it makes the result depend on run history, exactly the
-hidden input the trace-header discipline exists to kill. Warm restart needs no
+hidden input the [trace](#g-trace)-header discipline exists to kill. Warm restart needs no
 second semantics: a `capture` service reads the current stores **and root
 slots** back *as a condition value* (capture → tweak → apply) — slot coverage
 is what makes the captured condition total, hence re-applicable under [§14.6][s14-6] —
-the same gather the trace header already needs. One mechanism, two uses.
+the same gather the [trace header](#g-trace-header) already needs. One mechanism, two uses.
 
 **The mirror-tree spelling was rejected** (nested NamedTuples shaped like the
-assembly): the same information, but a second spelling of structure that must
+[assembly](#g-assembly)): the same information, but a second spelling of structure that must
 be zipped against the real one, ragged under partial specification, and
 outside the path vocabulary that `child_connections`, diagnostics and the `Build`'s
 provenance tables already speak.
 
 **Doctrine.** This does not reopen [§13.5][s13-5]'s observation-by-path rejection:
 that was *runtime* coupling — a root-authored predicate reaching through
-generic seams it does not own, breaking on substitution. A condition is a
+generic [seams](#g-seam) it does not own, breaking on substitution. A condition is a
 *design-time statement about a concrete build*, authored in the same register
 as `child_connections` (which also speaks paths, about children its author owns).
 [§14.2][s14-2]'s composition law makes the parallel exact.
 
-**Pre-sweep doctrine.** Condition writes precede the first sweep by
+**Pre-[sweep](#g-sweep) doctrine.** Condition writes precede the first sweep by
 definition; a would-be init value that depends on swept outputs is either
 analytically known to the caller (trim's `α_filt = α_a`: α is a *decision
 variable* — the value is known above, not computable below) or an equilibrium
 constraint, i.e. a job for the trim service, not for init.
 "Caller-computable" reaches past closed-form knowledge to **environment
 queries**: a condition needing one constructs the same handle the sweep will
-produce — through [§4.4][s4-4]'s value-level constructor, applied to the same values
-its `baseline` writes into the environment component's slots, or, in a rig
+produce — through [§4.4][s4-4]'s [value-level constructor](#g-value-level-constructor), applied to the same values
+its `baseline` writes into the environment [component](#g-component)'s slots, or, in a rig
 where the handle itself is a root slot value, by simply holding the value it
 wrote there — and then calls the same query function the consuming component
 calls. One implementation of the field math, evaluated one level up: no
@@ -6153,23 +6153,23 @@ whatsoever.
 
 The rejected alternative deserves its argument, because it names a real need.
 `initialize(::C, spec)` as a schema entry — today's `f_init!` reborn
-declaratively, with an assembly-level rule routing sub-specs to children —
-would keep init knowledge component-local (the engine knows
+declaratively, with an [assembly](#g-assembly)-level rule routing sub-specs to children —
+would keep init knowledge [component](#g-component)-local (the engine knows
 `n_eng → ω = n_eng·ω_rated`). Rejected on three counts: the routing rule
 makes specs a tree that must mirror the assembly tree — the two-artifact
 drift that killed the assembly builder (row 39), and call-tree composition
 where this design uses data composition everywhere else; spec types with
 `@kwdef` defaults are a *second home* for every store's default, competing
 with `init_x`; and partial overlays would need a per-field "unspecified"
-protocol, while slots (root-face vocabulary) would still need the path layer
+protocol, while [slots](#g-slot) (root-[face](#g-face) vocabulary) would still need the path layer
 beside it — two mechanisms where one suffices. The kill shot on its
 motivating example: the aero filter's "`α_filt` must equal `α`" is knowledge
 about a *swept output* — a component-local `initialize` computing it would
-need its inputs already swept, turning init into a third scheduled sweep.
+need its inputs already swept, turning init into a third scheduled [sweep](#g-sweep).
 Today's code doesn't do that either: the value is passed down from where it
 is known ([§14.1][s14-1]'s pre-sweep doctrine).
 
-What preserves the locality is an idiom, not schema: **fragment functions** —
+What preserves the locality is an idiom, not schema: **[fragment](#g-fragment) functions** —
 ordinary functions, shipped beside the component, dispatched on it:
 
 ```julia
@@ -6200,15 +6200,15 @@ the tree per trim iteration is stack-only construction** — the zero-alloc
 property of today's `assign!` loop, preserved structurally. `fragment`'s
 payloads speak only about the component at the authoring point; addressing
 children is exclusively `at`'s job (one way to say everything). A `slots`
-payload names faces *of the authoring level's contract*; resolution walks the
+payload names faces *of the authoring level's [contract](#g-contract)*; resolution walks the
 export chain to the root slot and errors if the face never surfaces — an
 internally-wired input has no slot and writing it is meaningless (the first
 sweep overwrites), and unexported stays unpokeable for init exactly as for
 the GUI ([§9.7][s9-7], [§15.4][s15-4]).
 
-**The locality law** is [§6.1][s6-1]'s, third instance (child connections, computed boundary connections,
+**The locality law** is [§6.1][s6-1]'s, third instance (child connections, computed [boundary](#g-boundary) connections,
 now conditions): each level speaks its own fields, its declared children's
-names, and its own faces; delegation by dispatch at every genericity seam;
+names, and its own faces; delegation by dispatch at every genericity [seam](#g-seam);
 deep `at` paths legitimate exactly where deep connections are — within an
 owned concrete subtree. Absolute paths exist only in the flattened entry
 list, a *compiled derivative* of the composition, as slot offsets are of
@@ -6217,7 +6217,7 @@ its owner shipped, nothing else. Enforcement status is also [§6.1][s6-1]'s: con
 (ownership is a fact about who maintains the code, not build-visible),
 available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
 are [§13.7][s13-7] standard-library material — ordinary artifacts, no privileges.
-Merge collisions — two entries on one leaf — are errors at resolution
+[Merge](#g-merge) collisions — two entries on one leaf — are errors at resolution
 reporting *both* provenance chains, and the message names the layering
 combinator: "`merge` is collision-intolerant by design — use
 `override(base, patch)` to layer." Last-writer-wins was rejected in the same
@@ -6230,13 +6230,13 @@ a bare NamedTuple — is an **error method**, defined so the call cannot fall
 through to `Base.merge`'s last-wins semantics on a payload that looks
 plausible, and its message is directive: wrap the NamedTuple in `fragment(...)`
 (or `at(prefix, fragment(...))`) and merge nodes with nodes. The rejection
-carries a kind like every other (`ConditionNodeMisuse`, [Appendix C][sC] — the
+carries a [kind](#g-kind) like every other (`ConditionNodeMisuse`, [Appendix C][sC] — the
 offending argument's type, the node kinds in hand): it is raised at
 composition time, before any resolution pass or provenance chain exists,
 which is why it is its own kind and not a `ConditionResolution` sub-kind
 ([§14.3][s14-3]). The
 explicit, *ordered* layering spelling — `override` — was deferred here and
-admitted one sub-topic later, when slot totality produced its use case
+admitted one sub-topic later, when [slot totality](#g-slot-totality) produced its use case
 ([§14.6][s14-6]).
 
 ### 14.3 Resolution: flatten, validate, compile once
@@ -6245,15 +6245,15 @@ Resolution takes the root node plus a `Build`. Flattening is the only place
 path strings are ever concatenated — a trivial recursion with a path
 accumulator that also records each entry's **tree position** (its
 `getfield`/`getindex` step tuple). The collecting pass then checks each flat
-entry: path resolves (did-you-mean over children), field declared in the
+entry: path resolves ([did-you-mean](#g-did-you-mean) over children), field declared in the
 target's `init_x`/`init_m`, value type convertible to the declared
-leaf type, slot faces reach root slots, no duplicate
+leaf type, [slot](#g-slot) [faces](#g-face) reach root slots, no duplicate
 `(path, store, field)`. The `Build` supplies two lookup families: **schema**
 (the evaluated declarations: may you write this field, at what leaf type —
 the authority) and **layout** (`x` backing ranges, store indices for `m` and for discrete `x`, slot
-indices from the activation; face chains from Stratum A — the destination).
+indices from the [activation](#g-activation); face chains from [Stratum](#g-stratum) A — the destination).
 
-A valid list compiles to a plan: per leaf, a `Getter{P}` lens (the position
+A valid list compiles to a plan: per leaf, a `Getter{P}` [lens](#g-lens) (the position
 tuple lifted to a type parameter — type-stable navigation of the fixed tree
 type), a destination offset, and a **converter baked now**, *selected per
 leaf from that leaf's type in the resolved shape* — leaf types are shape
@@ -6265,17 +6265,17 @@ type-stable `trim_condition(d)` every decision-dependent leaf is `Dual`-typed
 in the shape ([§14.7][s14-7]) — and takes the type's ordinary `convert`/constructor
 methods *at that eltype*: an authored `RQuat` of `Dual`s → the `SVector{4}`
 state leaf at `Dual`, partials flowing through untouched, which is what makes
-the seeded decisions reach the sweep at all; at the nominal activation the
+the seeded decisions reach the [sweep](#g-sweep) at all; at the nominal activation the
 same rule is the ordinary `Float64` conversion (an authored `RQuat` value →
 the `SVector{4}` state leaf it initializes). A plain **`Float64` leaf against
 a non-nominal activation's scratch** is a held constant and takes the
 `Float64 → Dual` zero-partial embedding — semantically exact there, and
 exactly there: "held at the operating point" *is* zero partials, the whole of
-a linearization operating-point condition, authored decision-free
+a linearization operating-point [condition](#g-condition), authored decision-free
 ([§14.10][s14-10]). The
-selection is a one-time boundary decision that leaves [§12.5][s12-5]'s
-nominal exact-match doctrine for table cells untouched. Converters run here
-and in `capture`'s gather ([§14.10][s14-10]) — the write paths — never on state views
+selection is a one-time [boundary](#g-boundary) decision that leaves [§12.5][s12-5]'s
+nominal exact-match doctrine for table [cells](#g-cell) untouched. Converters run here
+and in `capture`'s gather ([§14.10][s14-10]) — the write paths — never on state [views](#g-view)
 ([§7.1][s7-1]). Overlay
 partiality for the `m` and discrete-`x` stores is baked the same way: the writer holds
 `merge(init_m_defaults, overlay)` with the base resolved at compile time
@@ -6285,8 +6285,8 @@ partiality for the `m` and discrete-`x` stores is baked the same way: the writer
 
 Execution is where the paradigm-change tax was feared, and where it
 vanishes: all string work, validation and addressing are functions of the
-condition's *shape*, and every hot path holds the shape fixed while varying
-values. Hence resolve-once/execute-many, with two registers over one plan:
+[condition](#g-condition)'s *shape*, and every hot path holds the shape fixed while varying
+values. Hence resolve-once/execute-many, with two [registers](#g-register) over one plan:
 
 - **Specialized `apply!`** — for services that iterate (trim's per-evaluation
   write, linearization's seeding). Unrolled stores through the baked lenses
@@ -6294,7 +6294,7 @@ values. Hence resolve-once/execute-many, with two registers over one plan:
   zero-alloc, no strings, no dispatch. The per-iteration shape check is
   [§12.5][s12-5]'s mechanism transferred: the tree type (which carries the full
   nesting, every field name and leaf type) is proven by dispatch, and a `===`
-  sweep over the interned path literals closes the remainder — pointer
+  [sweep](#g-sweep) over the interned path literals closes the remainder — pointer
   compares that fold to nothing in the all-literal case, with shape drift a
   structured error, not silent corruption. Cost: Julia codegen of ~10–50 ms
   *once per condition shape* — noise against the model's own first-sweep
@@ -6307,47 +6307,47 @@ values. Hence resolve-once/execute-many, with two registers over one plan:
 
 Which register a service uses is internal, never user-facing API.
 
-**The read-selector family is closed**: `get_state(path, field[, i])`,
+**The read-[selector](#g-selector) family is closed**: `get_state(path, field[, i])`,
 `get_deriv(path, field[, i])`, `get_output(path, field[, i])`,
 `get_slot(face)`, `get_face(name)` — one
 address space for every reader of the model. The names carry a deliberate
 `get_` prefix: a selector is a *deferred read* — a value describing the read
 the compiled gather will perform — and the prefix both names that action and
 keeps five short common nouns out of the namespace user declarations share
-with domain code. There is no selector for a component's private
-intermediates, and cannot be: they are values in flight, not cells anything
+with domain code. There is no selector for a [component](#g-component)'s private
+intermediates, and cannot be: they are values in flight, not [cells](#g-cell) anything
 could address ([§5.2][s5-2]), so a reader that wants one is a component that should
-declare it an output ([§11.3][s11-3]). `get_face` addresses a root-exported output face —
+declare it an output ([§11.3][s11-3]). `get_face` addresses a root-exported output [face](#g-face) —
 [§9.2][s9-2]'s *integration* register, previously recommended but unspellable in
 the family.
 
 **A selector resolves against a source, before any client policy applies.**
 The table selectors — `get_output`, `get_slot`, `get_face` —
-resolve against a *table source*: a boundary snapshot, or the scratch tables
+resolve against a *table source*: a [boundary](#g-boundary) [snapshot](#g-snapshot), or the scratch tables
 a service evaluation instantiates ([§14.8][s14-8]) — the axis separates
 table-borne values from store-borne ones, not snapshots from services. The
 store selectors — `get_state`,
 `get_deriv` — resolve only against live stores, which only stopped-sim
 service evaluations, `capture`, and post-run inspection of the live stores
-([§9.2][s9-2]'s replay-to-inspect) ever hold: the snapshot deliberately carries no
-state stores ([§9.2][s9-2]), and `ẋ` buffers are integrator scratch, not
+([§9.2][s9-2]'s [replay](#g-replay)-to-inspect) ever hold: the snapshot deliberately carries no
+state stores ([§9.2][s9-2]), and `ẋ` [buffers](#g-buffer) are integrator scratch, not
 boundary-consistent objects outside a service evaluation. A snapshot-bound
 reader naming a store selector is therefore a resolution error at attach
 (`ReadBindingUnresolved`), in the didactic register, with [§9.2][s9-2]'s honest
-remedy: declare the field public and read the auto-published port. Client
+remedy: declare the field public and read the [auto-published port](#g-auto-published-port). Client
 policy rides on top — row 83's registers restated as a resolver property:
 
-- **Load-bearing services** (trim's `reads`, linearization's taps) speak
-  the contract: `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`,
-  within the scopes [§6.1][s6-1]'s locality law and [§14.2][s14-2]'s fragment scoping own.
-  `get_face` is the set's seam-crossing member: it resolves through export
-  chains exactly as [§14.9][s14-9]'s mounting resolves slot faces — the read
+- **Load-bearing services** (trim's `reads`, linearization's [taps](#g-taps)) speak
+  the [contract](#g-contract): `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`,
+  within the scopes [§6.1][s6-1]'s locality law and [§14.2][s14-2]'s [fragment](#g-fragment) scoping own.
+  `get_face` is the set's [seam](#g-seam)-crossing member: it resolves through export
+  chains exactly as [§14.9][s14-9]'s [mounting](#g-mounting) resolves [slot](#g-slot) faces — the read
   side mirroring the write side — so an equilibrium equation reaching
   behind a generically-held child binds the curated face register instead
   of a path the locality law forbids. A service evaluation needing a private
   intermediate has one remedy, and it is the same at every register: the
   component exports it ([§14.7][s14-7]).
-- **Diagnostic readers** (output-device bindings, GUI panels, log
+- **Diagnostic readers** (output-[device](#g-device) bindings, GUI panels, log
   inspection) admit the whole family, within the source rule: deep paths
   and `get_face` names alike, with the store selectors
   reaching only the diagnostic clients that actually hold stores (`capture`,
@@ -6364,50 +6364,50 @@ reverse — one machinery, both directions, in the `Build`'s client kit. The
 per-iteration ledger for trim: user fragment math (stack-only, the domain
 computations unchanged from today) + leaf stores + folded shape check +
 sweep — the sweep dominates, exactly as `f_ode!` does today. `apply!` ends at
-established stores; making the model *coherent* is boundary zero, [§14.5][s14-5].
+established stores; making the model *coherent* is [boundary zero](#g-boundary-zero), [§14.5][s14-5].
 
 ### 14.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
-After `apply!` establishes stores at `t₀` — and the trace header captures
-them, together with the slot values, *before anything below runs* ([§9.5][s9-5]'s
-capture placement; a post-sequence capture would hand replay
+After `apply!` establishes stores at `t₀` — and the [trace header](#g-trace-header) captures
+them, together with the [slot](#g-slot) values, *before anything below runs* ([§9.5][s9-5]'s
+capture placement; a post-sequence capture would hand [replay](#g-replay)
 already-transitioned state) — the init service completes the
-[§8.6][s8-6] macro-sequence with an empty integrate — project → [sweep → guards →
-handlers]\* → due `g` updates → first snapshot — and that
+[§8.6][s8-6] macro-sequence with an empty integrate — project → [[sweep](#g-sweep) → [guards](#g-guard) →
+handlers]\* → [due](#g-due) `g` updates → first [snapshot](#g-snapshot) — and that
 parity is exact, not approximate. Piece by piece:
 
 - **Project runs.** Authored `x` can sit off-manifold (a hand-assembled
-  quaternion ulps off unit norm; a condition writing part of a constrained
-  block against fresh defaults). Projection after condition writes is the
+  quaternion ulps off unit norm; a [condition](#g-condition) writing part of a constrained
+  block against fresh defaults). [Projection](#g-projection) after condition writes is the
   same position it holds after any other `x` mutation, and costs nothing
   when the state is already clean.
-- **The sweep runs with every `Φ = 0` tick due.** `t₀` is a grid point of
+- **The sweep runs with every `Φ = 0` [tick](#g-tick) due.** `t₀` is a grid point of
   every phase-free divisor, so those discrete output stages are gated in,
   publishing from the authored `x` — necessarily, since no earlier tick
-  exists for a ZOH to hold. An offset component ([§8.5][s8-5]) is *not* due: its
-  first tick is at `Φ·Δt_base`, and until then its cells hold the values the
-  activation's probe populated ([§12.3][s12-3]). The `t₀` snapshot carries a fully
+  exists for a ZOH to hold. An offset [component](#g-component) ([§8.5][s8-5]) is *not* due: its
+  first tick is at `Φ·Δt_base`, and until then its [cells](#g-cell) hold the values the
+  [activation](#g-activation)'s [probe](#g-probe) populated ([§12.3][s12-3]). The `t₀` snapshot carries a fully
   populated table either way.
-- **Events run.** A condition landing a guard predicate in holding territory
+- **Events run.** A condition landing a guard [predicate](#g-predicate) in [holding](#g-edge-semantics) territory
   (an authored stall flag, a strut authored into contact) fires visibly at `t₀` rather
-  than one step later — grounded by the prior rule ([§8.6][s8-6]):
-  boundary zero establishes every guard prior as not-holding. Suppression
+  than one step later — grounded by the [prior](#g-prior) rule ([§8.6][s8-6]):
+  [boundary zero](#g-boundary-zero) establishes every guard prior as not-holding. Suppression
   would delay the identical firings while hiding the diagnostic that the
-  authored condition was not quiescent — [§9.7][s9-7]'s stage-on-interaction lesson
+  authored condition was not quiescent — [§9.7][s9-7]'s [stage-on-interaction](#g-stage-on-interaction) lesson
   (insurance that masks invariant violations is anti-diagnostic). The header
   records the *resolved pre-sequence* stores and slots ([§9.5][s9-5]), so replay
-  re-executes boundary zero from the same starting point and whatever fires
+  re-executes [boundary](#g-boundary) zero from the same starting point and whatever fires
   at `t₀` fires again identically ([§10.7][s10-7]) — the firings are recomputed,
-  never recorded. (A `stop_on` face already `true` is a
+  never recorded. (A `stop_on` [face](#g-face) already `true` is a
   different category: nothing *fires* — the face simply reads `true` in the
   published `t₀` snapshot and the loop reacts, [§13.5][s13-5].)
 - **Due `g` updates run.** This follows from an interval-alignment fact that
-  is easy to mis-picture and is hereby a taught contract, sibling to [§15.5][s15-5]'s
+  is easy to mis-picture and is hereby a taught [contract](#g-contract), sibling to [§15.5][s15-5]'s
   boundary-sampling line: **a boundary's `g` is the *outgoing* transition** —
   at tick `t_k` it consumes the completed boundary's samples and produces
   `x_{k+1}`, the value the next tick reads; the transition that carried `x`
   *into* `t_k` ran at `t_{k-1}`. Boundary zero is missing its incoming
-  transitions on *both* tiers, and both are replaced by authorship: no
+  transitions on *both* [tiers](#g-tier), and both are replaced by authorship: no
   integration over `[t_{-1}, t_0]` produced a continuous leaf's `x(0)`, and no
   `g` at `t_{-1}`
   produced a discrete leaf's `x(0)` — the condition did. The outgoing work all runs: `g` at
@@ -6422,7 +6422,7 @@ parity is exact, not approximate. Piece by piece:
   integrate but the first *outgoing* one, $t_0 \to t_0 + h$: both authored values
   are the published initial conditions of their outgoing transitions.)
 - **`t₀` is an init-service argument** (default `0.0`), never a condition
-  entry — time is not a store of any component, and the harmonic grid
+  entry — time is not a store of any component, and the [harmonic grid](#g-harmonic-grid)
   anchors at whatever `t₀` boundary zero runs at. Both init-service entry
   points carry it: `init!(sim, condition; t0)` and `trim!`'s commit
   (`trim!(sim, problem; baseline, t0, backend)`, [§14.8][s14-8]), same default.
@@ -6453,20 +6453,20 @@ parity is exact, not approximate. Piece by piece:
 
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
-Slots are the one initialized datum without declared defaults — [§9.3][s9-3]'s
-bare-types decision, upheld here: a default inside a face declaration would
-scatter condition data into the wiring contract and recreate the
+[Slots](#g-slot) are the one initialized datum without declared defaults — [§9.3][s9-3]'s
+bare-types decision, upheld here: a default inside a [face](#g-face) declaration would
+scatter condition data into the wiring [contract](#g-contract) and recreate the
 competing-defaults problem that [§14.2][s14-2] killed for `initialize` specs. So a
-slot's only source before boundary zero is the condition, and three
+slot's only source before [boundary zero](#g-boundary-zero) is the condition, and three
 consequences follow.
 
 **Totality is a precondition of starting, checked by the service.** A
-condition value is legitimately partial (fragments compose; trim iterations
+condition value is legitimately partial ([fragments](#g-fragment) compose; trim iterations
 write subsets; capture-then-tweak patches leaves) — "every root slot
 covered" is not a property of conditions but of *every application that
 establishes a complete world over virgin stores*. That principle, not an
 enumeration, names the sites: `init!`, trim's setup application to freshly
-allocated scratch stores, and trim's commit through boundary zero
+allocated scratch stores, and trim's commit through [boundary](#g-boundary) zero
 ([§14.8][s14-8]) — one class, one mechanism, one kind. Each compares the resolved
 plan's slot coverage against the `Build`'s `input_faces` before writing
 anything; a shortfall is one collected, declaration-ordered diagnostic
@@ -6476,17 +6476,17 @@ so the check is one comparison and runs before any evaluation, not merely
 before any write. Pre-write means all-or-nothing: a rejected init leaves
 the sim exactly as it was, the same posture as failed trim.
 
-**The probe-value barrier is structural.** [§12.3][s12-3]'s `probe_value` synthesis
+**The [probe](#g-probe)-value barrier is structural.** [§12.3][s12-3]'s `probe_value` synthesis
 (zero/false/first-enum/`T()`) exists so build-time probes can exercise code
 with fabricated inputs; a fabricated zero is a fine probe input and a
 terrible flight condition (a silently zeroed `mixture` kills the engine and
 sends the user debugging aerodynamics). The services path simply contains
 no call to it: a slot gets a condition value or the application errors —
-no third branch. Replay likewise never synthesizes: the trace header
+no third branch. [Replay](#g-replay) likewise never synthesizes: the [trace header](#g-trace-header)
 records every slot value, and with totality enforced its slot capture is
 complete by construction ([§9.3][s9-3]'s requirement discharged).
 
-**Baselines are aircraft-shipped condition functions, layered by
+**[Baselines](#g-baseline) are aircraft-shipped [condition](#g-condition) functions, layered by
 `override`.** Nobody hand-writes ~20 slot values per script; today
 `SystemsInitializer`'s `@kwdef` defaults carry that load, and their
 successor is ordinary user math in one authoritative home —
@@ -6514,7 +6514,7 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   all-`Float64` NamedTuples.** The `AbstractTrimState{N}`/`FieldVector`
   supertype dies — its only job was vectorization, which is the service's
   (pack/unpack by field order, that order being the `guess` NamedTuple's own —
-  [§12.5][s12-5]'s rule at this seam: **the names are the pairing, order carries
+  [§12.5][s12-5]'s rule at this [seam](#g-seam): **the names are the pairing, order carries
   no semantics**). `lower` and `upper` are checked at setup for key-set equality
   with `guess` and `Float64` fields, then canonicalized to `guess`'s field order
   by the same type-level reorder (`NamedTuple{keys(guess)}(lower)`), so a
@@ -6525,21 +6525,21 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   0.3,))` is free warm-start tweaking; an author who wants a documented
   `@kwdef` struct keeps it privately and converts.
 - **`TrimParameters` stays a plain user struct** the framework never sees;
-  the assignment is the pure `trim_condition(ac, params, d)` fragment-tree
+  the assignment is the pure `trim_condition(ac, params, d)` [fragment](#g-fragment)-tree
   function ([§14.2][s14-2]), applied per iteration by the compiled plan ([§14.4][s14-4]).
 - **The read side is declared, then compiled**: `reads(name = get_state(path,
-  field) | get_deriv(path, field) | get_output(path, field) | get_slot(face) |
+  field) | get_deriv(path, field) | get_output(path, field) | get_slot([face](#g-face)) |
   get_face(name), ...)` —
   [§14.4][s14-4]'s load-bearing set. `get_state` and
   `get_deriv` address a declared state field and its derivative (validated
-  against `init_x`), `get_output` a declared output port (validated against
+  against `init_x`), `get_output` a declared output [port](#g-port) (validated against
   `output_types`), `get_slot` and `get_face` a root input and output face
-  (validated against the root face lists). The path selectors reach only
+  (validated against the root face lists). The path [selectors](#g-selector) reach only
   through [§6.1][s6-1]'s locality scopes; an equilibrium equation crossing a
-  generic seam reads a face. A component's private intermediates are
+  generic seam reads a face. A [component](#g-component)'s private intermediates are
   not addressable at all ([§5.2][s5-2], [§14.4][s14-4]) —
   a trim evaluation needing one is a signal the component should export it —
-  and a derivative wanted across a contract boundary takes the same remedy:
+  and a derivative wanted across a [contract](#g-contract) [boundary](#g-boundary) takes the same remedy:
   publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step 2's
   one-line binding, made contract), leaving `get_deriv` scoped to owned
   concrete subtrees.
@@ -6559,8 +6559,8 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   solution, `stopval = 1e-16` as a hand-scaled absolute threshold,
   thousands of evaluations, no per-equation diagnostics) because Jacobians
   through the mutating `f_ode!` chain and the assignment math were out of
-  reach. Here the `Dual` activation seeds the decision variables through
-  the `T`-generic assignment, sweep and `f`; the seeds survive the condition
+  reach. Here the `Dual` [activation](#g-activation) seeds the decision variables through
+  the `T`-generic assignment, [sweep](#g-sweep) and `f`; the seeds survive the condition
   write boundary because [§14.3][s14-3] selects the baked converter per leaf from the
   shape — a decision-descended leaf is `Dual`-typed there and takes the
   structural conversion, the zero-partial embedding staying on the held
@@ -6581,7 +6581,7 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   [§14.8][s14-8]),
   which is where the hand-scaled absolute threshold is repaired — today's
   algorithm as the degenerate case.
-- **Recorded, not built**: closed-loop sampled-data trim (append
+- **[Recorded, not built](#g-recorded-not-built)**: closed-loop sampled-data trim (append
   $g(x) - x = 0$ residuals via a nondestructive scratch evaluation of `g` —
   structurally impossible under FlightCore's mutating `f_disc!`), and
   on-ground static equilibrium (strut compressions and attitude against
@@ -6605,7 +6605,7 @@ arguments — `d` is the one value that *cannot* be closed over — while
 `TrimParameters` stays behind the closure, exactly as `condition` already
 holds it (the framework never sees it). Being user-shaped, that record is also
 where any environment handles the condition math needs conventionally ride
-([§4.4][s4-4]'s value-level constructor, [§14.1][s14-1]'s pre-sweep doctrine): the problem
+([§4.4][s4-4]'s [value-level constructor](#g-value-level-constructor), [§14.1][s14-1]'s pre-sweep doctrine): the problem
 *receives* the environment, and never writes it ([§14.9][s14-9]).
 The returned NamedTuple's names are
 the equation names the report and the failure messages use; the service packs
@@ -6617,7 +6617,7 @@ the guess evaluation the service performs anyway observes the residual key set,
 and a `tolerances` key-set mismatch — or any field-type disagreement, on either
 side of the seam — is `TrimProblemInvalid` ([Appendix C][sC]), with the offending
 field and the names or types in hand. Order is never a mismatch.
-Worked, the C172 cruise case reduced to
+[Worked](#g-worked), the C172 cruise case reduced to
 its three-equation core (the real problem is the same shape with the full
 7-variable search; the θ-constraint elimination survives inside
 `trim_condition`):
@@ -6638,14 +6638,14 @@ cruise = TrimProblem(
 
 ### 14.8 The trim service: solver seam, scratch stores, commit and report
 
-**The backend seam.** `trim!(sim, problem; baseline, t0 = 0.0, backend =
+**The backend [seam](#g-seam).** `trim!(sim, problem; baseline, t0 = 0.0, backend =
 LevenbergMarquardt())`. The default is an in-house dense
 Levenberg–Marquardt: for decision dimensions ~10 with exact Jacobians, the
 core (damping loop, small linear solve, convergence test) is ~100 lines —
 the [§8.2][s8-2] stepper precedent exactly (tiny needed core vs. heavy dependency),
 sharpened by the fact that [§14.7][s14-7]'s per-residual physical tolerances are a
 convergence test no external package spells natively — which is precisely
-why the *service*, not the backend, applies it. The backend contract is a
+why the *service*, not the backend, applies it. The backend [contract](#g-contract) is a
 **pinned signature**, value-passed — one required method per backend:
 
 ```julia
@@ -6705,25 +6705,25 @@ in the report ("converged with `elevator` at its upper bound" — the classic
 CG-limit diagnostic, today inferable only from mysterious residuals).
 
 **Scratch stores, stated without type luck.** Every `trim!` invocation
-instantiates a fresh working store set — `x` backing, `m` and discrete-`x` stores, slot
-and signal tables, derivative buffer — from the activation's *layout*: the
+instantiates a fresh working [store](#g-store) set — `x` backing, `m` and discrete-`x` stores, [slot](#g-slot)
+and [signal tables](#g-signal-table), derivative [buffer](#g-buffer) — from the [activation](#g-activation)'s *layout*: the
 layout is the reusable compiled artifact, the buffers are per-invocation
 and die with the call (stopped-sim allocation, [§7.5][s7-5]). The `Dual` backend's
 buffers being un-aliasable by type is defense in depth, not the mechanism —
 a `Float64` backend (NLopt) gets equally fresh buffers. The invariant is
 backend-independent: **the simulation's authoritative stores have exactly
-one writer, the commit through boundary zero.** Setup applies
+one writer, the commit through [boundary zero](#g-boundary-zero).** Setup applies
 `override(baseline, condition(guess))` to the scratch set once, its full
 coverage *checked here* — [§14.6][s14-6]'s comparison of the resolved plan against
 the `Build`'s `input_faces`, one plan-level comparison before the first
-evaluation — so sweeps see a complete world. Raw instantiation is sound
+evaluation — so [sweeps](#g-sweep) see a complete world. Raw instantiation is sound
 exactly because of that check: every slot is written before any read, and
 an incomplete `baseline` is one declaration-ordered `UninitializedSlots`
-at setup rather than a whole solve against undefined cells. Since the
+at setup rather than a whole solve against undefined [cells](#g-cell). Since the
 commit applies the same composite over the same `baseline`
 ([§14.9][s14-9]'s `override(baseline, condition(d*))`), its coverage is setup's:
 commit's totality check is structurally unfailable through the trim path
-and stands as the shared `init!`-boundary defense — a converged solve is
+and stands as the shared `init!`-[boundary](#g-boundary) defense — a converged solve is
 always committable, so `TrimReport` carries no committed flag and the
 no-throw doctrine needs no exception. Iterations rewrite only the
 problem's write-set via the compiled plan; an LM evaluation is one
@@ -6740,11 +6740,11 @@ boundary masking ([§10.4][s10-4]).
 
 **The commit, in full.** The committed solution is applied as an `init!`
 in every respect: `override(baseline, solution)` through boundary zero —
-[§14.6][s14-6] pre-write slot totality, [§14.5][s14-5]'s sequence, guards at commit — with
-the harmonic grid anchored at `trim!`'s own `t0` argument (default `0.0`,
+[§14.6][s14-6] pre-write [slot totality](#g-slot-totality), [§14.5][s14-5]'s sequence, [guards](#g-guard) at commit — with
+the [harmonic grid](#g-harmonic-grid) anchored at `trim!`'s own `t0` argument (default `0.0`,
 the same default as `init!`'s: one rule for both init-service entry
-points), and the recorders cleared exactly as [§10.6][s10-6] states for
-`init!` — trace, log, and any batches still in staging cells. A fresh
+points), and the [recorders](#g-recorders) cleared exactly as [§10.6][s10-6] states for
+`init!` — [trace](#g-trace), log, and any [batches](#g-batch) still in [staging cells](#g-staging-cell). A fresh
 recording starting at its own anchor is the unattended register's natural
 shape; fly-then-retrim keeps continuity explicitly — `capture` returns
 `(condition, t)` separately for exactly this ([§14.1][s14-1]), so the resumed
@@ -6759,8 +6759,8 @@ backend's returned point), the **committed-state residuals** (the same
 residuals re-gathered from the boundary-zero world after the commit — nearly
 free, since that boundary's sweep has already run and the residuals'
 declared reads need only gather from it (with [§14.5][s14-5]'s offset caveat
-carried over: an offset component is not due at boundary zero, so a residual
-reading its port reads the probe-populated cell, not a commit-refreshed
+carried over: an offset [component](#g-component) is not [due](#g-due) at boundary zero, so a residual
+reading its [port](#g-port) reads the [probe](#g-probe)-populated cell, not a commit-refreshed
 one): the numbers describing the state
 the simulation is actually *in*, which is the point a `capture`-defaulted
 `linearize` reads), the backend's returned status together
@@ -6782,7 +6782,7 @@ expected *outcome* (envelope-sweep data: hitting the infeasible edge is
 information), per [§13][s13]'s exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
 [Appendix C][sC] — a guess/bounds key-set or field-type disagreement, an
-unknown `reads` selector, a
+unknown `reads` [selector](#g-selector), a
 `tolerances`/residual key-set mismatch observed at the setup guess evaluation:
 the offending field with the names or types in hand, collected, mirroring
 linearization's `TapResolution`); a permuted spelling is none of these
@@ -6790,7 +6790,7 @@ linearization's `TapResolution`); a permuted spelling is none of these
 An *empty* one is none of them either: `TrimProblem(guess = (;), …)` is
 legal, not `TrimProblemInvalid`. With zero decision variables the solver is
 bypassed outright — nothing to pack, no seeded activation, no backend call —
-and the service simply evaluates the residuals once at the baseline, the
+and the service simply evaluates the residuals once at the [baseline](#g-baseline), the
 ordinary box test deciding `converged` and the commit as usual. The
 degenerate problem is the "is this operating point an equilibrium?" probe:
 evaluate this condition's equations and report, useful in its own right and
@@ -6798,11 +6798,11 @@ free.
 
 **The AD obligation, scoped.** The default formulation requires `Dual`
 genericity of exactly: the continuous output-stage chains and `f`, plus the
-user's assignment and residual math. The discrete tier's stages and `g`, and the
+user's assignment and residual math. The discrete [tier](#g-tier)'s stages and `g`, and the
 event system's guards and handlers, never see a `Dual` — frozen constants with
 zero partials, semantically exact ([§11.2][s11-2]). This is *not a new obligation*: it is the same activation
 linearization is defined on, and AD-readiness is a build-checked property
-(the Dual probe detonates pinned intermediates with a culprit-naming
+(the Dual probe detonates [pinned](#g-walked) intermediates with a culprit-naming
 `InexactError`; `build(world; activations)` puts it in CI) — robustness by
 enforcement, not hope. C172 migration audit (one afternoon, one genuine
 item): `Interpolations.jl` tables (propeller coefficient maps, engine
@@ -6821,7 +6821,7 @@ condition**: `condition` is a condition-*valued function* over the decision
 space, `reads`/`residuals` are the equations that pin the free variables
 down, `guess`/`bounds` say where to search. Solving makes the implicit
 condition explicit, and the commit is then literally an init —
-`override(baseline, condition(d*))` through boundary zero. The services
+`override(baseline, condition(d*))` through [boundary zero](#g-boundary-zero). The services
 unify as clients of one condition algebra: `init!` applies an explicit
 condition, `capture` produces one, `trim!` searches a family for the member
 satisfying its equations.
@@ -6843,17 +6843,17 @@ at(prefix::String, p::TrimProblem) = TrimProblem(
 
 Resolution then needs nothing new: the flattening accumulator of [§14.3][s14-3]
 enters the `Scoped` wrapper and prefixes every entry
-(`"vehicle/dynamics"` → `"wing/vehicle/dynamics"`); slot entries authored
-in the aircraft's face vocabulary resolve through the export chain *from
+(`"vehicle/dynamics"` → `"wing/vehicle/dynamics"`); [slot](#g-slot) entries authored
+in the aircraft's [face](#g-face) vocabulary resolve through the export chain *from
 the mount point* (`throttle` at `"wing"` → root slot `"wing.throttle"`).
 An unexported face fails resolution by name — correctly: an internally
-wired input (a scenario component driving the wingman's throttle) is
+wired input (a [scenario component](#g-scenario-component) driving the wingman's throttle) is
 untrimmable from outside, and the build says so. The service compiles the
 scoped condition and reads and runs the identical loop — it never knows
 where its paths are mounted.
 
 **A problem never authors the environment.** The environment — a sibling
-component's slots in a full world, a handle-valued root slot in a thin rig —
+[component](#g-component)'s slots in a full world, a handle-valued root slot in a thin rig —
 is the world's and the `baseline`'s business; the problem *receives* its
 handles through the user parameter record ([§14.7][s14-7]) and only queries them. The
 reason is the resolution rule just stated: a condition entry naming a wired
@@ -6879,10 +6879,10 @@ the trim problem mounts at `"aircraft"` like anywhere else. Leaving an
 environment face *unconnected* is legal by construction, though: the face
 becomes an ordinary root slot holding the handle **value**, written by the
 `baseline` like any other slot — the test-rig register, the function-valued
-sibling of a constant source, zero ceremony for a frozen environment. For
+sibling of a [constant source](#g-constant-source), zero ceremony for a frozen environment. For
 design tasks the shipped rig stays `design_world(ac)`, which keeps the
 environment's tunables in the slot vocabulary that conditions, `capture`,
-linearization's input surface and the trace header already speak.
+linearization's input surface and the [trace header](#g-trace-header) already speak.
 
 **Swarm doctrine.** The service solves *one problem at a time*. Sequential
 independent trims (trim lead, commit, trim wing against the committed
@@ -6890,20 +6890,20 @@ world) cover weak/one-way coupling; a joint trim is user-side value
 composition — concatenate decision NamedTuples under prefixed names, merge
 the scoped condition trees, stack the residuals. If joint trims become
 routine, a `product(p₁ => "lead", p₂ => "wing")` helper belongs in the
-[§13.7][s13-7] library; recorded, not built.
+[§13.7][s13-7] library; [recorded, not built](#g-recorded-not-built).
 
 ### 14.10 Linearization: tap selectors, one seeded pass, a pure query
 
 **The tap declaration.** Today's per-aircraft `XStateSpace`/
 `UStateSpace`/`YStateSpace` structs plus the `get_*_ss`/`assign_*_ss!`
 shuttle methods (~150 lines of bookkeeping per variant) become three
-selector lists drawn from [§14.4][s14-4]'s family (`get_state`/`get_slot`/`get_output`), with the
-optional component index so a vector leaf yields *named scalars* — the NamedTuple
+[selector](#g-selector) lists drawn from [§14.4][s14-4]'s family (`get_state`/`get_slot`/`get_output`), with the
+optional [component](#g-component) index so a vector leaf yields *named scalars* — the NamedTuple
 key is the label control design slices by:
 `x = (p = get_state("vehicle/dynamics", :ω_eb_b, 1), θ = get_state("vehicle/kinematics", :θ_nb), …)`,
 `u = (throttle_cmd = get_slot("throttle"), …)`,
 `y = (EAS = get_output("vehicle/airflow", :EAS), …)`. Validated at resolution
-against `init_x`/faces/`output_types` with did-you-mean errors, compiled to
+against `init_x`/[faces](#g-face)/`output_types` with [did-you-mean](#g-did-you-mean) errors, compiled to
 offsets once, relocatable whole via `at(prefix, taps)` — the shuttle
 layer's successor is the compiled writer/reader pair, and [§7.1][s7-1]'s promised
 `get_x_ss` deletion is discharged.
@@ -6915,9 +6915,9 @@ entry (chunked internally). Value parts give `ẋ₀`, `y₀`; partials give
 `A`, `B`, `C`, `D` simultaneously, exact to machine precision — replacing
 four `FiniteDiff` jacobians, their step-size heuristics and ~4n perturbed
 evaluations. Unseeded states sit constant at the operating point, and so do
-unseeded slots (a root-slot cell follows the activation scalar by *evaluating*
+unseeded [slots](#g-slot) (a root-slot [cell](#g-cell) follows the [activation](#g-activation) scalar by *evaluating*
 its consuming `input_types` entry at that scalar, [§11.2][s11-2]; the condition apply embeds
-their `Float64` values as zero-partial constants); the discrete tier is
+their `Float64` values as zero-partial constants); the discrete [tier](#g-tier) is
 frozen with zero partials — precisely "linearize with the discrete state held" ([§11.2][s11-2]).
 Differentiation participation is a per-invocation *seeding* fact for every
 slot the schema leaves seedable — one register for `x` and slots alike — with
@@ -6932,7 +6932,7 @@ to a tolerant entry, or route the tap around it — depends on knowing which lea
 froze the slot.
 
 **A pure query, and the shape of `capture`.** Linearization is the first
-service with no commit and no boundary zero: scratch buffers only, nothing
+service with no commit and no [boundary zero](#g-boundary-zero): scratch [buffers](#g-buffer) only, nothing
 becomes authoritative, and today's restore-the-trim dance (re-`assign!`
 after `FiniteDiff` dirtied the model) has no successor. Default operating
 point = the sim's current committed state via `capture(sim) → (condition,
@@ -6943,11 +6943,11 @@ nothing re-specified; an `about = <condition>` keyword linearizes anywhere
 else without touching the sim.
 
 **The returned object and `LinearizedSS`.** `linearize` returns labeled
-data — `(ẋ₀, x₀, u₀, y₀, A, B, C, D)` with the taps' label sets — on
+data — `(ẋ₀, x₀, u₀, y₀, A, B, C, D)` with the [taps](#g-taps)' label sets — on
 which `subsystem`/`delete_vars` survive as pure label-indexed matrix
 slicing (no model involvement); the `c172x_ctl` LQR pipeline consumes it
 with cosmetic changes. `LinearizedSS` the *component* survives separately
-as an ordinary continuous component in the migrated library (`init_x` =
+as an ordinary [continuous component](#g-continuous-component) in the migrated library (`init_x` =
 the state vector, labeled faces, the affine update in `h_xu`/`f`) — no
 privileges, schema like everyone else.
 
@@ -6958,7 +6958,7 @@ manifold. This is why today's code linearizes the `{NED}` variant;
 `design_world(ac)` rigs it, promoting implicit practice to stated rule.
 The coordinate choice belongs to the tap author, not the framework.
 
-**Recorded, not built: the sampled-data Dual activation.** The
+**[Recorded, not built](#g-recorded-not-built): the sampled-data Dual activation.** The
 frozen-exact doctrine is consumer-scoped, not a capability wall: today's
 services differentiate the continuous dynamics with the discrete state held, for which a
 frozen discrete output — a ZOH constant with zero partials — is the exact
@@ -6971,9 +6971,9 @@ works the three-component chain through). Differentiating "through" the
 discrete side means differentiating a *different object*: the sampled-data
 step map $\Phi : (x_k, \mathrm{slots}) \to x_{k+1}$ over the model's *whole*
 state, continuous and discrete leaves alike (integrate one period,
-then run the due ticks). The extension is additive along existing seams:
-walked-leaf parametrization of the discrete tier's real-scalar state leaves (counters/enums stay
-pinned, like `m`); opt-in participation on discrete components (frozen-exact
+then run the [due](#g-due) [ticks](#g-tick)). The extension is additive along existing [seams](#g-seam):
+[walked](#g-walked)-leaf parametrization of the discrete tier's real-scalar state leaves (counters/enums stay
+[pinned](#g-walked), like `m`); opt-in participation on discrete components (frozen-exact
 stays the default; a participating component opts in through an explicit
 trait, which **brings the two-argument `T`-form of `output_types` with it** —
 the trait flips the leaf's mandated declaration shape from the plain form to
@@ -6982,9 +6982,9 @@ that tier too, and the hinge is recorded here so the two forms stay compatible
 — graceful migration, no flag day); one new [§12.4][s12-4] activation ("continuous chain + `f` +
 discrete `h_x`/`h_xu` + `g`"); and forward sensitivities through the in-house
 RK steppers for free, a payoff of owning the loop ([§8.1][s8-1]). The honest
-boundary: $\Phi$ is differentiable only where the event pattern is locally
+[boundary](#g-boundary): $\Phi$ is differentiable only where the event pattern is locally
 constant — exactness across a firing needs saltation corrections — so the
-scope is event-quiescent operating points (which [§14.5][s14-5]'s guards-at-commit
+scope is event-quiescent operating points (which [§14.5][s14-5]'s [guards](#g-guard)-at-commit
 already makes trim points) plus a loud diagnostic if an event fires inside
 a differentiated step. Consumers waiting: [§14.7][s14-7]'s closed-loop trim door
 ($g(x) - x = 0$ residuals currently imply the derivative-free fallback,
@@ -6994,7 +6994,7 @@ plant instead of continuous linearization + Tustin).
 
 **Delivered, and what is still only recorded: declarative non-participation.**
 **Both halves of this door are now built.** The output half (row 166): a
-continuous producer's declaration is per-leaf, so "this port is frozen under
+continuous producer's declaration is per-leaf, so "this [port](#g-port) is frozen under
 differentiation" has a spelling — declare the leaf `Float64` and strip with
 `ForwardDiff.value` inside the stage ([§11.2][s11-2], [§12.5][s12-5]). An opaque wrapper (an FMU,
 a C aerodynamic table) and a deliberately severed coupling can therefore both
@@ -7010,7 +7010,7 @@ the slot cell at every activation — so an unseeded slot is a *choice* where a
 with the offending entry in hand instead of returning a silent zero column. What
 stays recorded is only the remaining **tooling** over that visibility:
 pinned-face validation by the tap declaration (selecting a declared-frozen
-output = warning) and a feedthrough-graph lint (a frozen output fed by
+output = warning) and a [feedthrough](#g-feedthrough)-graph lint (a frozen output fed by
 participating inputs names the severed coupling). Additive when a consumer shows
 up, no flag day; until then the declared pins and the visible zero rows suffice.
 
