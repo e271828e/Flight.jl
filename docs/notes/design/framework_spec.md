@@ -2397,7 +2397,7 @@ replayed interactive session is the same loop with staging fed from a recording
 
 ### 9.2 Outbound: snapshot publication
 
-Every reader outside the loop — GUI panels, output [devices](#g-device), the log — needs a
+Every consumer of model state — GUI panels, output [devices](#g-device), the log — needs a
 picture of the model that holds still while it is read, and none of them should
 have to make the loop wait to get one. Publication is the answer: one immutable
 value per [boundary](#g-boundary), handed out through a single atomic reference. Three
@@ -2407,8 +2407,8 @@ addresses what it reads.
 
 #### The snapshot and its publication
 
-**Rule. The loop builds each snapshot in private memory, then publishes it with
-a single release-store to an [`@atomic latest`](#g-latest) reference.** A snapshot carries
+**Rule.** The loop builds each snapshot in private memory, then publishes it with
+a single release-store to an [`@atomic latest`](#g-latest) reference. A snapshot carries
 the boundary-consistent [signal table](#g-signal-table), `t` and the framework status. Readers
 acquire-load that reference and then work with an immutable, coherent world for
 as long as they like. The [calling task](#g-calling-task) (the task that invoked `run!`) reads the
@@ -2485,7 +2485,7 @@ interactive default ([Appendix B][sB]), and it grows for as long as the session 
 At C172X scale and 50 Hz that is gigabytes per hour, and it ends in an
 out-of-memory nobody was warned about.
 
-**Rule. The log takes a retention bound beside its switch and its stride:**
+**Rule.** The log takes a retention bound beside its switch and its stride:
 `log_max`, the maximum number of retained snapshot references, default **65536**
 (2¹⁶), with `Inf` the explicit opt-out.
 
