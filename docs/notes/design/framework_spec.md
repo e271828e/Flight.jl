@@ -1419,18 +1419,19 @@ $t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
   - $\sigma_0$ **not-holding** ⇒ a **trajectory-caused** edge: a genuine
     in-frame crossing. Pay $\dot{x}_{n+1}$'s sweep, build the interpolant and
     root-find on the bracket $(t_n, \sigma_0)$/$(t_{n+1}, \sigma_1)$.
-  - $\sigma_0$ **holding** ⇒ an **epoch-caused** edge: the drain flipped the
+  - $\sigma_0$ **holding** ⇒ an **epoch-caused** edge: the drain (the frame-top
+    swap that publishes staged device inputs into the root slots) flipped the
     guard at the frame top, and σ holds at both ends, so no in-frame crossing
     exists to find. The localization is **discarded** and the event fires
     inside $t_{n+1}$'s ordinary iteration — mechanically, *not localizing is
     the action*: fall through, and the boundary iteration detects and fires it
-    like any boundary-detected event. This path costs one interior sweep,
-    never $\dot{x}_{n+1}$ and never an interpolant, consumes no
-    `localization_budget`, and **warns nothing** — input timing is a frame
-    fact (the same doctrine that forbids draining at `t*`, below) and boundary
-    detection is *exact* for a `u`-caused edge (above; row 179), so
-    boundary firing is the correct semantics rather than a degradation. It is
-    the left-end mirror of the `t* = tₙ₊₁` degeneracy below.
+    like any boundary-detected event. This path costs one interior sweep, never
+    $\dot{x}_{n+1}$ and never an interpolant, consumes no
+    `localization_budget`, and **warns nothing** — input timing is a frame fact
+    (the same doctrine that forbids draining at `t*`, below) and boundary
+    detection is *exact* for a `u`-caused edge (above; row 179), so boundary
+    firing is the correct semantics rather than a degradation. It is the
+    left-end mirror of the `t* = tₙ₊₁` degeneracy below.
 - **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
   $\theta = (t - t_n)/h \in [0, 1]$, from $(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$;
   $\dot{x}_n$ is the step's first
@@ -2313,9 +2314,10 @@ change and therefore as fixed within a run as any claim set. A `stage!` write
 to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming the
 incumbent), and the one seam — a batch staged while stopped whose face a
 subsequent `attach!` claims — is renormalized away at the attach itself
-(below). The [harness cell](#g-harness-cell) drains **last**, by convention: with every surface
-disjoint the order is unobservable, so the rule exists to make the trace read
-the same way every time, not to arbitrate anything.
+(below). The [harness cell](#g-harness-cell) (the always-present staging cell of the harness
+register) drains **last**, by convention: with every surface disjoint the order
+is unobservable, so the rule exists to make the trace read the same way every
+time, not to arbitrate anything.
 
 **Slot initial values are owned by the init/trim services** ([§15.4][s15-4]). Input declarations are bare types ([§11.2][s11-2]) and carry no defaults, but a
 slot unfed by any device must hold a defined value from the first frame (today's
@@ -2722,8 +2724,8 @@ A binding is a value subtyping `AbstractBinding` — the second mandatory
 root — whose type declares which sides it has and enumerates what each side
 touches. The legible
 half is explicit methods returning data, called once at attach on the
-[calling task](#g-calling-task); the opaque half is called per datum on the [device](#g-device) task by the
-author's own loop:
+[calling task](#g-calling-task) (the task that invoked `run!`); the opaque half is called per
+datum on the [device](#g-device) task by the author's own loop:
 
 ```julia
 struct T16000MBinding <: AbstractBinding    # the roots are mandatory: attach! dispatches
@@ -2966,7 +2968,8 @@ visibility ([§11.3][s11-3]), deliberately.
 value**. Own-[cell](#g-cell) only: another [device](#g-device)'s pending write is invisible
 by design, its applied value arriving via the snapshot one frame later
 (cross-device peek is rejected, row 26). While paused, staged edits display
-indefinitely and apply at the un-pause [drain](#g-drain). Fan-out is consistent for free:
+indefinitely and apply at the un-pause [drain](#g-drain) (the frame-top swap that publishes
+staged device inputs into the root slots). Fan-out is consistent for free:
 widgets on ports resolving to the same slot peek the same pending value.
 
 **Staging contract: widgets stage on interaction events only.** Value widgets (sliders, drags) stage
@@ -3073,9 +3076,9 @@ belongs to whoever renders. The channel's own bound, above, is the one that
 is normative.
 
 **The terminal snapshot carries the run's final cumulative counters**
-([§10.4][s10-4], [§13.5][s13-5]), so an [unattended run](#g-unattended-run) that nobody watched still
-answers "what went wrong, and how often" from the value its own shutdown
-published.
+([§10.4][s10-4], [§13.5][s13-5]), so an [unattended run](#g-unattended-run) (a run with empty staging and no snapshot
+readers) that nobody watched still answers "what went wrong, and how often"
+from the value its own shutdown published.
 
 **Allocation.** On a quiet frame there is **zero additional heap
 allocation**: the sentinel swap allocates nothing and the per-writer status
@@ -3096,8 +3099,9 @@ publication and logging.
 
 Composition with the log, worth stating once: because the log retains
 snapshot references ([§9.2][s9-2]), `totals` is monotone across logged snapshots,
-so `log_every` [decimation](#g-decimation) loses *which* boundary within a skipped stretch an
-occurrence fell on, never *how many* occurrences there were.
+so `log_every` [decimation](#g-decimation) (the log's keep-every-kth retention policy) loses
+*which* boundary within a skipped stretch an occurrence fell on, never *how
+many* occurrences there were.
 
 Rejected: a shared queue under a lock, a status referencing the live
 accumulator, ring reuse by double-buffering, and unbounded accumulation
@@ -3138,7 +3142,7 @@ thread, making the pacer's wait the natural scheduling window for co-resident
 [device](#g-device) tasks — the design already spends that slot twice
 (the staging slot, [§8.7][s8-7]; the [drain](#g-drain) source, [§9.4][s9-4]). A
 `systemsleep` variant for dedicated-thread hard-RT deployments is a
-[guarded addition](#g-guarded-addition).
+[guarded addition](#g-guarded-addition) (a capability the design admits but does not build).
 
 **Yield rule: with devices attached, every frame yields at least once** —
 implicitly via the coarse-phase `sleep` when it runs, via an explicit `yield()`
@@ -3329,14 +3333,13 @@ before the spawn; the address supplies the device identity either way, which is
 why no call passes a device id ([§9.8][s9-8]). The name is
 honest, a device that cannot acquire its resources having crashed before it
 lived. No task is spawned for a failed device, so it is **dead from boundary
-zero**, and that needs no machinery: its [diagnostic cell](#g-diagnostic-cell) never receives a
-heartbeat timestamp, so it reads stale against the threshold ([§10.2][s10-2])
-from the first frame ([§9.8][s9-8]). Its **claims persist to run end** — the
-death-is-not-detach disposition ([§9.3][s9-3]), applied one step earlier than
-(6)'s: the
-roster is frozen for the run, and the orphaned slots hold their initial values,
-well-defined by [slot totality](#g-slot-totality) ([§14.6][s14-6]; every root
-slot must hold a value) where an orphan of (6) holds a last
+zero**, and that needs no machinery: its [diagnostic cell](#g-diagnostic-cell) (the single-writer
+ring each writer owns for diagnostics and heartbeat) never receives a heartbeat
+timestamp, so it reads stale against the threshold ([§10.2][s10-2]) from the first frame
+([§9.8][s9-8]). Its **claims persist to run end** — the death-is-not-detach disposition
+([§9.3][s9-3]), applied one step earlier than (6)'s: the roster is frozen for the run,
+and the orphaned slots hold their initial values, well-defined by [slot totality](#g-slot-totality)
+([§14.6][s14-6]; every root slot must hold a value) where an orphan of (6) holds a last
 drained batch.
 
 **The run's disposition splits on `should_abort`, uniformly with (6).** Clear —
@@ -3483,14 +3486,14 @@ does what it always does — registers ([§9.3][s9-3]); the task appears at the 
 `run!`. The [frame-top drain](#g-drain) still runs — `step!` frames stay
 bit-identical to `run!` frames — and what it drains is the **harness
 [cell](#g-cell)**: `stage!(sim, "face" => value, ...)`, the harness write path
-([§9.3][s9-3]) with the calling task as writer. Staged batches are ordinary
-batches — traced, so [replay](#g-replay) and bit-identity hold; applied at the next frame
-top; surface-checked like any writer's ([§9.3][s9-3]). The read half is
-`latest(sim)`: the same immutable [snapshot](#g-snapshot) value a device handle acquires
-([§9.2][s9-2]), navigated directly for assertions. Advance-assert-advance is
-`stage!` → `step!` → `latest`. Both entry points work under `run!` too — the
-[harness cell](#g-harness-cell) is not step-scoped — and an inspection accessor
-leaves the rejection of closure-based termination ([§13.5][s13-5]) untouched.
+([§9.3][s9-3]) with the calling task (the task that invoked `run!`) as writer. Staged
+batches are ordinary batches — traced, so [replay](#g-replay) and bit-identity hold; applied
+at the next frame top; surface-checked like any writer's ([§9.3][s9-3]). The read half
+is `latest(sim)`: the same immutable [snapshot](#g-snapshot) value a device handle acquires
+([§9.2][s9-2]), navigated directly for assertions. Advance-assert-advance is `stage!` →
+`step!` → `latest`. Both entry points work under `run!` too — the [harness cell](#g-harness-cell)
+is not step-scoped — and an inspection accessor leaves the rejection of
+closure-based termination ([§13.5][s13-5]) untouched.
 
 **Status, termination and the `run!` [seam](#g-seam).** Between `step!` calls a simulation
 reports **initialized**: no loop task exists, so `running` would lie, and
@@ -3565,12 +3568,13 @@ loop true of [replay](#g-replay):
   twice and nothing is skipped.
 - **The [drain](#g-drain) reads the trace.** Each frame top applies the recording's
   batches for that **[frame ordinal](#g-frame-ordinal)** instead of swapping the [roster](#g-roster)'s
-  [staging cells](#g-staging-cell). Ordinal keying is exact because the frame sequence is
-  itself deterministic under replay (`t*` boundaries derive from state,
-  [§8.4][s8-4]): frame *k* of the replay *is* frame *k* of the recording. Recorded
-  batches apply **verbatim, with no surface re-check** — the write-surface
-  rule ([§9.3][s9-3]) ran at recording time, and [claims](#g-claim) are a live-roster fact of
-  the recorded session that replay does not reconstruct.
+  [staging cells](#g-staging-cell) (where a device's pending write batch waits between drains).
+  Ordinal keying is exact because the frame sequence is itself deterministic
+  under replay (`t*` boundaries derive from state, [§8.4][s8-4]): frame *k* of the
+  replay *is* frame *k* of the recording. Recorded batches apply **verbatim,
+  with no surface re-check** — the write-surface rule ([§9.3][s9-3]) ran at recording
+  time, and [claims](#g-claim) are a live-roster fact of the recorded session that replay
+  does not reconstruct.
 
 Everything else is the loop as already specified:
 
