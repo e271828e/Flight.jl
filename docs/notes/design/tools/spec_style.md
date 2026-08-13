@@ -67,6 +67,12 @@ would destroy the signal. *Why* holds constructive rationale only.
   `framework_decisions.md`, cited as "(row N)". Before deleting an inline
   argument, verify the row carries it; enrich the row first if the inline
   version is richer (Phase 2 procedure).
+- **Case-study measurements are exempt** (ch. 15, the grounding charter): a
+  torture test's worked comparison — the concrete, measured cost of a losing
+  candidate — is evidence, not litigation, and stays at full resolution.
+  Verdict-only prose (a sentence whose content is "and therefore X loses")
+  still reduces to its row. Every exempt comparative passage must cite its
+  row: the log stays the decision of record, the case study its evidence.
 
 ## Content preservation
 
