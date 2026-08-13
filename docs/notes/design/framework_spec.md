@@ -2230,7 +2230,7 @@ execution with the waits deleted.
 **Wait mechanism: hybrid sleep-then-spin, one knob.** Non-realtime OSes guarantee
 only a lower bound on sleep: the thread becomes runnable no earlier than requested;
 the wake-up is best-effort (timer granularity, scheduler load, macOS timer
-[coalescing](#g-coalescing)), with no hard upper bound. Measured on the dev machine, idle,
+coalescing), with no hard upper bound. Measured on the dev machine, idle,
 against 2 ms requests (2026-07): Julia `sleep` overshoots by ≈ 1.4 ms median, and
 `Libc.systemsleep` by ≈ 0.5 ms. Behind the `sleep` figure are libuv's
 millisecond-granularity timers; sub-ms requests are accepted and rounded up.
