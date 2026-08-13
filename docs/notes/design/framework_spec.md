@@ -1982,17 +1982,10 @@ itself follows in [§10][s10].
 FlightCore's [periphery](#g-periphery) is one big lock: `SimControl` and the live `Model`, guarded by
 `io_lock`, with one task per attached interface reading or mutating the model under it
 (sim.jl). The lock does enforce [§8.3][s8-3]'s [boundary](#g-boundary)-visibility rule — it is only ever
-free between steps — but its costs are structural:
-
-- **The loop's frame budget is hostage to its readers.** A slow GUI frame or a stalled
-  `extract_output` holds the lock and the sim cannot step; blocking time is
-  indistinguishable from overrun in any accounting.
-- **Input timing is scheduler-determined and unrecorded.** Writes land between
-  whichever boundaries the OS interleaving produced; there is no defined input [trace](#g-trace),
-  so [§8.7][s8-7]'s bit-identical [replay](#g-replay) is unachievable *in principle* for interactive runs.
-- **It protects an idiom that no longer exists.** `assign_input!` and GUI widgets poke
-  the live model; under the immutable [signal table](#g-signal-table) there is nothing to poke — the
-  periphery needs a defined write path regardless.
+free between steps — but transplanting it here was rejected on three structural costs
+(row 22), of which one is load-bearing for everything below: under a lock, input timing
+is scheduler-determined and unrecorded, so there is no defined input [trace](#g-trace) and
+[§8.7][s8-7]'s bit-identical [replay](#g-replay) is unachievable *in principle* for interactive runs.
 
 The replacement has five planes. (Vocabulary, anchored here: a **frame** is one
 iteration of the loop — [drain](#g-drain), integrate, boundary sequence, publication — the
@@ -2114,9 +2107,8 @@ Logging dissolves into publication: the log is a vector of retained snapshot
 references — same objects, zero extra copies; the per-step `deepcopy` detour of the
 `SavingCallback` disappears. Cost: one snapshot allocation per boundary, on the
 framework side of the [§7.5][s7-5] scope (which already carved out logging); logged snapshots
-are not garbage at all, unlogged ones die young. Rejected: preallocated snapshot
-[buffers](#g-buffer) (double/triple ring) — reuse reintroduces exactly the reader-liveness proof
-the GC provides for free, to save an allocation profiling has not indicted.
+are not garbage at all, unlogged ones die young. Preallocated snapshot
+[buffers](#g-buffer) are rejected (row 23).
 
 **Retention: the trace's kill switch, plus [decimation](#g-decimation).** The log takes the same
 plain on/off switch the trace has ([§9.5][s9-5]), and additionally a keep-every-kth
@@ -2144,11 +2136,10 @@ keyed on `t_end`: a finite run shorter than the bound never notices the bound,
 and one number is easier to hold than two regimes. At 50 Hz and full density,
 2¹⁶ boundaries is about 22 minutes before anything is dropped at all.
 
-**When the log fills, the retention stride doubles: coverage stays global.**
-The obvious policy — a rolling window, keeping the recent past and forgetting
-the start of the session — optimizes for exactly the thing replay already
-serves, and pays for it with the thing replay is expensive for. Instead the log
-**re-decimates progressively**: after *k* generations the effective stride is
+**When the log fills, the retention stride doubles: coverage stays global.** A
+rolling window — recent past at full density, the start of the session
+forgotten — was rejected (row 137). Instead the log **re-decimates
+progressively**: after *k* generations the effective stride is
 `log_every · 2^k`, so the whole run stays plottable and what coarsens is
 density, never extent. That is row 38's division of labor carried through: the
 log's chief consumer is the post-run plot of a session *as a whole* (nobody
@@ -2163,13 +2154,10 @@ fills, the stride doubles immediately, and each subsequent retained append also
 releases one predecessor of the previous generation — a cursor over the odd
 indices, O(1) amortized, with physical compaction once per generation — so a
 generation's thinning completes exactly when its refill does. Amortizing rather
-than halving in one shot is a responsiveness choice: a one-shot halving would
-make ~`log_max/2` *old-generation* snapshots unreachable at a stroke, a
-major-GC burst worth a pacer-absorbed, `DebtReanchor`-visible hiccup ([§8.7][s8-7]) —
-exponentially rare, since the wall-clock gap between generations doubles, but
-needless. The amortized form drops exactly one old snapshot per retained
-append: the same steady trickle a rolling window would produce, so keeping
-coverage global costs nothing extra in GC pressure. The loop's own work is
+than halving in one shot is a responsiveness choice (row 137): the amortized
+form drops exactly one old snapshot per retained append — the same steady
+trickle a rolling window would produce, so keeping coverage global costs
+nothing extra in GC pressure. The loop's own work is
 pointer bookkeeping, microseconds either way and on the framework side of
 [§7.5][s7-5]'s scope; publication stays wait-free and readers never block — a reader
 holding a released snapshot simply keeps it alive.
@@ -2244,9 +2232,7 @@ integration register and in load-bearing service reads —
 device [claims](#g-claim) its slots at attach; claiming an already-claimed slot is an
 attach-time error, and detaching releases the claims (a released slot's GUI
 widgets are live again from the next run, [§9.7][s9-7]). Exclusivity replaces any cross-device conflict *policy* —
-attachment-order precedence at [drain](#g-drain), say — because such a policy resolves races the
-case study shows nobody wants: every dual-writer field in the C172X demo is a joystick stream
-shadowed by a GUI mirror, where simultaneous live writing is a bug. Per-device
+attachment-order precedence at [drain](#g-drain), say (row 44). Per-device
 [cells](#g-cell), the CAS merge and the atomicswap drain all stay — they serve atomicity and
 [coalescing](#g-coalescing), not arbitration.
 
@@ -2314,8 +2300,7 @@ the same way every time, not to arbitrate anything.
 **Slot initial values are owned by the init/trim services** ([§15.4][s15-4]). Input declarations are bare types ([§11.2][s11-2]) and carry no defaults, but a
 slot unfed by any device must hold a defined value from the first frame (today's
 `U()` constructors provide these: `mixture = 0.5`). Export-entry defaults were
-rejected: the trim service writes slot values it *solved for* (throttle,
-elevator) — not declaration constants. `init!` establishes every slot and the
+rejected (row 47). `init!` establishes every slot and the
 [trace header](#g-trace-header) captures the result; totality is enforced pre-write at every
 complete-world application — `init!`, trim setup, trim commit
 ([§14.6][s14-6]).
@@ -2397,10 +2382,7 @@ path, not a second semantics — while for a **sparse** writer (the GUI, a
 JSON peer: only what was touched) overwrite is a silent lost-write bug
 ([§15.3][s15-3]'s hazard: a pending `flaps` edit clobbered by an unrelated `gear`
 message, undrained, undiagnosable). A user-facing overwrite opt-in
-(`complete(binding)`, a declared promise of batch totality) was drafted and
-dropped: under the fixed-shape representation below the fast path saves a
-pending-read and a small tuple rebuild per staging, on the device task —
-not worth a declarable promise whose false direction loses writes.
+(`complete(binding)`) was drafted and dropped (row 104).
 
 **The staged representation is fixed per attachment, compiled at attach.**
 An enumerated writer's [claim](#g-claim) set and slot types are both known at attach
@@ -2421,9 +2403,9 @@ through an attach-compiled shim (name → position, convert to the slot's
 declared type, fill `nothing`), confining the residual name-shaped
 dynamism to one framework-owned conversion on the device task, at the
 [boundary](#g-boundary) where wire-shaped data becomes system-shaped data. (Author-built
-total tuples were rejected as a padding form — ten explicit `nothing`s to
-say "one face touched" — the same disease row 74 and the handler return
-law refuse.) A **greedy entry needs no special treatment here**: its claim
+total tuples were rejected as a padding form, the same disease row 74 and
+the handler return law refuse — row 104.) A **greedy entry needs no
+special treatment here**: its claim
 was computed at the attach point and is an ordinary claim set by the time
 shapes are compiled ([§9.3][s9-3]), so the GUI's cell is compiled exactly as a
 joystick's. The **[harness cell](#g-harness-cell) gets the same treatment**: under the roster
@@ -2474,14 +2456,8 @@ only at stopped-sim attach points. (The specialization is an implementation
 freedom [the freeze](#g-the-freeze) creates, not an obligation; iterating a roster array
 costs a handful of dispatches per frame and remains acceptable.)
 
-Rejected shapes (both torture-tested in [§15.3][s15-3]): **per-slot atomic cells** — the
-simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
-but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
-phase (run-to-run behavioral variance, [§15.3][s15-3]), [peeks](#g-peek) are cross-device, the [trace](#g-trace)
-loses provenance, and wide slot types hit Julia's atomic-width lock fallback; **a
-shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity and
-the richest trace, but conflict order is still temporal (push order), and pending
-memory is unbounded while paused, taxing every peek that must walk the chain.
+Rejected shapes, both torture-tested in [§15.3][s15-3]: per-slot atomic cells,
+and a shared lock-free [batch](#g-batch) stack (row 24).
 
 **Mappings run on the device task**: today's `assign_input!(mdl, mapping, data)`
 becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
@@ -2515,12 +2491,11 @@ trajectory bit-identically.
 drained [cell](#g-cell) is scanned and recorded as (position ⇒ value) pairs for its
 non-`nothing` entries, against the writer's [face](#g-face)-name → position schema in
 the header (below) — an O(surface-width) scan and one small allocation per
-drained batch. The rule is uniform because the alternative is not
-statable any more: a [claim](#g-claim)'s *width* is a fact about one binding, not about
-a class of writers — a [greedy claim](#g-greedy-claim) is enumerated and as wide as the root
-[contract](#g-contract) ([§9.3][s9-3]) — so a density dichotomy could only be re-keyed on the
-claim source, which is precisely the distinction nothing downstream of
-attach is allowed to see. Uniformity is what the consumers get paid in: one
+drained batch. The rule is uniform because a [claim](#g-claim)'s *width* is a
+fact about one binding, not about a class of writers — a
+[greedy claim](#g-greedy-claim) is enumerated and as wide as the root
+[contract](#g-contract) ([§9.3][s9-3]) — so keying retention by claim source is
+rejected (row 176). Uniformity is what the consumers get paid in: one
 record format at the trace's edge, no per-entry format flag, one decoder in
 the [what-if register](#g-what-if-register) (replay with edited inputs), in disk serialization and in human inspection, and one
 inverse conversion in [replay](#g-replay) — paid once, up front, off the loop
@@ -2581,16 +2556,12 @@ replay means), while an untraced interactive session is unreproducible, permanen
 The cost supports it: the trace retains one small sparse record per drained
 batch (above), at
 drain-rate × device-count — tens of MB per hour worst case, two orders of magnitude
-below the snapshot log. No sampling, no rolling window (complexity without a
-customer).
+below the snapshot log. No sampling, no rolling window (row 29).
 
 ### 9.6 Devices: one authoring contract, no taxonomy
 
 FlightCore's input/output/GUI trichotomy is lock choreography, not modeling:
-`get_data!` may block, so it runs outside the lock; `extract_output` must not block,
-because it runs inside; the GUI breaks both rules at once and gets a third interface
-(`render!` under lock, `sync = 0` so VSync cannot stall the sim, a manual framerate
-sleep). With no lock, the protocol the taxonomy encoded has no referent.
+with no lock, the protocol the taxonomy encoded has no referent (row 25).
 
 #### Every attached device receives the same handle
 
@@ -2671,18 +2642,11 @@ crash, and no `should_abort` consultation, a stop being already requested.
 
 #### The author owns the loop body; the framework owns the bracket
 
-**The author owns the loop body; the framework owns the bracket.** The fork
-is decided by FlightCore's own history: its eight [device](#g-device) hooks were never
-sufficient alone — the framework loop calling them came in three flavors,
-and the *taxonomy* carried the loop-shape information. One device [contract](#g-contract)
-therefore means author-owned loop bodies. A framework-owned hook loop must
-ask each device what it waits on — a poll timer, a blocking socket, the
-[§10.3][s10-3] [boundary counter](#g-boundary-counter) — and that declaration is the taxonomy resurrected
-as a trait; the bidirectional peer (one socket, one lifecycle — the
-no-taxonomy headline case) needs two waits at once, which a hook loop cannot
-serve without a select engine; and the GUI's render loop fits no hook set
-at all. Under the author-owned body, every wait structure is ordinary user
-code composed from handle primitives:
+**The author owns the loop body; the framework owns the bracket.** One device
+[contract](#g-contract) means author-owned loop bodies: a framework-owned hook
+loop would have to ask each device what it waits on, which is the rejected
+taxonomy resurrected as a trait (row 102). Under the author-owned body, every
+wait structure is ordinary user code composed from handle primitives:
 
 ```julia
 function loop(dev::T16000M, handle)              # timer-driven, full write-set
@@ -2818,17 +2782,13 @@ single-inheritance [slot](#g-slot) is *already spoken for* by the domain hierarc
 vacant — nothing else wants them; and a component's class is
 implementation detail behind its contract ([§11.3][s11-3]), while a binding's
 **sidedness is its public contract** — the one thing every consumer of it
-must know. Rejected, correspondingly: an abstract binding-type *taxonomy*
-encoding the sides (`AbstractInputBinding` and friends — a bidirectional
-binding cannot subtype two of them, the original objection, unchanged by the
-roots); optional roots left unenforced (a signal half the ecosystem skips is
-worse than none — the dispatch gate is the whole value); and a declared
-`sides(b)` trait returning the side set, whose rejection stands on its
-merits (redundant with methods that must exist anyway, one more thing to
-drift) but is **answered rather than repeated** by the design above:
-redundancy *with a cross-check* is drift detection, which is what the
-bidirectional check turns the traits into — the same fact stated twice, in
-two registers, with the framework paid to compare them.
+must know. Rejected, correspondingly (row 177): an abstract binding-type
+*taxonomy* encoding the sides, optional roots left unenforced, and a declared
+`sides(b)` trait returning the side set — the last **answered rather than
+repeated** by the design above, since redundancy *with a cross-check* is drift
+detection, which is what the bidirectional check turns the traits into: the
+same fact stated twice, in two registers, with the framework paid to compare
+them.
 
 **`is_greedy` is a claim source, not a device class.** The class it used to
 justify — a *derived* surface elected by a marker, shared among the
@@ -2922,9 +2882,9 @@ the author's — only they know their parser — exactly as FlightCore's
 `InputMappingError` docstring assigned it; what changes under the
 author-owned loop is that no framework per-iteration catch site exists, so
 the framework's contribution is the diagnostic channel, not the catch (a
-marked exception type with no framework consumer would be vestigial and is
-not provided). `report!(handle, ...)` writes device-attributed runtime
-warnings into that device's diagnostic [cell](#g-cell) — the [§13.2][s13-2] stream's
+marked exception type is not provided — row 105). `report!(handle, ...)` writes
+device-attributed runtime warnings into that device's diagnostic [cell](#g-cell)
+— the [§13.2][s13-2] stream's
 single-writer entry point ([§9.8][s9-8]) — and nothing more; it is not a general
 user-diagnostics channel. Tolerating everything hides bugs as "device
 attached, nothing happens"; tolerating nothing kills a live telemetry link
@@ -2973,19 +2933,15 @@ exactly when the assemblies above surface them). The switch between "driven by
 its own panel" and "driven by an external provider" is therefore automatic — at
 build time by wiring archetype (a scripted `World` wires a [scenario component](#g-scenario-component)
 into the same faces the interactive `World` exports to root), at run start by
-roster claim state. Rejected: nominally-connected ports with a GUI
-*override* channel — a second write path that breaks the
-pure-function-of-drained-batches frame semantics, needs a parallel [trace](#g-trace) and
-[replay](#g-replay) mechanism, and cannot resolve the producer conflict (either a dead widget
-or a silently discarded wire); made safe — staged, frame-top, traced, exclusive —
-it collapses into the root-slot mechanism it tried to bypass. The honest cost
-stands: **unexported ports are unpokeable** — FlightCore's poke-any-`u` workflow
-does not survive [contract](#g-contract) visibility ([§11.3][s11-3]), deliberately.
+roster claim state. Rejected: nominally-connected ports with a GUI *override*
+channel (row 45). The honest cost stands: **unexported ports are unpokeable** —
+FlightCore's poke-any-`u` workflow does not survive [contract](#g-contract)
+visibility ([§11.3][s11-3]), deliberately.
 
 **Peek rule:** a widget displays its **own pending write if any, else the snapshot
-value**. Own-[cell](#g-cell) only: another [device](#g-device)'s pending write is invisible by design (its
-applied value arrives via the snapshot one frame later); cross-device peek would
-re-couple devices for sub-perceptual benefit. While paused, staged edits display
+value**. Own-[cell](#g-cell) only: another [device](#g-device)'s pending write is invisible
+by design, its applied value arriving via the snapshot one frame later
+(cross-device peek is rejected, row 26). While paused, staged edits display
 indefinitely and apply at the un-pause [drain](#g-drain). Fan-out is consistent for free:
 widgets on ports resolving to the same slot peek the same pending value.
 
@@ -3001,15 +2957,9 @@ re-staging from the peek would auto-repeat at frame rate; the activation edge is
 the intent.
 
 The alternative — active widgets staging on *every* render pass — lost its
-motivation to slot exclusivity ([§9.3][s9-3]): stage-every-pass would exist to win every
-drain against a streaming device sharing the slot for the grab's duration ([§15.3][s15-3]'s
-drag phase), but a slot the GUI can write is exclusively its own claim, so once staged
-and drained a value simply *stays*; there is nothing to reassert against. Nor is it
-worth keeping as insurance: if an
-anomalous writer ever touched a claimed slot through a framework defect, the
-slot visibly fighting is a diagnosable anomaly — continuous re-staging would mask
-the invariant violation at render rate. Side benefit: staging traffic (and trace
-noise) drops from render-rate-while-grabbed to actual edits. No
+motivation to slot exclusivity ([§9.3][s9-3]) and is rejected (row 26). Side
+benefit: staging traffic (and trace noise) drops from
+render-rate-while-grabbed to actual edits. No
 claim-transition policy exists, because no claim transition can occur
 mid-run ([§9.3][s9-3]'s freeze); the one liveness-adjacent display rule is the
 orphan case — a read-only widget whose claiming device's task has died
@@ -3124,17 +3074,9 @@ snapshot references ([§9.2][s9-2]), `totals` is monotone across logged snapshot
 so `log_every` [decimation](#g-decimation) loses *which* boundary within a skipped stretch an
 occurrence fell on, never *how many* occurrences there were.
 
-Rejected: **a shared queue under a lock** — cross-task contention on the
-loop's own frame path, and no single-writer ownership to reason from, the
-shape [§9.1][s9-1] refuses wholesale; **a status referencing the live
-accumulator** — the cheapest thing to write and a direct violation of the
-binding rule, a reader walking a structure the writer is still mutating;
-**ring reuse by double-buffering** — reintroduces exactly the reader-liveness
-proof the GC provides free, [§9.2][s9-2]'s own argument against preallocated
-snapshot buffers, to save an allocation that occurs only on frames already
-doing something unusual; **unbounded accumulation** — an unattended run with
-no status reader grows without bound in the configuration the framework most
-has to survive, and the drop policy is what a bound buys.
+Rejected: a shared queue under a lock, a status referencing the live
+accumulator, ring reuse by double-buffering, and unbounded accumulation
+(row 136).
 
 ---
 
