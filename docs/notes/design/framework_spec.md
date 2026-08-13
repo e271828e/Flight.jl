@@ -774,7 +774,7 @@ diagnostic naming the full path in the canonical slash form of [§11.6][s11-6]
 it explicitly: insert dynamics (the α-filter idiom — already standard practice in the
 domain and in the current C172 model), insert an explicit unit delay ([§13.7][s13-7]'s
 `UnitDelay` — note that this remedy changes the model's [tier](#g-tier) structure: the broken
-signal becomes discrete, sampled at `Δt_base`, which is a modeling decision, not a
+signal becomes discrete, sampled at [`Δt_base`](#g-dt_base), which is a modeling decision, not a
 transparent wire), or restructure.
 
 Rejected alternatives:
@@ -899,7 +899,7 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
   `T` if the consumer promotes, or feed it from a non-walking source if [the freeze](#g-the-freeze)
   is genuine. **The [tier](#g-tier) scope is load-bearing, not tidiness.** A discrete consumer
   takes the bound check alone, because its stages read exclusively at real [ticks](#g-tick)
-  in the nominal world — a `Dual`-carrying [cell](#g-cell) exists only inside activations the
+  in the [nominal](#g-nominal) world — a `Dual`-carrying [cell](#g-cell) exists only inside activations the
   discrete tier never runs in ([§12.4][s12-4]) — so a continuous producer feeding a
   discrete consumer is unconditionally legal; unscoped, the clause would reject
   every sensor → controller wire in the design. The clause is also what gives the
@@ -1349,7 +1349,7 @@ offending commit.
   assert is that the snapshot is `isbits`; the per-boundary allocation cost is
   zero either way, and [§4.4][s4-4]'s summarize-or-skip rule governs what such a field
   contributes on export.
-- **What is not recorded**: event firings. The log holds boundary snapshots and
+- **What is not recorded**: event firings. The [log](#g-log) holds boundary snapshots and
   the [trace](#g-trace) holds staged inputs ([§9.2][s9-2], [§9.5][s9-5]); neither carries a per-event
   record. Which events fired at which boundary is recovered by [replay](#g-replay) plus the
   published modes — the honest remedy of [§9.2][s9-2], a mode field declared public is
@@ -1620,7 +1620,7 @@ boundary at `t₀`, [§14.5][s14-5]) are boundaries that are not frame tops. At 
 [sweep → guards → handlers] iterated to quiescence, **firing-budget
 accounting scoped to this boundary** (fresh again at `tₙ₊₁`, and at a second
 `t*` on the remainder) — and the settled state is **published**: snapshot,
-[§10.3][s10-3] boundary-counter increment, `stop_on` check ([§13.5][s13-5]) — a crash localized
+[§10.3][s10-3] boundary-counter increment, [`stop_on`](#g-stop_on) check ([§13.5][s13-5]) — a crash localized
 at `t*` ends the run from that snapshot. What does *not* happen at `t*`:
 ticks are never due (`t*` is off the [harmonic grid](#g-harmonic-grid) by construction; discrete
 cells ZOH-hold through the sweep), and staged inputs are not drained — input
@@ -2179,9 +2179,9 @@ domain, which always appear compounded: the b frame, the ECEF frame.)
    [§9.6][s9-6] wrapper as any spawned device's — otherwise the loop runs on the
    calling task — the unattended register, what [§13.4][s13-4]'s synchronous rethrow
    presupposes, and what lets parallel unattended [sweeps](#g-sweep) thread `run!` inline
-   with no nested task fan-out (one immutable `Build` shared across the
+   with no nested task fan-out (one immutable [`Build`](#g-build) shared across the
    workers, [§12.2][s12-2], each `Simulation` owning its own [buffers](#g-buffer); pre-materializing
-   the sweep's [activations](#g-activation) (its per-eltype executable sets:
+   the sweep's [activations](#g-activation) (its per-eltype [executable sets](#g-executable-set):
    `build(world; activations = …)`, [§12.4][s12-4]) leaves no
    worker synchronizing on anything). Either way `run!` blocks its caller until
    the run ends; what varies is what the calling task spends the run
@@ -2217,7 +2217,7 @@ loop with staging fed from a recording ([§9.5][s9-5], [§10.7][s10-7]).
 
 The loop builds each [snapshot](#g-snapshot) — [boundary](#g-boundary)-consistent [signal table](#g-signal-table), `t`, framework
 status — in private memory, then publishes it with a single
-release-store to an `@atomic latest` reference; readers acquire-load and then work
+release-store to an [`@atomic latest`](#g-latest) reference; readers acquire-load and then work
 with an immutable, coherent world for as long as they like. `latest(sim)`
 hands the same value to the [calling task](#g-calling-task) — [§10.6][s10-6]'s inspection register.
 Wait-free in both
@@ -2748,7 +2748,7 @@ sleep). With no lock, the protocol the taxonomy encoded has no referent.
 **Every attached [device](#g-device) receives the same handle**, carrying the two primitive
 capabilities — read (latest [snapshot](#g-snapshot); optionally wait-for-next-[boundary](#g-boundary), [§10.3][s10-3]) and
 stage —
-plus control access (observe running, request shutdown). **`should_abort` is an
+plus control access (observe running, request shutdown). **[`should_abort`](#g-should_abort) is an
 `attach!` keyword**, defaulting to `false`: per-attachment, never a device
 property — the same joystick is advisory in one deployment and load-bearing in
 another — so with it clear a device's departure (loop body returning, crash, or
@@ -3894,7 +3894,7 @@ there is no clash for the language to detect) — and the build then sees a
 component with no `f` method and reports a *modeling* diagnostic
 (`StoreWithoutUpdate`; `ClassUnreadable` when the whole inventory was shadowed)
 for a one-line namespace mistake, pointed away from the wrong line — the [§11.4][s11-4]
-error-locality inversion arriving through the namespace. Two mitigations,
+[error-locality](#g-error-locality) inversion arriving through the namespace. Two mitigations,
 both normative: the import list above is authoring surface, stated wherever a
 component file is first shown; and the two diagnostics run a **shadowing
 check** — if the component's parent module defines a same-named function
@@ -4473,7 +4473,7 @@ NamedTuple}; aircraft::NT; … end` holds any [roster](#g-roster) — size, name
 aircraft types — per instantiation, with the declaration bodies generating
 wires by comprehension over the keys (the arity-via-computed-contracts
 pattern, [§6.2][s6-2]'s `SumJunction{W, N}`, at structure scale); [§14.9][s14-9]'s swarm worlds
-and `at("aircraft/red", problem)` [mounting](#g-mounting) consume it directly. Rules: a
+and [`at`](#g-at)`("aircraft/red", problem)` [mounting](#g-mounting) consume it directly. Rules: a
 container mixing [component](#g-component) and non-component elements is a build error in
 this section's [did-you-mean](#g-did-you-mean) family (all-component = children;
 zero-component = inert parameter data); containers of containers are
@@ -5191,7 +5191,7 @@ violations and forgotten-`T` leaves at PR time, at the cost of a Stratum-C
 re-run per component. The same keyword is the recommended idiom for [§9.1][s9-1]'s
 parallel-sweep register: pre-materialize the activations the sweep will need and
 the shared `Build` is a fully immutable artifact, with no synchronization on any
-path. `ProbeDual` is the framework's exported canonical probe
+path. [`ProbeDual`](#g-probedual) is the framework's exported canonical probe
 scalar — `const ProbeDual = ForwardDiff.Dual{ProbeTag, Float64, 1}` — because
 an activation is keyed by a *concrete* scalar type and the bare `Dual`
 `UnionAll` cannot key one, be [walked](#g-walked) to, or answer `zero(T)`. Its width is
@@ -6056,7 +6056,7 @@ commitments, a library and an idiom follow:
   substitutability contract doing its job: an [abstract entry](#g-abstract-entry) declares that
   a substitute must be chosen, and the rig choosing its test double
   explicitly, as ordinary inspectable code, is precisely the isolation the
-  rig exists to provide. `design_world`'s little sibling ([§14.9][s14-9]): where
+  rig exists to provide. [`design_world`](#g-design_world)'s little sibling ([§14.9][s14-9]): where
   `design_world(ac)` mounts an aircraft in a minimal world for trim and
   linearization, the rig mounts one component behind a root contract for
   unit tests and open-loop probing. Deliberately ordinary machinery end to
@@ -6082,7 +6082,7 @@ states, legality follows each service's inputs: `capture` requires
 `initialized` or `stopped` (it reads committed, boundary-consistent
 stores); `init!` and `trim!` are additionally legal from `built` — their
 inputs are authored conditions (`trim!`'s scratch world is built from
-`override(baseline, condition(guess))`, [§14.8][s14-8], never from the sim's
+[`override`](#g-override)`(baseline, condition(guess))`, [§14.8][s14-8], never from the sim's
 stores); `linearize` inherits `capture`'s precondition when its operating
 point defaults to `capture(sim)`, and `init!`'s legality with an explicit
 `about` ([§14.10][s14-10]). **`errored` is terminal for all four** (row 59): the
@@ -6787,7 +6787,7 @@ unknown `reads` [selector](#g-selector), a
 the offending field with the names or types in hand, collected, mirroring
 linearization's `TapResolution`); a permuted spelling is none of these
 ([§14.7][s14-7]).
-An *empty* one is none of them either: `TrimProblem(guess = (;), …)` is
+An *empty* one is none of them either: [`TrimProblem`](#g-trimproblem)`(guess = (;), …)` is
 legal, not `TrimProblemInvalid`. With zero decision variables the solver is
 bypassed outright — nothing to pack, no seeded activation, no backend call —
 and the service simply evaluates the residuals once at the [baseline](#g-baseline), the
@@ -7715,7 +7715,7 @@ knowing them is what makes component and periphery code come out right, and
 not knowing them produces defensive delays, duplicated math or mistimed
 samples with no diagnostic firing anywhere ([§15.5][s15-5]'s author-knowledge note is
 the archetype).
-This appendix is an **index, not a second home** — one recall line per
+This appendix is an **[index, not a second home](#g-normative)** — one recall line per
 contract, with the normative statement staying in the owning section (one
 home per datum, applied to the document itself).
 
@@ -7823,7 +7823,7 @@ For periphery authors and consumers:
   everything else propagate — the wrapper makes it `DeviceCrash`.
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
-- **Derived liveness** ([§9.7][s9-7]). A widget is live iff its port's feed chain
+- **[Derived liveness](#g-derived-liveness)** ([§9.7][s9-7]). A widget is live iff its port's feed chain
   terminates in a root slot inside the GUI's own claim in the run's frozen
   partition; there is no per-port marking, and unexported ports are
   unpokeable.
