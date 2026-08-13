@@ -1382,213 +1382,330 @@ step boundaries.** Mid-step contents carry no meaning.
 
 ### 8.4 Localization mechanics
 
-**Which guards localize: the form is the policy.** Detection policy is
-declared by the guard's return type, not by a flag: a guard returning `Bool`
-is [boundary-detected](#g-boundary-detected), a guard returning the nominal scalar — the continuous
-(sign) form — is [localized](#g-localized). The build reads the policy off the [probe](#g-probe) it
-already runs ([§12.3][s12-3], nominal [activation](#g-activation)), so `Event(guard, handler)`
-carries no detection keyword (row 179). The form *is* the policy because
-localization brackets a root and only the sign form offers one; the illegal
-pairing is thereby unrepresentable rather than merely diagnosed.
-De-localizing is a one-line rewrite with no semantic cost: **cast the guard
-to its [predicate](#g-predicate)** — return `σ ≥ 0` instead of `σ` — which is
-the definition ([§2.1][s2-1]), hence the same predicate, the same edges,
-observed at boundary
-resolution.
+A [guard](#g-guard)'s [predicate](#g-predicate) can cross inside an integration step, strictly
+between two grid points. Two answers are available. The crossing can be noticed
+at the step's end, at grid resolution; or the crossing instant itself can be
+found and published. This section fixes which guards get which answer, and
+spells out the machinery of the second.
 
-**Boundary detection is *exact* for guards over `u` and `m` alone.** Such a
-predicate is piecewise frame-constant: `u` steps only at the [frame-top drain](#g-drain)
-([§9.4][s9-4]), `m` only through handlers, at boundaries. It cannot cross mid-step, so
-there is no interior instant for a root-finder to find and the boundary is not
-a resolution limit but the crossing itself. Localization is machinery that
-class has no use for.
+Two words carry the section, and they are not synonyms.
 
-**Localizing a mixed predicate: the gate idiom.** This matters in practice:
-most transitions in FlightPhysics mix input predicates with state thresholds
-(e.g. the piston engine's `starting → running` fires on
-`ω > ω_idle && fuel_available`). The blessed spelling when such a transition
-wants localizing is the gate form `(gate) ? σ : -one(σ)` — the `Bool` factors
-ride the branch, the continuous factor rides the value. It is honest, not a
-trick to defeat the check: probes vary only θ, with `u` and `m` fixed through
-a localization (below), so the gates are constant over the bracket and σ
-restricted to it is the continuous atom, bracketable as such.
+- A **[frame](#g-frame)** is a grid step `[tₙ, tₙ₊₁]`, the unit of scheduling.
+  Three things are keyed to it: the input [drain](#g-drain) (the frame-top swap
+  that publishes staged device inputs into the root slots, [§9.4][s9-4]), pacer
+  deadlines ([§8.7][s8-7]) and [tick](#g-tick) eligibility ([§8.5][s8-5]).
+- A **[boundary](#g-boundary)** is a published consistency point, where the
+  [§8.6][s8-6] macro-sequence completes and a [snapshot](#g-snapshot) goes out.
 
-Trigger: a localized event's predicate was not-[holding](#g-edge-semantics) at $t_n$'s [quiescence](#g-quiescence) (its
-prior, [§8.6][s8-6]) and is holding at $t_{n+1}$ — the directional edge of [§2.1][s2-1], never a
-bare sign change: a holding → not-holding transition neither fires nor localizes.
-The trigger check runs against the **arrival [sweep](#g-sweep)** at $t_{n+1}$ — the sweep
-that closes the integration step — and therefore *before* the due-gated
-[boundary sweep](#g-sweep) refreshes any discrete [cell](#g-cell). This makes explicit an ordering the
-ZOH clause below already forces (probes must see the values the frame actually
-held) and fixes the sequencing at the top: every `t*` firing precedes
-$t_{n+1}$'s [boundary](#g-boundary) sequence entirely.
+Every grid point is a boundary. The converse fails: `t*`, the localized event
+time, and [boundary zero](#g-boundary-zero) (the initialization boundary at `t₀`,
+[§14.5][s14-5]) are boundaries that are not frame tops.
 
-- **The θ = 0 validation.** On trigger the *first* act is a probe at the left
-  end: write $x_n$ into the state [buffer](#g-buffer) — already retained by the stepper for
-  the [interpolant](#g-interpolant), so nothing new is kept — run one [interior sweep](#g-sweep), and
-  evaluate the [guard](#g-guard) to get $\sigma_0$. It runs before any interpolant cost
-  because $\hat{x}(0) = x_n$ identically, so no interpolant is needed to place
-  it, and it pays for itself twice over: it is also the **left bracket value**
-  the value-based root-finders need ($\sigma_1 = \sigma(t_{n+1})$ is retained
-  from the arrival evaluation; $\sigma_0$ was otherwise unsourced), and it
-  **discriminates the edge's cause**. The vocabulary: an **[input epoch](#g-input-epoch)** is a
-  maximal span of constant `u`, delimited by frame-top drains ([§9.4][s9-4]); within
-  an epoch a guard can change only through the trajectory, while at a seam it
-  can jump without crossing anything. `u` is the *only* thing that can differ
-  between the prior's evaluation context and this probe — `m` changes only via
-  handlers at boundaries and priors are sampled at quiescence, after them;
-  discrete cells ZOH-hold and the interior sweep excludes discrete entries
-  ([§8.5][s8-5]); `t = tₙ` exactly, by the indexed-grid rule below; and sweeps are
-  deterministic — so under the [honest priors](#g-prior) ([§8.6][s8-6]) the frame-top drain is the
-  sole possible source of disagreement, which makes the discriminator
-  conclusive:
-  - $\sigma_0$ **not-holding** ⇒ a **trajectory-caused** edge: a genuine
-    in-frame crossing. Pay $\dot{x}_{n+1}$'s sweep, build the interpolant and
-    root-find on the bracket $(t_n, \sigma_0)$/$(t_{n+1}, \sigma_1)$.
-  - $\sigma_0$ **holding** ⇒ an **epoch-caused** edge: the drain (the frame-top
-    swap that publishes staged device inputs into the root slots) flipped the
-    guard at the frame top, and σ holds at both ends, so no in-frame crossing
-    exists to find. The localization is **discarded** and the event fires
-    inside $t_{n+1}$'s ordinary iteration — mechanically, *not localizing is
-    the action*: fall through, and the boundary iteration detects and fires it
-    like any boundary-detected event. This path costs one interior sweep, never
-    $\dot{x}_{n+1}$ and never an interpolant, consumes no
-    `localization_budget`, and **warns nothing** — input timing is a frame fact
-    (the same doctrine that forbids draining at `t*`, below) and boundary
-    detection is *exact* for a `u`-caused edge (above; row 179), so boundary
-    firing is the correct semantics rather than a degradation. It is the
-    left-end mirror of the `t* = tₙ₊₁` degeneracy below.
-- **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
-  $\theta = (t - t_n)/h \in [0, 1]$, from $(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$;
-  $\dot{x}_n$ is the step's first
-  stage, $\dot{x}_{n+1}$ costs one sweep, paid only on a validated trigger — the
-  θ = 0 probe above precedes it, so an epoch-caused edge never pays it at all.
-  Uniform accuracy $O(h^4)$ — one
-  order below the discrete solution, the standard pairing, and the event time can
-  only ever be as accurate as the interpolant, so nothing more expensive is worth
-  probing.
-- **Probes run the interior sweep.** Guards read `y`, so evaluating a guard at an interpolated
-  state means writing $\hat{x}(\theta)$ into the state buffer and running the interior sweep — the same
-  rule as the [RHS](#g-flow) ([§8.5][s8-5]): a probe is a mid-step evaluation, so discrete cells hold
-  their [tick](#g-tick) values through localization and a guard reading a sampled output sees
-  what the controller is holding. One interior sweep per probe.
-- **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
-  acceptable fallback). The observed not-holding/holding bracket *is* an unconditional
-  convergence certificate; Newton/AD localization is rejected (row 18).
-  **Convergence is a relative bracket width**: localization stops once the bracket is
-  narrower than `localization_tol · h`, with `localization_tol` a `Simulation`
-  deployment keyword defaulting to `1e-6` (below). Relative because an absolute-in-`t`
-  tolerance is not scale-free (row 133); `1e-6` because the event time can only ever be
-  as accurate as the interpolant (`O(h⁴)`, above), so at practical `h` anything tighter
-  buys nothing while every probe costs a full sweep — a handful of probes under ITP,
-  ~20 even in bisection's worst case.
-- **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
-  invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
-  `t*` with the [remainder step](#g-remainder-step) targeting `tₙ₊₁` → re-check guards on the remainder,
-  under the per-frame [localization budget](#g-chattering) with a chattering diagnostic. Multiple
-  events localizing in one step fire at the *earliest* `t*` (ties fire
-  together at that boundary, declaration order within the iteration, [§8.6][s8-6]);
-  later crossings re-localize on the remainder.
-- **Shared blind spot, documented:** an even number of crossings within one step
-  returns the predicate to not-holding at the boundary, so no edge is observed —
-  defeating detection under both policies; the mitigation is step size, not
-  machinery.
+A frame in which one event localizes runs like this, boundaries in bold:
 
-**Budget exhaustion degrades; it does not throw.** The budget is
-`localization_budget`, the second deployment keyword this section fixes: an integer
-count of localizations permitted within one frame, defaulting to **8**. A
-legitimate multi-event frame — three landing-gear struts touching down inside
-one step — needs three or four; [chattering](#g-chattering) needs tens; 8 bounds the pathology
-without ever binding on a healthy model. When a step spends its event
-budget, localization stops for the remainder of that frame: the remainder step
-completes, and any further crossings fire in the next boundary's ordinary
-iteration — boundary granularity for that frame — under a `ChatteringBudget`
-warning ([Appendix C][sC]) naming the chattering
-event and the localization count. The degradation is a function of
-the trajectory alone, never of wall clock, so the pace-independence guarantee
-(row 80) stands untouched and the run replays identically. A `StepError` would
-misclassify an
-expected modeling outcome as broken machinery (the doctrine, [§14.8][s14-8]). The same
-doctrine governs [§8.6][s8-6]: neither the boundary iteration nor cross-frame
-re-localization has a structural bound, so each takes a budget —
-`firing_budget` there, `localization_budget` here — and both degrade loudly
-rather than erroring, under a warning that names the offending event. They
-differ only in *what* exhaustion sheds: localization sheds root-finding
-precision, preserving every firing at boundary granularity, whereas the firing
-budget sheds firings, which is precisely what bounds the iteration.
+> **tₙ** → integrate → arrival sweep at tₙ₊₁ → trigger → θ = 0 probe → bracket
+> → root-find → **t\*** → remainder step → **tₙ₊₁**
 
-**Both constants are deployment, not implementation.** `localization_tol` and
-`localization_budget` are `Simulation` keywords standing beside `h`, `n` and the
-algorithm ([§12.1][s12-1], [Appendix B][sB]), validated with their siblings — a positive
-tolerance, an integer budget ≥ 1 — and collected into `DeploymentInvalid`
-([Appendix C][sC]); the `firing_budget` ([§8.6][s8-6]) stands beside them in every
-one of these lists — same validation, same `DeploymentInvalid`, same trace
-header, same [replay](#g-replay) comparison. They are grid-independent, so
-neither enters the harmonic-grid check ([§8.5][s8-5]). And being
-trajectory-determining they are **recorded**:
-they ride the [trace header](#g-trace-header)'s deployment block and join the set replay compares
-up front, exactly as `h` and the algorithm do ([§9.5][s9-5], [§10.7][s10-7]). The
-replays-identically promise above is empty otherwise — a run that does not
-record what its localizer was told to do cannot be re-driven through the same
-localization outcomes.
+That chain is the order of operations, not a walk along the time axis. The
+arrival sweep at tₙ₊₁ is what raises the trigger, and integration then resumes
+from `t*`, which lies behind it.
 
-**[Projection](#g-projection)'s reach is the boundary, not the probe.** Guard probes evaluate the
-raw interpolated state — the same rule RK-stage RHS evaluations already live
-under, being equally off-manifold, so sweeps must tolerate near-manifold states
-and already do. Authority rests with the `t*` boundary: projection runs there,
-and the [§8.6][s8-6] iteration's edge checks read the *projected* state. If projection
-moves the state back across a guard, the event does not fire and the run has
-published one extra boundary — harmless, and deterministic and pace-independent
-like any other localization outcome (row 80). Per-probe projection is rejected
+#### Which guards localize: the form is the policy
+
+**Rule.** Detection policy is declared by the guard's return type, not by a
+flag:
+
+- a guard returning `Bool` is **[boundary-detected](#g-boundary-detected)**
+  (checked for edges at step boundaries only, no root-finding);
+- a guard returning the nominal scalar, the continuous sign form, is
+  **[localized](#g-localized)** (the crossing instant bracketed by root-finding
+  over probe sweeps).
+
+The build reads the policy off the [probe](#g-probe) it already runs
+([§12.3][s12-3], nominal [activation](#g-activation)), so `Event(guard, handler)`
+carries no detection keyword (row 179).
+
+**Why.** Localization brackets a root, and only the sign form offers one. The
+form *is* the policy, and the illegal pairing is thereby unrepresentable rather
+than merely diagnosed.
+
+**De-localizing is a one-line rewrite with no semantic cost.** Cast the guard to
+its predicate: return `σ ≥ 0` instead of `σ`. That cast is the definition
+([§2.1][s2-1]), so what remains is the same predicate and the same edges,
+observed at boundary resolution.
+
+#### Boundary detection is exact for guards over `u` and `m` alone
+
+**Rule.** For a guard reading only `u` and `m`, boundary detection is *exact*.
+
+**Why.** Such a predicate is piecewise frame-constant: `u` steps only at the
+frame-top drain ([§9.4][s9-4]), `m` only through handlers, at boundaries. It
+cannot cross mid-step, so there is no interior instant for a root-finder to
+find. The boundary is not a resolution limit here but the crossing itself, and
+localization is machinery that class has no use for.
+
+#### Mixed predicates: the gate idiom
+
+This matters in practice, because most transitions in FlightPhysics mix input
+predicates with state thresholds. The piston engine's `starting → running`
+fires on `ω > ω_idle && fuel_available`.
+
+**Rule.** The blessed spelling when such a transition wants localizing is the
+gate form `(gate) ? σ : -one(σ)`. The `Bool` factors ride the branch, the
+continuous factor rides the value.
+
+**Why.** The idiom is honest, not a trick to defeat the check. Probes vary only
+θ, with `u` and `m` fixed through a localization, so the gates are constant over
+the bracket. σ restricted to the bracket is then the continuous atom,
+bracketable as such.
+
+#### The trigger
+
+**Rule.** A localized event triggers when its predicate was
+not-[holding](#g-edge-semantics) at tₙ's [quiescence](#g-quiescence) (the fixed
+point where a round of handlers fires nothing) and is holding at tₙ₊₁. The tₙ
+sample is the event's **[prior](#g-prior)**, its stored predicate sample from the
+previous boundary ([§8.6][s8-6]).
+
+This is the directional edge of [§2.1][s2-1], never a bare sign change: a
+holding → not-holding transition neither fires nor localizes.
+
+**The trigger check runs against the arrival [sweep](#g-sweep) at tₙ₊₁**, the
+sweep that closes the integration step. It therefore runs *before* the due-gated
+[boundary sweep](#g-sweep) refreshes any discrete [cell](#g-cell). The ZOH clause
+below already forces that ordering, since probes must see the values the frame
+actually held. Stating it here fixes the sequencing at the top: every `t*`
+firing precedes tₙ₊₁'s boundary sequence entirely.
+
+#### The localization loop
+
+One localized event within one frame, sketched; every step is normed below.
+
+```julia
+# θ = (t − tₙ)/h, and every σ(θ) is a probe: write the state, run the
+# interior sweep, evaluate the guard.
+σ₁ = σ(1)                              # already computed by the arrival sweep
+(prior not-holding && σ₁ holding) || return    # no trigger, nothing to localize
+
+σ₀ = σ(0)                              # the θ = 0 validation: x̂(0) = xₙ, no interpolant
+σ₀ holding && return                   # epoch-caused edge: fall through to tₙ₊₁
+
+build x̂ from (xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁)      # one sweep for ẋₙ₊₁, paid only here
+lo, hi = 0, 1                          # the not-holding / holding bracket, in θ
+while hi - lo > localization_tol       # relative: bracket width (hi − lo)·h vs. tol·h
+    θ = next bracketed guess in (lo, hi)       # ITP, Brent or bisection
+    σ(θ) holding ? (hi = θ) : (lo = θ)
+end
+t* = tₙ + hi·h                         # the holding endpoint of the final bracket
+```
+
+**The θ = 0 validation.** On trigger the *first* act is a probe at the left end:
+write xₙ into the state [buffer](#g-buffer), run one [interior sweep](#g-sweep),
+and evaluate the guard to get σ₀. Nothing new is kept, xₙ being already retained
+by the stepper for the [interpolant](#g-interpolant) (the cubic Hermite
+continuous extension over the last completed step). The probe runs before any
+interpolant cost, because x̂(0) = xₙ identically and no interpolant is needed to
+place it.
+
+It pays for itself twice over. σ₀ is the **left bracket value** the value-based
+root-finders need: σ₁ = σ(tₙ₊₁) is retained from the arrival evaluation, while
+σ₀ was otherwise unsourced. And σ₀ **discriminates the edge's cause**.
+
+The discrimination needs one term. An **[input epoch](#g-input-epoch)** is a
+maximal span of constant `u`, delimited by frame-top drains ([§9.4][s9-4]).
+Within an epoch a guard can change only through the trajectory; at a seam it can
+jump without crossing anything.
+
+**Why the discriminator is conclusive.** `u` is the *only* thing that can differ
+between the prior's evaluation context and this probe. `m` changes only via
+handlers at boundaries, and priors are sampled at quiescence, after them.
+Discrete cells ZOH-hold, and the interior sweep excludes discrete entries
+([§8.5][s8-5]). `t = tₙ` exactly, by the indexed-grid rule below. And sweeps are
+deterministic. So under the honest [priors](#g-prior) of [§8.6][s8-6] the
+frame-top drain is the sole possible source of disagreement.
+
+- σ₀ **not-holding** ⇒ a **trajectory-caused** edge, a genuine in-frame
+  crossing. Pay ẋₙ₊₁'s sweep, build the interpolant and root-find on the bracket
+  $(t_n, \sigma_0)$/$(t_{n+1}, \sigma_1)$.
+- σ₀ **holding** ⇒ an **epoch-caused** edge. The drain flipped the guard at the
+  frame top, and σ holds at both ends, so no in-frame crossing exists to find.
+
+**An epoch-caused edge is discarded, not degraded.** The localization is
+**discarded** and the event fires inside tₙ₊₁'s ordinary iteration.
+Mechanically, *not localizing is the action*: fall through, and the boundary
+iteration detects and fires it like any boundary-detected event. This path costs
+one interior sweep, never ẋₙ₊₁ and never an interpolant, and it consumes no
+`localization_budget`. It also **warns nothing**: input timing is a frame fact,
+the same doctrine that forbids draining at `t*` below, and boundary detection is
+*exact* for a `u`-caused edge (above; row 179), so boundary firing is the
+correct semantics rather than a degradation. It is the left-end mirror of the
+`t* = tₙ₊₁` degeneracy below.
+
+**The interpolant is lazy.** It is the cubic Hermite continuous extension
+$\hat{x}(\theta)$, $\theta = (t - t_n)/h \in [0, 1]$, built from
+$(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$. $\dot{x}_n$ is the step's first
+stage; $\dot{x}_{n+1}$ costs one sweep, paid only on a validated trigger. The
+θ = 0 probe precedes it, so an epoch-caused edge never pays it at all. Uniform
+accuracy is $O(h^4)$, one order below the discrete solution and the standard
+pairing. The event time can only ever be as accurate as the interpolant, so
+nothing more expensive is worth probing.
+
+**Probes run the interior sweep.** Guards read `y`, so evaluating a guard at an
+interpolated state means writing $\hat{x}(\theta)$ into the state buffer and
+running the interior sweep. This is the rule the [RHS](#g-flow) already lives
+under ([§8.5][s8-5]): a probe is a mid-step evaluation. Discrete cells therefore
+hold their [tick](#g-tick) values through localization, and a guard reading a
+sampled output sees what the controller is holding. One interior sweep per
+probe.
+
+**Root-finding is bracketed and derivative-free** (ITP or Brent; bisection is an
+acceptable fallback). The observed not-holding/holding bracket *is* an
+unconditional convergence certificate. Newton/AD localization is rejected
 (row 18).
 
-**`t*` is a boundary, not a frame.** A *frame* is a grid step
-`[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top ([§9.4][s9-4]), pacer
-deadlines ([§8.7][s8-7]), tick eligibility ([§8.5][s8-5]). A *boundary* is a published
-consistency point — where the [§8.6][s8-6] macro-sequence completes and a [snapshot](#g-snapshot)
-goes out. Every grid point is a boundary; `t*` and [boundary zero](#g-boundary-zero) (the initialization
-boundary at `t₀`, [§14.5][s14-5]) are boundaries that are not frame tops. At `t*` the full [§8.6][s8-6] event phase runs —
-[sweep → guards → handlers] iterated to quiescence, **firing-budget
-accounting scoped to this boundary** (fresh again at `tₙ₊₁`, and at a second
-`t*` on the remainder) — and the settled state is **published**: snapshot,
-[§10.3][s10-3] boundary-counter increment, [`stop_on`](#g-stop_on) check ([§13.5][s13-5]) — a crash localized
-at `t*` ends the run from that snapshot. What does *not* happen at `t*`:
-ticks are never due (`t*` is off the [harmonic grid](#g-harmonic-grid) by construction; discrete
-cells ZOH-hold through the sweep), and staged inputs are not drained — input
-timing is a frame fact, and replay determinism must not depend on
-localization arithmetic. The publication is not separately paced: the pacer
-paces frame deadlines, and a `t*` snapshot publishes when computed, mid-frame
-(wall-side placement below pacer resolution; the [§8.7][s8-7] invariant concerns
-trajectories, which are identical). Replay pointers and error messages index
-boundaries by a monotonic counter with recorded `t`; the trace stays
-frame-indexed — `t*` boundaries consume no inputs.
+**Convergence is a relative bracket width.** Localization stops once the bracket
+is narrower than `localization_tol · h`, with `localization_tol` a `Simulation`
+deployment keyword defaulting to `1e-6`. Relative, because an absolute-in-`t`
+tolerance is not scale-free (row 133). `1e-6`, because the event time can only
+ever be as accurate as the interpolant — `O(h⁴)`, above — so at practical `h`
+anything tighter buys nothing while every probe costs a full sweep. The bill is
+a handful of probes under ITP, ~20 even in bisection's worst case.
 
-**Endpoint policy and grid integrity.** The root-finder returns the
-**holding endpoint of its final bracket** — the smallest probed point where
-the predicate holds. Consequences: **`t* = tₙ` is structurally impossible**,
-not clamped away — and the argument rests on **observation, not
-testimony**: root-finding is entered only after the θ = 0 validation above has
-*measured* `σ₀` not-holding under the frame's own `u`, so the bracket's left
-end is strictly not-holding by the same kind of evidence as its right end, and
-the returned point is
-strictly later than the published, immutable `tₙ` (worst rounding:
-`nextfloat(tₙ)`). This holds unconditionally, with no appeal to the prior and
-no residual epoch hole: the case where the prior's testimony and the frame's
-`u` disagree is exactly the epoch-caused edge, which never reaches the
-root-finder. And the guard observably *holds* at `t*`: handlers fire in
-states where their own predicate holds, and the post-fire prior records
-an actual observation rather than an assumption. **`t* = tₙ₊₁` exactly is
-legitimate** (a crossing at the grid point: `σ(tₙ₊₁) = 0` both triggers
-detection and is the root) and **degenerates to the grid boundary**: the
-localization result is discarded and the event fires inside `tₙ₊₁`'s ordinary
-iteration — bitwise the boundary-detected outcome, one boundary, one snapshot, no
-zero-length remainder. A near-degenerate `t*` leaves a tiny remainder step,
-numerically harmless (increments are `h′`-scaled); the real hazard is
-bookkeeping, killed by rule: **grid times are indexed, never accumulated** —
-`tₖ = t₀ + k·h` computed from the frame index (tick gating is already
-counter-modulo, [§8.5][s8-5]), and the remainder step *targets the grid point*, with
-`h′` derived at use. `t*` is a float inside a frame, never an anchor anything
-else is computed from.
+**Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
+invalidated** → resume integration from `t*` with the
+[remainder step](#g-remainder-step) targeting tₙ₊₁ → re-check guards on the
+remainder. The interpolant is invalidated because the handlers made it a lie for
+`t > t*`. The re-check runs under the per-frame
+[localization budget](#g-chattering), with a chattering diagnostic.
+
+**Multiple events localizing in one step fire at the *earliest* `t*`.** Ties
+fire together at that boundary, in declaration order within the iteration
+([§8.6][s8-6]). Later crossings re-localize on the remainder.
+
+**A shared blind spot, documented.** An even number of crossings within one step
+returns the predicate to not-holding at the boundary, so no edge is observed.
+That defeats detection under both policies. The mitigation is step size, not
+machinery.
+
+#### Endpoint policy and grid integrity
+
+**Rule.** The root-finder returns the **holding endpoint of its final bracket**,
+the smallest probed point where the predicate holds.
+
+**Consequence: `t* = tₙ` is structurally impossible**, not clamped away.
+
+**Why.** The argument rests on **observation, not testimony**. Root-finding is
+entered only after the θ = 0 validation has *measured* σ₀ not-holding under the
+frame's own `u`. The bracket's left end is therefore strictly not-holding by the
+same kind of evidence as its right end, and the returned point is strictly later
+than the published, immutable tₙ (worst rounding: `nextfloat(tₙ)`). This holds
+unconditionally, with no appeal to the prior and no residual epoch hole: the
+case where the prior's testimony and the frame's `u` disagree is exactly the
+epoch-caused edge, which never reaches the root-finder.
+
+The guard also observably *holds* at `t*`. Handlers therefore fire in states
+where their own predicate holds, and the post-fire prior records an actual
+observation rather than an assumption.
+
+**`t* = tₙ₊₁` exactly is legitimate**: a crossing at the grid point, where
+σ(tₙ₊₁) = 0 both triggers detection and is the root. It **degenerates to the
+grid boundary** — the localization result is discarded and the event fires
+inside tₙ₊₁'s ordinary iteration. That outcome is bitwise the boundary-detected
+one: one boundary, one snapshot, no zero-length remainder.
+
+**Grid times are indexed, never accumulated.** A near-degenerate `t*` leaves a
+tiny remainder step. That is numerically harmless, increments being `h′`-scaled;
+the real hazard is bookkeeping, and this rule kills it. `tₖ = t₀ + k·h` is
+computed from the frame index (tick gating is already counter-modulo,
+[§8.5][s8-5]), and the remainder step *targets the grid point*, with `h′`
+derived at use. `t*` is a float inside a frame, never an anchor anything else is
+computed from.
+
+#### What a `t*` boundary does, and does not, do
+
+At `t*` the full [§8.6][s8-6] event phase runs: [sweep → guards → handlers]
+iterated to quiescence, with **firing-budget accounting scoped to this
+boundary** — fresh again at tₙ₊₁, and at a second `t*` on the remainder. The
+settled state is then **published**: snapshot, [§10.3][s10-3] boundary-counter
+increment, [`stop_on`](#g-stop_on) check ([§13.5][s13-5]). A crash localized at
+`t*` ends the run from that snapshot.
+
+**What does not happen at `t*`.** Ticks are never due there: `t*` is off the
+[harmonic grid](#g-harmonic-grid) (every discrete period an integer multiple of
+`Δt_base`) by construction, and discrete cells ZOH-hold through the sweep.
+Staged inputs are not drained either, for two reasons. Input timing is a frame
+fact, and replay determinism must not depend on localization arithmetic.
+
+**The `t*` publication is not separately paced.** The pacer paces frame
+deadlines, and a `t*` snapshot publishes when computed, mid-frame. Where that
+lands in wall-clock time is below what pacing resolves, and the [§8.7][s8-7]
+invariant is about trajectories, which are identical either way.
+
+Replay pointers and error messages index boundaries by a monotonic counter with
+recorded `t`. The trace stays frame-indexed — `t*` boundaries consume no
+inputs.
+
+#### Projection's reach is the boundary, not the probe
+
+**Rule.** Guard probes evaluate the raw interpolated state. Authority rests with
+the `t*` boundary: [projection](#g-projection) runs there, and the [§8.6][s8-6]
+iteration's edge checks read the *projected* state.
+
+**Why.** RK-stage RHS evaluations already live under that same rule, being
+equally off-manifold, so sweeps must tolerate near-manifold states and already
+do. Per-probe projection is rejected (row 18).
+
+If projection moves the state back across a guard, the event does not fire and
+the run has published one extra boundary. That is harmless, and deterministic
+and pace-independent like any other localization outcome (row 80).
+
+#### Budget exhaustion degrades; it does not throw
+
+**Rule.** `localization_budget` is an integer count of localizations permitted
+within one frame, defaulting to **8**. It is the second deployment keyword this
+section fixes.
+
+**Why 8.** A legitimate multi-event frame — three landing-gear struts touching
+down inside one step — needs three or four; [chattering](#g-chattering) needs
+tens. 8 bounds the pathology without ever binding on a healthy model.
+
+**When a step spends its event budget**, localization stops for the remainder of
+that frame. The remainder step completes, and any further crossings fire in the
+next boundary's ordinary iteration — boundary granularity for that frame — under
+a `ChatteringBudget` warning ([Appendix C][sC]) naming the chattering event and
+the localization count.
+
+The degradation is a function of the trajectory alone, never of wall clock, so
+the pace-independence guarantee (row 80) stands untouched and the run replays
+identically. A `StepError` would misclassify an expected modeling outcome as
+broken machinery (the doctrine, [§14.8][s14-8]).
+
+**The same doctrine governs [§8.6][s8-6].** Neither the boundary iteration nor
+cross-frame re-localization has a structural bound, so each takes a budget:
+`firing_budget` there, `localization_budget` here. Both degrade loudly rather
+than erroring, under a warning that names the offending event. They differ only
+in *what* exhaustion sheds. Localization sheds root-finding precision,
+preserving every firing at boundary granularity; the firing budget sheds
+firings, which is precisely what bounds the iteration.
+
+#### Both constants are deployment, not implementation
+
+`localization_tol` and `localization_budget` are `Simulation` keywords standing
+beside `h`, `n` and the algorithm ([§12.1][s12-1], [Appendix B][sB]). They are
+validated with their siblings — a positive tolerance, an integer budget ≥ 1 —
+and collected into `DeploymentInvalid` ([Appendix C][sC]). The `firing_budget`
+([§8.6][s8-6]) stands beside them in every one of these lists: same validation,
+same `DeploymentInvalid`, same trace header, same replay comparison. Both are
+grid-independent, so neither enters the harmonic-grid check ([§8.5][s8-5]).
+
+**Being trajectory-determining, both are recorded.** They ride the
+[trace header](#g-trace-header)'s deployment block and join the set
+[replay](#g-replay) compares up front, exactly as `h` and the algorithm do
+([§9.5][s9-5], [§10.7][s10-7]).
+
+**Why.** The replays-identically promise above is empty otherwise. A run that
+does not record what its localizer was told to do cannot be re-driven through
+the same localization outcomes.
 
 ### 8.5 Multi-rate tick scheduling
 
