@@ -465,7 +465,7 @@ construct, outside any sweep, bit-for-bit the same handle the sweep would
 produce from the same [slot](#g-slot) values. One implementation, two call
 sites, no drift — and the drift avoided here is the silent-drift class that
 [§5.3][s5-3] exists to kill. This is a *shipped component's obligation*, not
-something a consumer can retrofit. The real component composes sub-models, so
+something a consumer can retrofit. The real component composes sub-models, and
 anyone else reconstructing the map has re-created the drift class.
 
 For bulk-data components the obligation is only that the query math be
