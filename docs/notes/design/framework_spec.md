@@ -5962,13 +5962,14 @@ state is excluded by [contract](#g-contract), not by luck.
 The [probe](#g-probe) validates each function *once*, on the initial state's branch; the
 schema-authority bargain's second clause ("at first execution otherwise",
 [§11.1][s11-1]) is discharged by leaving the probe's comparison permanently in place.
-At the point where the [executor](#g-executor) stores a stage return into the table, it holds
-the complete expected return type at this [activation](#g-activation) — the declared types of the
-names *this stage* produces, as fixed by [Stratum](#g-stratum) B's stage classification: one
-concrete `NamedTuple` type per ([component](#g-component), stage), drawn from
-`output_types(c, T)` on a continuous producer and from `output_types(c)` on a
-discrete one ([§11.2][s11-2]).
-Auto-published names belong to no stage's expected type;
+At the point where the [executor](#g-executor) (the compiled execution form of
+the schedule) stores a stage return into the table, it holds the complete
+expected return type at this [activation](#g-activation). That type comprises
+the declared types of the names *this stage* produces, as fixed by
+[Stratum](#g-stratum) B's stage classification: one concrete `NamedTuple` type
+per ([component](#g-component), stage). It is drawn from `output_types(c, T)`
+on a continuous producer and from `output_types(c)` on a discrete one
+([§11.2][s11-2]). Auto-published names belong to no stage's expected type;
 the framework writes those [cells](#g-cell) itself. The executor canonicalizes the
 observed return to that type's field order by a type-level reorder
 (`NamedTuple{names(Expected)}(y2)`) and performs a single
@@ -5980,23 +5981,23 @@ on the divergent one at its first execution. (Type-unstable-but-conformant
 code pays nanoseconds on top of the dynamic dispatch it already bought.)
 
 **The names are the pairing; field order carries no semantics.** `Expected`'s
-order is an internal fact — derived from `output_types`,
-stage-filtered, auto-published names removed, an order no single declaration
-shows the author — and the author never reproduces it: a return spelling the
-right names at the right types conforms in any order, `(; P = M*ω, M_shaft = M)`
-and `(; M_shaft = M, P = M*ω)` being the same return. This is the general rule
-at every author↔framework `NamedTuple` [seam](#g-seam) ([§14.7][s14-7] states it for the trim
-problem's decisions and residuals), and it is what downstream consumption
-already assumes: the scatter writes each returned field into its own *named*
-cell ([§4.3][s4-3]), so order-sensitivity in the check would be incidental
-strictness rather than protection. The canonicalizing reorder costs nothing:
-a compile-time permutation of an already-typed value — register shuffling SROA
-deletes — folding exactly where the test folds, so the economics (row 53) hold
-— one whole-type test, never per-field checks — and the canary
-([§7.5][s7-5]) verifies the fold empirically rather than by assertion. What is
-an error is a key-set mismatch or a per-field type mismatch, reported by
-the [payload](#g-payload) below. A permutation is not an error at all — which is
-equally why that diff never has to express one.
+order is an internal fact — derived from `output_types`, stage-filtered,
+auto-published names removed, an order no single declaration shows the author.
+The author never reproduces it: a return spelling the right names at the right
+types conforms in any order. `(; P = M*ω, M_shaft = M)` and
+`(; M_shaft = M, P = M*ω)` are the same return. This is the general rule at
+every author↔framework `NamedTuple` [seam](#g-seam) ([§14.7][s14-7] states it
+for the trim problem's decisions and residuals). It is also what downstream
+consumption already assumes: the scatter writes each returned field into its
+own *named* cell ([§4.3][s4-3]). Order-sensitivity in the check would therefore
+be incidental strictness rather than protection. The canonicalizing reorder
+costs nothing: it is a compile-time permutation of an already-typed value,
+register shuffling SROA deletes. It folds exactly where the test folds, so the
+economics (row 53) hold — one whole-type test, never per-field checks. The
+canary ([§7.5][s7-5]) verifies the fold empirically rather than by assertion.
+What is an error is a key-set mismatch or a per-field type mismatch, reported
+by the [payload](#g-payload) below. A permutation is not an error at all —
+which is equally why that diff never has to express one.
 
 **Exact match at nominal; embed-accept at declared-`T` leaves.** At
 the nominal activation — the only one that ever runs in real time — the check
@@ -6006,28 +6007,29 @@ didactic: "field `M_shaft`: expected `Float64`, got `Int64` — return
 `zero(x.ω)`, not `0`". Under a non-nominal activation (a re-run of Stratum C at
 a given scalar type) the two leaf kinds the declaration ([§11.2][s11-2]) distinguishes
 are checked differently. A **declared-`T` leaf** — the author wrote `T` there —
-accepts exactly two types: the activation scalar (the fast path — the baked
-`isa`) or `Float64`, which the executor **embeds** as a zero-partial
-constant (`convert` through the leaf; struct-valued [ports](#g-port) use the standard
-cross-eltype constructor, a missing one failing loudly with both types named).
-Nothing else is accepted. A **declared-[pinned](#g-walked) leaf** — the author wrote a
-concrete type, `Float64` at the head of the list — takes the nominal-style
-exact check at *every* activation, its declaration having said the leaf never
-carries partials; an observed `Dual` there is the per-leaf forgotten-`T` error,
-with the didactic hint attached ("if `F` participates in differentiation,
-declare it `T`"), that being the one honest cause. The embedding is exact, not
-lenient: promotion is airtight and there is no lossy `Dual → Float64` cast, so
+accepts exactly two types: the activation scalar or `Float64`. The activation
+scalar is the fast path, the baked `isa`. A `Float64` the executor **embeds**
+as a zero-partial constant (`convert` through the leaf). Struct-valued
+[ports](#g-port) use the standard cross-eltype constructor, a missing one
+failing loudly with both types named. Nothing else is accepted. A
+**declared-[pinned](#g-walked) leaf** — the author wrote a concrete type,
+`Float64` at the head of the list — takes the nominal-style exact check at
+*every* activation, its declaration having said the leaf never carries
+partials. An observed `Dual` there is the per-leaf forgotten-`T` error,
+that being the one honest cause. The didactic hint is attached: "if `F`
+participates in differentiation, declare it `T`". The embedding is exact, not
+lenient. Promotion is airtight and there is no lossy `Dual → Float64` cast, so
 a `Float64` observed at a declared-`T` leaf means no `Dual` entered its
-computation — its true derivative along every seeded direction is zero, which
+computation. Its true derivative along every seeded direction is zero, which
 is precisely what the embedded constant says. This scopes the blanket
-convert-on-write rejection to the nominal check (row 53): the bug that
+convert-on-write rejection to the nominal check (row 53). The bug that
 rejection guards against — silently zeroed partials — cannot arise from honest
 code, because accidental `Float64`s from `Dual` operands are impossible
 (`MethodError` at the operation site). The residual is **deliberate stripping**
 (`ForwardDiff.value`): a stated intent to discard partials, producing a silent
-zero in the Jacobian — the stop-gradient idiom, occasionally legitimate
-(deliberately frozen couplings, opaque non-Julia wrappers), and equally
-invisible to a strict exact-match rule when applied mid-expression, so the
+zero in the Jacobian. That is the stop-gradient idiom, occasionally legitimate
+— deliberately frozen couplings, opaque non-Julia wrappers. Applied
+mid-expression it is equally invisible to a strict exact-match rule, so the
 leniency costs nothing. What it need not be is invisible to the schema:
 **the declared-pinned leaf is the schema-visible freeze** — an
 author who means to strip declares the leaf `Float64` and strips inside the
@@ -6040,12 +6042,12 @@ returns the `(y, w)` pair ([§5.2][s5-2]) gets a second baked `isa` beside the f
 against the type the **nominal probe observed** — no declaration exists to draw
 an expectation from, and none is wanted, `w` being a value in flight rather
 than a cell to type. It folds exactly as its sibling does when the stage is
-stable, and when it does not fold it earns its nanoseconds: the branch that
-quietly returns a `w` of a different shape is otherwise invisible until it
-shows up as an allocation in someone's benchmark, and here it is a located
-error naming the offending field at that branch's first execution. The message
-cites its authority honestly — expected *what the nominal probe observed*, not
-what anybody declared. Under **non-nominal activations the `w` test is
+stable. When it does not fold it earns its nanoseconds: the branch that quietly
+returns a `w` of a different shape is otherwise invisible until it shows up as
+an allocation in someone's benchmark. Here it is a located error naming the
+offending field at that branch's first execution. The message cites its
+authority honestly — expected *what the nominal probe observed*, not what
+anybody declared. Under **non-nominal activations the `w` test is
 absent**: with no declaration there is no branch-independent anchor, there is
 no cell whose typing the check would protect, and a probe-observed expectation
 would reject the constant-branch idiom that [§11.2][s11-2] keeps legal on the
@@ -6054,18 +6056,18 @@ a `Dual` activation is a true zero-partial constant by the embedding guarantee
 above, and promotion at its first use with a `Dual` operand is exact. The
 reasoning is [§11.3][s11-3]'s, recorded in row 165.
 
-**Uniform across all probed functions.** `f` checks against `X`'s own shape
-at the activation's `T` ([§7.1][s7-1]: a scalar leaf expects a `T`, an `SArray` leaf
-the same `SArray` at `T`), the predicate being "every
-field scatters into its field's block at `T`", which is what makes derivative
-completeness structural rather than a matter of author discipline; [guards](#g-guard)
-against their probe-derived [predicate](#g-predicate) form (below); `g`
-against its leaf's `x` shape; handlers against the [§5.2][s5-2] return law, key by key;
-`project` against `X`'s own shape at `T`, **complete** — the same
-predicate as a handler's `x` key, since its result is written back to the
-[buffer](#g-buffer) wholesale at both of the [schedule](#g-schedule) positions ([§5.3][s5-3]), and a [projection](#g-projection)
-with a mode-dependent branch first executes its second branch at run
-time.
+**Uniform across all probed functions.** `f` checks against `X`'s own shape at
+the activation's `T` ([§7.1][s7-1]: a scalar leaf expects a `T`, an `SArray`
+leaf the same `SArray` at `T`). Its predicate is "every field scatters into its
+field's block at `T`", which is what makes derivative completeness structural
+rather than a matter of author discipline. [Guards](#g-guard) check against
+their probe-derived [predicate](#g-predicate) form (below); `g` against its
+leaf's `x` shape; handlers against the [§5.2][s5-2] return law, key by key.
+`project` checks against `X`'s own shape at `T`, **complete**, since its result
+is written back to the [buffer](#g-buffer) wholesale at both of the
+[schedule](#g-schedule) positions ([§5.3][s5-3]) and a
+[projection](#g-projection) with a mode-dependent branch first executes its
+second branch at run time. That is the same predicate as a handler's `x` key.
 
 **Handler returns, key by key.** The returned NamedTuple's key set is checked
 first: an unknown key, or a key naming a store the component does not declare,
@@ -6082,7 +6084,7 @@ in a flat buffer written back wholesale, while `m` may be partial because
 
 **Guards have two admissible forms** ([§2.1][s2-1]), so their check is form-aware
 rather than a flat `isa Bool`: a `Bool`-form guard's probed return is `Bool`, a
-sign-form guard's is the nominal scalar — guards run only at the nominal
+sign-form guard's is the nominal scalar. Guards run only at the nominal
 activation (row 52), so no parametrized-leaf case arises here. Any other probed
 return type is a build error naming both admissible forms. There is nothing
 further to check: the probed form *is* the detection policy ([§8.4][s8-4], row 179),
