@@ -224,8 +224,8 @@ predicates.
   [boundary-detected](#g-boundary-detected) events (checked for edges at step boundaries
   only, no root-finding) cover engine phase transitions and the stall hysteresis latch.
   For one class the mapping tightens semantics: level-triggered cross-component resets
-  become edge-triggered events ([§15.2][s15-2], [§16][s16], row 1). The gear friction
-  regulator under `!wow` is one such reset.
+  become edge-triggered events. The gear friction regulator under `!wow` is one such
+  reset ([§15.2][s15-2], [§16][s16], row 1).
 
 ---
 
