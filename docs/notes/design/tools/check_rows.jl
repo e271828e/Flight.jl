@@ -6,8 +6,10 @@
 #
 # Two checks:
 #
-#   1. Validity — every `row N` / `rows N–M` / `rows N and M` citation, in every
-#      scanned file, names a row that exists in framework_decisions.md's table.
+#   1. Validity — every `row N` / `rows N–M` / `rows N and M` citation, and
+#      every `D-nnn` / `D-nnn–D-mmm` entry citation, in every scanned file,
+#      names an entry that exists in framework_decisions.md (`### D-nnn`
+#      headings; D-nnn preserves the retired table's row N).
 #   2. Coverage (spec only) — the set of rows framework_spec.md cites must be a
 #      superset of the committed baseline tools/row_baseline.txt. Phase 2 may
 #      consolidate duplicate citations of a row, but a row dropping out of the
@@ -38,6 +40,9 @@ const FILES = [SPEC,
 const GROUP = r"\brows?\s+(\d+(?:\s*[–-]\s*\d+)?(?:(?:,\s*|,?\s+and\s+)\d+(?:\s*[–-]\s*\d+)?)*)"
 const TOKEN = r"(\d+)(?:\s*[–-]\s*(\d+))?"
 
+# Entry citations in the post-table format: "D-037", "D-166–D-168".
+const DGROUP = r"\bD-(\d+)(?:\s*[–-]\s*D-(\d+))?"
+
 "All row numbers cited by one group match, ranges expanded."
 function expand(group::AbstractString)
     out = Int[]
@@ -50,14 +55,14 @@ function expand(group::AbstractString)
     return out
 end
 
-"Row numbers defined by the decision table."
+"Row numbers defined by the decision log's entry headings."
 function definedrows()
     rows = Set{Int}()
     for line in eachline(joinpath(DESIGN, DECISIONS))
-        m = match(r"^\| (\d+) \|", line)
+        m = match(r"^### D-(\d+) — ", line)
         m === nothing || push!(rows, parse(Int, m[1]))
     end
-    isempty(rows) && error("no table rows found in $DECISIONS")
+    isempty(rows) && error("no entry headings found in $DECISIONS")
     return rows
 end
 
@@ -77,6 +82,16 @@ function main(rebaseline::Bool)
                     n += 1
                     push!(cited, r)
                     r in defined || push!(bad, (file, lineno, "row $r"))
+                end
+            end
+            for g in eachmatch(DGROUP, line)
+                lo = parse(Int, g[1])
+                hi = g[2] === nothing ? lo : parse(Int, g[2])
+                lo <= hi || error("descending range \"$(g.match)\"")
+                for r in lo:hi
+                    n += 1
+                    push!(cited, r)
+                    r in defined || push!(bad, (file, lineno, "D-$r"))
                 end
             end
         end
