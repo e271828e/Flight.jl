@@ -341,11 +341,11 @@ own later functions, private by construction ([§5.2][s5-2], [§11.3][s11-3]). A
 
 ### 4.3 Table mechanics and port granularity
 
-[§4.2][s4-2] fixed the [port](#g-port) as the addressable unit. Three questions remain:
+[§4.2][s4-2] fixed the [port](#g-port) as the addressable unit. Four questions remain:
 what a port is on a [component](#g-component)'s [boundary](#g-boundary), how values travel into cells and
-out of them, and how much a single port should carry. The last question has two
-answers, one owed to the parties that read a port and one to the parties that
-write it.
+out of them, what a port may hold, and how much a single port should carry. The
+last question has two answers, one owed to the parties that read a port and one
+to the parties that write it.
 
 #### Ports and faces
 
