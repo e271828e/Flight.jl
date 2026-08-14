@@ -6342,7 +6342,7 @@ decision open, and it never materializes.
 **No cascade suppression within a stratum** — a deliberate simplification
 (row 57). A wire typo'd as `:throtle` produces both a
 [did-you-mean](#g-did-you-mean) error (the offending name plus the list-in-hand
-it should have come from) and an unconnected-input error for the intended
+it should have matched) and an unconnected-input error for the intended
 `throttle`; both are reported. They render adjacently (diagnostics sort by
 path), and the pairing is self-explanatory.
 
@@ -6359,7 +6359,7 @@ artifact the [§11.4][s11-4] acceptance tests and the error-message work are
 written against. Each kind carries its own structured payload: endpoint paths,
 [face](#g-face) names, expected/observed types, a severity, and the
 *list-in-hand* a [did-you-mean](#g-did-you-mean) needs (the offending name plus
-the list it should have come from).
+the list it should have matched).
 
 Checking passes return diagnostics; the [stratum](#g-stratum) barrier (a stratum
 is one of the build's three phases: structure, schedule, activation) throws a
