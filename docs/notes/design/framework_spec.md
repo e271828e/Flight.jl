@@ -7584,181 +7584,258 @@ field and the names or types in hand. Order is never a mismatch.
 
 ### 14.8 The trim service: solver seam, scratch stores, commit and report
 
-**The backend [seam](#g-seam).** `trim!(sim, problem; baseline, t0 = 0.0, backend =
-LevenbergMarquardt())`. The default is an in-house dense
-Levenberg–Marquardt: for decision dimensions ~10 with exact Jacobians, the
-core (damping loop, small linear solve, convergence test) is ~100 lines —
-the [§8.2][s8-2] stepper precedent exactly (tiny needed core vs. heavy dependency),
-sharpened by the fact that the per-residual physical tolerances ([§14.7][s14-7]) are a
-convergence test no external package spells natively — which is precisely
-why the *service*, not the backend, applies it. The backend [contract](#g-contract) is a
-**pinned signature**, value-passed — one required method per backend:
+A `TrimProblem` is an inert value until a service runs it. `trim!` is that
+service: it drives a solver it holds behind one method, works on scratch stores
+of its own, commits a converged solution the way `init!` would, and returns a
+report.
+
+#### The backend seam
+
+`trim!(sim, problem; baseline, t0 = 0.0, backend = LevenbergMarquardt())`. The
+default is an in-house dense Levenberg–Marquardt. For decision dimensions ~10
+with exact Jacobians, the core is ~100 lines: a damping loop, a small linear
+solve, a convergence test. That is the [§8.2][s8-2] stepper precedent exactly
+(tiny needed core vs. heavy dependency). The per-residual physical tolerances
+sharpen the case ([§14.7][s14-7]): they are a convergence test no external
+package spells natively. That is precisely why the *service*, not the backend,
+applies it.
+
+The backend [contract](#g-contract) is a **pinned signature**, value-passed —
+one required method per backend. That one method is the [seam](#g-seam):
 
 ```julia
 solve(backend, eval!, d0, lower, upper, tol) -> (; d, status, nevals, niters)
 ```
 
 `eval!(r, J, d)` is in-place and always fills `r`, the residual vector packed
-in `tolerances`' field order. It fills `J` **iff `J !== nothing`**: the
+in `tolerances`' field order. It fills `J` **iff `J !== nothing`**. The
 Jacobian is requested by argument, so a Jacobian-free backend simply always
-passes `nothing` and there is still exactly one evaluation method to
-implement. `d0`, `lower` and `upper` are packed `Vector{Float64}` in `guess`'s
-field order ([§14.7][s14-7]: the declared side is canonical on both ends, and the
-service has canonicalized before packing), with `±Inf` meaning unbounded — a
-backend that ignores bounds ignores two vectors, not a missing argument.
-`tol` is a `Vector{Float64}` in `tolerances`' field order: data the backend
-*may* stop on (that is the service's per-register translation, below) and
-decisive of nothing. Returned: `d`, the solution; `status::Symbol`, from a
-deliberately **open** set, recorded verbatim in the report — the verdict is
-the service's (row 158); and `nevals`/`niters`,
-diagnostic counts. The name `solve` is subject to the [§16][s16] naming audit like
-every other API spelling. The backend sees vectors and never names, so the
-solution it returns unpacks by the same order it was given.
+passes `nothing`, and there is still exactly one evaluation method to
+implement.
 
-**The convergence verdict is the service's, uniformly.** `converged` means
-`all(abs.(rᵢ) .≤ tolᵢ)` — the per-residual box test ([§14.7][s14-7]) in its own
-physical units — evaluated **by the service at the backend's returned
-point**, one residual evaluation, noise against the solve that produced it.
-That verdict, and nothing else, gates the commit and fills
-`TrimReport.converged`; the backend's returned `status` is recorded in the
-report as diagnostic data and is authoritative over nothing.
+`d0`, `lower` and `upper` are packed `Vector{Float64}` in `guess`'s field
+order, with `±Inf` meaning unbounded. The declared side is canonical on both
+ends, and the service has canonicalized before packing ([§14.7][s14-7]). A
+backend that ignores bounds therefore ignores two vectors, not a missing
+argument.
 
-**The tolerance translation is the service's too**, per register. In the
-least-squares register the tolerances *are* the stopping criterion: they
-feed the per-residual test directly, LM's damping loop testing exactly what
-the service will re-test. For the derivative-free scalar fallback —
-`NLoptBackend(:LN_BOBYQA)` in a package extension, passing `nothing` for the
-Jacobian, today's algorithm one keyword away, with the framework core carrying zero
-optimizer dependencies — the service squares *and normalizes*: the objective
-minimized is $\sum_i (r_i/\mathit{tol}_i)^2$ with `stopval = 1`,
-dimensionless where FlightCore's threshold was hand-scaled and absolute
-([§14.7][s14-7]), and a well-scaled valley where a raw $\|r\|^2$ sums forces
-against moments. The two criteria cannot disagree in the dangerous
-direction: $\sum_i (r_i/\mathit{tol}_i)^2 \le 1$ implies every
-$(r_i/\mathit{tol}_i)^2 \le 1$, so the `stopval` sphere is *inscribed* in
-the tolerance box and a fallback stopping at `stopval` necessarily passes
-the service's box test. The converse disagreement — a backend stopping
-early and reporting an optimistic status — is caught by the re-check, which
-remains the single authority. What is *not* claimed is point identity:
-different backends may land on different solutions, an algorithmic
-difference and a legitimate one. What is eliminated is per-backend meanings
-of `converged`.
+`tol` is a `Vector{Float64}` in `tolerances`' field order. It is data the
+backend *may* stop on — that is the service's per-register translation,
+below — and decisive of nothing.
 
-Box bounds are honored by step
-projection, and a decision variable saturated *at the solution* is flagged
-in the report ("converged with `elevator` at its upper bound" — the classic
-CG-limit diagnostic, today inferable only from mysterious residuals).
+Returned: `d`, the solution; `status::Symbol`, from a deliberately **open**
+set; and `nevals`/`niters`, diagnostic counts. The status is recorded verbatim
+in the report because the verdict is the service's (row 158). The name `solve`
+is subject to the [§16][s16] naming audit like every other API spelling. The
+backend sees vectors and never names, so the solution it returns unpacks by the
+same order it was given.
 
-**Scratch stores, stated without type luck.** Every `trim!` invocation
-instantiates a fresh working [store](#g-store) set — `x` backing, `m` and discrete-`x` stores, [slot](#g-slot)
-and [signal tables](#g-signal-table), derivative [buffer](#g-buffer) — from the [activation](#g-activation)'s *layout*: the
-layout is the reusable compiled artifact, the buffers are per-invocation
-and die with the call (stopped-sim allocation, [§7.5][s7-5]). The `Dual` backend's
-buffers being un-aliasable by type is defense in depth, not the mechanism —
-a `Float64` backend (NLopt) gets equally fresh buffers. The invariant is
-backend-independent: **the simulation's authoritative stores have exactly
-one writer, the commit through [boundary zero](#g-boundary-zero).** Setup applies
-`override(baseline, condition(guess))` to the scratch set once, its full
-coverage *checked here* — the comparison of the resolved plan against the
-`Build`'s `input_faces` ([§14.6][s14-6]), one plan-level comparison before the
-first
-evaluation — so [sweeps](#g-sweep) see a complete world. Raw instantiation is sound
-exactly because of that check: every slot is written before any read, and
-an incomplete `baseline` is one declaration-ordered `UninitializedSlots`
-at setup rather than a whole solve against undefined [cells](#g-cell). Since the
-commit applies the same composite over the same `baseline`
-(`override(baseline, condition(d*))`, [§14.9][s14-9]), its coverage is setup's:
-commit's totality check is structurally unfailable through the trim path
-and stands as the shared `init!`-[boundary](#g-boundary) defense — a converged solve is
-always committable, so `TrimReport` carries no committed flag and the
-no-throw doctrine needs no exception. Iterations rewrite only the
-problem's write-set via the compiled plan; an LM evaluation is one
-Dual-seeded sweep yielding `r` (value parts) and `J` (partials) together.
-No convergence — the service's box test failing at the returned point,
-whatever status the backend attached to it — → no commit → the sim is
-bit-for-bit untouched, including
-"never initialized" — today's warn-but-assign is structurally impossible. The
-same structure covers an interrupt: Ctrl-C during a long solve unwinds an
-ordinary Julia call operating on per-invocation scratch stores, no commit has
+#### The convergence verdict is the service's, uniformly
+
+`converged` means `all(abs.(rᵢ) .≤ tolᵢ)`: the per-residual box test
+([§14.7][s14-7]) in its own physical units, evaluated **by the service at the
+backend's returned point**. That is one residual evaluation, noise against the
+solve that produced it. That verdict, and nothing else, gates the commit and
+fills `TrimReport.converged`. The backend's returned `status` is recorded in
+the report as diagnostic data and is authoritative over nothing.
+
+#### The tolerance translation, per register
+
+The tolerance translation is the service's too, per register. In the
+least-squares register the tolerances *are* the stopping criterion: they feed
+the per-residual test directly, LM's damping loop testing exactly what the
+service will re-test.
+
+The derivative-free scalar fallback is `NLoptBackend(:LN_BOBYQA)` in a package
+extension: it passes `nothing` for the Jacobian, keeps today's algorithm one
+keyword away, and leaves the framework core carrying zero optimizer
+dependencies. For that fallback the service squares *and normalizes*: the
+objective minimized is $\sum_i (r_i/\mathit{tol}_i)^2$ with `stopval = 1`. That
+objective is dimensionless where FlightCore's threshold was hand-scaled and
+absolute ([§14.7][s14-7]), and a well-scaled valley where a raw $\|r\|^2$ sums
+forces against moments.
+
+The two criteria cannot disagree in the dangerous direction:
+
+$$\sum_i (r_i/\mathit{tol}_i)^2 \le 1
+\quad\Longrightarrow\quad (r_i/\mathit{tol}_i)^2 \le 1 \;\text{ for every } i$$
+
+so the `stopval` sphere is *inscribed* in the tolerance box, and a fallback
+stopping at `stopval` necessarily passes the service's box test. The converse
+disagreement — a backend stopping early and reporting an optimistic status —
+is caught by the re-check, which remains the single authority. What is *not*
+claimed is point identity: different backends may land on different solutions,
+an algorithmic difference and a legitimate one. What is eliminated is
+per-backend meanings of `converged`.
+
+#### Box bounds and saturated decisions
+
+Box bounds are honored by step projection. A decision variable saturated *at
+the solution* is flagged in the report: "converged with `elevator` at its upper
+bound". That is the classic CG-limit diagnostic, today inferable only from
+mysterious residuals.
+
+#### Scratch stores, stated without type luck
+
+Every `trim!` invocation instantiates a fresh working [store](#g-store) set:
+`x` backing, `m` and discrete-`x` stores, [slot](#g-slot) and
+[signal tables](#g-signal-table), derivative [buffer](#g-buffer). The set is
+built from the [activation](#g-activation)'s *layout* (a re-run of Stratum C at
+a given scalar type). The layout is the reusable compiled artifact; the buffers
+are per-invocation and die with the call (stopped-sim allocation,
+[§7.5][s7-5]).
+
+The `Dual` backend's buffers being un-aliasable by type is defense in depth,
+not the mechanism: a `Float64` backend (NLopt) gets equally fresh buffers. The
+invariant is backend-independent: **the simulation's authoritative stores have
+exactly one writer, the commit through [boundary zero](#g-boundary-zero)** (the
+initialization boundary: the ordinary macro-sequence with an empty integrate).
+
+Setup applies `override(baseline, condition(guess))` to the scratch set once,
+and that application's full coverage is *checked here* — the comparison of the
+resolved plan against the `Build`'s `input_faces` ([§14.6][s14-6]), one
+plan-level comparison before the first evaluation. [Sweeps](#g-sweep) therefore
+see a complete world. Raw instantiation is sound exactly because of that check:
+every slot is written before any read. An incomplete `baseline` is one
+declaration-ordered `UninitializedSlots` at setup rather than a whole solve
+against undefined [cells](#g-cell).
+
+The commit applies the same composite over the same `baseline`
+(`override(baseline, condition(d*))`, [§14.9][s14-9]), so its coverage is
+setup's. Commit's totality check is therefore structurally unfailable through
+the trim path, and it stands as the shared `init!`-[boundary](#g-boundary)
+defense. A converged solve is always committable, so `TrimReport` carries no
+committed flag and the no-throw doctrine needs no exception.
+
+Iterations rewrite only the problem's write-set via the compiled plan; an LM
+evaluation is one Dual-seeded sweep yielding `r` (value parts) and `J`
+(partials) together. No convergence — the service's box test failing at the
+returned point, whatever status the backend attached to it — means no commit.
+No commit means the sim is bit-for-bit untouched, including "never
+initialized". Today's warn-but-assign is structurally impossible.
+
+The same structure covers an interrupt. Ctrl-C during a long solve unwinds an
+ordinary Julia call operating on per-invocation scratch stores: no commit has
 happened, and the simulation is bit-for-bit untouched exactly as a
-non-converged solve leaves it — the services need no counterpart to the loop's
+non-converged solve leaves it. The services need no counterpart to the loop's
 boundary masking ([§10.4][s10-4]).
 
-**The commit, in full.** The committed solution is applied as an `init!`
-in every respect: `override(baseline, solution)` through boundary zero —
-[§14.6][s14-6] pre-write [slot totality](#g-slot-totality), the sequence ([§14.5][s14-5]), [guards](#g-guard) at commit — with
-the [harmonic grid](#g-harmonic-grid) anchored at `trim!`'s own `t0` argument (default `0.0`,
-the same default as `init!`'s: one rule for both init-service entry
-points), and the [recorders](#g-recorders) cleared exactly as [§10.6][s10-6] states for
-`init!` — [trace](#g-trace), log, and any [batches](#g-batch) still in [staging cells](#g-staging-cell). A fresh
-recording starting at its own anchor is the unattended register's natural
-shape; fly-then-retrim keeps continuity explicitly — `capture` returns
+#### The commit, in full
+
+The committed solution is applied as an `init!` in every respect:
+`override(baseline, solution)` through boundary zero, with the pre-write
+[slot totality](#g-slot-totality) check ([§14.6][s14-6]), the sequence
+([§14.5][s14-5]) and [guards](#g-guard) at commit.
+
+The [harmonic grid](#g-harmonic-grid) (every discrete period an integer
+multiple of `Δt_base`) is anchored at `trim!`'s own `t0` argument, default
+`0.0`. That is `init!`'s default too: one rule for both init-service entry
+points. The [recorders](#g-recorders) are cleared exactly as [§10.6][s10-6]
+states for `init!`: the [trace](#g-trace), the log, and any
+[batches](#g-batch) still in [staging cells](#g-staging-cell) (where a device's
+pending write batch waits between drains).
+
+A fresh recording starting at its own anchor is the unattended register's
+natural shape. Fly-then-retrim keeps continuity explicitly: `capture` returns
 `(condition, t)` separately for exactly this ([§14.1][s14-1]), so the resumed
 spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
 
-**The report, not an exception.** `trim!` returns a structured
-`TrimReport`: the `converged` flag — the service's own box test at the
-returned point, never a backend's opinion — solution NamedTuple
-(guess-shaped — warm-startable), the **solved-point residuals** with their
-tolerances (the very numbers the verdict is read off, gathered at the
-backend's returned point), the **committed-state residuals** (the same
-residuals re-gathered from the boundary-zero world after the commit — nearly
-free, since that boundary's sweep has already run and the residuals'
-declared reads need only gather from it (with [§14.5][s14-5]'s offset caveat
-carried over: an offset [component](#g-component) is not [due](#g-due) at boundary zero, so a residual
-reading its [port](#g-port) reads the [probe](#g-probe)-populated cell, not a commit-refreshed
-one): the numbers describing the state
-the simulation is actually *in*, which is the point a `capture`-defaulted
-`linearize` reads), the backend's returned status together
-with its iteration/evaluation counts (diagnostic throughout: informative
-about *how* the solve went, decisive about nothing),
-saturated-bounds list, and the commit's fired events (component
-paths and event names, empty when boundary zero ran quiet — [§14.5][s14-5]; a
-non-empty set also raises `TrimCommitEvents`, [Appendix C][sC]: the committed
-stores then sit at the post-handler point, not the reported solution, and a
-`capture`-defaulted `linearize` ([§14.10][s14-10]) reads that point).
-The two residual sets are what make the moved point auditable: a converged
+#### The report, not an exception
+
+`trim!` returns a structured `TrimReport`:
+
+```julia
+# what trim! returns: a value to read, never an exception to catch
+struct TrimReport
+    converged   # the service's box test at the backend's returned point
+    …           # the remaining fields, enumerated below; this section
+                # does not name them
+end
+```
+
+Field by field:
+
+- the `converged` flag — the service's own box test at the returned point,
+  never a backend's opinion;
+- the solution NamedTuple — guess-shaped, hence warm-startable;
+- the **solved-point residuals** with their tolerances — the very numbers the
+  verdict is read off, gathered at the backend's returned point;
+- the **committed-state residuals** — the same residuals re-gathered from the
+  boundary-zero world after the commit;
+- the backend's returned status together with its iteration/evaluation
+  counts — diagnostic throughout: informative about *how* the solve went,
+  decisive about nothing;
+- the saturated-bounds list;
+- the commit's fired events — component paths and event names, empty when
+  boundary zero ran quiet ([§14.5][s14-5]).
+
+The committed-state residuals are nearly free: that boundary's sweep has
+already run, so the residuals' declared reads need only gather from it. The
+offset caveat carries over from [§14.5][s14-5]: an offset
+[component](#g-component) is not [due](#g-due) at boundary zero, so a residual
+reading its [port](#g-port) reads the [probe](#g-probe)-populated cell, not a
+commit-refreshed one. Those committed-state residuals are the numbers
+describing the state the simulation is actually *in*, which is the point a
+`capture`-defaulted `linearize` reads. A non-empty fired-event set also raises
+`TrimCommitEvents` ([Appendix C][sC]): the committed stores then sit at the
+post-handler point, not the reported solution, and a `capture`-defaulted
+`linearize` ([§14.10][s14-10]) reads that point.
+
+The two residual sets are what make the moved point auditable. A converged
 solve whose *committed-state* residuals violate the box test raises
 `TrimCommitResiduals` ([Appendix C][sC]), naming the offending residuals with
-their committed values and tolerances — the move (`project`, or a
-commit-fired handler, [§14.5][s14-5]) surfaced rather than left silent. The verdict
-itself is not re-litigated: it gated the commit, at the solved point, and
-the numbers (row 150) stand as reported. Non-convergence never throws — it is an
-expected *outcome* (envelope-sweep data: hitting the infeasible edge is
-information), per the exceptions-are-broken-machinery line ([§13][s13]); a malformed
-problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
-[Appendix C][sC] — a guess/bounds key-set or field-type disagreement, an
-unknown `reads` [selector](#g-selector), a
-`tolerances`/residual key-set mismatch observed at the setup guess evaluation:
-the offending field with the names or types in hand, collected, mirroring
-linearization's `TapResolution`); a permuted spelling is none of these
-([§14.7][s14-7]).
-An *empty* one is none of them either: [`TrimProblem`](#g-trimproblem)`(guess = (;), …)` is
-legal, not `TrimProblemInvalid`. With zero decision variables the solver is
-bypassed outright — nothing to pack, no seeded activation, no backend call —
-and the service simply evaluates the residuals once at the [baseline](#g-baseline), the
-ordinary box test deciding `converged` and the commit as usual. The
+their committed values and tolerances. The move — `project`, or a commit-fired
+handler ([§14.5][s14-5]) — is surfaced rather than left silent. The verdict
+itself is not re-litigated: it gated the commit, at the solved point, and the
+numbers (row 150) stand as reported.
+
+Non-convergence never throws: it is an expected *outcome* (envelope-sweep data:
+hitting the infeasible edge is information), per the
+exceptions-are-broken-machinery line ([§13][s13]). A malformed problem is a
+different case: a `BuildError`-class failure at setup, `TrimProblemInvalid`
+([Appendix C][sC]). The malformed cases are a guess/bounds key-set or
+field-type disagreement, an unknown `reads` [selector](#g-selector), and a
+`tolerances`/residual key-set mismatch observed at the setup guess evaluation.
+The error carries the offending field with the names or types in hand,
+collected, mirroring linearization's `TapResolution`. A permuted spelling is
+none of these ([§14.7][s14-7]).
+
+An *empty* problem is none of them either:
+[`TrimProblem`](#g-trimproblem)`(guess = (;), …)` is legal, not
+`TrimProblemInvalid`. With zero decision variables the solver is bypassed
+outright — nothing to pack, no seeded activation, no backend call. The service
+simply evaluates the residuals once at the [baseline](#g-baseline), the
+ordinary box test deciding `converged` and the commit running as usual. The
 degenerate problem is the "is this operating point an equilibrium?" probe:
 evaluate this condition's equations and report, useful in its own right and
 free.
 
-**The AD obligation, scoped.** The default formulation requires `Dual`
-genericity of exactly: the continuous output-stage chains and `f`, plus the
-user's assignment and residual math. The discrete [tier](#g-tier)'s stages and `g`, and the
-event system's guards and handlers, never see a `Dual` — frozen constants with
-zero partials, semantically exact ([§11.2][s11-2]). This is *not a new obligation*: it is the same activation
-linearization is defined on, and AD-readiness is a build-checked property
-(the Dual probe detonates [pinned](#g-walked) intermediates with a culprit-naming
-`InexactError`; `build(world; activations)` puts it in CI) — robustness by
-enforcement, not hope. C172 migration audit (one afternoon, one genuine
-item): `Interpolations.jl` tables (propeller coefficient maps, engine
-maps) must accept generic scalars — they do, but prefer cubic knots over
-linear where partials matter (linear → piecewise-constant Jacobian
-entries); in-model saturations (actuator limits, idle/FRC clamps) zero
-Jacobian columns when active — LM damping tolerates the rank deficiency
-and the report names it, and cruise trim leaves them inactive; the landing
-gear is never evaluated off-zero airborne; `norm`-at-zero guards are
-already in place (e5efb3a). Fallback per problem: one `backend =` keyword.
+#### The AD obligation, scoped
+
+The default formulation requires `Dual` genericity of exactly the continuous
+output-stage chains and `f`, plus the user's assignment and residual math. The
+discrete [tier](#g-tier)'s stages and `g`, and the event system's guards and
+handlers, never see a `Dual`: they are frozen constants with zero partials,
+semantically exact ([§11.2][s11-2]).
+
+This is *not a new obligation*. It is the same activation linearization is
+defined on. AD-readiness is also a build-checked property: the Dual probe
+detonates [pinned](#g-walked) intermediates with a culprit-naming
+`InexactError`, and `build(world; activations)` puts it in CI. The robustness
+comes from enforcement, not hope.
+
+C172 migration audit (one afternoon, one genuine item):
+
+- `Interpolations.jl` tables (propeller coefficient maps, engine maps) must
+  accept generic scalars. They do; but prefer cubic knots over linear where
+  partials matter, since linear knots make Jacobian entries piecewise-constant.
+- In-model saturations (actuator limits, idle/FRC clamps) zero Jacobian columns
+  when active. LM damping tolerates the rank deficiency and the report names
+  it, and cruise trim leaves those saturations inactive.
+- The landing gear is never evaluated off-zero airborne.
+- `norm`-at-zero guards are already in place (e5efb3a).
+
+Fallback per problem: one `backend =` keyword.
 
 ### 14.9 Mounting: problems as relocatable values
 
