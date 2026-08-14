@@ -931,7 +931,7 @@ A genuine cycle in the instantaneous dependency graph is a **build error**. The
 diagnostic names the full path in the canonical slash form of [§11.6][s11-6]:
 `aero/F → dyn/a → aero/α̇ → aero/F`.
 
-The user breaks it explicitly, by one of three routes: insert dynamics (the α-filter
+The user breaks the cycle explicitly, by one of three routes: insert dynamics (the α-filter
 idiom), insert an explicit unit delay (`UnitDelay`, [§13.7][s13-7]), or restructure.
 The α-filter idiom is already standard practice in the domain and in the current C172
 model. The unit delay carries a caveat: it changes the model's [tier](#g-tier)
