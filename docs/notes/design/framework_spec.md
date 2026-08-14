@@ -263,21 +263,23 @@ no overlap.
 
 - **discrete state** `x`: any immutable value (see [§7][s7]),
 - **update** $x^{+} = g(x, u, t)$ at a declared rate,
-- **two output stages** ([feedthrough](#g-feedthrough) applies at update instants: a proportional path
-  is direct feedthrough; a state-only output is not).
+- **two output stages**, with [feedthrough](#g-feedthrough) applying at update instants: a
+  proportional path is direct feedthrough; a state-only output is not.
 
-State carries the same letter on both [tiers](#g-tier) — a leaf is strictly one tier (row
-56) and no [component](#g-component) ever reads another's state, so `x` is never ambiguous: it
-is the [flow](#g-flow) map's argument under `f` and the jump map's under `g`, standard
-hybrid notation (row 173). A discrete component's `x` influences continuous
-dynamics only **through signals** (outputs held zero-order between [ticks](#g-tick)).
+State carries the same letter on both [tiers](#g-tier): `x` is the argument of the
+[flow](#g-flow) map under `f` and of the jump map under `g`. One letter for both maps
+is standard hybrid notation (row 173). The letter is never ambiguous, because
+a leaf is strictly one tier (row 56) and no [component](#g-component) ever reads
+another's state. A discrete component's `x` influences continuous dynamics only
+**through signals**. Those outputs are held zero-order between [ticks](#g-tick).
 
-**`m` is continuous-only**: a discrete component has no
-mode store — its FSM enums, flags and counters are ordinary `x` fields. `m`
-exists on the continuous side because modes must change *between* flow
-evaluations through handlers; on the discrete side `g` already runs at the
-only instants anything may change, so a second store would duplicate the
-discrete tier's own state semantics under another name.
+**`m` is continuous-only.** A discrete component has no mode store: its FSM
+enums, flags and counters are ordinary `x` fields.
+
+**Why.** `m` exists on the continuous side because modes must change *between*
+flow evaluations, which is what handlers do. On the discrete side `g` already
+runs at the only instants at which anything may change, so a second store would
+duplicate the discrete tier's own state semantics under another name.
 
 ### 3.3 Assembly
 
