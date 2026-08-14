@@ -10336,8 +10336,8 @@ compiled executor ([§12.7][s12-7]).
 
 <a id="g-torture-test"></a>**torture test** — an existing, maximally awkward artifact transliterated
 against a proposed mechanism to validate it before adoption: `PistonEngine`
-and the FCS cascade against [§5.2][s5-2] ([§15.2][s15-2]), filter/joystick/GUI against [§9][s9]'s
-staging shapes ([§15.3][s15-3]), the strapdown IMU against the leaf split ([§15.5][s15-5]); the
+and the FCS cascade against [§5.2][s5-2] ([§15.2][s15-2]), filter/joystick/GUI against the
+[§9][s9] staging shapes ([§15.3][s15-3]), the strapdown IMU against the leaf split ([§15.5][s15-5]); the
 standard component library is the standing ergonomics one ([§13.7][s13-7]).
 
 <a id="g-worked"></a>**worked (example)** — a full spelling of a mechanism against a real artifact,
