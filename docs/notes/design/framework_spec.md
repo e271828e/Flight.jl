@@ -1125,11 +1125,16 @@ terminus fed by no [component](#g-component) is the root assembly's own input fa
 
 ### 6.2 Aggregation: explicit summing junctions
 
-N-to-1 physical aggregation (total wrench, total mass properties, total internal
-angular momentum — today's generated `get_wr_b`/`get_mp_b`/`get_hr_b` tree walks) is
-expressed by **ordinary junction [components](#g-component) and explicit wires**. There is no
-framework aggregation mechanism: no multi-connection [ports](#g-port), no declared fold ops, no
-identity-element opt-outs. Every input port takes exactly one connection, everywhere.
+Several physical quantities are totals over many contributors: total wrench,
+total mass properties, total internal angular momentum — today the work of the
+generated `get_wr_b`/`get_mp_b`/`get_hr_b` tree walks.
+
+**Rule.** N-to-1 physical aggregation is expressed by
+**ordinary junction [components](#g-component) and explicit wires**.
+
+There is no framework aggregation mechanism: no multi-connection
+[ports](#g-port), no declared fold ops, no identity-element opt-outs. Every
+input port takes exactly one connection, everywhere.
 
 ```julia
 struct SumJunction{W, N} end        #type constructor, arity; library-provided
@@ -1140,17 +1145,20 @@ output_types(::SumJunction{W, N}, ::Type{T}) where {W, N, T <: Real} = (; Σ = W
 h_xu(::SumJunction, (; u)) = (; Σ = +(u...))
 ```
 
-(The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`;
-UnionAlls are legal type parameters — so both [contracts](#g-contract) derive their entries from
-it by applying it to the [activation](#g-activation) scalar: the junction is a continuous leaf, so
-its `input_types` entries are the tolerant `W{T}` a promoting consumer writes
-(walking, frozen and root-[slot](#g-slot) contributors all admissible behind them) while
-`output_types` re-types the output [cell](#g-cell) per activation ([§11.2][s11-2]). This is the same
-arity-via-computed-contracts pattern [§13.7][s13-7] commits to for `Or{N}`.)
+The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`.
+UnionAlls are legal type parameters. Both [contracts](#g-contract) derive their
+entries from it by applying it to the scalar of the [activation](#g-activation)
+(a re-run of Stratum C at a given scalar type).
 
-Wired at an ownership [boundary](#g-boundary), the junction is ordinary structure — with
-`wr_sum::SumJunction{Wrench, 3}` a field of `Systems` like any other child
-([§11.5][s11-5]):
+The junction is a continuous leaf, so its `input_types` entries are the tolerant
+`W{T}` a promoting consumer writes; walking, frozen and root-[slot](#g-slot)
+contributors are all admissible behind them. `output_types` re-types the output
+[cell](#g-cell) per activation ([§11.2][s11-2]). This is the same
+arity-via-computed-contracts pattern [§13.7][s13-7] commits to for `Or{N}`.
+
+Wired at an ownership [boundary](#g-boundary), the junction is ordinary
+structure: `wr_sum::SumJunction{Wrench, 3}` is a field of `Systems` like any
+other child ([§11.5][s11-5]).
 
 ```julia
 child_connections(::Systems) = (
@@ -1161,69 +1169,98 @@ child_connections(::Systems) = (
 )
 ```
 
-- **Every mistake is loud** under the declaration layer: a forgotten contributor is
-  an unconnected-input error naming `in4`; a double-wired slot violates
-  single-connection; a stale arity surfaces as one or the other. The bookkeeping is
-  ceremony, never silence.
+#### What the explicit form buys
+
+- **Every mistake is loud** under the declaration layer: a forgotten contributor
+  is an unconnected-input error naming `in4`; a double-wired slot violates
+  single-connection; a stale arity surfaces as one or the other. The bookkeeping
+  is ceremony, never silence.
 - **The aggregate is a first-class signal.** `wr_sum.Σ` is an ordinary port:
-  loggable, GUI-visible, fanned out to a second consumer (a loads monitor) for one
-  wire.
-- **Aggregation logic is arbitrary stage-2 code** — mass-properties composition with
-  its transport terms, weighted blends — not restricted to a declared
+  loggable, GUI-visible, fanned out to a second consumer (a loads monitor) for
+  one wire.
+- **Aggregation logic is arbitrary stage-2 code**: mass-properties composition
+  with its transport terms, weighted blends. It is not restricted to a declared
   commutative-associative binary op.
-- **Fold order is author-visible**: the positional order of the junction's inputs.
-  Reassigning contributors to different slots changes summation order, hence bits
-  (float non-associativity) — deterministic per configuration and under author
-  control, which is strictly more explicit than a framework-canonical order.
-- For the handful of real sites, a **named site-specific junction**
-  (`input_types(::VehicleWrenchSum, ::Type{T}) where {T <: Real} = (aero = …, ldg = …, pwp = …)`) documents the
-  contributor set better than generated slots, at the price of hard-coding it into a
-  type; the generic positional form remains the tool for configuration-variable
-  sites. Both are plain components; the framework is not involved.
+- **Fold order is author-visible**: the positional order of the junction's
+  inputs. Reassigning contributors to different slots changes summation order,
+  hence bits (float non-associativity). The ordering is deterministic per
+  configuration and under author control, which is strictly more explicit than a
+  framework-canonical order.
+- For the handful of real sites, a **named site-specific junction** documents the
+  contributor set better than generated slots, at the price of hard-coding it
+  into a type:
+  `input_types(::VehicleWrenchSum, ::Type{T}) where {T <: Real} = (aero = …, ldg = …, pwp = …)`.
+  The generic positional form remains the tool for configuration-variable sites.
+  Both are plain components; the framework is not involved.
 
-**The hierarchical aggregation idiom** (what replaces the tree walk). Only physical
-contributors publish these ports — a strut publishes `wr_b`, avionics publishes
-nothing — and each [assembly](#g-assembly) that *owns* contributors aggregates them with an internal
-junction and **exports the total** ([§3.3][s3-3]: the junction is a component inside the
-assembly; the assembly exports its `Σ` port). The [§6.1][s6-1] connection rules force this
-shape: a generically-held submodel is opaque, so every generic boundary must export
-its aggregate. `Ldg` sums its three struts and exports `wr_b`; the systems assembly
+#### The hierarchical aggregation idiom
+
+This is what replaces the tree walk. Only physical contributors publish these
+ports: a strut publishes `wr_b`, avionics publishes nothing.
+
+Each [assembly](#g-assembly) that *owns* contributors aggregates them with an
+internal junction and **exports the total** — the junction is a component inside
+the assembly, and the assembly exports its `Σ` port ([§3.3][s3-3]).
+
+**Why.** The [§6.1][s6-1] connection rules force this shape: a generically-held
+submodel is opaque, so every generic boundary must export its aggregate.
+
+**Example.** `Ldg` sums its three struts and exports `wr_b`; the systems assembly
 sums `aero + ldg + pwp`; the vehicle wires the systems totals into Newton–Euler.
-Each recursion step of FlightCore's tree walk becomes one visible junction at the
-level that owns the contributors — for the C172, about four junctions and fifteen
-wires, written once, reading as a manifest of what weighs, what pushes and what
-spins. Frame responsibility is unchanged: contributors publish in the common body
-frame, applying their own mounting transforms at source. Do **not** bundle the three
-quantities into one contribution struct: contributors are ragged (aero has wrench
-but no mass, fuel the reverse, only `pwp` has angular momentum), and a bundle forces
-zero-filled identity noise through every port — the "silently sum nothing" hazard in
-a new coat. A `sum_ports!`-style helper (instantiate + wire + export in one call) is
-guarded-addition sugar, added when migration shows the pattern repeated. The
-junctions themselves — [summing junctions](#g-summing-junction), Bool gates — are the seed of the
-standard component library committed in [§13.7][s13-7]: ordinary components, no
-framework privileges, inventory grown strictly by migration demand.
 
-**The zero-contributor end of the same spectrum.** Ragged contributors bottom out at
-none: a configuration in which a consumer's required aggregate input has *no* physical
-contributors at all — the bare-propagation `Vehicle{NoVehicleSystems}`, zero
-contributors to external wrench and to internal angular momentum, while
-`VehicleDynamics` requires both unconditionally. There is no junction to write and no
-producer to wire, [§6.1][s6-1] bans unconnected inputs and silent defaults, and the identity
-element a zero-arity junction would need is deliberately absent (row 37). The spelling
-is a library `Constant` source ([§13.7][s13-7]) wired straight to the consumer's input —
-`Constant(Wrench())` → `dynamics/wr_ext` — so the zero total becomes declared
-structure, the configuration stating "external wrench ≡ 0" as a visible wire and an
-observable port rather than as an identity method the framework supplies behind the
-author's back. This is not the banned default ([§6.1][s6-1]) in component clothing but its
-opposite: that default is silent and consumer-declared, this one is loud and
+Each recursion step of FlightCore's tree walk becomes one visible junction at the
+level that owns the contributors. For the C172 that is about four junctions and
+fifteen wires, written once, reading as a manifest of what weighs, what pushes
+and what spins.
+
+Frame responsibility is unchanged: contributors publish in the common body frame,
+applying their own mounting transforms at source.
+
+Do **not** bundle the three quantities into one contribution struct. Contributors
+are ragged: aero has wrench but no mass, fuel the reverse, only `pwp` has angular
+momentum. A bundle forces zero-filled identity noise through every port — the
+"silently sum nothing" hazard in a new coat.
+
+A `sum_ports!`-style helper (instantiate + wire + export in one call) is
+guarded-addition sugar, added when migration shows the pattern repeated.
+
+The junctions themselves — [summing junctions](#g-summing-junction), Bool gates —
+are the seed of the standard component library committed in [§13.7][s13-7]:
+ordinary components, no framework privileges, inventory grown strictly by
+migration demand.
+
+#### The zero-contributor end of the same spectrum
+
+Ragged contributors bottom out at none: a configuration in which a consumer's
+required aggregate input has *no* physical contributors at all. The
+bare-propagation `Vehicle{NoVehicleSystems}` is one — zero contributors to
+external wrench and to internal angular momentum, while `VehicleDynamics`
+requires both unconditionally.
+
+There is no junction to write and no producer to wire. [§6.1][s6-1] bans
+unconnected inputs and silent defaults, and the identity element a zero-arity
+junction would need is deliberately absent (row 37).
+
+**Rule.** The spelling is a library `Constant` source ([§13.7][s13-7]) wired
+straight to the consumer's input: `Constant(Wrench())` → `dynamics/wr_ext`.
+
+**Why.** The zero total becomes declared structure — the configuration states
+"external wrench ≡ 0" as a visible wire and an observable port, rather than as an
+identity method the framework supplies behind the author's back.
+
+This is not the banned default ([§6.1][s6-1]) in component clothing but its
+opposite. That default is silent and consumer-declared; this one is loud and
 assembly-declared, the author writing the child and the wire, both inspectable.
 
-The cost of explicit wiring, recorded: adding a deep contributor edits one assembly
-level (its owner's wiring) instead of zero, and buys in exchange per-contributor
-values and intermediate totals as observable ports, with every silence inverted into
-a warning or error (rows 7, 37).
+#### The cost, recorded
 
-Consumer-declared folds with multi-connection legality are closed (rows 7 and 37).
+Adding a deep contributor edits one assembly level (its owner's wiring) instead
+of zero. In exchange, explicit wiring buys per-contributor values and
+intermediate totals as observable ports, with every silence inverted into a
+warning or error (rows 7, 37).
+
+Consumer-declared folds with multi-connection legality are closed
+(rows 7 and 37).
 
 ---
 
