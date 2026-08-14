@@ -6319,7 +6319,7 @@ policy that fits it.
   set of* inputs whose obligation chain never terminates. Reporting every
   violation is the natural output of the pass; truncating to the first would be
   extra work. These failures also cluster in practice: a freshly written
-  [assembly](#g-assembly) has five unwired inputs, a renamed [port](#g-port)
+  [assembly](#g-assembly) has five unwired inputs; a renamed [port](#g-port)
   breaks three wires. **These passes collect:** each returns its full violation
   list.
 - **User-code evaluation** — the [boundary](#g-boundary)-connection bodies, run
@@ -6334,15 +6334,15 @@ policy that fits it.
 Strata are barriers. A stratum that produced any error-severity diagnostic, of
 either kind, throws before the next stratum begins; probing against unresolved
 wiring is meaningless. The only partial results ever carried past a failure are
-violation lists from pure checking passes. [§12][s12] lays the build out in
-three strata, and therefore no stratum needs machinery for carrying partial internal
-results across a failure. That machinery is the cost that kept this decision
-open, and it never materializes.
+violation lists from pure checking passes. So none of the three strata
+([§12][s12]) needs the machinery for carrying partial internal results across a
+failure that it would otherwise need. That machinery is the cost that kept this
+decision open, and it never materializes.
 
 **No cascade suppression within a stratum** — a deliberate simplification
 (row 57). A wire typo'd as `:throtle` produces both a
 [did-you-mean](#g-did-you-mean) error (the offending name plus the list-in-hand
-it should have matched) and an unconnected-input error for the intended
+it should have come from) and an unconnected-input error for the intended
 `throttle`; both are reported. They render adjacently (diagnostics sort by
 path), and the pairing is self-explanatory.
 
