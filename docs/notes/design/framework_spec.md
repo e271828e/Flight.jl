@@ -341,50 +341,94 @@ own later functions, private by construction ([§5.2][s5-2], [§11.3][s11-3]). A
 
 ### 4.3 Table mechanics and port granularity
 
-- **Scatter/gather is the whole protocol.** A [stage function](#g-stage-function) (`h_x` or `h_xu`,
-  the two output stages every component provides) returns a named tuple; the
-  framework scatters each field into that [port](#g-port)'s concretely-typed [cell](#g-cell). Every
-  reader — the next stage, `f`/`g`, [guards](#g-guard), wired consumers, [snapshot](#g-snapshot) capture —
-  gathers views from cells. The [component](#g-component)'s aggregate `y` is the merge of its
-  stage products (`merge(y_x, y_xu)`, the same on either [tier](#g-tier)) — declared ports
-  only, a stage's private intermediates riding its `w` return rather than the
-  table ([§5.2][s5-2]) — *semantically* but virtual *physically*: reconstructed per
-  call from cells (field loads, register-level, zero cost for isbits), never
-  stored as an object. Name collisions across a component's stages are a build
-  error.
-- **Stage returns are named tuples of port values, period.** A custom struct is a
-  first-class port *value* — one field of the returned tuple, one declared port, one
-  cell (`pose = KinPose{T}`). Nested fields get no cells of their own; GUI and logs
-  drill into them lazily (the view clause, [§4.2][s4-2]). Bare-struct returns are rejected
-  (row 36).
-- **Wiring is port-granular.** No sub-field connections: a consumer that wants less
-  than a bundle asks the producer for a loose port, or takes the bundle and
-  destructures. A field-projection connector is a [guarded addition](#g-guarded-addition) with an obvious
-  shape, not built.
-- **Granularity guideline** for authors: bundle what *shares a stage* (trivially
-  enforced — each port has exactly one producing function) *and is consumed
-  together*. Bundling across dependency footprints is the `KinData` mistake ([§15.1][s15-1]:
-  pose is stage 1, velocity-derived quantities are stage 2 — it must split). Fan-out
-  is free, so publishing both a bundle and a hot loose field (`pose` *and* `q_eb`)
-  is legitimate — one extra isbits cell.
-- **Write-side corollary** (from [§15.4][s15-4]): **bundle what is written
-  together.** The port is the atomic unit of the entire [periphery](#g-periphery) — one cell, one
-  root [slot](#g-slot), one staged write, one [device](#g-device) [claim](#g-claim) ([§9.3][s9-3]), one [trace](#g-trace) address, one
-  GUI liveness verdict ([§9.7][s9-7]). A component's **ports** are its signal
-  endpoints — one cell, one producer. Its **[faces](#g-face)** are the names those ports wear
-  on the component's [boundary](#g-boundary): for a leaf the two coincide; for an [assembly](#g-assembly) every
-  face aliases an interior port through its boundary declarations
-  ([§11.6][s11-6]) and never creates an endpoint. The
-  distinction is kind-blind — wiring and the periphery address a child's faces
-  without knowing whether it is primitive or composite.
-  Data written by different external writers, or at
-  different cadences, must not share a port: pilot commands are scalar faces under
-  a namespace prefix, and the convenient bundle is assembled *downstream*, inside
-  the graph, by an ordinary component (single producer, consumed together — legal
-  by the read-side rule). The two guidelines compose into one principle: a port's
-  granularity is set by the finest-grained party owning either end — producers on
-  the read side, external writers on the write side. Field-addressed staging (a
-  [lens](#g-lens) into struct slots) stays a recorded guarded addition, unbuilt.
+[§4.2][s4-2] fixed the [port](#g-port) as the addressable unit. Three questions remain:
+what a port is on a [component](#g-component)'s [boundary](#g-boundary), how values travel into cells and
+out of them, and how much a single port should carry. The last question has two
+answers, one owed to the parties that read a port and one to the parties that
+write it.
+
+#### Ports and faces
+
+A component's **ports** are its signal endpoints — one [cell](#g-cell), one producer. Its
+**[faces](#g-face)** are the names those ports wear on the component's boundary. For a leaf
+the two coincide. For an [assembly](#g-assembly) every face aliases an interior port through
+its boundary declarations ([§11.6][s11-6]) and never creates an endpoint. The
+distinction is kind-blind — wiring and the [periphery](#g-periphery) address a child's faces
+without knowing whether it is primitive or composite.
+
+**Rule.** The port is the atomic unit of the entire periphery — one cell, one
+root [slot](#g-slot), one staged write, one [device](#g-device) [claim](#g-claim) ([§9.3][s9-3]), one [trace](#g-trace)
+address, one GUI liveness verdict ([§9.7][s9-7]).
+
+#### Scatter and gather
+
+**Scatter/gather is the whole protocol.** A [stage function](#g-stage-function) (`h_x` or `h_xu`,
+the two output stages every component provides) returns a named tuple. The
+framework scatters each field into that port's concretely-typed cell. Every
+reader — the next stage, `f`/`g`, [guards](#g-guard), wired consumers, [snapshot](#g-snapshot)
+capture — gathers views from cells.
+
+**The aggregate `y` is a merge semantically and virtual physically.**
+Semantically, a component's `y` is the merge of its stage products
+(`merge(y_x, y_xu)`, the same on either [tier](#g-tier)). It carries declared ports only;
+a stage's private intermediates ride its `w` return rather than the table
+([§5.2][s5-2]). Physically no such object exists: `y` is reconstructed per call from
+cells — field loads, register-level, zero cost for isbits — and never stored as
+an object.
+
+Name collisions across a component's stages are a build error.
+
+#### What a port may hold
+
+**Stage returns are named tuples of port values, period.** A custom struct is a
+first-class port *value* — one field of the returned tuple, one declared port, one
+cell (`pose = KinPose{T}`). Nested fields get no cells of their own; GUI and logs
+drill into them lazily (the view clause, [§4.2][s4-2]). Bare-struct returns are rejected
+(row 36).
+
+#### Granularity, read side
+
+**Rule.** Wiring is port-granular: no sub-field connections. A consumer that
+wants less than a bundle asks the producer for a loose port, or takes the bundle
+and destructures. A field-projection connector is a [guarded addition](#g-guarded-addition) (a
+capability the design admits but does not build). Its shape is obvious, and it
+is not built.
+
+**Granularity guideline** for authors: bundle what *shares a stage* *and is
+consumed together*. The first criterion is trivially enforced, because each port
+has exactly one producing function. Bundling across dependency footprints is the
+`KinData` mistake ([§15.1][s15-1]). Pose is stage 1, velocity-derived quantities are
+stage 2 — it must split. Fan-out is free, so publishing both a bundle and a hot
+loose field (`pose` *and* `q_eb`) is legitimate — one extra isbits cell.
+
+**Example.** The bundle, the loose hot field and a face aliasing an interior
+port, in declaration form:
+
+```julia
+#a continuous leaf: one bundle port and the hot field published loose — two cells
+output_types(::Kinematics, ::Type{T}) where {T <: Real} =
+    (pose = KinPose{T}, q_eb = RQuat{T})
+
+#the enclosing assembly: each face aliases an interior port, creating no endpoint
+output_connections(::Vehicle) = ("kin/pose" => "pose", "kin/q_eb" => "q_eb")
+```
+
+#### Granularity, write side
+
+**Write-side corollary** (from [§15.4][s15-4]): **bundle what is written together.**
+
+**Rule.** Data written by different external writers, or at different cadences,
+must not share a port.
+
+Pilot commands are the case in point: scalar faces under a namespace prefix,
+with the convenient bundle assembled *downstream*, inside the graph, by an
+ordinary component (single producer, consumed together — legal by the read-side
+rule).
+
+The two guidelines compose into one principle: a port's granularity is set by
+the finest-grained party owning either end — producers on the read side,
+external writers on the write side. Field-addressed staging (a [lens](#g-lens) into
+struct slots) stays a recorded guarded addition, unbuilt.
 
 ### 4.4 Function-valued signals: environment access
 
