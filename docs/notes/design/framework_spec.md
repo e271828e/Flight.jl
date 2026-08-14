@@ -5365,20 +5365,23 @@ output_connections(w::World) = (
 )
 ```
 
-The child is named by path, never passed as an instance (the `===` problem, [§11.6][s11-6]);
-a [face](#g-face) name containing dots is a legal final path segment on the internal-endpoint
-side precisely because slash is the only structural separator, and computed entries mix
-freely with hand-written ones in either declaration. `resolve` and
-`input_faces` are build-pipeline primitives needed anyway — `input_passthrough` is a thin
-composition, which is what keeps it sugar rather than machinery; no `rename` hook
-because the [boundary](#g-boundary) declarations are ordinary code (map over the pairs); normative signatures
-for both primitives in [§13.3][s13-3]. Every error stays
-first-class: an `except` face the [assembly](#g-assembly) then fails to wire is an ordinary
-unconnected input; a face both wired and passed through is a two-producers error;
-`except`/`only` naming a nonexistent face errors with the child's face list in
-hand; a `prefix = ""` collision is caught by the build's uniqueness check like any
-hand-written duplicate. The effective face list is plain printable data — the
-inspectable contract of this instantiation. What computation does *not* do is
+The child is named by path and never passed as an instance, because the `===`
+problem ([§11.6][s11-6]) makes a path unrecoverable from an instance. A
+[face](#g-face) name containing dots is a legal final path segment on the
+internal-endpoint side, precisely because slash is the only structural
+separator. Computed entries mix freely with hand-written ones in either
+declaration. `resolve` and `input_faces` are build-pipeline primitives needed
+anyway, and `input_passthrough` is a thin composition. That is what keeps the
+helper sugar rather than machinery. There is no `rename` hook,
+because the [boundary](#g-boundary) declarations are ordinary code (map over
+the pairs). Normative signatures for both primitives are in [§13.3][s13-3].
+Every error stays first-class: an `except` face the [assembly](#g-assembly)
+then fails to wire is an ordinary unconnected input; a face both wired and
+passed through is a two-producers error; `except`/`only` naming a nonexistent
+face errors with the child's face list in hand; a `prefix = ""` collision is
+caught by the build's uniqueness check like any hand-written duplicate. The
+effective face list is plain printable data — the inspectable contract of this
+instantiation. What computation does *not* do is
 auto-bubble: the author wrote down "every input face of this child that I don't
 feed, I expose under this prefix" — explicit at the type level, evaluated at
 build.
