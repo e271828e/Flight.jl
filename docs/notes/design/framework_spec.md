@@ -8147,8 +8147,8 @@ is read first as what today's code does, then as what this design makes of it.
 
 The current engine (piston.jl:310-449) carries a mode enum with three [flow](#g-flow)
 regimes, four table lookups, two embedded continuous PI compensators, boolean
-transitions and an argument-threaded `fuel_available`. Under the decoder
-interfaces, each of those features lands somewhere specific.
+transitions and an argument-threaded `fuel_available`. The points below place
+each of those features under the decoder interfaces.
 
 - The compensator paths (`idle`, `frc`) are pure functions of the engine's own
   state `ω`. Their complete PI laws — outputs *and* state derivatives —
