@@ -6524,53 +6524,73 @@ The result is one splitter, one did-you-mean site.
 
 **Where caught.** The loop wraps each execution of the [boundary](#g-boundary) macro-sequence
 (integrate → project → event iteration → [ticks](#g-tick) → publication) in a single
-`try` — never per stage or per [component](#g-component) (row 59). Framing information does not need to be
-*caught* into existence: the [executor](#g-executor) maintains an **[execution cursor](#g-execution-cursor)**, a
-plain mutable field in the loop state recording where in the compiled [schedule](#g-schedule)
-it is — component path (schedule index), which function
-(`h_x`/`h_xu`/`f`/`g`/[guard](#g-guard)/handler/`project`), and the boundary phase
-(integration stage *k*, event round *r*, localization [probe](#g-probe) at trial
-time, tick). One cheap store per dispatch on a single-tasked executor — no
-allocation, no exception frames — and it covers every user-code surface
-uniformly, including the forgettable ones: [RHS](#g-flow) evaluations at interior RK
-stage points, guard evaluations inside ITP/Brent probes, environment closures.
+`try`, never per stage or per [component](#g-component) (row 59). Framing information does
+not need to be *caught* into existence. The [executor](#g-executor) (the compiled execution
+form of the [schedule](#g-schedule)) maintains an **[execution cursor](#g-execution-cursor)**, a plain mutable
+field in the loop state recording where in the compiled schedule execution is.
+The cursor records three facts. The first is the component path, as a schedule
+index. The second is which function is running: `h_x`, `h_xu`, `f`, `g`, a
+[guard](#g-guard), a handler, or `project`. The third is the boundary phase:
+integration stage *k*, event round *r*, localization [probe](#g-probe) at trial time, or
+tick. Maintaining it costs one cheap store per dispatch on a single-tasked
+executor: no allocation, no exception frames. And it covers every user-code
+surface uniformly, including the forgettable ones: [RHS](#g-flow) evaluations at
+interior RK stage points, guard evaluations inside ITP/Brent probes,
+environment closures.
 
-**How handled.** The catch site wraps the original exception in `StepError` —
-the runtime counterpart of `BuildError` — carrying the cursor's [frame](#g-frame), the
-boundary time, the **frame-entry boundary index** (the [replay](#g-replay) pointer: the
-frame-top boundary — grid or [boundary zero](#g-boundary-zero) — at which the failing frame
-began, always a legal replay halt, [§10.7][s10-7]), and the original
-exception as `cause`, rendered with compact frames per the doctrine ([§13.2][s13-2]). The
-[§12.5][s12-5] conformance failure needs no separate path: it is thrown as its typed
-diagnostic at the table-write point and arrives at the same catch site, a
-species of `StepError` with the field-diff [payload](#g-payload). Reproducibility holds by
-construction: staged inputs are drained and recorded to the [trace](#g-trace) at the frame
-top, *before* the boundary executes, so the failing boundary's inputs are
-already in the trace when it fails — the error names the frame-entry
-boundary `k` to replay to, and `replay!(sim2, trc; to_boundary = k)` halts
-exactly at that frame top; `step!` then re-executes the failing frame under
-instrumentation, [localized](#g-localized) boundaries included ([§10.7][s10-7]).
+```julia
+# the cursor: one mutable field of the loop state, overwritten per dispatch
+mutable struct ExecutionCursor
+    …    # what it records, per the prose above: component path (schedule
+         # index), which function, and the boundary phase
+end
+```
+
+**How handled.** The catch site wraps the original exception in `StepError`, the
+runtime counterpart of `BuildError`. A `StepError` carries four things: the
+cursor's [frame](#g-frame), the boundary time, the **frame-entry boundary index**, and
+the original exception as `cause`. The frame-entry boundary index is the
+[replay](#g-replay) pointer: the frame-top boundary at which the failing frame began.
+That frame top is a grid boundary or [boundary zero](#g-boundary-zero) (the initialization
+boundary: the ordinary macro-sequence with an empty integrate), and it is always
+a legal replay halt ([§10.7][s10-7]). A `StepError` is rendered with compact frames
+per the doctrine ([§13.2][s13-2]).
+
+Conformance failure ([§12.5][s12-5]) needs no separate path. It is thrown as its
+typed diagnostic at the table-write point, and it arrives at the same catch
+site. There it is a species of `StepError` carrying the field-diff [payload](#g-payload).
+
+Reproducibility holds by construction. Staged inputs are drained and recorded to
+the [trace](#g-trace) at the frame top, *before* the boundary executes. So the failing
+boundary's inputs are already in the trace when it fails. The error names the
+frame-entry boundary `k` to replay to; `replay!(sim2, trc; to_boundary = k)`
+halts exactly at that frame top. `step!` then re-executes the failing frame
+under instrumentation, [localized](#g-localized) boundaries included ([§10.7][s10-7]).
+
+```julia
+replay!(sim2, trc; to_boundary = k)   # halt at the frame top the error names
+step!(sim2; frames = 1)               # re-execute the failing frame, instrumented
+```
 
 **The one exception never wrapped.** An `InterruptException` is not model code
-failing but the operator's stop command ([§10.4][s10-4]), so the catch site discriminates
-it and routes it to the stop path: the run takes the ordinary graceful tail and
-ends `stopped`, never `errored` under a `StepError`. With the boundary masking
-([§10.4][s10-4]) in force this branch is unreachable in practice — the interrupt
-is
-deferred to a frame-top or wait unmask point and never raises inside the guarded
-sequence — and it is kept defensively because the cost of being wrong about that
-is a terminally errored session in place of a clean stop.
+failing; it is the operator's stop command ([§10.4][s10-4]). So the catch site
+discriminates it and routes it to the stop path. The run takes the ordinary
+graceful tail and ends `stopped`, never `errored` under a `StepError`. With the
+boundary masking in force ([§10.4][s10-4]) the branch is unreachable in practice: the
+interrupt is deferred to a frame-top or wait unmask point, and never raises
+inside the guarded sequence. It is kept defensively, because the cost of being
+wrong about that is a terminally errored session in place of a clean stop.
 
-**Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
-`errored` — with the exception retrievable. A synchronous [unattended run](#g-unattended-run) (a run
+**Disposition.** The `Simulation` ends in a terminal status, `stopped` or
+`errored`, with the exception retrievable. A synchronous [unattended run](#g-unattended-run) (a run
 with empty staging and no snapshot readers) rethrows after the shutdown tail
-completes, so CI fails honestly; an interactive session logs the rendered error
+completes, so CI fails honestly. An interactive session logs the rendered error
 and surfaces the status through the control plane and GUI.
 
-**The nonfinite check.** Divergence is not termination: dynamics that blow up
-(ground penetration, an unstable gain) produce NaNs that defeat guards — NaN
-comparisons are false — so no declared condition will catch them. A loop-level
-`isfinite` [sweep](#g-sweep) over `x` at boundaries fails fast as a `StepError` species
+**The nonfinite check.** Divergence is not termination. Dynamics that blow up
+(ground penetration, an unstable gain) produce NaNs that defeat guards. NaN
+comparisons are false, so no declared condition will catch them. A loop-level
+`isfinite` [sweep](#g-sweep) over `x` at boundaries fails fast as a `StepError` species,
 naming the offending component's state block and the boundary. It catches
 diverging models generally, not just post-terminal ones.
 
@@ -6579,10 +6599,10 @@ immediately after integrate returns, before `project` and before the boundary
 sweep. Run there, `NonfiniteState` names the component whose own block
 diverged. Run later, the NaN has already propagated: it reaches an innocent
 downstream component through the ordinary signal path and surfaces as that
-component's lookup-table `DomainError` or an `InexactError` in its
-conversion — the error-locality inversion ([§11.4][s11-4]), designed out of the build
-[tier](#g-tier) and quietly reintroduced at runtime. One `isfinite` pass over a flat
-[buffer](#g-buffer) is cheap enough that placement, not cost, decides.
+component's lookup-table `DomainError`, or as an `InexactError` in its
+conversion. That is the error-locality inversion ([§11.4][s11-4]), designed out of the
+build [tier](#g-tier) and quietly reintroduced at runtime. One `isfinite` pass over a
+flat [buffer](#g-buffer) is cheap enough that placement, not cost, decides.
 
 *Scope: `ẋ` does not participate* (row 157). A nonfinite derivative
 contaminates its own state block's step result within that very step, so the
@@ -6591,13 +6611,13 @@ attribution. And `ẋ` buffers are integrator scratch: written per stage,
 meaningful only inside a step, and not boundary-consistent in the sense the
 check is stated over.
 
-**Domain separation.** [Device](#g-device)-side user code — loop bodies and mappings run
-on the device task ([§9.4][s9-4], [§9.6][s9-6]) — fails in the device's own domain, and in
-two classes: a genuine bug takes the per-device crash path (liveness
-heartbeat, `DeviceCrash`) while the sim keeps running; an unmappable datum
-is not a failure at all — the loop body tolerates and reports it
-(`MalformedDatum`, [§9.6][s9-6]). The two failure domains never mix — exactly what
-the no-shared-mutable-model decision bought.
+**Domain separation.** [Device](#g-device)-side user code fails in the device's own
+domain: loop bodies and mappings run on the device task ([§9.4][s9-4], [§9.6][s9-6]). It
+fails in two classes. A genuine bug takes the per-device crash path (liveness
+heartbeat, `DeviceCrash`) while the sim keeps running. An unmappable datum is
+not a failure at all; the loop body tolerates and reports it (`MalformedDatum`,
+[§9.6][s9-6]). The two failure domains never mix — exactly what the
+no-shared-mutable-model decision bought.
 
 ### 13.5 Termination is a state, not an exception
 
