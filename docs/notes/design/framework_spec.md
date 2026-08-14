@@ -7174,89 +7174,120 @@ compile time (the fork, [§14.1][s14-1]).
 
 ### 14.4 Two application registers over one plan
 
-Execution is where the paradigm-change tax was feared, and where it
-vanishes: all string work, validation and addressing are functions of the
-[condition](#g-condition)'s *shape*, and every hot path holds the shape fixed while varying
-values. Hence resolve-once/execute-many, with two [registers](#g-register) over one plan:
+**The paradigm-change tax feared at execution does not materialize.** All string
+work, validation and addressing are functions of the *shape* of the
+[condition](#g-condition) (the path-addressed sparse overlay that sets a build's
+state), and every hot path holds the shape fixed while varying values. Execution
+is therefore resolve-once/execute-many, with two [registers](#g-register) over
+one plan:
 
-- **Specialized `apply!`** — for services that iterate (trim's per-evaluation
-  write, linearization's seeding). Unrolled stores through the baked lenses
-  and converters: the same machine operations as today's in-place writes,
-  zero-alloc, no strings, no dispatch. The per-iteration shape check is the
-  mechanism ([§12.5][s12-5]) transferred: the tree type (which carries the full
-  nesting, every field name and leaf type) is proven by dispatch, and a `===`
-  [sweep](#g-sweep) over the interned path literals closes the remainder — pointer
-  compares that fold to nothing in the all-literal case, with shape drift a
+- **Specialized `apply!`** — for services that iterate: trim's per-evaluation
+  write, linearization's seeding. It unrolls stores through the baked lenses and
+  converters, the same machine operations as today's in-place writes: zero-alloc,
+  no strings, no dispatch. The per-iteration shape check is the mechanism
+  ([§12.5][s12-5]) transferred. The tree type is proven by dispatch, and it
+  carries the full nesting, every field name and leaf type. A `===`
+  [sweep](#g-sweep) over the interned path literals closes the remainder. Those
+  pointer compares fold to nothing in the all-literal case, and shape drift is a
   structured error, not silent corruption. Cost: Julia codegen of ~10–50 ms
-  *once per condition shape* — noise against the model's own first-sweep
-  warmup (seconds) and the 10³–10⁴ optimizer evaluations it amortizes over.
-- **Dynamic walk** — for one-shot init. The same validated entry list,
-  executed by runtime dispatch per write: microseconds total, allocation
-  permitted ([§7.5][s7-5] — the stopped-sim path was never under the zero-alloc
-  regime), and no per-shape codegen: fifty structurally different scripted
-  conditions cost fifty walks, not fifty compiles.
+  *once per condition shape*. That cost is noise against the model's own
+  first-sweep warmup (seconds), and against the 10³–10⁴ optimizer evaluations
+  the codegen amortizes over.
+- **Dynamic walk** — for one-shot init. It executes the same validated entry
+  list by runtime dispatch per write: microseconds total, allocation permitted,
+  since the stopped-sim path was never under the zero-alloc regime
+  ([§7.5][s7-5]). It needs no per-shape codegen: fifty structurally different
+  scripted conditions cost fifty walks, not fifty compiles.
 
-Which register a service uses is internal, never user-facing API.
+**Rule.** Which register a service uses is internal, never user-facing API.
 
-**The read-[selector](#g-selector) family is closed**: `get_state(path, field[, i])`,
-`get_deriv(path, field[, i])`, `get_output(path, field[, i])`,
-`get_slot(face)`, `get_face(name)` — one
-address space for every reader of the model. The names carry a deliberate
-`get_` prefix: a selector is a *deferred read* — a value describing the read
-the compiled gather will perform — and the prefix both names that action and
-keeps five short common nouns out of the namespace user declarations share
-with domain code. There is no selector for a [component](#g-component)'s private
-intermediates, and cannot be: they are values in flight, not [cells](#g-cell) anything
-could address ([§5.2][s5-2]), so a reader that wants one is a component that should
-declare it an output ([§11.3][s11-3]). `get_face` addresses a root-exported
-output [face](#g-face) — the *integration* register ([§9.2][s9-2]).
+#### The read-selector family
 
-**A selector resolves against a source, before any client policy applies.**
-The table selectors — `get_output`, `get_slot`, `get_face` —
-resolve against a *table source*: a [boundary](#g-boundary) [snapshot](#g-snapshot), or the scratch tables
-a service evaluation instantiates ([§14.8][s14-8]) — the axis separates
-table-borne values from store-borne ones, not snapshots from services. The
-store selectors — `get_state`,
-`get_deriv` — resolve only against live stores, which only stopped-sim
-service evaluations, `capture`, and post-run inspection of the live stores (the
-[replay](#g-replay)-to-inspect, [§9.2][s9-2]) ever hold: the snapshot
-deliberately carries no
-state stores ([§9.2][s9-2]), and `ẋ` [buffers](#g-buffer) are integrator scratch, not
-boundary-consistent objects outside a service evaluation. A snapshot-bound
-reader naming a store selector is therefore a resolution error at attach
-(`ReadBindingUnresolved`), in the didactic register, with the honest remedy
-([§9.2][s9-2]): declare the field public and read the [auto-published
-port](#g-auto-published-port). Client
-policy rides on top — the registers (row 83) restated as a resolver property:
+**The read-[selector](#g-selector) family is closed.** Its members are
+`get_state(path, field[, i])`, `get_deriv(path, field[, i])`,
+`get_output(path, field[, i])`, `get_slot(face)` and `get_face(name)` — one
+address space for every reader of the model.
 
-- **Load-bearing services** (trim's `reads`, linearization's [taps](#g-taps)) speak
-  the [contract](#g-contract): `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`,
-  within the scopes the locality law ([§6.1][s6-1]) and [fragment](#g-fragment) scoping ([§14.2][s14-2]) own.
-  `get_face` is the set's [seam](#g-seam)-crossing member: it resolves through export
-  chains exactly as [mounting](#g-mounting) ([§14.9][s14-9]) resolves [slot](#g-slot) faces — the read
-  side mirroring the write side — so an equilibrium equation reaching
-  behind a generically-held child binds the curated face register instead
-  of a path the locality law forbids. A service evaluation needing a private
-  intermediate has one remedy, and it is the same at every register: the
-  component exports it ([§14.7][s14-7]).
-- **Diagnostic readers** (output-[device](#g-device) bindings, GUI panels, log
-  inspection) admit the whole family, within the source rule: deep paths
-  and `get_face` names alike, with the store selectors
-  reaching only the diagnostic clients that actually hold stores (`capture`,
-  post-run inspection) — a snapshot-bound reader is barred from them by
-  source, not by client.
-- **`stop_on` is not a family client.** It names root-exported `Bool`
-  output faces, period ([§13.5][s13-5], row 60): termination is run policy against
-  the root contract, and no path selector reaches it.
+The names carry a deliberate `get_` prefix. A selector is a *deferred read*: a
+value describing the read the compiled gather will perform. The prefix names
+that action, and it keeps five short common nouns out of the namespace user
+declarations share with domain code.
 
-**Compiled readers are the gather twin** over this family
-and the layout tables: trim's cost read (`ẋ` and output fields), linearization's
-Jacobian gather, and `capture`'s full-store readback are one primitive run in
-reverse — one machinery, both directions, in the `Build`'s client kit. The
-per-iteration ledger for trim: user fragment math (stack-only, the domain
-computations unchanged from today) + leaf stores + folded shape check +
-sweep — the sweep dominates, exactly as `f_ode!` does today. `apply!` ends at
-established stores; making the model *coherent* is [boundary zero](#g-boundary-zero), [§14.5][s14-5].
+There is no selector for a [component](#g-component)'s private intermediates,
+and there cannot be one: they are values in flight, not [cells](#g-cell)
+anything could address ([§5.2][s5-2]). So a reader that wants one is asking the
+producing component to declare it an output ([§11.3][s11-3]). `get_face`
+addresses a root-exported output [face](#g-face) — the *integration* register
+([§9.2][s9-2]).
+
+**Rule.** A selector resolves against a source, before any client policy
+applies.
+
+The table selectors — `get_output`, `get_slot`, `get_face` — resolve against a
+*table source*: a [boundary](#g-boundary) [snapshot](#g-snapshot), or the
+scratch tables a service evaluation instantiates ([§14.8][s14-8]). The store
+selectors — `get_state`, `get_deriv` — resolve only against live stores. The
+table/store axis separates table-borne values from store-borne ones, not
+snapshots from services.
+
+Only stopped-sim service evaluations, `capture`, and post-run inspection of the
+live stores (the [replay](#g-replay)-to-inspect, [§9.2][s9-2]) ever hold live
+stores: the snapshot deliberately carries no state stores ([§9.2][s9-2]), and
+`ẋ` [buffers](#g-buffer) are integrator scratch, not boundary-consistent
+objects outside a service evaluation. A snapshot-bound reader naming a store
+selector is therefore a resolution error at attach (`ReadBindingUnresolved`),
+raised in the didactic register. The honest remedy ([§9.2][s9-2]) is to declare
+the field public and read the [auto-published
+port](#g-auto-published-port) (published by the framework from the state or
+mode store).
+
+Client policy rides on top — the registers (row 83) restated as a resolver
+property:
+
+- **Load-bearing services speak the [contract](#g-contract).** Trim's `reads`
+  and linearization's [taps](#g-taps) (the three selector lists declaring what
+  linearization seeds and reports) name
+  `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`, within the scopes
+  the locality law ([§6.1][s6-1]) and [fragment](#g-fragment) scoping
+  ([§14.2][s14-2]) own. `get_face` is the set's [seam](#g-seam)-crossing member:
+  it resolves through export chains exactly as [mounting](#g-mounting)
+  (relocating a whole problem or tap set with `at(prefix, …)`) resolves
+  [slot](#g-slot) faces ([§14.9][s14-9]), the read side mirroring the write
+  side. So an equilibrium equation reaching behind a generically-held child
+  binds the curated face register instead of a path the locality law forbids. A
+  service evaluation needing a private intermediate has one remedy, and it is
+  the same at every register: the component exports it ([§14.7][s14-7]).
+- **Diagnostic readers admit the whole family, within the source rule.**
+  Output-[device](#g-device) bindings, GUI panels and log inspection take deep
+  paths and `get_face` names alike. The store selectors reach only the
+  diagnostic clients that actually hold stores (`capture`, post-run
+  inspection): a snapshot-bound reader is barred from them by source, not by
+  client.
+- **`stop_on` is not a family client.** It names root-exported `Bool` output
+  faces, period ([§13.5][s13-5], row 60): termination is run policy against the
+  root contract, and no path selector reaches `stop_on`.
+
+The five selectors, their sources, and their clients:
+
+| selector | resolves against | load-bearing services | diagnostic readers |
+|---|---|---|---|
+| `get_state(path, field[, i])` | live stores | named in the contract | only clients that hold stores |
+| `get_deriv(path, field[, i])` | live stores | named in the contract | only clients that hold stores |
+| `get_output(path, field[, i])` | a table source | named in the contract | admitted |
+| `get_slot(face)` | a table source | named in the contract | admitted |
+| `get_face(name)` | a table source | named in the contract | admitted |
+
+**Compiled readers are the gather twin** over this family and the layout
+tables. Trim's cost read (`ẋ` and output fields), linearization's Jacobian
+gather, and `capture`'s full-store readback are one primitive run in reverse:
+one machinery, both directions, in the `Build`'s client kit.
+
+The per-iteration ledger for trim is user fragment math (stack-only, the domain
+computations unchanged from today) + leaf stores + folded shape check + sweep.
+The sweep dominates, exactly as `f_ode!` does today. `apply!` ends at
+established stores. Making the model *coherent* is [boundary
+zero](#g-boundary-zero) (the initialization boundary: the ordinary
+macro-sequence with an empty integrate), [§14.5][s14-5].
 
 ### 14.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
