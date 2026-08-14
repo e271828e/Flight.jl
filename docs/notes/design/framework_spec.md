@@ -5484,111 +5484,187 @@ results carried past failures are violation lists from pure checks.
 
 ### 12.1 Three strata
 
-Three ordering constraints are forced by settled decisions: [face](#g-face) derivation is
-**bottom-up** (an [assembly](#g-assembly)'s [boundary](#g-boundary) connections evaluate against child [contracts](#g-contract),
-[§11.8][s11-8]); the unconnected-input obligation check and cross-level two-producers
-detection are **global** — decidable only at the root, after every assembly's
-wires and faces are in hand ([§6.1][s6-1]); and stage membership is **derived by
-probing** the stage-1 functions ([§11.2][s11-2]), so evaluation interleaves with graph construction at
-exactly one [blessed](#g-blessed) spot. The pipeline is therefore inherently heterogeneous,
-organized as three strata:
+Three ordering constraints are forced by settled decisions: [face](#g-face)
+derivation is **bottom-up** (an [assembly](#g-assembly)'s
+[boundary](#g-boundary) connections evaluate against child
+[contracts](#g-contract), [§11.8][s11-8]); the unconnected-input obligation
+check and cross-level two-producers detection are **global** — decidable only
+at the root, after every assembly's wires and faces are in hand ([§6.1][s6-1]);
+and stage membership is **derived by probing** the stage-1 functions
+([§11.2][s11-2]), so evaluation interleaves with graph construction at exactly
+one [blessed](#g-blessed) spot. The pipeline is therefore inherently
+heterogeneous, organized as three [strata](#g-stratum).
 
-- **[Stratum](#g-stratum) A — structure.** Pure declaration reading; no user stage code
-  executes (`input_connections`/`output_connections`/`input_passthrough` bodies are
-  declaration code, [§11.8][s11-8]). Tree walk
-  from the root instance: [components](#g-component) by path, [class](#g-class) read off
-  declaration shape ([§11.5][s11-5]), leaf contract collection (`input_types`,
-  `output_types`, `init_*` values, `events`), bottom-up face
-  derivation, then global wiring resolution to absolute leaf terminals:
-  one-writer-per-input, typo [did-you-mean](#g-did-you-mean) against the destination's input
-  list, the two wiring type clauses ([§6.1][s6-1], [§11.2][s11-2]) — the **bound check** at
-  nominal faces (the producer's declaration at `Float64` `<:` the entry at
-  `Float64`, equality the concrete degenerate; abstract-at-root detected here)
-  and, for continuous consumers, the **walk-compatibility clause**, decided by
-  evaluating both declarations at a marker scalar and comparing per leaf
-  (`WalkingFaceAtFrozenEntry`) — which stays inside this stratum's charter
-  because both sides are declaration functions of `T`: declarations are
-  evaluated, no user stage code runs —
-  the whole-tree obligation
-  check, root [slots](#g-slot) falling out as the root's input faces, and the
-  closed leaf vocabulary ([§7.1][s7-1]) checked on every `init_x` (the walk in
-  [§11.2][s11-2] rests on
-  it). Also here: the declaration-completeness rules ([§11.2][s11-2]; a store
-  without its update, an event missing a [guard](#g-guard) or handler method, a
-  leaf mixing [tier](#g-tier)
-  families, a contract signature whose form contradicts the leaf's tier
-  ([§11.5][s11-5]), a primitive at the root), and
-  `sample_times` validation — per-entry validity ([§8.5][s8-5]'s constraints:
-  wrapper-typed values, `K ≥ 1`, `0 ≤ Φ < K`, `T > 0`, `0 ≤ τ < T`, keys
-  naming discrete or scope children) collected with path attribution — and
-  compilation into **`(anchor, m, c)` triples**: each discrete component's
-  divisor and [phase](#g-phase) in its [anchor](#g-anchor)'s [tick](#g-tick) units. The fold: the root scope
-  seeds `(A₀, 1, 0)`, anchor 0 being the base grid itself — `(T, τ) =
-  (Δt_base, 0)`, symbolic until deployment; a `Relative(K, φ)` child under
-  scope `(a, mₛ, cₛ)` compiles to `(a, K·mₛ, cₛ + φ·mₛ)` — the affine law
-  ([§8.5][s8-5]) in anchor-tick units; an `Absolute(q, τ)` child **severs and
-  re-seeds** — a
-  fresh anchor `Aₖ = (period(q), τ)`, its subtree continuing at `(Aₖ, 1, 0)`.
-  The canonical residue (`c < m`) holds within each anchor's subtree by the
-  same induction. Everything except binding `Δt_base` — deployment's —
-  happens here; note that final divisors for anchored entries genuinely
-  cannot exist until it binds.
-- **Stratum B — [schedule](#g-schedule).** The single evaluation-feeds-structure step:
-  [workspace](#g-workspace) allocation at the probing scalar (sound this early: the allocator
-  reads only the instance and the scalar, row 77 — no layout dependence),
-  stage-1 [probes](#g-probe) at `Float64` on `init_x`/`init_m` values (well-founded — the
-  no-[feedthrough](#g-feedthrough) stage takes no inputs), [port](#g-port) classification over
-  `output_types` alone (stage-1 /
-  auto-published / stage-2 remainder — a stage's `w` classifies nothing, being
-  no part of the contract, [§11.3][s11-3]), feedthrough graph from wires carrying
-  stage-2 ports, topological order, [§5.5][s5-5] cycle rejection. The output is
-  structural: names only, `T`-independent, branch-protected by the
-  branch-shape rule plus the always-on check ([§12.5][s12-5]).
-- **Stratum C — [activation](#g-activation), parametric in `T`.** Everything type-shaped:
-  the producers' output declarations **evaluated** at the activation's `T` to
-  type the [cells](#g-cell) (the literal semantics, [§11.2][s11-2] — a continuous producer's
-  two-argument declaration called at `T`, a discrete producer's plain one read
-  once and [pinned](#g-walked)), the `init_x`-derived state type [walked](#g-walked)
-  by the leaf-walk rule ([§11.2][s11-2]), the probe chain run in topo order —
-  threading each stage's `w` to its one-hop consumers ([§5.2][s5-2], [§12.3][s12-3]) — observed compared against
-  declared, flat `x` [buffer](#g-buffer) and table laid out. The nominal `Float64`
-  activation (a re-run of Stratum C at a given scalar type) runs at build;
-  other activations re-run *only this stratum* ([§12.4][s12-4]).
+#### Stratum A — structure
 
-Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm,
-`localization_tol`, `localization_budget`, `firing_budget`, harmonic-grid
-validation, tick schedule instantiation) sits after all three, at `Simulation`
-construction — nothing in A–C depends on it. `Δt_base` has exactly one of
-three sources, cross-validated: the explicit keyword (a `Rational`, `Period`
-or `Hz` value; `n` is then derived as `Δt_base/h` and validated an integer
-≥ 1), the `n·h` product when only `n` is given (today's rule, the default
-`n = 1`), or **derivation** — permitted only when every discrete component is
-anchored (anchor 0 unpopulated), so that `Δt_base` is pure bookkeeping no
+Stratum A is pure declaration reading: no user stage code executes in it. The
+`input_connections`/`output_connections`/`input_passthrough` bodies are
+declaration code ([§11.8][s11-8]).
+
+The stratum is a tree walk from the root instance, in this order:
+
+1. [Components](#g-component) are collected by path.
+2. Each component's [class](#g-class) — its primitive-vs-assembly status — is
+   read off declaration shape ([§11.5][s11-5]).
+3. Leaf contracts are collected: `input_types`, `output_types`, `init_*`
+   values, `events`.
+4. Face derivation runs bottom-up.
+5. Global wiring resolution then runs, resolving wires to absolute leaf
+   terminals.
+
+Resolution runs these checks:
+
+- one-writer-per-input;
+- the typo [did-you-mean](#g-did-you-mean) — the offending name plus the
+  list-in-hand it should have matched — against the destination's input list;
+- the two wiring type clauses ([§6.1][s6-1], [§11.2][s11-2]), stated below;
+- the whole-tree obligation check;
+- the closed leaf vocabulary ([§7.1][s7-1]), checked on every `init_x` because
+  the walk in [§11.2][s11-2] rests on it.
+
+Root [slots](#g-slot) fall out here too, as the root's input faces.
+
+**The bound check** is the first type clause, and it applies at nominal faces:
+the producer's declaration at `Float64` must be `<:` the entry at `Float64`.
+Equality is the concrete degenerate case. Abstract-at-root is detected here.
+
+**The walk-compatibility clause** is the second, and it applies to continuous
+consumers only. It is decided by evaluating both declarations at a marker
+scalar and comparing per leaf, and its diagnostic is
+`WalkingFaceAtFrozenEntry`. It stays inside this stratum's charter because both
+sides are declaration functions of `T`: declarations are evaluated, no user
+stage code runs.
+
+Stratum A also checks the declaration-completeness rules ([§11.2][s11-2]): a
+store without its update, an event missing a [guard](#g-guard) or handler
+method, a leaf mixing [tier](#g-tier) families, a contract signature whose form
+contradicts the leaf's tier ([§11.5][s11-5]), and a primitive at the root.
+
+`sample_times` validation is Stratum A's too, and it has two parts. The first
+is per-entry validity against the constraints of [§8.5][s8-5]: wrapper-typed
+values, `K ≥ 1`, `0 ≤ Φ < K`, `T > 0`, `0 ≤ τ < T`, and keys naming discrete or
+scope children. Those violations are collected with path attribution. The
+second is compilation into **`(anchor, m, c)` triples**. A triple carries a
+discrete component's divisor and [phase](#g-phase) in the [tick](#g-tick) units
+of its [anchor](#g-anchor) — the exact `(T, τ)` pair an `Absolute` entry
+establishes.
+
+The compilation is a fold down the tree, one rule per scope:
+
+| the fold meets | the triple it produces |
+|---|---|
+| the root scope | `(A₀, 1, 0)`, anchor 0 being the base grid itself: `(T, τ) = (Δt_base, 0)` |
+| `Relative(K, φ)` under a scope at `(a, mₛ, cₛ)` | `(a, K·mₛ, cₛ + φ·mₛ)` |
+| `Absolute(q, τ)` under any scope | **severs and re-seeds**: a fresh anchor `Aₖ = (period(q), τ)`, its subtree continuing at `(Aₖ, 1, 0)` |
+
+Anchor 0 is symbolic until deployment. The `Relative` case is the affine law
+([§8.5][s8-5]) in anchor-tick units. The canonical residue (`c < m`) holds
+within each anchor's subtree by the same induction.
+
+Everything except binding `Δt_base` — deployment's — happens in Stratum A.
+Final divisors for anchored entries genuinely cannot exist until `Δt_base`
+binds.
+
+#### Stratum B — schedule
+
+Stratum B is the single evaluation-feeds-structure step. It computes the
+[schedule](#g-schedule):
+
+- [Workspace](#g-workspace) — component-declared mutable scratch arriving as
+  the `ws` bundle field — is allocated at the probing scalar. That is sound
+  this early because the allocator reads only the instance and the scalar
+  (row 77), so there is no layout dependence.
+- Stage-1 [probes](#g-probe) run at `Float64`, on `init_x`/`init_m` values.
+  They are well-founded, the no-[feedthrough](#g-feedthrough) stage taking no
+  inputs.
+- [Ports](#g-port) are classified over `output_types` alone: stage-1,
+  auto-published, and the stage-2 remainder. A stage's `w` classifies nothing,
+  being no part of the contract ([§11.3][s11-3]).
+- The feedthrough graph is built from the wires carrying stage-2 ports, and a
+  topological order over it follows. [§5.5][s5-5] cycle rejection applies.
+
+The output is structural: names only, `T`-independent, branch-protected by the
+branch-shape rule plus the always-on check ([§12.5][s12-5]).
+
+#### Stratum C — activation, parametric in `T`
+
+An [activation](#g-activation) is a re-run of Stratum C at a given scalar type.
+The stratum holds everything type-shaped:
+
+- The producers' output declarations are **evaluated** at the activation's `T`
+  to type the [cells](#g-cell). That is the literal semantics
+  ([§11.2][s11-2]): a continuous producer's two-argument declaration is called
+  at `T`, and a discrete producer's plain one is read once and
+  [pinned](#g-walked).
+- The `init_x`-derived state type is [walked](#g-walked) by the leaf-walk rule
+  ([§11.2][s11-2]).
+- The probe chain runs in topological order, threading each stage's `w` to its
+  one-hop consumers ([§5.2][s5-2], [§12.3][s12-3]), and observed is compared
+  against declared.
+- The flat `x` [buffer](#g-buffer) and the table are laid out.
+
+The nominal `Float64` activation runs at build. Other activations re-run *only
+this stratum* ([§12.4][s12-4]).
+
+#### Deployment binding
+
+Deployment binding sits after all three strata, at `Simulation` construction.
+It binds `Δt_base`, `h`, `n`, `t_end`, the algorithm, `localization_tol`,
+`localization_budget` and `firing_budget`, runs harmonic-grid validation, and
+instantiates the tick schedule. Nothing in A–C depends on it.
+
+`Δt_base` has exactly one of three sources, cross-validated:
+
+- the explicit keyword, a `Rational`, `Period` or `Hz` value, from which `n` is
+  derived as `Δt_base/h` and validated an integer ≥ 1;
+- the `n·h` product when only `n` is given, today's rule, with the default
+  `n = 1`;
+- **derivation**, permitted only when every discrete component is anchored —
+  that is, with anchor 0 unpopulated.
+
+**Why.** Under that restriction `Δt_base` is pure bookkeeping that no
 component's period depends on. An unanchored component's period is
-`m·Δt_base`; deriving under one would let an anchor edit anywhere in the tree
-silently rescale it — action at a distance — so if any unanchored component
-exists, deployment must declare `Δt_base`, and the refusal is constructive (the
-suggestion message, [§12.2][s12-2]). Admissibility is exact GCD arithmetic over
-the
-**constraint pool** — every anchor's period and every nonzero offset: a
-`Δt_base` is admissible iff it divides every pool entry, equivalently iff it
-divides their GCD, so the admissible set is `gcd(pool)/k` for integer `k ≥ 1`
-and the derivation path takes the GCD itself, the coarsest admissible value.
-Resolution is then one division pair per anchor and one multiply-add per
-component: `Dₖ = Tₖ/Δt_base`, `Φₖ = τₖ/Δt_base` — both exact integers, or a
-`DeploymentInvalid` naming the anchor with its declaring scope and key from
-the provenance column — and `D = m·Dₖ`, `Φ = Φₖ + c·Dₖ`, `Δt = D·Δt_base`:
-the [bound schedule](#g-bound-schedule) ([§12.2][s12-2]). Validation is collected like
-its declarative siblings ([§13.1][s13-1]): a nonpositive `h`, an `n < 1`, a
-harmonic-grid violation, a non-dividing anchor period or offset, a declared
-`Δt_base` disagreeing with a declared `n`, an algorithm the [stepper seam](#g-seam) does
-not know, a
-nonpositive `localization_tol`, a `localization_budget` or a `firing_budget`
-that is not an integer ≥ 1
-are collected and reported as `DeploymentInvalid` ([Appendix C][sC] — parameter,
-value, the violated constraint). The event parameters validate on their own
-terms only — grid-independent, so they take no part in the harmonic-grid
-check ([§8.4][s8-4], [§8.6][s8-6]).
+`m·Δt_base`, and deriving with one present would let an anchor edit anywhere in
+the tree silently rescale it — action at a distance.
+
+**Rule.** If any unanchored component exists, deployment must declare
+`Δt_base`. The refusal is constructive — the suggestion message
+([§12.2][s12-2]).
+
+Admissibility is exact GCD arithmetic over the **constraint pool**:
+
+| quantity | value |
+|---|---|
+| the constraint pool | every anchor's period and every nonzero offset |
+| an admissible `Δt_base` | one dividing every pool entry, equivalently one dividing `gcd(pool)` |
+| the admissible set | `gcd(pool)/k`, for integer `k ≥ 1` |
+| the derived `Δt_base` | `gcd(pool)` itself, the coarsest admissible value |
+| per anchor `k` | `Dₖ = Tₖ/Δt_base`, `Φₖ = τₖ/Δt_base` |
+| per component | `D = m·Dₖ`, `Φ = Φₖ + c·Dₖ`, `Δt = D·Δt_base` |
+
+Resolution is therefore one division pair per anchor and one multiply-add per
+component. `Dₖ` and `Φₖ` must both come out exact integers; otherwise a
+`DeploymentInvalid`, naming the anchor with its declaring scope and key from
+the provenance column. The per-component triples are the
+[bound schedule](#g-bound-schedule), the printable artifact deployment binding
+produces ([§12.2][s12-2]).
+
+Deployment validation is collected like its declarative siblings
+([§13.1][s13-1]). Collected and reported as `DeploymentInvalid`
+([Appendix C][sC] — parameter, value, the violated constraint):
+
+- a nonpositive `h`;
+- an `n < 1`;
+- a harmonic-grid violation;
+- a non-dividing anchor period or offset;
+- a declared `Δt_base` disagreeing with a declared `n`;
+- an algorithm the [stepper seam](#g-seam) does not know;
+- a nonpositive `localization_tol`;
+- a `localization_budget` or a `firing_budget` that is not an integer ≥ 1.
+
+The event parameters validate on their own terms only. They are
+grid-independent, so they take no part in the harmonic-grid check
+([§8.4][s8-4], [§8.6][s8-6]).
 
 ### 12.2 The `Build` artifact
 
