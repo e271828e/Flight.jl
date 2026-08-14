@@ -7793,8 +7793,8 @@ Non-convergence never throws: it is an expected *outcome* (envelope-sweep data:
 hitting the infeasible edge is information), per the
 exceptions-are-broken-machinery line ([§13][s13]). A malformed problem is a
 different case: a `BuildError`-class failure at setup, `TrimProblemInvalid`
-([Appendix C][sC]). The malformed cases are a guess/bounds key-set or
-field-type disagreement, an unknown `reads` [selector](#g-selector), and a
+([Appendix C][sC]). The malformed cases: a guess/bounds key-set or
+field-type disagreement, an unknown `reads` [selector](#g-selector), a
 `tolerances`/residual key-set mismatch observed at the setup guess evaluation.
 The error carries the offending field with the names or types in hand,
 collected, mirroring linearization's `TapResolution`. A permuted spelling is
