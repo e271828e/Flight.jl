@@ -1513,79 +1513,89 @@ Double-buffered mutable state is a possible future extension only, deferred
 
 ### 7.4 The fused-evaluation lineage (prior art and how we got here)
 
-The [§5.2][s5-2] interfaces are the end point of a three-step simplification arc, recorded
-here because each step replaced a mechanism with something smaller:
+The [§5.2][s5-2] interfaces are the end point of a three-step simplification arc.
+The arc is recorded here because each step replaced a mechanism with something
+smaller:
 
 1. **N output groups → exactly two** (row 6), at the price of an occasional
    [component](#g-component) split ([§5.4][s5-4]).
-2. **Derivative binding → own-output access** (row 15): passing the fresh
+2. **Derivative binding → own-output access** (row 15). Passing the fresh
    [signal table](#g-signal-table) to `f`/`g` subsumes the declaration feature, and the
    "binding" becomes a one-line function body.
 3. **Separate state arguments → the state decoder** (rows 16, 35) — the step
    later reversed by step 4.
 4. **Decoder-exclusive state access → stores-and-views arguments.** Step 3's
-   second half was reversed (row 35): once [§11.3][s11-3] made publication a
-   deliberate interface act, the identity decode stood revealed as *transport* —
-   copying the [buffer](#g-buffer) into [cells](#g-cell) so a buffer view could be replaced by a
-   cell view. The fixed point is the argument rule ([§5.2][s5-2]) — zero-copy views of
-   the stores a function genuinely reads. What survives of step 3: the uniform
-   shapes, the fused economics, and the stage-1 decoder itself (today's `h_x`) —
-   no longer the sole state gate, but the no-[feedthrough](#g-feedthrough) stage.
+   second half was reversed (row 35). Once [§11.3][s11-3] made publication a
+   deliberate interface act, the identity decode stood revealed as *transport*:
+   it copied the [buffer](#g-buffer) into [cells](#g-cell) so that a buffer view could be
+   replaced by a cell view. The fixed point is the argument rule ([§5.2][s5-2]):
+   zero-copy views of the stores a function genuinely reads. What survives of
+   step 3: the uniform shapes, the fused economics, and the stage-1
+   decoder itself (today's `h_x`). That decoder is no longer the sole state
+   gate; it is the no-[feedthrough](#g-feedthrough) stage.
 
-Prior art, for orientation — every causal framework meets the shared-computation
-problem and resolves it per its architecture: **Simulink diagrams** make integrators
-explicit blocks (derivatives are ordinary wires into `1/s` — the computer/integrator
-split is their native idiom); **S-functions and FMUs** use sanctioned *mutable caches*
-(DWork vectors; FMI's lazy-evaluation caching) between their `mdlDerivatives`/
-`mdlOutputs`-style callback pairs; **Modelica/MTK** write `der(x) = expr` natively
+Prior art, for orientation: every causal framework meets the shared-computation
+problem and resolves it per its architecture. **Simulink diagrams** make integrators
+explicit blocks: derivatives are ordinary wires into `1/s`, and the computer/integrator
+split is their native idiom. **S-functions and FMUs** use sanctioned *mutable caches*
+— DWork vectors, FMI's lazy-evaluation caching — between their `mdlDerivatives`/
+`mdlOutputs`-style callback pairs. **Modelica/MTK** write `der(x) = expr` natively
 with symbolic CSE. The fused [sweep](#g-sweep) + signal-consuming `f`/`g` is the cache-free
-formulation that fits this design's purity rules — and it is also what FlightCore's
+formulation that fits this design's purity rules. It is also what FlightCore's
 fused `f_ode!` did economically, minus the checked scheduling.
 
 The **computer/integrator split** remains fully expressible without any framework
-support (a stateless component computing derivatives as outputs, wired into a trivial
-state-holding component) and is the idiom of choice when the factoring earns reuse —
-e.g. one Newton–Euler solver shared across vehicle variants, or swappable kinematic
-descriptors against a common integrator shape. See `sketch_decoder.jl` for the
-worked example; against a split-form spelling of the same model (four components,
-thirteen connections), the merged form has half the components and wiring, and everything
-derivable from pose alone migrates to stage 1, shortening the stage-2 chain.
+support: a stateless component computes derivatives as outputs, wired into a trivial
+state-holding component. It is the idiom of choice when the factoring earns reuse —
+for example, one Newton–Euler solver shared across vehicle variants, or swappable
+kinematic descriptors against a common integrator shape. See `sketch_decoder.jl`
+for the worked example. Against a split-form spelling of the same model (four
+components, thirteen connections), the merged form has half the components and
+wiring; everything derivable from pose alone migrates to stage 1, shortening the
+stage-2 chain.
 
 ### 7.5 Allocation policy: a scoped invariant
 
-Not dogma — three reasons, only one about speed: (1) GC-pause jitter control for
-real-time; (2) throughput for [unattended runs](#g-unattended-run); (3) **the canary**: an unexpected allocation
-is Julia's most reliable symptom of type instability, so a zero baseline makes
-`@allocated == 0` a CI-testable invariant that catches inference regressions at the
-offending commit.
+The allocation policy is not dogma. Three reasons support it, and only one is
+about speed. First, GC-pause jitter control for real-time. Second, throughput
+for [unattended runs](#g-unattended-run) — runs with empty staging and no snapshot readers.
+Third, **the canary**: an unexpected allocation is Julia's most reliable symptom
+of type instability. A zero baseline therefore makes `@allocated == 0` a
+CI-testable invariant, one that catches inference regressions at the offending
+commit.
 
-- **Continuous hot path** (per-stage evaluation), plus everything else that
-  runs unconditionally per frame or [boundary](#g-boundary) — [guards](#g-guard) (evaluated every
-  boundary, firing or not) and `project` (both [§5.3][s5-3] [schedule](#g-schedule) positions):
-  exactly zero, CI-enforced at the [§12.7][s12-7] phase-body [seam](#g-seam) (`phase_bodies`).
-- **Periodic [ticks](#g-tick) and event handlers** (episodic execution — a tick when
-  due, a handler only on firing): zero by idiom ([workspace](#g-workspace) + [snapshot](#g-snapshot)
-  pattern; immutable-value returns); documented tolerance for the rare
-  exception, scoped per body by the seam's granularity so it never loosens
-  the continuous assertions.
-- **Logging**: amortized-zero — snapshots are records stored *inline* in a
-  `Vector`, `sizehint!` for the expected duration making regrowth a non-event.
-  The inline-storage claim is about the snapshot record's *fields*, not about
-  everything reachable from them: a model carrying [§4.4][s4-4] [field handles](#g-field-handle) (heightmap
-  terrain, wind grids) has a snapshot type with reference fields, and those
-  ride as references to build-time-frozen data — no copy, no per-boundary
-  garbage, which is what the allocation claim asserts. What the claim does not
-  assert is that the snapshot is `isbits`; the per-boundary allocation cost is
-  zero either way, and the summarize-or-skip rule ([§4.4][s4-4]) governs what such a field
-  contributes on export.
+- **Continuous hot path** — per-stage evaluation, plus everything else that
+  runs unconditionally per frame or [boundary](#g-boundary). Those unconditional items are
+  [guards](#g-guard), evaluated every boundary whether they fire or not, and `project` at
+  both of its [§5.3][s5-3] [schedule](#g-schedule) positions. The budget is exactly zero,
+  CI-enforced at the [§12.7][s12-7] phase-body [seam](#g-seam) (`phase_bodies`).
+- **Periodic [ticks](#g-tick) and event handlers** — episodic execution, a tick when
+  due and a handler only on firing. Allocation here is zero by idiom: the
+  [workspace](#g-workspace) (component-declared mutable scratch arriving as the `ws` bundle
+  field) and [snapshot](#g-snapshot) pattern, plus immutable-value returns. The rare
+  exception has a documented tolerance, scoped per body by the seam's
+  granularity so it never loosens the continuous assertions.
+- **Logging**: amortized-zero. Snapshots are records stored *inline* in a
+  `Vector`, and `sizehint!` for the expected duration makes regrowth a
+  non-event. The inline-storage claim is about the snapshot record's *fields*,
+  not about everything reachable from them. A model carrying [§4.4][s4-4] [field
+  handles](#g-field-handle) — immutable query objects consumers evaluate at their own
+  arguments, such as heightmap terrain or wind grids — has a snapshot type with
+  reference fields. Those fields ride as references to build-time-frozen data:
+  no copy, no per-boundary garbage, which is what the allocation claim asserts.
+  What the claim does not assert is that the snapshot is `isbits`. The
+  per-boundary allocation cost is zero either way, and the summarize-or-skip
+  rule ([§4.4][s4-4]) governs what such a field contributes on export.
 - **What is not recorded**: event firings. The [log](#g-log) holds boundary snapshots and
   the [trace](#g-trace) holds staged inputs ([§9.2][s9-2], [§9.5][s9-5]); neither carries a per-event
   record. Which events fired at which boundary is recovered by [replay](#g-replay) plus the
-  published modes — the honest remedy of [§9.2][s9-2], a mode field declared public is
-  in every snapshot. An event-firing stream is a [guarded addition](#g-guarded-addition), not built.
+  published modes. The honest remedy ([§9.2][s9-2]) is to declare the mode field
+  public, and a mode field so declared is in every snapshot. An event-firing
+  stream is a [guarded addition](#g-guarded-addition) (a capability the design admits but does
+  not build).
 - **Tools where garbage is unavoidable**: arena allocation (Bumper.jl-style) for scoped
   temporaries; scheduled `GC.gc(false)` at frame boundaries to move collection out of
-  the critical path. (Julia has no per-object freeing; these are the honest levers.)
+  the critical path. Julia has no per-object freeing; these are the honest levers.
 
 ---
 
