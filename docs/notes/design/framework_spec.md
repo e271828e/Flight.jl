@@ -5868,19 +5868,26 @@ inside a stage, on probe-fed data.
 
 ### 12.4 Activations: executable sets, laziness, caching
 
-An **[activation](#g-activation) at `T`** re-runs [Stratum](#g-stratum) C with a different scalar:
-producer-fed [cells](#g-cell) re-typed by *evaluating* the producing [component](#g-component)'s output
-declaration at `T` ([§11.2][s11-2] — a continuous producer's two-argument
-declaration called at the scalar, a discrete producer's plain declaration
-pinning), root-[slot](#g-slot) cells by *evaluating* the consuming `input_types`
-entry at `T` (the permissive entries, [§11.2][s11-2] — a `T` entry follows the
-activation, a
-`Float64` entry stays frozen) and the
-state type by the walk over `init_x`'s, table and
-state [buffers](#g-buffer) re-laid-out, [workspace](#g-workspace) allocators re-invoked at `T` (re-invoked,
-not introduced — the first invocation precedes the Stratum B [probes](#g-probe),
-[§12.1][s12-1]/[§12.3][s12-3]; a [continuous component](#g-continuous-component)'s scratch carries the activation's
-scalar, [§7.3][s7-3]), probe chain re-run. Structure and [schedule](#g-schedule) are `T`-independent by construction.
+An **[activation](#g-activation) at `T`** re-runs [Stratum](#g-stratum) C with a
+different scalar:
+
+- producer-fed [cells](#g-cell) re-typed by *evaluating* the producing
+  [component](#g-component)'s output declaration at `T` ([§11.2][s11-2]) — a
+  continuous producer's two-argument declaration called at the scalar, a
+  discrete producer's plain declaration pinning;
+- root-[slot](#g-slot) cells re-typed by *evaluating* the consuming
+  `input_types` entry at `T`, which [§11.2][s11-2] reads permissively — a `T`
+  entry follows the activation, a `Float64` entry stays frozen;
+- the state type by the walk over `init_x`'s, with table and state
+  [buffers](#g-buffer) re-laid-out;
+- [workspace](#g-workspace) allocators re-invoked at `T`, not introduced — the
+  first invocation precedes the Stratum B [probes](#g-probe)
+  ([§12.1][s12-1]/[§12.3][s12-3]), and a
+  [continuous component](#g-continuous-component)'s scratch carries the
+  activation's scalar ([§7.3][s7-3]);
+- the probe chain re-run.
+
+Structure and [schedule](#g-schedule) are `T`-independent by construction.
 
 **Each activation probes exactly the function set it can execute.** A `Dual`
 activation (linearization, gradient trim) evaluates the model at a frozen
