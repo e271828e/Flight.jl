@@ -7530,7 +7530,7 @@ against today's `c172.jl`:
   write boundary because [§14.3][s14-3] selects the baked converter per leaf from the
   shape: a decision-descended leaf is `Dual`-typed there and takes the
   structural conversion, while the zero-partial embedding stays on the held
-  `Float64` leaves. What [§12.6][s12-6] leaves open as an option is now the
+  `Float64` leaves. What [§12.6][s12-6] leaves open as an option is here the
   *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians, in the
   trust-region/Levenberg–Marquardt register. Convergence is quadratic (~5–15
   evaluations), the tolerances are per-residual and physical, and failure
