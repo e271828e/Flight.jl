@@ -6788,99 +6788,149 @@ sees half a boundary.
 
 ### 13.7 Tooling consequences: provenance and the component library
 
-Computed [boundary](#g-boundary) connections gain protagonism under this section — termination chains are
-their second structural customer after generic-boundary [contracts](#g-contract) — and two
-commitments, a library and an idiom follow:
+Termination chains are the second structural customer of computed
+[boundary](#g-boundary) connections, after generic-boundary
+[contracts](#g-contract). Computed connections are therefore prominent in this
+section, and two commitments follow: a library and an idiom.
 
-- **The `input_passthrough` helper family grows deliberately.** Predicate-based selection
-  (an `endswith`-style filter alongside `except`/`only`) is a natural
-  extension: still explicit at the declaration site, still evaluated at
-  build, still printable — the [blessed](#g-blessed) side of the auto-bubbling line, where
-  the author writes down the *rule* and the build evaluates it into
-  inspectable data.
-- **The `Build` printer owes [face](#g-face) provenance.** For every root face, the
-  resolved chain down to the producing terminal (`"crashed" →
-  aircraft/monitor/out ← systems/ldg/{left,right,nose}/damaged`). Once faces
-  are computed rather than hand-listed, "what does this face actually reach"
-  is a question the artifact must answer, not the reader — and the same
-  rendering serves the wiring diagnostics, which already carry endpoint
-  paths.
-- **A standard [component](#g-component) library** makes good on the junction promise ([§6.2][s6-2]): that
-  promise rests on explicit junctions being *cheap*, and a junction
-  hand-written per arity per type is not. Starting
-  inventory strictly from demonstrated need — wrench/scalar summing
-  junctions, the Bool gates the termination chains use, `UnitDelay`, the
-  spelling the second loop-breaking remedy ([§5.5][s5-5]) needs, and
-  `Constant{V}`, the source block — growing by migration demand only
-  (Simulink's library is a language; this is a toolbox). One member is
-  admitted by persona rather than migration demand: `Group`, the on-the-fly
-  [assembly](#g-assembly), whose declaration-layer treatment lives in [§11.5][s11-5] (row 184) — it
-  serves the model assembler, for whom topology is data rather than a named
-  type, and it needs no rule the declaration layer does not already have.
-  Doctrine: **library blocks are ordinary components** — no
-  framework privileges, no special vocabulary — which keeps [schema authority](#g-schema-authority)
-  total and makes the library a permanent ergonomics [torture test](#g-torture-test): if a
-  three-input OR gate is painful to write under the declaration rules, the
-  rules are wrong. Arity comes from a type parameter (`Or{N}` builds
-  `(in1 = Bool, …, inN = Bool)` programmatically — [§11.2][s11-2]-blessed derivation,
-  and an early validation that the contract functions support parametric
-  components). [Tier](#g-tier)-transparency falls out of settled semantics: a stateless
-  continuous `h_xu` recomputes every [sweep](#g-sweep), so fed ZOH-held discrete signals
-  its output changes only at [ticks](#g-tick) — no tier-neutral class needed.
-  `UnitDelay{V}` is a **discrete** leaf at `K = 1`: `init_x = (v = zero(V),)`,
-  `h_x` publishing the stored value and `g` storing the incoming one — the
-  tier's native `z⁻¹` ([§8.6][s8-6], the shape [§15.2][s15-2]'s `sat_out_0` hand-writes), no
-  framework support. Its tier semantics are the point and must be stated
-  wherever the remedy is recommended: inserting one into a *continuous* loop
-  moves that signal onto the discrete tier and inserts a `Δt_base`-scale ZOH
-  into the model's mathematics — a modeling decision, the delayed signal being
-  genuinely sampled, not a transparent wire, which is why the diagnostic
-  ([§5.5][s5-5]) says so rather than offering the remedy as free. `Constant{V}`
-  is the
-  **source block**: no inputs, no state,
-  `output_types(::Constant{V}, ::Type{T}) where {V, T <: Real} = (out = V,)`,
-  and a stage-1 body returning
-  the value the instance holds — a stateless continuous leaf, so the
-  tier-transparency argument above already covers discrete consumers and no
-  discrete variant is needed. The declaration takes the [activation](#g-activation) scalar and
-  ignores it, which is the point: the block's output *is* its stored value, so
-  the leaf is **deliberately [pinned](#g-walked)** at that value's own type — a
-  `Constant{Float64}` declares a `Float64` port and means it, and the embedding
-  ([§11.2][s11-2]) turns it into the zero-partial constant it already was
-  under any `Dual` activation. The honest pin is spelled rather than
-  inferred. Two demonstrated needs admit it under this
-  bullet's charter: the zero-contributor configurations ([§6.2][s6-2]), where a
-  required aggregate input has no physical contributor and the zero total
-  must be spelled as a wire, and the rig stub below. Its value is instance
-  data, like junction arity — not an overridable default: a configuration
-  wanting an externally settable source uses a root [slot](#g-slot) ([§9.3][s9-3]), which
-  keeps the block from drifting into a back-door input default. A
-  migration-phase deliverable.
-- **The [component test rig](#g-component-test-rig)** is the library's companion idiom: a one-child
-  assembly whose `input_connections` surface the child's entire input face set —
-  `input_passthrough(rig, "child")` verbatim ([§11.8][s11-8]) — so any component can be built
-  and simulated in isolation: every input becomes a root slot fed by
-  ordinary conditions and [devices](#g-device), and every output is observable in the
-  [snapshot](#g-snapshot) table. One qualification, from the root-slot rule ([§11.2][s11-2]): an
-  *abstract* input entry (`terrain = AbstractTerrainField`, [§4.4][s4-4]) cannot
-  surface as a root slot — abstract-at-root is a build error — so the rig
-  satisfies it *inside* the rig: a concrete stub child (a
-  `SampleTerrainField` provider) wired to the face, and the concrete
-  remainder exposed via `input_passthrough(rig, "strut"; except = ("terrain",))`. That
-  stub child is typically just a `Constant` holding the test handle — the
-  source block's first shipped instance — with bespoke stubs remaining
-  ordinary components wherever the double must compute something.
-  Zero new machinery — wiring and `except` already exist — and it is the
-  substitutability contract doing its job: an [abstract entry](#g-abstract-entry) (an `input_types`
-  entry admitting any concrete producer face) declares that a substitute must
-  be chosen, and the rig choosing its test double explicitly, as ordinary
-  inspectable code, is precisely the isolation the rig exists to provide.
-  [`design_world`](#g-design_world)'s little sibling ([§14.9][s14-9]): where `design_world(ac)` mounts an
-  aircraft in a minimal world for trim and linearization, the rig mounts one
-  component behind a root contract for unit tests and open-loop probing.
-  Deliberately ordinary machinery end to end — no framework support, which
-  makes it, like the library blocks, a standing ergonomics test of the
-  declaration rules.
+**The `input_passthrough` helper family grows deliberately.** Predicate-based
+selection — an `endswith`-style filter alongside `except`/`only` — is a natural
+extension: still explicit at the declaration site, still evaluated at build,
+still printable. That is the [blessed](#g-blessed) side of the auto-bubbling
+line, where the author writes down the *rule* and the build evaluates it into
+inspectable data.
+
+**The `Build` printer owes [face](#g-face) provenance.** For every root face,
+that means the resolved chain down to the producing terminal (`"crashed" →
+aircraft/monitor/out ← systems/ldg/{left,right,nose}/damaged`). Once faces are
+computed rather than hand-listed, "what does this face actually reach" is a
+question the artifact must answer, not the reader. The same rendering serves the
+wiring diagnostics, which already carry endpoint paths.
+
+#### The standard component library
+
+**A standard [component](#g-component) library makes good on the junction
+promise ([§6.2][s6-2]).** That promise rests on explicit junctions being
+*cheap*, and a junction hand-written per arity per type is not.
+
+The starting inventory comes strictly from demonstrated need: wrench/scalar
+summing junctions, the Bool gates the termination chains use, `UnitDelay` — the
+spelling the second loop-breaking remedy ([§5.5][s5-5]) needs — and
+`Constant{V}`, the source block. The library grows by migration demand only:
+Simulink's library is a language; this is a toolbox.
+
+One member is admitted by persona rather than migration demand: `Group`, the
+on-the-fly [assembly](#g-assembly), whose declaration-layer treatment lives in
+[§11.5][s11-5] (row 184). `Group` serves the model assembler, for whom topology
+is data rather than a named type, and it needs no rule the declaration layer
+does not already have.
+
+Doctrine: **library blocks are ordinary components** — no framework privileges,
+no special vocabulary. Ordinary status is what keeps [schema
+authority](#g-schema-authority) total (declarations define structure;
+evaluation only checks conformance). That same status makes the library a
+permanent ergonomics [torture test](#g-torture-test): if a three-input OR gate
+is painful to write under the declaration rules, the rules are wrong.
+
+Arity comes from a type parameter: `Or{N}` builds `(in1 = Bool, …, inN = Bool)`
+programmatically — a derivation [§11.2][s11-2] blesses, and an early validation
+that the contract functions support parametric components.
+
+[Tier](#g-tier)-transparency falls out of settled semantics. A stateless
+continuous `h_xu` recomputes every [sweep](#g-sweep), so fed ZOH-held discrete
+signals its output changes only at [ticks](#g-tick). No tier-neutral class is
+needed.
+
+`UnitDelay{V}` is a **discrete** leaf at `K = 1`: the tier's native `z⁻¹`
+([§8.6][s8-6]), the shape `sat_out_0` hand-writes in [§15.2][s15-2], and it
+needs no framework support.
+
+```julia
+# UnitDelay{V} — a discrete leaf at K = 1; port face names elided
+init_x(::UnitDelay{V}) where {V} = (v = zero(V),)
+h_x(::UnitDelay, (; x)) = (; … = x.v)     # publishes the stored value
+g(::UnitDelay, (; u)) = (; v = …)         # stores the incoming one, from u
+```
+
+`UnitDelay`'s tier semantics are the point, and they must be stated wherever the
+remedy is recommended. Inserting a `UnitDelay` into a *continuous* loop moves
+that signal onto the discrete tier and inserts a `Δt_base`-scale ZOH into the
+model's mathematics. That is a modeling decision, the delayed signal being
+genuinely sampled rather than a transparent wire. The diagnostic
+([§5.5][s5-5]) therefore says so rather than offering the remedy as free.
+
+`Constant{V}` is the **source block**: no inputs, no state, and a stage-1 body
+returning the value the instance holds.
+
+```julia
+# Constant{V} — a stateless continuous leaf; its value is instance data
+output_types(::Constant{V}, ::Type{T}) where {V, T <: Real} = (out = V,)
+h_x(c::Constant, _) = (; out = …)         # the value the instance holds
+```
+
+`Constant` is a stateless continuous leaf, so the tier-transparency argument
+above already covers discrete consumers and no discrete variant is needed. The
+declaration takes the [activation](#g-activation) scalar (a re-run of Stratum C
+at a given scalar type) and ignores it. That is the point: the block's output
+*is* its stored value, so the leaf is **deliberately [pinned](#g-walked)** at
+that value's own type. A `Constant{Float64}` declares a `Float64` port and means
+it, and the embedding ([§11.2][s11-2]) turns it into the zero-partial constant
+it already was under any `Dual` activation. The honest pin is spelled rather
+than inferred.
+
+Two demonstrated needs admit `Constant` under the inventory's demonstrated-need
+charter. The zero-contributor configurations ([§6.2][s6-2]) are one: a required
+aggregate input has no physical contributor, and the zero total must be spelled
+as a wire. The rig stub below is the other. The block's value is instance data,
+like junction arity, not an overridable default: a configuration wanting an
+externally settable source uses a root [slot](#g-slot) ([§9.3][s9-3]), which
+keeps the block from drifting into a back-door input default. A migration-phase
+deliverable.
+
+#### The component test rig
+
+**The [component test rig](#g-component-test-rig) is the library's companion
+idiom.** It is a one-child assembly whose `input_connections` surface the
+child's entire input face set — `input_passthrough(rig, "child")` verbatim
+([§11.8][s11-8]). Any component can therefore be built and simulated in
+isolation: every input becomes a root slot fed by ordinary conditions and
+[devices](#g-device), and every output is observable in the
+[snapshot](#g-snapshot) table.
+
+One qualification comes from the root-slot rule ([§11.2][s11-2]). An *abstract*
+input entry (`terrain = AbstractTerrainField`, [§4.4][s4-4]) cannot surface as a
+root slot, because abstract-at-root is a build error. The rig therefore
+satisfies that entry *inside* the rig: a concrete stub child (a
+`SampleTerrainField` provider) wired to the face, with the concrete remainder
+exposed via `input_passthrough(rig, "strut"; except = ("terrain",))`.
+
+```julia
+struct StrutRig <: AbstractComponent    # the rig: component under test + stub
+    strut::Strut
+    stub::Constant{SampleTerrainField}  # the test handle, held as instance data
+end
+
+child_connections(::StrutRig) = ("stub/out" => "strut/terrain",)
+input_connections(rig::StrutRig) =
+    (input_passthrough(rig, "strut"; except = ("terrain",))...,)
+```
+
+That stub child is typically just a `Constant` holding the test handle — the
+source block's first shipped instance. Bespoke stubs remain ordinary components
+wherever the double must compute something.
+
+The rig adds zero new machinery: wiring and `except` already exist. It is the
+substitutability contract doing its job. An [abstract entry](#g-abstract-entry)
+(an `input_types` entry admitting any concrete producer face) declares that a
+substitute must be chosen, and the rig choosing its test double explicitly, as
+ordinary inspectable code, is precisely the isolation the rig exists to provide.
+
+The rig is [`design_world`](#g-design_world)'s little sibling
+([§14.9][s14-9]): where `design_world(ac)` mounts an aircraft in a minimal world
+for trim and linearization, the rig mounts one component behind a root contract
+for unit tests and open-loop probing. The machinery is deliberately ordinary end
+to end, with no framework support. That makes the rig, like the library blocks,
+a standing ergonomics test of the declaration rules.
 
 ---
 
