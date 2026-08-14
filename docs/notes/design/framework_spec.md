@@ -9094,71 +9094,95 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   trace = true, log = true, log_every = 1, log_max = 65536)` —
   wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
   the `Build` overload takes the same deployment keywords and deploys an
-  inspected artifact directly, [§12.2][s12-2]); `h` is required (a domain rate is not a
-  framework default) and `RK4` is the default stepper ([§8.2][s8-2]); `Δt_base` binds
-  from exactly one of three sources ([§12.1][s12-1]): the `Δt_base` keyword — a
-  `Rational`, `Period` or `Hz` value, `n` then derived and validated an
-  integer ≥ 1 — the `n·h` product when the keyword is absent (the default
-  path), or, in a fully anchored model omitting both, derivation from the
-  constraint pool at the coarsest admissible value, printed with its drivers
-  ([§12.2][s12-2]); `t_end = Inf` is the honest interactive default —
-  open-ended in time but bounded in memory, `log_max` being what keeps such a
-  session from growing without limit ([§9.2][s9-2]) — and
-  a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
-  start (an unbounded unattended run is almost always an oversight); `stop_on`
-  names root-exported `Bool` output faces, OR-combined, recorded in
-  run metadata — the trace header's deployment block ([§9.5][s9-5], [§13.5][s13-5];
-  walkthrough [§15.4][s15-4]). `t_end` and `stop_on` are
-  **defaults**, overridable per run at `run!` ([§13.5][s13-5], [§10.6][s10-6]); a run ends
-  at the first grid boundary reaching or exceeding `t_end`, whole frames only
-  ([§10.4][s10-4]). `localization_tol` is the root-finder's relative bracket-width
-  convergence test (`localization_tol · h`) and `localization_budget` the per-frame
-  localization allowance ([§8.4][s8-4]); `firing_budget` is the per-event,
-  per-boundary firing allowance of the event iteration ([§8.6][s8-6]), an integer
-  ≥ 1 whose exhaustion drops that event's further edges at that boundary under
-  a `FiringBudget` warning. All three are
-  trajectory-determining like their siblings,
-  hence validated with them (`DeploymentInvalid`) and recorded in the
-  deployment block, where replay compares them ([§9.5][s9-5], [§10.7][s10-7]). Recording:
-  `trace` is the input trace's plain kill switch and `log` the snapshot log's,
-  with `log_every` the log's keep-every-kth decimation — admissible on the
-  derived artifact only, never on the trace ([§9.2][s9-2], [§9.5][s9-5], row 29) — and
-  `log_max` the maximum number of retained snapshots, finite by default with
-  `Inf` the opt-out: when the log fills, the retention stride doubles, so the
-  whole run stays covered at coarsening density, the boundary-zero and terminal
-  snapshots being retained unconditionally and outside the bound ([§9.2][s9-2]). Both
+  inspected artifact directly, [§12.2][s12-2]).
+
+  | keyword | default | meaning | owning section |
+  |---|---|---|---|
+  | `algorithm` | `RK4()` | the stepper; `RK4` is the default | [§8.2][s8-2] |
+  | `h` | — | required: a domain rate is not a framework default | [§8.2][s8-2] |
+  | `n` | `1` | absent the `Δt_base` keyword, the `n·h` product is the base period (the default path); given it, `n` is instead derived and validated an integer ≥ 1 | [§12.1][s12-1] |
+  | `Δt_base` | `nothing` | the base period as a `Rational`, `Period` or `Hz` value; one of three binding sources | [§12.1][s12-1] |
+  | `t_end` | `Inf` | the run's end time — a **default**, overridable per run at `run!` | [§13.5][s13-5], [§10.6][s10-6] |
+  | `stop_on` | `()` | root-exported `Bool` output faces, OR-combined — a **default**, overridable per run at `run!` | [§13.5][s13-5], [§10.6][s10-6] |
+  | `localization_tol` | `1e-6` | the root-finder's relative bracket-width convergence test (`localization_tol · h`) | [§8.4][s8-4] |
+  | `localization_budget` | `8` | the per-frame localization allowance | [§8.4][s8-4] |
+  | `firing_budget` | `4` | the per-event, per-boundary firing allowance of the event iteration, an integer ≥ 1 | [§8.6][s8-6] |
+  | `trace` | `true` | the input trace's plain kill switch | [§9.5][s9-5] |
+  | `log` | `true` | the snapshot log's plain kill switch | [§9.2][s9-2] |
+  | `log_every` | `1` | the log's keep-every-kth decimation | [§9.2][s9-2] |
+  | `log_max` | `65536` | the maximum number of retained snapshots, finite by default with `Inf` the opt-out | [§9.2][s9-2] |
+
+  `Δt_base` binds from exactly one of three sources ([§12.1][s12-1]): the
+  `Δt_base` keyword — a `Rational`, `Period` or `Hz` value, `n` then derived
+  and validated an integer ≥ 1 — the `n·h` product when the keyword is absent
+  (the default path), or, in a fully anchored model omitting both, derivation
+  from the constraint pool at the coarsest admissible value, printed with its
+  drivers ([§12.2][s12-2]).
+
+  `t_end = Inf` is the honest interactive default — open-ended in time but
+  bounded in memory, `log_max` being what keeps such a session from growing
+  without limit ([§9.2][s9-2]). A run with no finite `t_end`, no `stop_on`
+  faces and `pace = Inf` warns at start, an unbounded unattended run being
+  almost always an oversight. A run ends at the first grid boundary reaching
+  or exceeding `t_end`, whole frames only ([§10.4][s10-4]). The `stop_on` faces
+  are recorded in run metadata — the trace header's deployment block
+  ([§9.5][s9-5], [§13.5][s13-5]; walkthrough [§15.4][s15-4]).
+
+  An event that exhausts `firing_budget` at a boundary loses its further edges
+  there, under a `FiringBudget` warning ([§8.6][s8-6]). `localization_tol`,
+  `localization_budget` and `firing_budget` are all three
+  trajectory-determining like their siblings, hence validated with them
+  (`DeploymentInvalid`) and recorded in the deployment block, where replay
+  compares them ([§9.5][s9-5], [§10.7][s10-7]).
+
+  Recording: `log_every` is admissible on the derived artifact only, never on
+  the trace ([§9.2][s9-2], [§9.5][s9-5], row 29). When the log fills, the
+  retention stride doubles, so the whole run stays covered at coarsening
+  density, the boundary-zero and terminal snapshots being retained
+  unconditionally and outside the bound ([§9.2][s9-2]). Both
   are view policies, not trajectory-determining: neither enters the deployment
   block, and replay neither records nor compares them.
 - `attach!(sim, dev::AbstractDevice, binding::AbstractBinding; should_abort = false)`
-  — the roots are mandatory and the signature is the gate; **sides are declared**
-  by the Bool traits `is_input`/`is_output` (framework defaults false on
-  `AbstractBinding`), with a conformance check at attach pairing each trait
-  against its method — error fallbacks for a declared side whose `claims`/`reads`
-  was never written, `which`-against-the-fallback for a method defined under a
-  false trait, both `BindingContractMismatch` ([§9.6][s9-6]):
-  `claims(b)`/`map_input(datum, b)` is the input side (the enumerated face
-  set *is* the claim — what the device may write,
-  not what it will — registered with exclusivity enforced, the staged
-  shape and normalization shim compiled, [§9.4][s9-4]); the trait
-  `is_greedy(b) = true` switches the claim's *source* — the framework
-  computes the unclaimed complement at attach instead of calling `claims`,
-  everything downstream being identical, an empty remainder legal and
+  — the roots are mandatory and the signature is the gate.
+
+  | argument | default | meaning | owning section |
+  |---|---|---|---|
+  | `dev::AbstractDevice` | — | the device instance; the root type is mandatory | [§9.6][s9-6] |
+  | `binding::AbstractBinding` | — | the binding value; the root type is mandatory | [§9.6][s9-6] |
+  | `should_abort` | `false` | the per-attachment failure policy: set, the device's departure also requests a sim stop; clear, the run continues with the device absent and its claims held to run end | [§9.6][s9-6], [§10.4][s10-4] |
+
+  A departure is the loop body returning, a crash, or a failed `init!`.
+
+  **Sides are declared** by the binding's Bool traits, and each declared side
+  carries its own methods:
+
+  | trait / method | default | meaning | owning section |
+  |---|---|---|---|
+  | `is_input(b)` | `false` on `AbstractBinding` | declares the input side | [§9.6][s9-6] |
+  | `is_output(b)` | `false` on `AbstractBinding` | declares the output side | [§9.6][s9-6] |
+  | `is_greedy(b)` | — | `true` switches the claim's *source* | [§9.3][s9-3], [§9.6][s9-6] |
+  | `claims(b)` / `map_input(datum, b)` | — | the input side: the enumerated face set *is* the claim — what the device may write, not what it will | [§9.4][s9-4] |
+  | `reads(b)` / `map_output(nt, b)` | — | the output side | [§14.4][s14-4], [§9.2][s9-2] |
+
+  The conformance check pairs each trait against its method: error fallbacks
+  for a declared side whose `claims`/`reads` was never written,
+  `which`-against-the-fallback for a method defined under a false trait, both
+  `BindingContractMismatch` ([§9.6][s9-6]). A claim is registered with
+  exclusivity enforced, and the staged shape and normalization shim are
+  compiled ([§9.4][s9-4]); the `reads` selectors are validated and compiled to
+  one gather ([§14.4][s14-4], [§9.2][s9-2]). Under `is_greedy(b) = true` the
+  framework computes the unclaimed complement at attach instead of calling
+  `claims`, everything downstream being identical, an empty remainder legal and
   reported (`EmptyGreedyClaim`), and `is_greedy` without `is_input` an error
-  ([§9.3][s9-3], [§9.6][s9-6]); `reads(b)`/
-  `map_output(nt, b)` is the output side ([§14.4][s14-4] selectors validated and
-  compiled to one gather, [§9.2][s9-2]); `TableBinding` is the shipped
-  data-driven binding, the standard GUI binding the shipped greedy
-  one ([§9.6][s9-6]). A stopped-sim operation — legal in `built`,
-  `initialized` and `stopped`, an error while `running`
-  (`ServiceLifecycle`, [§9.3][s9-3]'s roster freeze); admission checks identity
-  (`AlreadyAttached` — one roster entry per instance, rebinding =
-  `detach!` + `attach!`), calling-task affinity (`CallerTaskConflict` —
-  at most one holder) and claims (`ClaimConflict`), [§9.3][s9-3]; registers
-  only, the task appears at the next `run!`. `should_abort` is the
-  per-attachment failure policy: set, the device's departure — loop body
-  returning, crash, or a failed `init!` — also requests a sim stop; clear (the
-  default), the run continues with the device absent and its claims held to run
-  end ([§9.6][s9-6], [§10.4][s10-4]).
+  ([§9.3][s9-3], [§9.6][s9-6]). `TableBinding` is the shipped data-driven
+  binding, the standard GUI binding the shipped greedy one ([§9.6][s9-6]).
+
+  `attach!` is a stopped-sim operation — legal in `built`, `initialized` and
+  `stopped`, an error while `running` (`ServiceLifecycle`; the roster freeze,
+  [§9.3][s9-3]). Admission checks identity (`AlreadyAttached` — one roster
+  entry per instance, rebinding = `detach!` + `attach!`), calling-task affinity
+  (`CallerTaskConflict` — at most one holder) and claims (`ClaimConflict`),
+  [§9.3][s9-3]. It registers only: the task appears at the next `run!`.
 - `detach!(sim, device)` — removes the roster entry and releases the
   device's claims; stopped-sim only, like `attach!`. A loop body's
   voluntary exit or crash mid-run does *not* detach: the task dies, the
@@ -9166,8 +9190,9 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 - The device contract — `MyDevice <: AbstractDevice` plus `init!(dev)` /
   `loop(dev, handle)` /
   `shutdown!(dev)` / optional `unblock!(dev)` / optional trait
-  `needs_calling_task(dev) = false` ([§9.1][s9-1]'s topology: at most one per
-  roster, its loop body runs inline on the calling task): per-run `init!`
+  `needs_calling_task(dev) = false`, a trait the task topology admits at most
+  one of per roster and whose device runs its loop body inline on the calling
+  task ([§9.1][s9-1]). Around those functions: per-run `init!`
   on the calling task — bracketed, so a throw there is `shutdown!` plus
   `DeviceCrash` by name and the device is dead from boundary zero
   ([§10.4][s10-4]) — the author-owned task body inside the framework's
@@ -9201,8 +9226,8 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   Jacobians, against the problem's own `tolerances`
   (`residuals(reads, d) → NamedTuple`, packed in `tolerances`' field order as
   decisions pack in `guess`'s — names pair, order is the declared side's,
-  [§14.7][s14-7]'s
-  closed seven-field problem); setup and commit both carry the slot-totality
+  within the problem [§14.7][s14-7] closes at seven fields); setup and commit
+  both carry the slot-totality
   check ([§14.6][s14-6]); commit = `init!` with `override(baseline, solution)` —
   boundary zero anchored at `t0`, recordings cleared ([§10.6][s10-6]); resume-at-
   time = `capture`'s returned `t` as `t0`; `converged` = the service's
@@ -9224,32 +9249,37 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 **Running.**
 
 - `run!(sim; gui = false, pace = 1, margin = 0.002, t_end = <ctor value>,
-  stop_on = <ctor value>)` — paced and unpaced runs bit-identical
-  ([§8.7][s8-7]); the GUI an ordinary rostered device rendered on the calling task
-  ([§9.6][s9-6], [§9.7][s9-7]); `gui = true` is **run-scoped attachment** — at run entry it
-  attaches the standard GUI device under the standard greedy binding, with
-  `should_abort = true`, **iff no GUI is already rostered**, and the shutdown
-  tail detaches it again ([§10.4][s10-4]), the error path included, so a
-  hand-attached GUI makes the flag a
-  no-op rather than an admission error and nothing the flag did survives the
-  run; a persistent GUI session is spelled `attach!`/`detach!` by hand.
-  Placement follows the roster, not the flag: a rostered GUI
-  moves the loop to a spawned task for as long as it is rostered
-  ([§9.1][s9-1], [§10.6][s10-6]); sugar
-  never activates by default. `run!` blocks until the run ends; deviceless
-  it is fully synchronous on the calling task; `init!` required first
-  ([§10.6][s10-6]). `margin` is the single pacing
-  knob ([§8.7][s8-7]), in seconds and defaulting to 2 ms — the sleep primitive's
-  granularity plus its measured overshoot — with `0` / 2 ms / `∞` spanning the
-  design space. `t_end` and
-  `stop_on` override the constructor's defaults **for this run only**, with
-  `stop_on` validated against the `Build` here exactly as at construction, and
-  the effective pair recorded in the run metadata ([§13.5][s13-5]).
+  stop_on = <ctor value>)` — `run!` blocks until the run ends; deviceless it is
+  fully synchronous on the calling task; `init!` required first
+  ([§10.6][s10-6]). Paced and unpaced runs are bit-identical ([§8.7][s8-7]).
+
+  | keyword | default | meaning | owning section |
+  |---|---|---|---|
+  | `gui` | `false` | **run-scoped attachment**: at run entry it attaches the standard GUI device under the standard greedy binding, with `should_abort = true`, **iff no GUI is already rostered** | [§10.4][s10-4], [§9.6][s9-6], [§9.7][s9-7] |
+  | `pace` | `1` | the run's pacing rate | [§8.7][s8-7] |
+  | `margin` | `0.002` | the single pacing knob, in seconds | [§8.7][s8-7] |
+  | `t_end` | the constructor's value | overrides that default **for this run only** | [§13.5][s13-5] |
+  | `stop_on` | the constructor's value | overrides that default **for this run only**, validated against the `Build` here exactly as at construction | [§13.5][s13-5] |
+
+  The GUI is an ordinary rostered device rendered on the calling task
+  ([§9.6][s9-6], [§9.7][s9-7]). Under `gui = true` the run's shutdown tail
+  detaches that GUI again ([§10.4][s10-4]), the error path included, so a
+  hand-attached GUI
+  makes the flag a no-op rather than an admission error and nothing the flag
+  did survives the run; a persistent GUI session is spelled `attach!`/`detach!`
+  by hand. Placement follows the roster, not the flag: a rostered GUI moves the
+  loop to a spawned task for as long as it is rostered ([§9.1][s9-1],
+  [§10.6][s10-6]); sugar never activates by default.
+
+  `margin` defaults to 2 ms, the sleep primitive's granularity plus its
+  measured overshoot, with `0` / 2 ms / `∞` spanning the design space
+  ([§8.7][s8-7]). The effective `t_end`/`stop_on` pair is recorded in the run
+  metadata ([§13.5][s13-5]).
 - `step!(sim; frames = 1) → frames_advanced` — synchronous partial advance
   through the ordinary frame sequence, bit-identical to the same frames under
   `run!`; `t_plus = <duration>` is the mutually-exclusive duration spelling
-  (whole frames until the boundary time covers it); returns the frames
-  *actually* advanced, fewer than requested when
+  (whole frames until the boundary time covers that duration); returns the
+  frames *actually* advanced, fewer than requested when
   `t_end` or a `stop_on` face ended the run inside the call. Between calls the
   simulation reports `initialized`; `run!` may follow and continues from the
   current boundary; a stepping session is deviceless — write via `stage!`,
@@ -9274,7 +9304,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   valid but off-trajectory — re-run `init!` to continue ([§12.7][s12-7]).
 - Control plane — pause/un-pause, pace and `margin` changes, stop on a
   separate atomic surface, never staged ([§10.1][s10-1]; pacing sits outside the
-  semantics, so both are safe to change live).
+  semantics, so pace and `margin` are both safe to change live).
 - Termination — model state via `stop_on` faces read at every published
   boundary ([§13.5][s13-5]); shutdown completes a boundary, publishes the final
   snapshot, then joins ([§10.4][s10-4]).
