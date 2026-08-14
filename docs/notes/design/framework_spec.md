@@ -4727,7 +4727,7 @@ lowers to them adds convenience and no semantics.
 
 #### The namespace: declarations are extended, not called
 
-**Rule.** The declarations and stage functions are extended, not called:
+**Rule.** The framework's extensible functions are extended, not called:
 authoring a component means adding methods to framework-owned generic functions.
 
 Julia admits that only through an explicit per-name `import`, or through a
@@ -4764,8 +4764,8 @@ from `Flight.f` — add `import Flight: f`". The check is a two-line
 
 A convenience macro expanding to the import list remains addable-a-posteriori
 sugar per this section's macro doctrine. A re-export submodule is not an
-alternative: per-name `import` is the only extension register the language
-provides (row 117).
+alternative: per-name `import` is the only *unqualified* extension register the
+language provides (row 117).
 
 **The same trap has a local-scope sibling** (row 164). Written inside a `let`, a
 function body or a `@testset`, `h_x(::MyComp, (; x)) = …` does not add a method
@@ -5508,9 +5508,11 @@ The rule is total. A `<: AbstractComponent` type declaring neither family has
 no class to read, and is a build error naming both families rather than a
 silence that fails later and elsewhere. That error sharpens into a did-you-mean
 when the type has component-typed fields ("holds components but declares no
-`child_connections`"). `child_connections` plus `init_x` or a stage on one type
-is a build error as well: assemblies have no state of their own —
-no-atomic-assemblies at declaration time ([§8.5][s8-5]).
+`child_connections`"). `child_connections` plus any leaf declaration on one type
+is a build error as well. Assemblies have no state of their own —
+no-atomic-assemblies at declaration time ([§8.5][s8-5]). They have no contract
+of their own either: an assembly's faces are derived from its children
+([§11.6][s11-6]).
 
 Reading which declarations exist is reading declarations — the same move as
 visibility-by-declaration-site ([§11.3][s11-3]), not the banned
@@ -5603,8 +5605,9 @@ face list. Publicity is never implicit ([§11.3][s11-3]).
 
 **Root [slots](#g-slot) fall out with no vocabulary**: at every non-root level an input face
 declared through `input_connections` is fed by the parent's wire; at the root there
-is no parent, and the face *is* the [write surface](#g-write-surface), the set
-of faces a writer's batch entries may reach ([§9.3][s9-3]). The whole-tree
+is no parent, and the root's input faces *are* the
+[write surface](#g-write-surface), the set of faces a writer's batch entries may
+reach ([§9.3][s9-3]). The whole-tree
 obligation model ([§6.1][s6-1]) states the complementary error rule. An
 assembly never declares its external connections — those live in the parent
 that instantiates it, exactly as a leaf's do.
@@ -5986,7 +5989,7 @@ Admissibility is exact GCD arithmetic over the **constraint pool**:
 
 | quantity | value |
 |---|---|
-| the constraint pool | every anchor's period and every nonzero offset |
+| the constraint pool | every anchor's period and every nonzero anchor offset `τ` |
 | an admissible `Δt_base` | one dividing every pool entry, equivalently one dividing `gcd(pool)` |
 | the admissible set | `gcd(pool)/k`, for integer `k ≥ 1` |
 | the derived `Δt_base` | `gcd(pool)` itself, the coarsest admissible value |
@@ -6053,6 +6056,9 @@ it.** From [Stratum](#g-stratum) A the artifact gains two printable tables: the 
 table** — each anchor's exact `(T, τ)` rationals with the declaring scope's
 path and key — and the **[component](#g-component) table** of `(anchor, m, c)` triples with
 their declaration provenance, the `Relative`/`Absolute` chain down the tree.
+The base grid `A₀` takes an anchor-table row of its own, with a dash in the
+scope and key columns: no scope declares it. Its `(T, τ)` stays symbolic there
+until `Δt_base` binds.
 For a fully relative model the only anchor is `A₀` and the triples *are* the
 final base-[tick](#g-tick) `(D, Φ)` pairs; when anchors exist, final divisors cannot
 live here — they do not exist until `Δt_base` binds, and the same `Build`
@@ -6061,7 +6067,10 @@ Binding ([§12.1][s12-1]) produces the **[bound schedule](#g-bound-schedule)**, 
 on the `Simulation`: per discrete component, `(D, Φ, Δt)` with the anchor and
 provenance columns carried through — the single source of truth for `Δt`
 ([§8.5][s8-5]), the substrate of the grid diagnostics below, and the table that
-answers "when does what run, and what coincides with what". Its `show`-form
+answers "when does what run, and what coincides with what".
+[Rate scopes](#g-rate-scope) — an assembly's `sample_times` declaration against
+the enclosing scope — appear in it beside the discrete components, each with its
+own `(Dₛ, Φₛ)`. The bound schedule's `show`-form
 is the **hyperperiod chart**: the pattern repeats with period `lcm(Dᵢ)` base
 ticks — the gate is pure modulo arithmetic, so one hyperperiod is the
 complete truth, not a sample — rendered as a tick chart over
@@ -6564,7 +6573,8 @@ from superlinear in the largest body to linear in entry count.
 
 Measured anchors, taken 2026-07 over synthetic ~15-op bodies on Apple Silicon,
 with the last two rows extrapolated to a C172X-scale model — roughly 200–400
-entries, larger bodies ([§15.4][s15-4]):
+entries, larger bodies ([§15.4][s15-4]). Those two rows assume the chunked
+mode, the one whose cost is linear in entry count:
 
 | case | activation | compile time |
 |---|---|---|
@@ -6704,13 +6714,14 @@ what a fail-fast site produces is in either case a *diagnostic*, so the shape of
 that value decides what an acceptance test can assert and what a user reads.
 
 **Rule.** A diagnostic is a plain value from a small closed set of
-[kinds](#g-kind). **[Appendix C][sC]** enumerates that set normatively: kind
+[kinds](#g-kind) (row 58). **[Appendix C][sC]** enumerates that set normatively: kind
 name, [payload](#g-payload) fields, owning section, severity. That table is the
 artifact the [§11.4][s11-4] acceptance tests and the error-message work are
 written against. Each kind carries its own structured payload: endpoint paths,
 [face](#g-face) names, expected/observed types, a severity, and the
 *list-in-hand* a [did-you-mean](#g-did-you-mean) needs (the offending name plus
-the list it should have matched).
+the list it should have matched). A kind *is* a Julia type, and severity is one
+of its payload fields, [Appendix C][sC]'s severity column derived from it.
 
 Checking passes return diagnostics; the [stratum](#g-stratum) barrier (a stratum
 is one of the build's three phases: structure, schedule, activation) throws a
@@ -6819,8 +6830,8 @@ below without defining them. All three are normative in the forms given here:
 - `resolve(asm, path::String) → AbstractComponent` — the getfield walk along
   `/`-segments.
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — the stringified keys of
-  a leaf's `input_types` (the key set is `T`-independent); the entries of
-  `input_connections(c)` / `output_connections(c)` for an
+  a leaf's `input_types` / `output_types` (the key set is `T`-independent); the
+  entries of `input_connections(c)` / `output_connections(c)` for an
   [assembly](#g-assembly). Declaration order is preserved: deterministic
   printouts, stable diagnostics.
 - `resolve_terminal(asm, path) → (component, name)` — splits a terminal path's
@@ -6852,8 +6863,8 @@ one the law ([§6.1][s6-1]) lives in, so it applies that law verbatim. The
 load-bearing register evaluates at the authoring or mount level for two
 reasons: the locality law is an authoring-level law, absolute paths being a
 compiled derivative ([§14.2][s14-2]); and a mount prefix is checked by the
-mount itself, which validates the problem's declared type against the mount
-point's [contract](#g-contract) ([§14.9][s14-9]). So this register checks the
+mount itself, where the problem's authored names resolve through the export
+chain from the mount point ([§14.9][s14-9]). So this register checks the
 authored path below that prefix. The diagnostic register walks instances
 instead. A generic [seam](#g-seam) is not an error for a client that never
 claimed substitutability: "what is in *this* build" is the inspection
@@ -7235,8 +7246,8 @@ aggregate input has no physical contributor, and the zero total must be spelled
 as a wire. The rig stub below is the other. The block's value is instance data,
 like junction arity, not an overridable default: a configuration wanting an
 externally settable source uses a root [slot](#g-slot) ([§9.3][s9-3]), which
-keeps the block from drifting into a back-door input default. A migration-phase
-deliverable.
+keeps the block from drifting into a back-door input default. The library is a
+migration-phase deliverable.
 
 #### The component test rig
 
@@ -7675,7 +7686,7 @@ ordinary boundary is exact, not approximate. Piece by piece:
   Suppressing those firings was rejected (row 67), on the
   [stage-on-interaction](#g-stage-on-interaction) lesson of [§9.7][s9-7] (widgets
   stage on edit or activation, never per render pass): insurance that masks
-  invariant violations is anti-diagnostic. The header records the *resolved
+  invariant violations is anti-diagnostic (row 26). The header records the *resolved
   pre-sequence* stores and slots ([§9.5][s9-5]), so replay re-executes
   [boundary](#g-boundary) zero from the same starting point and whatever fires at
   `t₀` fires again identically ([§10.7][s10-7]). The firings are recomputed,
@@ -7881,9 +7892,9 @@ against today's `c172.jl`:
   write boundary because [§14.3][s14-3] selects the baked converter per leaf from the
   shape: a decision-descended leaf is `Dual`-typed there and takes the
   structural conversion, while the zero-partial embedding stays on the held
-  `Float64` leaves. What [§12.6][s12-6] leaves open as an option is here the
-  *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians, in the
-  trust-region/Levenberg–Marquardt register. Convergence is quadratic (~5–15
+  `Float64` leaves. The *default* is nonlinear least squares on $r(d)$ with
+  exact AD Jacobians, in the trust-region/Levenberg–Marquardt register
+  ([§12.6][s12-6]). Convergence is quadratic (~5–15
   evaluations), the tolerances are per-residual and physical, and failure
   reports name the unbalanced equations with magnitudes. The convergence
   verdict itself is service-owned and backend-independent ([§14.8][s14-8]).
@@ -8175,14 +8186,15 @@ detonates [pinned](#g-walked) intermediates with a culprit-naming
 `InexactError`, and `build(world; activations)` puts it in CI. The robustness
 comes from enforcement, not hope.
 
-C172 migration audit (one afternoon, one genuine item):
+C172 migration audit (one afternoon):
 
 - `Interpolations.jl` tables (propeller coefficient maps, engine maps) must
   accept generic scalars. They do; but prefer cubic knots over linear where
   partials matter, since linear knots make Jacobian entries piecewise-constant.
 - In-model saturations (actuator limits, idle/FRC clamps) zero Jacobian columns
   when active. LM damping tolerates the rank deficiency and the report names
-  it, and cruise trim leaves those saturations inactive.
+  the saturated variable (row 70), and cruise trim leaves those saturations
+  inactive.
 - The landing gear is never evaluated off-zero airborne.
 - `norm`-at-zero guards are already in place (e5efb3a).
 
@@ -8300,8 +8312,9 @@ compiled writer/reader pair, and the promised `get_x_ss` deletion
 the trim service's mechanism verbatim ([§14.8][s14-8]) — and applies the
 operating-point condition. It then runs **one** Dual evaluation, seeded with
 one direction per `x`-tap and per `u`-tap entry (chunked internally). Value
-parts give `ẋ₀` and `y₀`; partials give `A`, `B`, `C`, `D` simultaneously,
-exact to machine precision:
+parts give `ẋ₀` and `y₀`; partials give `A` and `B` against the `x`- and
+`u`-seeds, `C` and `D` against the same seeds read at `y` — all four
+simultaneously, exact to machine precision:
 
 ```
   x-taps ─┐                                         ┌─ value parts → ẋ₀, y₀
@@ -8457,7 +8470,7 @@ specified here:
 
 | Today (convention) | This design (checked structure) |
 |---|---|
-| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` dissolves |
+| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` dissolves (row 34) |
 | Hand-ordered `f_ode!` body (kinematics → airdata → systems → route five `dynamics.u` assignments → dynamics last) | Build-time topological sort; wrong wiring = build error naming the cycle or dangling [port](#g-port) |
 | Velocity state duplicated in `dynamics.x` and `kinematics.u`, kept in sync by hand | One state, one owner; consumers wire to `dyn.vel` |
 | `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | [Summing junctions](#g-summing-junction) at ownership [boundaries](#g-boundary), one explicit wire per contributor, exported totals ([§6.2][s6-2]) |
@@ -8642,7 +8655,8 @@ world the design does not have. The findings below are read under that scope.
   wobbles, and the pattern differs run to run. The [trace](#g-trace) replays any
   given run exactly; the behavior is still a timing artifact. Under per-device
   cells the GUI stages in every drag frame: ≥ one render per 20 ms frame, plus
-  the active-widget contract. The GUI therefore wins every [drain](#g-drain) (the
+  the active-widget stage-every-pass contract. The GUI therefore wins every
+  [drain](#g-drain) (the
   frame-top swap that publishes staged device inputs into the root slots) by
   attachment order. That win is a clean, deterministic override for exactly the
   grab duration. Same user code, qualitatively different physics.
@@ -8803,8 +8817,8 @@ One [frame](#g-frame) each:
 - *Mode engage*: the GUI stages `mode_req`, plus optionally peek-captured
   setpoint slots. **Bumpless-engage semantics live in the FCS already**: the
   current `ControlLaws` latches each controller's reference from the present
-  command vector on mode transitions. So the fork dissolved: semantic capture is
-  aircraft design. That arrangement is the status quo, and it is uniform across
+  command vector on mode transitions. So the capture fork dissolved: semantic
+  capture is aircraft design. That arrangement is the status quo, and it is uniform across
   writers — a script engages sanely staging one value.
   The GUI [peek](#g-peek)-batch ([§9.7][s9-7]) therefore
   survives as display/slot-sync sugar only. Residual check for migration:
@@ -9490,9 +9504,10 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   the trace ([§9.2][s9-2], [§9.5][s9-5], row 29). When the log fills, the
   retention stride doubles, so the whole run stays covered at coarsening
   density, the boundary-zero and terminal snapshots being retained
-  unconditionally and outside the bound ([§9.2][s9-2]). Both
-  are view policies, not trajectory-determining: neither enters the deployment
-  block, and replay neither records nor compares them.
+  unconditionally and outside the bound ([§9.2][s9-2]). All four recording
+  keywords — `trace`, `log`, `log_every` and `log_max` — are view policies, not
+  trajectory-determining: none enters the deployment block, and replay neither
+  records nor compares them.
 - `attach!(sim, dev::AbstractDevice, binding::AbstractBinding; should_abort = false)`
   — the roots are mandatory and the signature is the gate.
 
@@ -9511,7 +9526,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   |---|---|---|---|
   | `is_input(b)` | `false` on `AbstractBinding` | declares the input side | [§9.6][s9-6] |
   | `is_output(b)` | `false` on `AbstractBinding` | declares the output side | [§9.6][s9-6] |
-  | `is_greedy(b)` | — | `true` switches the claim's *source* | [§9.3][s9-3], [§9.6][s9-6] |
+  | `is_greedy(b)` | `false` on `AbstractBinding` | `true` switches the claim's *source* | [§9.3][s9-3], [§9.6][s9-6] |
   | `claims(b)` / `map_input(datum, b)` | — | the input side: the enumerated face set *is* the claim — what the device may write, not what it will | [§9.4][s9-4] |
   | `reads(b)` / `map_output(nt, b)` | — | the output side | [§14.4][s14-4], [§9.2][s9-2] |
 
