@@ -7027,19 +7027,19 @@ whatsoever.
 
 Init knowledge is [component](#g-component)-local — the engine knows
 `n_eng → ω = n_eng·ω_rated`, and nothing above it should have to. Making that
-locality a schema entry (`initialize(::C, spec)`, today's `f_init!` reborn
-declaratively, with an [assembly](#g-assembly)-level rule routing sub-specs to
-children) was rejected (row 64).
+locality a schema entry was rejected (row 64). That spelling would declare
+`initialize(::C, spec)` — today's `f_init!` reborn declaratively — and add an
+[assembly](#g-assembly)-level rule routing sub-specs to children.
 
-What preserves the locality is an idiom, not schema: **[fragment](#g-fragment) functions** —
-ordinary functions, shipped beside the component, dispatched on it:
+What preserves the locality is an idiom, not schema: **[fragment](#g-fragment) functions**,
+ordinary functions shipped beside the component and dispatched on the component:
 
 ```julia
 condition(eng::PistonEngine; n_eng) =
     fragment(x = (ω = n_eng * eng.ω_rated,), m = (phase = Phase.running,))
 ```
 
-composed by *pull* from the structure's owner —
+Fragments are composed by *pull* from the structure's owner:
 
 ```julia
 condition(sys::C172XSystems; n_eng, α_a, β_a) = merge(
@@ -7047,9 +7047,9 @@ condition(sys::C172XSystems; n_eng, α_a, β_a) = merge(
     at("aero",       fragment(x = (α_filt = α_a, β_filt = β_a))))
 ```
 
-— with dispatch selecting variant-specific methods (the c172s/c172x actuation
-split costs no upstream edits). The three combinators are constructors of an
-**inert, lazy tree** — no path arithmetic at composition:
+Dispatch selects variant-specific methods, so the c172s/c172x actuation
+split costs no upstream edits. The three combinators are constructors of an
+**inert, lazy tree**: no path arithmetic happens at composition.
 
 ```julia
 struct Fragment{X,M,S}  x::X; m::M; slots::S  end          #self-vocabulary payloads; no paths
@@ -7059,45 +7059,49 @@ struct Merged{T<:Tuple}  nodes::T  end                     #merge(ns...): collec
 
 Every node is isbits except the interned literal prefixes, so **rebuilding
 the tree per trim iteration is stack-only construction** — the zero-alloc
-property of today's `assign!` loop, preserved structurally. `fragment`'s
-payloads speak only about the component at the authoring point; addressing
-children is exclusively `at`'s job (one way to say everything). A `slots`
-payload names faces *of the authoring level's [contract](#g-contract)*; resolution walks the
-export chain to the root slot and errors if the face never surfaces — an
-internally-wired input has no slot and writing it is meaningless (the first
-sweep overwrites), and unexported stays unpokeable for init exactly as for
-the GUI ([§9.7][s9-7], [§15.4][s15-4]).
+property of today's `assign!` loop, preserved structurally.
 
-**The locality law** is [§6.1][s6-1]'s, third instance (child connections, computed [boundary](#g-boundary) connections,
-now conditions): each level speaks its own fields, its declared children's
-names, and its own faces; delegation by dispatch at every genericity [seam](#g-seam);
-deep `at` paths legitimate exactly where deep connections are — within an
-owned concrete subtree. Absolute paths exist only in the flattened entry
-list, a *compiled derivative* of the composition, as slot offsets are of
-`child_connections`. Substituting a component invalidates precisely the fragments
-its owner shipped, nothing else. Enforcement status is also [§6.1][s6-1]'s: convention
-(ownership is a fact about who maintains the code, not build-visible),
+`fragment`'s payloads speak only about the component at the authoring point;
+addressing children is exclusively `at`'s job (one way to say everything). A
+`slots` payload names faces *of the authoring level's [contract](#g-contract)*.
+Resolution walks the export chain to the root slot and errors if the face never
+surfaces. An internally-wired input has no slot, and writing it would be
+meaningless because the first sweep overwrites it. Unexported stays unpokeable
+for init exactly as it does for the GUI ([§9.7][s9-7], [§15.4][s15-4]).
+
+**The locality law** here is the one [§6.1][s6-1] states for connections, now in
+its third instance — child connections, computed [boundary](#g-boundary)
+connections, conditions. Each level speaks its own fields, its declared
+children's names, and its own faces; delegation runs by dispatch at every
+genericity [seam](#g-seam); deep `at` paths are legitimate exactly where deep
+connections are, within an owned concrete subtree. Absolute paths exist only in
+the flattened entry list, a *compiled derivative* of the composition, as slot
+offsets are of `child_connections`. Substituting a component invalidates
+precisely the fragments its owner shipped, nothing else. The enforcement status
+carries over from [§6.1][s6-1] as well: the law is convention. Ownership is a
+fact about who maintains the code and the build cannot see it, so the law is
 available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
 are [§13.7][s13-7] standard-library material — ordinary artifacts, no privileges.
-[Merge](#g-merge) collisions — two entries on one leaf — are errors at resolution
-reporting *both* provenance chains, and the message names the layering
-combinator: "`merge` is collision-intolerant by design — use
-`override(base, patch)` to layer." Last-writer-wins was rejected (row 65) — which
-is exactly where this `merge` parts company with `Base.merge`, last-wins on
-NamedTuples; the two share a name and not a semantics, and dispatch on the node
-types keeps them apart mechanically. The mixed call is closed explicitly: a
-`merge(::Fragment, ::NamedTuple)` — or any other blend of a condition node with
-a bare NamedTuple — is an **error method**, defined so the call cannot fall
-through to `Base.merge`'s last-wins semantics on a payload that looks
-plausible, and its message is directive: wrap the NamedTuple in `fragment(...)`
-(or `at(prefix, fragment(...))`) and merge nodes with nodes. The rejection
-carries a [kind](#g-kind) like every other (`ConditionNodeMisuse`, [Appendix C][sC] — the
-offending argument's type, the node kinds in hand): it is raised at
-composition time, before any resolution pass or provenance chain exists,
-which is why it is its own kind and not a `ConditionResolution` sub-kind
-([§14.3][s14-3]). The
-explicit, *ordered* layering spelling — `override` — belongs with the use case
-[slot totality](#g-slot-totality) produces ([§14.6][s14-6]).
+
+A [merge](#g-merge) collision is two entries on one leaf. Collisions are errors
+at resolution, and the error reports *both* provenance chains. The message
+names the layering combinator: "`merge` is collision-intolerant by design — use
+`override(base, patch)` to layer." Last-writer-wins was rejected (row 65). That
+rejection is exactly where this `merge` parts company with `Base.merge`, which
+is last-wins on NamedTuples; the two share a name and not a semantics, and
+dispatch on the node types keeps them apart mechanically. The mixed call is
+closed explicitly. A `merge(::Fragment, ::NamedTuple)` — or any other blend of a
+condition node with a bare NamedTuple — is an **error method**, defined so the
+call cannot fall through to `Base.merge`'s last-wins semantics on a payload that
+looks plausible. Its message is directive: wrap the NamedTuple in
+`fragment(...)` (or `at(prefix, fragment(...))`) and merge nodes with nodes. The
+rejection carries a [kind](#g-kind) like every other: `ConditionNodeMisuse`
+([Appendix C][sC]), carrying the offending argument's type and the node kinds in
+hand. It is raised at composition time, before any resolution pass or provenance
+chain exists. That is why it is its own kind and not a `ConditionResolution`
+sub-kind ([§14.3][s14-3]). The explicit, *ordered* layering spelling —
+`override` — belongs with the use case [slot totality](#g-slot-totality)
+produces ([§14.6][s14-6]).
 
 ### 14.3 Resolution: flatten, validate, compile once
 
