@@ -5779,17 +5779,21 @@ remains the completeness backstop.
 auto-published name is a framework write, never a probe product, so it is
 absent from the hand-down — [§5.2][s5-2]); wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
-topological order. **`w` threads through the probe in stage order**, by the
-[§5.2][s5-2] one-hop law: the `h_x` probe's second return [slot](#g-slot) enters `h_xu`'s probe
-[bundle](#g-bundle) if the [component](#g-component) defines one, otherwise the downstream bundles, and the
-`w` that survives the last output stage enters the `f`, guard and handler
-probes — so every consumer is probed against the same value it will receive at
-run time. Three checks ride the same pass: the return's shape (a stage
+topological order. **`w` threads through the probe in stage order.** It follows
+the one-hop law of [§5.2][s5-2]. If the [component](#g-component) defines an
+`h_xu`, the `h_x` probe's second return [slot](#g-slot) enters that stage's
+probe [bundle](#g-bundle) (the NamedTuple of zero-copy views a component
+function receives). Otherwise it enters the downstream bundles. The `w` that
+survives the last output stage enters the `f`, guard and handler probes. So
+every consumer is probed against the same value it will receive at run time.
+Three checks ride the same pass. The first is the return's shape: a stage
 returning something other than a `NamedTuple` or a `NamedTuple` pair fails
-here, `nothing` in either slot included), the consumer's `w` reads against the
-observed field set ([§11.3][s11-3]'s [did-you-mean](#g-did-you-mean), through the [§13.2][s13-2] framing
-diagnostic), and the dead-stage rule — a stage returning bare `(;)`, neither
-[ports](#g-port) nor `w`, is `DeadStage`, fail-fast. The [bundle law](#g-bundle)'s two remaining fields ([§5.2][s5-2]): `t` is
+here, `nothing` in either slot included. The second checks the consumer's `w`
+reads against the observed field set — the [did-you-mean](#g-did-you-mean) of
+[§11.3][s11-3], delivered through the [§13.2][s13-2] framing diagnostic. The
+third is the dead-stage rule: a stage returning bare `(;)`, neither
+[ports](#g-port) nor `w`, is `DeadStage`, fail-fast.
+The [bundle law](#g-bundle)'s two remaining fields ([§5.2][s5-2]): `t` is
 probe-scoped `0.0` — deployment binds no clock and `t₀` post-dates even
 deployment ([§14.5][s14-5]), so like `Δt` below it is a fabricated, probe-scoped
 value; `ws` comes from invoking the component's `workspace` allocator at the
@@ -5851,16 +5855,16 @@ author checking that their own contact algebra cancels a velocity component to a
 hard tolerance — is a regression test about that algebra, and its home is the
 test suite; it is also the most probe-fragile of the three, since a
 near-degenerate synthesized geometry can keep the cancellation algebraically
-exact while missing an absolute tolerance in floating point. And a *defensive
-exhaustiveness* branch — an `else error("unrecognized surface type")` over a
-closed enum, or a coefficient constructor asserting an ordering of its
-arguments when that constructor runs per step inside a stage — is not banned
-validation but **mislocated** validation: totality over a closed enum means
-handling every instance (an `else error` is an admission that the function is
-partial), and parameter validation belongs where user-controlled data enters —
-the constructors of parameter and instance values, which run before the build,
-where asserts are perfectly legitimate — never inside a stage, on probe-fed
-data.
+exact while missing an absolute tolerance in floating point. And there is the
+*defensive exhaustiveness* branch: an `else error("unrecognized surface type")`
+over a closed enum, or a coefficient constructor asserting an ordering of its
+arguments when that constructor runs per step inside a stage. Such a branch is
+not banned validation but **mislocated** validation. Totality over a closed
+enum means handling every instance, and an `else error` is an admission that
+the function is partial. Parameter validation belongs where user-controlled
+data enters: the constructors of parameter and instance values, which run
+before the build, where asserts are perfectly legitimate. It never belongs
+inside a stage, on probe-fed data.
 
 ### 12.4 Activations: executable sets, laziness, caching
 
