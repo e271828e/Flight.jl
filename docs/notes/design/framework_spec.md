@@ -9321,14 +9321,14 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 
 ## Appendix C. The diagnostic kind set
 
-The closed set row 58 commits to, made normative: **tests match on kind plus
-payload fields, never on message text** ([§13.2][s13-2]), so this table — not any
-message — is the acceptance-test contract, and adding a kind is a decision-log
-entry. Every row's payload is *in addition to* what [§13.2][s13-2] requires of all
-diagnostics: paths and names as strings, never instances; the list-in-hand
-wherever a did-you-mean renders; the didactic register (state the fix). Owning
-sections stay the normative home of each rule; this appendix is an index of the
-values, in the manner of Appendices A and B.
+The kinds below are the closed set row 58 commits to, made normative. **Tests
+match on kind plus payload fields, never on message text** ([§13.2][s13-2]). So
+the tables below — not any message — are the acceptance-test contract. Adding a
+kind is a decision-log entry. Every row's payload is *in addition to* what
+[§13.2][s13-2] requires of all diagnostics: paths and names as strings, never
+instances; the list-in-hand wherever a did-you-mean renders; the didactic
+register (state the fix). Owning sections stay the normative home of each rule;
+this appendix is an index of the values, in the manner of Appendices A and B.
 
 Severities, in the vocabulary [§13][s13] fixes:
 
@@ -9348,13 +9348,14 @@ Severities, in the vocabulary [§13][s13] fixes:
   sixteen retained values, the excess becoming per-kind suppressed counts).
   The per-row qualifiers below record where that bound is load-bearing — a
   source that can repeat within a frame — and where the source itself fires
-  once. The
-  *build* warning severity exists and its set is currently empty (row 84).
+  once.
 - **warning (service)** — raised by a stopped-sim service call that
   *completed*: emitted at the call site through the standard logging backend,
   beside the returned value, never thrown, part of no collection; no rate
   limit — each kind fires at most once per call, and its payload is drawn from
   the report the call returns ([§14.5][s14-5], [§14.8][s14-8]).
+- **warning (build)** — this severity exists and its set is currently empty
+  (row 84).
 
 **Declaration and wiring** (Stratum A):
 
