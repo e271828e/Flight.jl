@@ -534,113 +534,179 @@ x⁺       = g(comp, args)            # x, y, u, w, t, Δt [, ws]
 x⁺       = project(comp, x)         # manifold projection; positional (below)
 ```
 
-**The hand-off (named [bundles](#g-bundle)).** Every function receives exactly two
-arguments: the component and one NamedTuple bundle of zero-copy views, from
-which the author **destructures by name** only what the body reads —
-`f(c::LowPassFilter, (; x, u)) = ...`, `h_xu(c::PID, (; x, u, Δt)) = ...`. The
-[executor](#g-executor)'s call is one fixed shape, `fn(comp, args)`; unread fields are ignored
-by language semantics; argument order cannot be confused because there is no
-order. Positional, `kwarg_decl`-reflected and slurping-keyword spellings are all
-closed (row 74). `project` alone stays positional — one store in, the same store
+The laws that govern that surface follow: how a function receives its
+arguments, which names it receives, what an output stage returns, how far a
+private intermediate travels, and what a handler returns.
+
+#### The hand-off: one component, one bundle
+
+**Rule.** Every function receives exactly two arguments: the component and one
+NamedTuple [bundle](#g-bundle) of zero-copy views. From that bundle the author
+**destructures by name** only what the body reads:
+`f(c::LowPassFilter, (; x, u)) = ...`, `h_xu(c::PID, (; x, u, Δt)) = ...`.
+
+**Why.** The [executor](#g-executor) (the compiled execution form of the
+schedule) issues one fixed call shape, `fn(comp, args)`. Unread fields are
+ignored by language semantics. Argument order cannot be confused, because there
+is no order.
+
+Positional, `kwarg_decl`-reflected and slurping-keyword spellings are all
+closed (row 74). `project` alone stays positional: one store in, the same store
 out, nothing to select.
 
-**The [bundle law](#g-bundle).** A name appears in a component's bundle **iff the
-corresponding store or fact exists for that component**: `x`/`m`/`ws` iff
-declared (`init_x`, `init_m`, `workspace`), `u` iff the [function family](#g-function-family)
-may see inputs **and** the component declares `input_types`, `y` iff the
-component produces any table [cell](#g-cell) at all (`output_types` ∪ auto-published),
-`y_x` iff stage-1 [ports](#g-port) exist, `w` iff the stage that hands it down
-returned one (the one-hop law below), `t` always, `Δt` on the
-discrete [tier](#g-tier) only. **`y_x` carries the stage-1 *return*, auto-published
-names excluded**: an [auto-published port](#g-auto-published-port) is the framework copying a state or
-mode field into a cell at stage-1 position ([§5.3][s5-3]), and stage 2 already
-holds `x`/`m` (continuous) or `x` (discrete) directly. The rule is what
-[§12.3][s12-3] already sources: `y_x` comes from the
-stage-1 [probe](#g-probe)'s return, so a component whose only stage-1 ports are
-auto-published has no `y_x` in its stage-2 bundle at all (row 169). Undeclared stores are *absent*, never `nothing`-filled:
-destructuring a field that is not a thing for you fails at the probe inside the
-[§13.2][s13-2] framing diagnostic, with [did-you-mean](#g-did-you-mean) against the legal field set ("`f`
-of `Foo` destructures `m`, but `Foo` declares no `init_m`") — one law covering
-tier facts, stage legality and declarations alike. The mechanism is structured,
-not textual: destructuring an absent field throws a `FieldError` carrying the
-type and the field name as data (Julia ≥ 1.12), the probe catches it *matched
-against the bundle's own NamedTuple type*, and synthesizes the framing
-diagnostic from the legal set — classifying the field as an undeclared store, a
-wrong-tier fact, or a name illegal for this function family. The wrong-tier
-class holds under the shared state letter (row 173): state itself
-is legal on both tiers, `m` is continuous-only and `Δt` discrete-only, so
-destructuring either on the wrong tier still lands in that bucket. No message text is
-scraped, and the bundle stays a bare NamedTuple (row 74); a getproperty-wrapper
-spelling is the recorded fallback should type-matched interception prove
-insufficient. The per-function, **per-tier** name sets
-are **closed**: adding one is a decision-log entry, not a convenience. The
-comment in the signature block above states each function's maximal legal set;
-a given component's bundle narrows it to declared reality, and the
-destructuring narrows further to actual reads — a three-level funnel (stage
-name ⊇ bundle ⊇ reads) worth teaching once, because a stateless component
-legitimately writes `h_xu` while owning neither `x` nor `m`.
+#### The bundle law: which names a component receives
 
-**The stage return law.** An output stage returns either its port NamedTuple
-alone, `y`, or the pair `(y, w)`. `y` scatters into the component's declared
-cells as always; `w` is a NamedTuple of **private intermediates** —
-`isbits` leaves, no cell, no name in any [contract](#g-contract), nothing to wire, list or
-filter ([§11.3][s11-3]). A `nothing` in either slot is a probe error: the pair is a
+**Rule.** Under the [bundle law](#g-bundle), a name appears in a component's
+bundle **iff the corresponding store or fact exists for that component**.
+
+| bundle field | present iff |
+|---|---|
+| `x` | the component declares `init_x` |
+| `m` | the component declares `init_m` |
+| `ws` | the component declares `workspace` |
+| `u` | the [function family](#g-function-family) (which bundle fields a given function may legally receive) may see inputs **and** the component declares `input_types` |
+| `y` | the component produces any table [cell](#g-cell) at all (`output_types` ∪ auto-published) |
+| `y_x` | stage-1 [ports](#g-port) exist |
+| `w` | the stage that hands it down returned one (the one-hop law below) |
+| `t` | always |
+| `Δt` | the component is on the discrete [tier](#g-tier) |
+
+**`y_x` carries the stage-1 *return*, auto-published names excluded.** An
+[auto-published port](#g-auto-published-port) is the framework copying a state
+or mode field into a cell at stage-1 position ([§5.3][s5-3]), and stage 2
+already holds `x`/`m` (continuous) or `x` (discrete) directly. The rule is what
+[§12.3][s12-3] already sources: `y_x` comes from the stage-1
+[probe](#g-probe)'s return. So a component whose only stage-1 ports are
+auto-published has no `y_x` in its stage-2 bundle at all (row 169).
+
+Undeclared stores are *absent*, never `nothing`-filled. Destructuring a field
+that is not a thing for you fails at the probe inside the [§13.2][s13-2]
+framing diagnostic, with [did-you-mean](#g-did-you-mean) (the offending name
+plus the list-in-hand it should have matched) against the legal field set:
+"`f` of `Foo` destructures `m`, but `Foo` declares no `init_m`". One law covers
+tier facts, stage legality and declarations alike.
+
+The mechanism is structured, not textual. Destructuring an absent field throws
+a `FieldError` carrying the type and the field name as data (Julia ≥ 1.12). The
+probe catches it *matched against the bundle's own NamedTuple type*, and
+synthesizes the framing diagnostic from the legal set — classifying the field
+as an undeclared store, a wrong-tier fact, or a name illegal for this function
+family. No message text is scraped, and the bundle stays a bare NamedTuple
+(row 74); a getproperty-wrapper spelling is the recorded fallback should
+type-matched interception prove insufficient.
+
+The wrong-tier class holds under the shared state letter (row 173): state
+itself is legal on both tiers, `m` is continuous-only and `Δt` discrete-only,
+so destructuring either on the wrong tier still lands in that bucket.
+
+The per-function, **per-tier** name sets are **closed**: adding one is a
+decision-log entry, not a convenience. The comment in the signature block above
+states each function's maximal legal set; a given component's bundle narrows it
+to declared reality; the destructuring narrows further to actual reads. That
+three-level funnel (stage name ⊇ bundle ⊇ reads) is worth teaching once,
+because a stateless component legitimately writes `h_xu` while owning neither
+`x` nor `m`.
+
+#### The stage return law
+
+**Rule.** An output stage returns either its port NamedTuple alone, `y`, or the
+pair `(y, w)`.
+
+`y` scatters into the component's declared cells as always. `w` is a NamedTuple
+of **private intermediates** — `isbits` leaves, no cell, no name in any
+[contract](#g-contract), nothing to wire, list or filter ([§11.3][s11-3]). A
+`nothing` in either slot is a probe error: the pair is a
 `Tuple{NamedTuple, NamedTuple}` and padding forms do not exist, for the reason
-the handler return law gives below. An empty `y = (;)` *is* legal, so the
-**port-less stage** — one whose entire product is `w` — falls out of the
-general law instead of needing a rule of its own: stages are discovered by
-method existence and stage membership is a partition of the declared ports
-that may perfectly well be empty. What is not legal is a stage that produces
-neither ports nor `w`: a bare `(;)` computes nothing any consumer can read, and
-is a `DeadStage` build error at the probe ([§12.3][s12-3]) — the inert-component
-check in the stage register ([§11.1][s11-1]).
+the handler return law gives below.
 
-**The one-hop law.** `w` travels exactly one hop, to the next function that
-could want it, and no further. `h_x`'s `w` flows to `h_xu` if the component
-defines one, and otherwise to the downstream set — `f`, [guards](#g-guard) and handlers;
-`h_xu`'s `w` flows to the downstream set. The discrete tier mirrors it exactly
-(`h_x` → `h_xu` → `g`), and that is the last time it is said. **Nothing flows
-implicitly past its hop**: forwarding a stage-1 intermediate through stage 2 is
-an explicit re-return, `(y, (; w..., extra))`, which costs a line and says in
-the source that the value crosses — the alternative, a silent pass-through on a
-bare `y`, would be the design's one invisible dataflow. Presence in a bundle
-follows the producing stage's return under the bundle law: a bare-`y` producer
-hands down no `w` key at all, so a consumer destructuring one meets the [§13.2][s13-2]
-framing diagnostic naming its legal field set, exactly as for an undeclared
-store. `w` is never persisted: the executor hands it down as an ordinary SSA
-value **inside one fused pass** — a step fuses the [sweep](#g-sweep) with `f`, an event
-round fuses the sweep with its guards and fired handlers ([§8.6][s8-6]) — so freshness
-is a property of the construction rather than a rule anyone can violate, and
-round fusion is thereby a design constraint on the executor, not an
-optimization it may decline ([§12.7][s12-7]). `w`'s types are probe-observed and its
-conformance regime is [§11.3][s11-3]'s; the handler return law below is untouched by
-any of this — handlers *receive* `w` and return stores.
+An empty `y = (;)` *is* legal, so the **port-less stage** — one whose entire
+product is `w` — falls out of the general law instead of needing a rule of its
+own. Stages are discovered by method existence, and stage membership is a
+partition of the declared ports that may perfectly well be empty. What is not
+legal is a stage that produces neither ports nor `w`: a bare `(;)` computes
+nothing any consumer can read, and is a `DeadStage` build error at the probe
+([§12.3][s12-3]) — the inert-component check in the stage register
+([§11.1][s11-1]).
 
-**The handler return law.** The same rule governs the return side. A handler
-returns a NamedTuple carrying the stores it writes: a key is present **iff**
-the corresponding store exists on the component **and** the handler updates
-it. A pure FSM (modes and events, no `x`) returns `(; m = (; phase =
-running))`; an `x`-only reset map returns `(; x = (; x..., ω = 0.0))`; a
-handler touching both returns both. Padding forms — `((;), m⁺)`, `(x⁺, (;))`
-— do not exist (row 90, on row 74's argument-side ground). Semantics per key: `x` present ⇒ the value is
-complete against the state field set; `m` present ⇒ the names-subset
-[predicate](#g-predicate); an unknown key ⇒ did-you-mean against `{x, m}` — the same
-`FieldError`-shaped machinery [§13.2][s13-2] builds for bundles, now running in both
-directions ([§12.5][s12-5]).
+#### The one-hop law
 
-The views themselves are unchanged in meaning: own state (on the continuous
-tier `x` from the flat [buffer](#g-buffer) and `m` from the mode [stores](#g-store); on the discrete
-tier `x` from its store), own published signals (`y`,
-gathered from own table cells — the declared ports, [§11.2][s11-2]), own private
-intermediates (`w`, handed down by the producing stage rather than gathered from
-anywhere — the one bundle field with no home at all),
-inputs (`u`, gathered from foreign cells
-through the wiring's name binding), the clock (`t`, and `Δt` — see [§8.5][s8-5]), and
-scratch (`ws`, [§7.3][s7-3]). The [signal table](#g-signal-table) holds only *produced* signals, never
+**Rule.** `w` travels exactly one hop, to the next function that could want it,
+and no further.
+
+`h_x`'s `w` flows to `h_xu` if the component defines one, and otherwise to the
+downstream set — `f`, [guards](#g-guard) and handlers. `h_xu`'s `w` flows to
+the downstream set. The discrete tier mirrors it exactly (`h_x` → `h_xu` →
+`g`), and that is the last time it is said.
+
+**Nothing flows implicitly past its hop.** Forwarding a stage-1 intermediate
+through stage 2 is an explicit re-return, `(y, (; w..., extra))`.
+
+**Why.** The re-return costs a line and says in the source that the value
+crosses; a silent pass-through on a bare `y` was rejected (row 165).
+
+```julia
+# one hop, on a component defining both stages
+h_x(c::Foo,  (; x))       = (y, w)   # w is produced here
+h_xu(c::Foo, (; x, u, w)) = y        # it arrives here, and stops
+f(c::Foo,    (; x, u))    = ẋ        # no w key: h_xu returned a bare y
+
+# the same stage, forwarding across the hop — f, guards and handlers see it now
+h_xu(c::Foo, (; x, u, w)) = (y, (; w..., extra))
+```
+
+Presence in a bundle follows the producing stage's return under the bundle law:
+a bare-`y` producer hands down no `w` key at all, so a consumer destructuring
+one meets the [§13.2][s13-2] framing diagnostic naming its legal field set,
+exactly as for an undeclared store.
+
+`w` is never persisted. The executor hands it down as an ordinary SSA value
+**inside one fused pass** — a step fuses the [sweep](#g-sweep) with `f`, an
+event round fuses the sweep with its guards and fired handlers ([§8.6][s8-6]).
+So freshness is a property of the construction rather than a rule anyone can
+violate, and round fusion is thereby a design constraint on the executor, not
+an optimization it may decline ([§12.7][s12-7]).
+
+`w`'s types are probe-observed, and [§11.3][s11-3] states the conformance
+regime that governs them. The handler return law below is untouched by any of
+this — handlers *receive* `w` and return stores.
+
+#### The handler return law
+
+**Rule.** A handler returns a NamedTuple carrying the stores it writes: a key
+is present **iff** the corresponding store exists on the component **and** the
+handler updates it.
+
+That is the bundle law's *iff* shape, now governing the return side. A pure FSM
+(modes and events, no `x`) returns `(; m = (; phase = running))`; an `x`-only
+reset map returns `(; x = (; x..., ω = 0.0))`; a handler touching both returns
+both. Padding forms — `((;), m⁺)`, `(x⁺, (;))` — do not exist
+(row 90, on row 74's argument-side ground).
+
+Semantics per key: `x` present ⇒ the value is complete against the state field
+set; `m` present ⇒ the names-subset [predicate](#g-predicate); an unknown key ⇒
+did-you-mean against `{x, m}`. Those checks run on the same
+`FieldError`-shaped machinery [§13.2][s13-2] builds for bundles, now running in
+both directions ([§12.5][s12-5]).
+
+#### What the views are
+
+The views themselves are unchanged in meaning:
+
+- own state — on the continuous tier `x` from the flat [buffer](#g-buffer) and
+  `m` from the mode [stores](#g-store); on the discrete tier `x` from its store;
+- own published signals — `y`, gathered from own table cells (the declared
+  ports, [§11.2][s11-2]);
+- own private intermediates — `w`, handed down by the producing stage rather
+  than gathered from anywhere, the one bundle field with no home at all;
+- inputs — `u`, gathered from foreign cells through the wiring's name binding;
+- the clock — `t`, and `Δt` (see [§8.5][s8-5]);
+- scratch — `ws` ([§7.3][s7-3]).
+
+The [signal table](#g-signal-table) holds only *produced* signals, never
 transported ones: each datum has exactly one home — buffer for continuous `x`,
-stores for discrete `x` and for `m`, table for signals — and no store mirrors another. Every bundle field
-earns its place as a view genuinely readable, and no minimization of the set
-survives without introducing a copy (row 35).
+stores for discrete `x` and for `m`, table for signals — and no store mirrors
+another. Every bundle field earns its place as a view genuinely readable, and
+no minimization of the set survives without introducing a copy (row 35).
 
 ### 5.3 Structural feedthrough: stage roles, schedule and step boundaries
 
