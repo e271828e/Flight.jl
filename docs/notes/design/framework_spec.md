@@ -4904,87 +4904,95 @@ alone is what the [component test rig](#g-component-test-rig)
 
 ### 11.3 Visibility: the contract is the interface
 
-**Declared in `output_types` = public; returned in `w` = private *by
-construction*; returned in `y` and declared nowhere = build error; absent
-`output_types()` = no outputs** — visibility by *where the value goes*, the
-same move as class-by-declaration-shape. [Ports](#g-port) in the [contract](#g-contract) are connectable,
-GUI-listed, [snapshot](#g-snapshot)-carried and log-exported; the table is public throughout,
-every [cell](#g-cell) a declared port or an auto-published one, so nothing anywhere needs
-a presentation filter. Private intermediates are not filtered, they are simply
-not there: `w` is handed from stage to consumer as a value (the one-hop law,
-[§5.2][s5-2]), with no cell, no name in a contract and nothing for a wire, a
-listing or
-a log to reach. The inspection path for an intermediate is **promotion**: one
-line in `output_types` makes it public, checked and visible everywhere at once
-(row 165 — FlightCore's precedent, where an intermediate was inspected by
-putting it in the `Model` output and no other way). Publicity is
-never implicit: even the minimal [component](#g-component) writes
+**Rule.** Visibility is decided by *where the value goes*:
+
+- a field declared in `output_types` is public;
+- a field returned in `w`, the optional second slot of an output stage's
+  return, is private *by construction*;
+- a field returned in `y` — a stage's own published signals — and declared
+  nowhere is a build error;
+- a component with no `output_types()` method has no outputs.
+
+That is the same move as class-by-declaration-shape.
+[Ports](#g-port) in the [contract](#g-contract) are connectable, GUI-listed,
+[snapshot](#g-snapshot)-carried and log-exported. The table is public
+throughout, every [cell](#g-cell) a declared port or an auto-published one, so
+nothing anywhere needs a presentation filter. Private intermediates are not
+filtered — they are simply not there. `w` is handed from stage to consumer as a
+value (the one-hop law, [§5.2][s5-2]), with no cell, no name in a contract and
+nothing for a wire, a listing or a log to reach.
+
+The inspection path for an intermediate is **promotion**: one line in
+`output_types` makes it public, checked and visible everywhere at once
+(row 165). FlightCore is the precedent, where an intermediate was inspected by
+putting it in the `Model` output and no other way. Publicity is never implicit:
+even the minimal [component](#g-component) writes
 `output_types(::LowPassFilter, ::Type{T}) where {T <: Real} = (x = T,)`, one
 line, in exchange for "public" always meaning someone wrote it down.
 
-- **Conformance**: a declared port must be produced — by exactly one
-  stage, or by **auto-publication** for declared names matching
-  state or mode fields that no stage produces ([§5.3][s5-3]). Stage membership is
+- **Conformance**: a declared port must be produced, by exactly one stage or by
+  **auto-publication**. Auto-publication covers declared names matching state
+  or mode fields that no stage produces ([§5.3][s5-3]). Stage membership is
   derived over `output_types` alone ([§12.1][s12-1]). Declared-but-unproduced
-  and produced-by-two-stages are build errors; a declared port matching neither
-  a stage product nor a state
-  field errors with both lists in hand ("not produced by any stage and not a
-  state field"). A *returned port field* declared nowhere is a build error at [probe](#g-probe)
-  with [did-you-mean](#g-did-you-mean) against `output_types` (rows 34, 55 — the
-  return-side analogue of [§11.4][s11-4] walkthrough 1). The forgotten-branch
-  walkthrough holds: a declared `P` missing from the taken branch's
-  return fails at probe; missing from an *untaken* branch, it fails loudly at
-  that branch's first execution via the always-on check.
+  and produced-by-two-stages are build errors. A declared port matching neither
+  a stage product nor a state field errors with both lists in hand: "not
+  produced by any stage and not a state field". A *returned port field*
+  declared nowhere is a build error at [probe](#g-probe), with
+  [did-you-mean](#g-did-you-mean) — the offending name plus the list-in-hand it
+  should have matched — against `output_types`. That is the return-side
+  analogue of [§11.4][s11-4] walkthrough 1 (rows 34, 55). The forgotten-branch
+  walkthrough holds: a declared `P` missing from the taken branch's return
+  fails at probe; missing from an *untaken* branch, it fails loudly at that
+  branch's first execution via the always-on check.
 - **`w`'s regime is probe-observed, and that is sound precisely because `w` is
-  not a cell.** A cell needs a fixed type per [activation](#g-activation) (a re-run of Stratum C
-  at a given scalar type), which only a declaration can supply; a value flowing
-  between two functions in one fused pass has no type contract to violate, and
-  mixed branches are handled exactly by promotion. So the probe takes `w` as it
-  finds it: it checks that the second return [slot](#g-slot) is a `NamedTuple` at all, and
-  it checks the *consumer's* reads against the observed field set, a
-  destructured name that is not there failing inside the framing diagnostic
-  ([§13.2][s13-2]) with did-you-mean from the actual fields. That is weaker than a
-  declaration-backed message — it can say "`f` of `Foo` reads `w.q_dny`; the
-  producing stage returned `q_dyn`" but cannot say which spelling was intended
-  — and it is located, name-shaped and costs no declaration.
+  not a cell.** A cell needs a fixed type per [activation](#g-activation) (a
+  re-run of Stratum C at a given scalar type), which only a declaration can
+  supply. A value flowing between two functions in one fused pass has no type
+  contract to violate, and mixed branches are handled exactly by promotion. So
+  the probe takes `w` as it finds it: it checks that the second return
+  [slot](#g-slot) is a `NamedTuple` at all, and it checks the *consumer's*
+  reads against the observed field set. A destructured name that is not there
+  fails inside the framing diagnostic ([§13.2][s13-2]) with did-you-mean from
+  the actual fields. That is weaker than a declaration-backed message: it can
+  say "`f` of `Foo` reads `w.q_dny`; the producing stage returned `q_dyn`" but
+  cannot say which spelling was intended. It is located, name-shaped, and costs
+  no declaration.
 - **Branch-shape rule**: stage returns must have the same `NamedTuple` shape on
-  every branch — which Julia's type-stability discipline already demands for
+  every branch. Julia's type-stability discipline already demands that for
   performance; the framework merely makes it a stated rule with a good error.
   `w` is inside the rule: a stage whose `w` changes shape between branches is
   as broken as one whose `y` does.
 - **The always-on check covers `w` at the nominal activation only.** Beside the
-  `y` test ([§12.5][s12-5]) sits one baked `isa` against the type the *nominal probe
-  observed* — folding to nothing while the stage is stable, and converting the
-  unintended-branch-divergence class, which otherwise announces itself only as
-  an allocation in somebody's benchmark, into a loud located field-naming error
-  at the divergent branch's first execution. The blame text says what it
-  honestly knows: "expected what the nominal probe observed". This complements
-  the canary ([§7.5][s7-5]) — the canary detects, this localizes. **Non-nominal
-  activations run no `w` check at all**, and deliberately: there is no
-  declaration to anchor a branch-independent expectation, no store whose typing
-  the check would be protecting, and a strict probe-observed expectation would
-  fire on the legal constant-branch idiom (the one-probe-point argument, which
-  is exactly what kills observation authority for cells). Correctness needs no
-  [guard](#g-guard) there: a `Float64` in `w` under a `Dual` activation is an honest
-  zero-partial constant by the embedding guarantee ([§12.5][s12-5]), and its
-  downstream promotion is exact. Walking the nominal observation to synthesize
-  non-nominal expectations was rejected (row 165).
-- **[Schema authority](#g-schema-authority) is total over the table**: every *cell* [traces](#g-trace) to an
-  authored declaration, the always-on check's expected type for `y` is fully
-  declaration-derived, and return typos cannot silently define new cells.
-  Protection against silently dropped partials rests on the
-  embedding guarantee — promotion is airtight, so an observed `Float64` is a true
-  constant, [§12.5][s12-5]. Probe-observed expected types remain rejected *for
-  cells* on two grounds — authority inversion, and the fact that one probe
-  point cannot speak for branch-dependent types — and neither ground reaches
-  `w`, which declares nothing and types nothing.
+  `y` test ([§12.5][s12-5]) sits one baked `isa` against the type the *nominal
+  probe observed*. It folds to nothing while the stage is stable, and it
+  converts the unintended-branch-divergence class — which otherwise announces
+  itself only as an allocation in somebody's benchmark — into a loud located
+  field-naming error at the divergent branch's first execution. The blame text
+  says what it honestly knows: "expected what the nominal probe observed". This
+  complements the canary ([§7.5][s7-5]): the canary detects, this localizes.
+  **Non-nominal activations run no `w` check at all**, and deliberately. There
+  is no declaration to anchor a branch-independent expectation, and no store
+  whose typing the check would be protecting. A strict probe-observed
+  expectation would also fire on the legal constant-branch idiom — the
+  one-probe-point argument, which is exactly what kills observation authority
+  for cells. Correctness needs no [guard](#g-guard) there: a `Float64` in `w`
+  under a `Dual` activation is an honest zero-partial constant by the embedding
+  guarantee ([§12.5][s12-5]), and its downstream promotion is exact. Walking
+  the nominal observation to synthesize non-nominal expectations was rejected
+  (row 165).
+- **[Schema authority](#g-schema-authority) is total over the table**
+  (declarations define structure; evaluation only checks conformance): every
+  *cell* traces to an authored declaration, the always-on check's expected type
+  for `y` is fully declaration-derived, and return typos cannot silently define
+  new cells. Protection against silently dropped partials rests on the
+  embedding guarantee — promotion is airtight, so an observed `Float64` is a
+  true constant, [§12.5][s12-5]. Probe-observed expected types remain rejected
+  *for cells* (rows 34, 55, 165), and that rejection does not reach `w`, which
+  declares nothing and types nothing.
 - **What this rules out** (rows 16, 34, 55, 165): the `unlisted` flag
-  ([§4.2][s4-2]) and its satellite-function representation — the RNG-state
-  case that motivated it needs *nothing* here (`g` reads `x` directly,
-  [§5.2][s5-2]); identity publication by default ([§7.4][s7-4] step 4), since
-  publication driven by the [contract](#g-contract) replaces publication of
-  everything with hiding annotations on top; **probe-observed private cells**;
-  the `Private(T)` fallback, obviated by `w`; and the opt-in variant with a
+  ([§4.2][s4-2]) and its satellite-function representation; identity
+  publication by default ([§7.4][s7-4] step 4); **probe-observed private
+  cells**; the `Private(T)` fallback; and the opt-in variant with a
   `Float64`-under-`Dual` diagnostic.
 
 ### 11.4 Failure walkthroughs (the error-locality grounding)
