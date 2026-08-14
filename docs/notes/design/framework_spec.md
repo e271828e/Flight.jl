@@ -7291,88 +7291,99 @@ macro-sequence with an empty integrate), [§14.5][s14-5].
 
 ### 14.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
-After `apply!` establishes stores at `t₀` — and the [trace header](#g-trace-header) captures
-them, together with the [slot](#g-slot) values, *before anything below runs*
-(the capture placement, [§9.5][s9-5]; a post-sequence capture would hand
-[replay](#g-replay)
-already-transitioned state) — the init service completes the
-[§8.6][s8-6] macro-sequence with an empty integrate — project → [[sweep](#g-sweep) → [guards](#g-guard) →
-handlers]\* → [due](#g-due) `g` updates → first [snapshot](#g-snapshot) — and that
-parity is exact, not approximate. Piece by piece:
+`apply!` establishes the stores at `t₀`. The [trace header](#g-trace-header)
+captures those stores, together with the [slot](#g-slot) values, *before anything
+below runs* (the capture placement, [§9.5][s9-5]). A post-sequence capture would
+hand [replay](#g-replay) already-transitioned state. The init service then
+completes the [§8.6][s8-6] macro-sequence with an empty integrate:
+project → [[sweep](#g-sweep) → [guards](#g-guard) → handlers]\* →
+[due](#g-due) `g` updates → first [snapshot](#g-snapshot). The parity with an
+ordinary boundary is exact, not approximate. Piece by piece:
 
-- **Project runs.** Authored `x` can sit off-manifold (a hand-assembled
-  quaternion ulps off unit norm; a [condition](#g-condition) writing part of a constrained
-  block against fresh defaults). [Projection](#g-projection) after condition writes is the
-  same position it holds after any other `x` mutation, and costs nothing
-  when the state is already clean.
-- **The sweep runs with every `Φ = 0` [tick](#g-tick) due.** `t₀` is a grid point of
-  every phase-free divisor, so those discrete output stages are gated in,
-  publishing from the authored `x` — necessarily, since no earlier tick
-  exists for a ZOH to hold. An offset [component](#g-component) ([§8.5][s8-5]) is *not* due: its
-  first tick is at `Φ·Δt_base`, and until then its [cells](#g-cell) hold the values the
-  [activation](#g-activation)'s [probe](#g-probe) populated ([§12.3][s12-3]). The `t₀` snapshot carries a fully
+- **Project runs.** Authored `x` can sit off-manifold: a hand-assembled
+  quaternion ulps off unit norm, or a [condition](#g-condition) (the
+  path-addressed sparse overlay that sets a build's state) writing part of a
+  constrained block against fresh defaults. [Projection](#g-projection) after
+  condition writes is the same position it holds after any other `x` mutation.
+  And it costs nothing when the state is already clean.
+- **The sweep runs with every `Φ = 0` [tick](#g-tick) due.** `t₀` is a grid point
+  of every phase-free divisor, so those discrete output stages are gated in and
+  publish from the authored `x`. They can do nothing else: no earlier tick exists
+  for a ZOH to hold. An offset [component](#g-component) ([§8.5][s8-5]) is *not*
+  due — its first tick is at `Φ·Δt_base`. Until then that component's
+  [cells](#g-cell) hold the values the [activation](#g-activation)'s
+  [probe](#g-probe) populated ([§12.3][s12-3]). The `t₀` snapshot carries a fully
   populated table either way.
-- **Events run.** A condition landing a guard [predicate](#g-predicate) in [holding](#g-edge-semantics) territory
-  (an authored stall flag, a strut authored into contact) fires visibly at `t₀` rather
-  than one step later — grounded by the [prior](#g-prior) rule ([§8.6][s8-6]):
-  [boundary zero](#g-boundary-zero) establishes every guard prior as not-holding;
-  suppressing those firings was rejected (row 67), on the
-  [stage-on-interaction](#g-stage-on-interaction) lesson ([§9.7][s9-7];
-  insurance that masks invariant violations is anti-diagnostic). The header
-  records the *resolved pre-sequence* stores and slots ([§9.5][s9-5]), so replay
-  re-executes [boundary](#g-boundary) zero from the same starting point and whatever fires
-  at `t₀` fires again identically ([§10.7][s10-7]) — the firings are recomputed,
-  never recorded. (A `stop_on` [face](#g-face) already `true` is a
-  different category: nothing *fires* — the face simply reads `true` in the
-  published `t₀` snapshot and the loop reacts, [§13.5][s13-5].)
+- **Events run.** A condition can land a guard [predicate](#g-predicate) in
+  [holding](#g-edge-semantics) territory (firing on not-holding → holding
+  transitions, never bare sign changes): an authored stall flag, a strut authored
+  into contact. The event then fires visibly at `t₀` rather than one step later.
+  The [prior](#g-prior) rule grounds that timing ([§8.6][s8-6]):
+  [boundary zero](#g-boundary-zero) establishes every guard prior — the event's
+  stored predicate sample from the previous boundary — as not-holding.
+  Suppressing those firings was rejected (row 67), on the
+  [stage-on-interaction](#g-stage-on-interaction) lesson of [§9.7][s9-7] (widgets
+  stage on edit or activation, never per render pass): insurance that masks
+  invariant violations is anti-diagnostic. The header records the *resolved
+  pre-sequence* stores and slots ([§9.5][s9-5]), so replay re-executes
+  [boundary](#g-boundary) zero from the same starting point and whatever fires at
+  `t₀` fires again identically ([§10.7][s10-7]). The firings are recomputed,
+  never recorded. (A `stop_on` [face](#g-face) already `true` is a different
+  category: nothing *fires* — the face simply reads `true` in the published `t₀`
+  snapshot and the loop reacts, [§13.5][s13-5].)
 - **Due `g` updates run.** This follows from an interval-alignment fact that
   is easy to mis-picture and is hereby a taught [contract](#g-contract), sibling
   to the boundary-sampling line ([§15.5][s15-5]): **a boundary's `g` is the
-  *outgoing* transition** —
-  at tick `t_k` it consumes the completed boundary's samples and produces
-  `x_{k+1}`, the value the next tick reads; the transition that carried `x`
-  *into* `t_k` ran at `t_{k-1}`. Boundary zero is missing its incoming
-  transitions on *both* [tiers](#g-tier), and both are replaced by authorship: no
-  integration over `[t_{-1}, t_0]` produced a continuous leaf's `x(0)`, and no
-  `g` at `t_{-1}`
-  produced a discrete leaf's `x(0)` — the condition did. The outgoing work all runs: `g` at
-  `t₀` computes `x(1)` from `t₀` samples, its only opportunity — `x(1)` must
-  sit in the store before `t₁`'s gated stages read it, and an accumulator
-  $x_{k+1} = x_k + \Delta t \, e_k$ authored with $x_0 = 0$ under nonzero $e(t_0)$
-  would otherwise first integrate $e(t_1)$, the whole sampled-data lattice one
-  period late (row 67). The authored `x(0)` needs no protection: it is published
-  in the `t₀` snapshot regardless. (The continuous-tier analogue of `g`-at-`t₀` is not the empty incoming
-  integrate but the first *outgoing* one, $t_0 \to t_0 + h$: both authored values
-  are the published initial conditions of their outgoing transitions.)
+  *outgoing* transition** — at tick `t_k` it consumes the completed boundary's
+  samples and produces `x_{k+1}`, the value the next tick reads. The transition
+  that carried `x` *into* `t_k` ran at `t_{k-1}`. Boundary zero is missing its
+  incoming transitions on *both* tiers, and both are replaced by authorship:
+
+  | [tier](#g-tier) | `t₋₁` | `t₀` (boundary zero) | `t₁` |
+  |---|---|---|---|
+  | discrete | the `g` that would have produced a discrete leaf's `x(0)` never ran; the condition authored `x(0)` | `g` consumes the `t₀` samples and produces `x(1)` | the gated stages read `x(1)` |
+  | continuous | the integration over `[t_{-1}, t_0]` that would have produced a continuous leaf's `x(0)` never ran; the condition authored `x(0)` | the authored `x(0)` is the initial condition of the outgoing integrate, $t_0 \to t_0 + h$ | |
+
+  The outgoing work all runs, and `t₀`'s `g` has its only opportunity: `x(1)`
+  must sit in the store before `t₁`'s gated stages read it. An accumulator
+  $x_{k+1} = x_k + \Delta t \, e_k$ authored with $x_0 = 0$ under nonzero
+  $e(t_0)$ would otherwise first integrate $e(t_1)$, putting the whole
+  sampled-data lattice one period late (row 67). The authored `x(0)` needs no
+  protection: it is published in the `t₀` snapshot regardless. The
+  continuous-tier analogue of `g`-at-`t₀` is not the empty incoming integrate but
+  that first *outgoing* one, and both authored values are the published initial
+  conditions of their outgoing transitions.
 - **`t₀` is an init-service argument** (default `0.0`), never a condition
-  entry — time is not a store of any component, and the [harmonic grid](#g-harmonic-grid)
-  anchors at whatever `t₀` boundary zero runs at. Both init-service entry
-  points carry it: `init!(sim, condition; t0)` and `trim!`'s commit
-  (`trim!(sim, problem; baseline, t0, backend)`, [§14.8][s14-8]), same default.
-  Conditions are time-free;
-  `capture` returns condition and time separately for resume-at-time —
-  the returned `t` passed back as `t0`.
+  entry: time is not a store of any component. The
+  [harmonic grid](#g-harmonic-grid) (every discrete period an integer multiple of
+  `Δt_base`) anchors at whatever `t₀` boundary zero runs at. Both init-service
+  entry points carry the argument, with the same default:
+  `init!(sim, condition; t0)` and `trim!`'s commit
+  (`trim!(sim, problem; baseline, t0, backend)`, [§14.8][s14-8]). Conditions are
+  time-free, and `capture` returns condition and time separately for
+  resume-at-time — the returned `t` passed back as `t0`.
 - **Trim is untouched by all of this.** Optimizer iterations are raw
   write → sweep → read cycles on the activation — no boundaries, no events,
-  no `g`; only the committed solution executes boundary zero. A guard firing
-  at commit is a wanted failure signal: today's hand-written trim asserts
-  (`!stall`, no weight-on-wheels, `ω > ω_idle`) become the model's own event
-  logic, surfaced through the ordinary machinery instead of `@assert`. And
-  the signal has a channel: boundary zero reports the fired set on the
-  `TrimReport` and raises `TrimCommitEvents` when it is non-empty
-  ([§14.8][s14-8], [Appendix C][sC]) — a handler that fires at commit moves the
+  no `g`. Only the committed solution executes boundary zero.
+- **A guard firing at commit is a wanted failure signal.** Today's hand-written
+  trim asserts (`!stall`, no weight-on-wheels, `ω > ω_idle`) become the model's
+  own event logic, surfaced through the ordinary machinery instead of `@assert`.
+  And the signal has a channel: boundary zero reports the fired set on the
+  `TrimReport` and raises `TrimCommitEvents` when that set is non-empty
+  ([§14.8][s14-8], [Appendix C][sC]). A handler that fires at commit moves the
   committed stores off the solved point, and saying nothing would be
   warn-but-assign relocated.
-  A commit-fired handler is not the only mover, and the second one is
-  unconditional: boundary zero's *first* act is `project`, so the committed
+- **A commit-fired handler is not the only mover, and the second one is
+  unconditional.** Boundary zero's *first* act is `project`, so the committed
   `x` is `project(x*)`, not the solver's `x*` — an attitude quaternion
-  renormalized by a few ulps is the canonical case. Legitimate, wanted, and
-  usually invisible in the residuals; but the point the stores sit at is no
-  longer the point the verdict was read at, and the doctrine is the same for
-  both movers. So is the remedy: the `TrimReport` carries the
-  committed-state residuals beside the solved-point ones, and a converged
-  solve whose committed-state residuals fail the box test raises
-  `TrimCommitResiduals` ([§14.8][s14-8]) — the move made visible rather than silent.
+  renormalized by a few ulps is the canonical case. That move is legitimate,
+  wanted, and usually invisible in the residuals; but the point the stores sit
+  at is no longer the point the verdict was read at.
+- **The doctrine is the same for both movers, and so is the remedy.** The
+  `TrimReport` carries the committed-state residuals beside the solved-point
+  ones, and a converged solve whose committed-state residuals fail the box test
+  raises `TrimCommitResiduals` ([§14.8][s14-8]) — the move made visible rather
+  than silent.
 
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
