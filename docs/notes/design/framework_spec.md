@@ -6161,40 +6161,45 @@ in its own type, addressed by index in the type domain, compiles one body per
 instance and grows the store type with the model. The choice was measured
 rather than argued (row 162, `prototypes/cellstore_bench`).
 
-**[Phase bodies](#g-measurement-seam) are the outer decomposition, and they are semantically
-forced.** The [boundary sweep](#g-sweep)'s `h_x` block is order-free by definition (the
-no-[feedthrough](#g-feedthrough) stage reads no `u`); the `h_xu` block, with [due](#g-due) discrete
-stages gated in, is the only topologically ordered one; the `f` block — the
-[RHS](#g-flow) body the stepper calls per stage evaluation — and the `g` block are
-order-free with disjoint writes; [guards](#g-guard) and handlers are their own small
-callables inside the [§8.6][s8-6] iteration. **Each sweep block compiles in two
-arities off one entry list** (the interior/boundary split, [§8.5][s8-5]): the zero-arg
+**[Phase bodies](#g-measurement-seam) are the outer decomposition, and they are
+semantically forced.** The [boundary sweep](#g-sweep)'s `h_x` block is order-free
+by definition (the no-[feedthrough](#g-feedthrough) stage reads no `u`). The
+`h_xu` block gates in the [due](#g-due) discrete stages — those admitted at this
+boundary by their compiled `(D, Φ)` pair. It is the only topologically ordered
+one. The `f` block — the [RHS](#g-flow) body the stepper calls per stage
+evaluation — and the `g` block are order-free with disjoint writes.
+[Guards](#g-guard) and handlers are their own small callables inside the
+[§8.6][s8-6] iteration.
+
+**Each sweep block compiles in two arities off one entry list**, along the
+interior/boundary split that [§8.5][s8-5] fixes. The zero-arg
 `sweep_hx()`/`sweep_hxu()` are the interior variants, over continuous entries
-only — which is what makes `@ballocated(sweep_hxu()) == 0` a well-defined
+only. That is what makes `@ballocated(sweep_hxu()) == 0` a well-defined
 measurement *of the interior path*, rather than of whichever tick phase the
-simulation happens to be sitting in — while `sweep_hx(tick)`/`sweep_hxu(tick)`
-are the boundary variants, gating their discrete entries by `(idx − Φ) % D`
-against the
-passed index, symmetric with `ticks(tick)`; `rhs` takes no index (row 147).
-One gate serves all three tick-sensitive blocks — due-ness
-is per component, per boundary, never per stage — and `t*`'s empty due set is
-**arity selection, not an index trick** (rows 147, 185), so the `t*` iteration
-runs the zero-arg arities, whose compiled bodies contain no discrete entries
-([§8.5][s8-5]). Across passes these bodies communicate only
-through the stores and the table, so the [seams](#g-seam) between passes cost
-nothing — no values cross them. **Within** a pass one kind of value does: a
-stage's `w` ([§5.2][s5-2]) is handed to its one-hop consumers as an ordinary SSA
-argument, across block and chunk seams alike, never through storage. That is
-what makes the fusion a design constraint rather than an optimization: a step's
-sweep and its `f` block compile into one pass, and an event round's sweep, its
-guards and its fired handlers into another ([§8.6][s8-6]), because that is the scope
-over which a private intermediate is fresh by construction. Two doors this structure opens for free,
-recorded not committed: deterministic parallel evaluation of the order-free
-blocks (disjoint writes, and no floating-point reductions to reorder — [§6.2][s6-2]
-made every sum an ordered junction entry), and finer recompilation
-granularity (editing a discrete component invalidates the boundary body, not
-the RHS body — literal under the two-arity split, discrete entries existing
-only in the boundary variants).
+simulation happens to be sitting in. The `sweep_hx(tick)`/`sweep_hxu(tick)`
+forms are the boundary variants, gating their discrete entries by
+`(idx − Φ) % D` against the passed index, symmetric with `ticks(tick)`. `rhs`
+takes no index (row 147). One gate serves all three tick-sensitive blocks —
+due-ness is per component, per boundary, never per stage — and `t*`'s empty
+due set is **arity selection, not an index trick** (rows 147, 185), so the
+`t*` iteration runs the zero-arg arities, whose compiled bodies contain no
+discrete entries ([§8.5][s8-5]).
+
+Across passes these bodies communicate only through the stores and the table,
+so the [seams](#g-seam) between passes cost nothing — no values cross them.
+**Within** a pass one kind of value does: a stage's `w` ([§5.2][s5-2]) is
+handed to its one-hop consumers as an ordinary SSA argument, across block and
+chunk seams alike, never through storage. That is what makes the fusion a
+design constraint rather than an optimization: a step's sweep and its `f`
+block compile into one pass, and an event round's sweep, its guards and its
+fired handlers into another ([§8.6][s8-6]), because that is the scope over
+which a private intermediate is fresh by construction. Two doors this
+structure opens for free, recorded not committed: deterministic parallel
+evaluation of the order-free blocks (disjoint writes, and no floating-point
+reductions to reorder — [§6.2][s6-2] made every sum an ordered junction
+entry), and finer recompilation granularity (editing a discrete component
+invalidates the boundary body, not the RHS body — literal under the two-arity
+split, discrete entries existing only in the boundary variants).
 
 **[Chunking](#g-chunking) bounds the compile cost.** Within a large block the tuple splits
 into chunks behind non-inlined but statically-typed function barriers.
@@ -6203,16 +6208,24 @@ inlining, view SROA, check folding, zero allocation; at the seams only
 cross-entry fusion is lost, which a table-mediated dataflow barely had.
 Chunk size is the implementation's *only* representation freedom (fully
 fused and chunk-of-one are its endpoints), and it converts the compile cost
-from superlinear in the largest body to linear in entry count. Measured
-anchors (2026-07, synthetic ~15-op bodies, Apple Silicon): a fused 400-entry
-sweep compiles in ~0.8 s against ~0.34 s chunked at `Float64`, the fused
-curve visibly superlinear; an 8-partial `Dual` activation multiplies
-instruction count ~20× and lands near ~9 s for 400 chunked entries — linear,
-instruction-bound rather than structure-bound. Extrapolated to a
-C172X-scale model ([§15.4][s15-4]; roughly 200–400 entries, larger bodies), the
-nominal activation sits at seconds, the `Dual` activation in the tens before
-mitigation; re-measurement on the real vehicle skeleton is a [§16][s16] migration
-item.
+from superlinear in the largest body to linear in entry count.
+
+Measured anchors, taken 2026-07 over synthetic ~15-op bodies on Apple Silicon,
+with the last two rows extrapolated to a C172X-scale model — roughly 200–400
+entries, larger bodies ([§15.4][s15-4]):
+
+| case | activation | compile time |
+|---|---|---|
+| 400-entry sweep, fused | `Float64` | ~0.8 s |
+| 400-entry sweep, chunked | `Float64` | ~0.34 s |
+| 400-entry sweep, chunked | 8-partial `Dual` | ~9 s |
+| C172X-scale model, extrapolated | nominal | seconds |
+| C172X-scale model, extrapolated | `Dual` | tens of seconds, before mitigation |
+
+The fused curve is visibly superlinear. An 8-partial `Dual` activation
+multiplies instruction count ~20×, and its chunked curve is linear —
+instruction-bound rather than structure-bound. Re-measurement on the real
+vehicle skeleton is a [§16][s16] migration item.
 
 **The mitigation ladder**, in order: activations are lazy ([§12.4][s12-4] — a session
 that never linearizes never compiles `Dual`); non-nominal activations may
@@ -6237,37 +6250,46 @@ inference traps at schedule length (a 400-entry heterogeneous tuple can send
 generic `getindex` inference into combinatorial collapse), so the compiled
 tuple's type has exactly one consumer: the unrolled walk.
 
-**The phase bodies are the [§7.5][s7-5] [measurement seam](#g-measurement-seam).** `phase_bodies(sim)`
-returns the compiled bodies of the nominal activation as named callables
-bound over the simulation's own buffers: the four blocks (`rhs` — the `f`
-block — `sweep_hx` and `sweep_hxu`, each in both arities, and `ticks`, which
-takes the tick index its entries gate on), plus the per-event guards and
-handlers and the per-component `project` callables, keyed by the model's own [roster](#g-roster).
-The four-body roster is fixed and total: the accessor returns all of it
-always, whatever the model happens to declare. A model with no discrete
-components, no events or no continuous state at all still gets every body;
-the empty ones are legal, compile to no-ops, and their `@ballocated`
-assertion passes vacuously — which is the point, because consumers then
-iterate the roster uniformly, with no existence checks and no per-model
-branching in the measurement code. One
-promise, in the diagnostic register ([§13.5][s13-5]): **these are the bodies the loop
-runs** — not re-derivations, which is what makes the measurement honest, and
-why each callable carries the real in-loop argument types by construction
-(the thing a hand-built standalone test cannot reproduce; row 116 records why
-per-component tests cannot discharge the invariant). CI is
-warm-then-assert over the roster — one call compiles, then
-`@ballocated(body()) == 0` — at per-body granularity, each sweep arity asserted
-in its own right (the interior call bare, the boundary call at a due index), so
-a documented [§7.5][s7-5]
-tolerance loosens exactly one assertion; this is the successor of the
-migration suite's `@ballocated f_ode!`/`f_step!`/`f_periodic!` idiom and the
-seam the [§16][s16] FlightCore comparison measures through. Publication is not a
-phase body — the carve-out ([§7.5][s7-5]) made structural: what the accessor exposes is
-exactly what the invariant claims is zero. Invoking bodies in isolation
-mutates the simulation's buffers outside any [frame](#g-frame) sequence (a tick entry
-advances discrete state with no clock advance), leaving them valid but
-off-trajectory; a session that wants to continue meaningfully re-runs
-`init!`.
+**The phase bodies are the [§7.5][s7-5] [measurement seam](#g-measurement-seam).**
+`phase_bodies(sim)` returns the compiled bodies of the nominal activation as
+named callables bound over the simulation's own buffers. The four blocks:
+
+- `rhs` — the `f` block.
+- `sweep_hx` — in both arities.
+- `sweep_hxu` — in both arities.
+- `ticks` — takes the tick index its entries gate on.
+
+Returned with them are the per-event guards and handlers and the per-component
+`project` callables, keyed by the model's own [roster](#g-roster).
+
+The four-body roster is fixed and total: the accessor returns all of it always,
+whatever the model happens to declare. A model with no discrete components, no
+events or no continuous state at all still gets every body. The empty ones are
+legal, compile to no-ops, and their `@ballocated` assertion passes vacuously.
+That is the point, because consumers then iterate the roster uniformly, with no
+existence checks and no per-model branching in the measurement code.
+
+One promise, in the diagnostic register ([§13.5][s13-5]): **these are the bodies
+the loop runs** — not re-derivations. That is what makes the measurement
+honest, and why each callable carries the real in-loop argument types by
+construction. Those types are the thing a hand-built standalone test cannot
+reproduce, and row 116 records why per-component tests cannot discharge the
+invariant.
+
+CI is warm-then-assert over the roster: one call compiles, then
+`@ballocated(body()) == 0`. It asserts at per-body granularity, each sweep
+arity in its own right — the interior call bare, the boundary call at a due
+index. So a documented [§7.5][s7-5] tolerance loosens exactly one assertion.
+This is the successor of the migration suite's
+`@ballocated f_ode!`/`f_step!`/`f_periodic!` idiom and the seam the
+[§16][s16] FlightCore comparison measures through.
+
+Publication is not a phase body — the carve-out ([§7.5][s7-5]) made structural:
+what the accessor exposes is exactly what the invariant claims is zero.
+Invoking bodies in isolation mutates the simulation's buffers outside any
+[frame](#g-frame) sequence (a tick entry advances discrete state with no clock
+advance), leaving them valid but off-trajectory. A session that wants to
+continue meaningfully re-runs `init!`.
 
 ---
 
