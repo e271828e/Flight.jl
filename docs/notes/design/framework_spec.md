@@ -6976,45 +6976,51 @@ operation is illegal in the current lifecycle state," distinct from
 
 ### 14.1 Conditions are path-addressed overlays on the declared defaults
 
-A [condition](#g-condition) may specify: state fields (`x`, on either [tier](#g-tier)) and modes (`m`,
-[continuous components](#g-continuous-component) only, [§3.2][s3-2]) — addressed by
-[§11.6][s11-6] slash path plus field name — and root
-input [slots](#g-slot), addressed by [face](#g-face). Never outputs (derived data) and never
-[workspace](#g-workspace) (scratch). Entries are validated in the [§13.1][s13-1] collecting [register](#g-register): full
+A [condition](#g-condition) may specify state fields (`x`, on either [tier](#g-tier)) and
+modes (`m`, [continuous components](#g-continuous-component) only, [§3.2][s3-2]); both are
+addressed by [§11.6][s11-6] slash path plus field name. It may also specify root
+input [slots](#g-slot), addressed by [face](#g-face). Never outputs, which are derived data.
+Never [workspace](#g-workspace) (component-declared mutable scratch arriving as the `ws`
+bundle field). Entries are validated in the [§13.1][s13-1] collecting [register](#g-register): full
 list, violations collected, one `BuildError`.
 
-**Overlay base = the declared defaults, always.** Every [store](#g-store) has a declared
-initial value (declaration-by-initial-value, [§11.2][s11-2]), so conditions are
-naturally sparse: applying one means "fresh run from the `init_*` defaults,
-with these overrides" (row 63). Warm restart needs no
-second semantics: a `capture` service reads the current stores **and root
-slots** back *as a condition value* (capture → tweak → apply) — slot coverage
-is what makes the captured condition total, hence re-applicable under [§14.6][s14-6] —
-the same gather the [trace header](#g-trace-header) already needs. One mechanism, two uses.
+**The overlay base is always the declared defaults.** Every [store](#g-store) has a
+declared initial value (declaration-by-initial-value, [§11.2][s11-2]), so conditions
+are naturally sparse. Applying one means "fresh run from the `init_*` defaults,
+with these overrides" (row 63). Warm restart needs no second semantics. A
+`capture` service reads the current stores **and root slots** back *as a
+condition value* (capture → tweak → apply). Slot coverage is what makes the
+captured condition total, hence re-applicable under [§14.6][s14-6]. That gather is
+the one the [trace header](#g-trace-header) already needs: one mechanism, two uses.
 
-**Doctrine.** This does not reopen the observation-by-path rejection ([§13.5][s13-5]):
-that was *runtime* coupling — a root-authored predicate reaching through
-generic [seams](#g-seam) it does not own, breaking on substitution. A condition is a
-*design-time statement about a concrete build*, authored in the same register
-as `child_connections` (which also speaks paths, about children its author owns).
-The composition law ([§14.2][s14-2]) makes the parallel exact.
+**Doctrine.** Addressing conditions by path does not reopen the
+observation-by-path rejection ([§13.5][s13-5]). That was *runtime* coupling: a
+root-authored predicate reaching through generic [seams](#g-seam) the root does not
+own, breaking on substitution. A condition is a *design-time statement about a
+concrete build*, authored in the same register as `child_connections` (which
+also speaks paths, about children its author owns). The composition law
+([§14.2][s14-2]) makes the parallel exact.
 
 **Pre-[sweep](#g-sweep) doctrine.** Condition writes precede the first sweep by
-definition; a would-be init value that depends on swept outputs is either
-analytically known to the caller (trim's `α_filt = α_a`: α is a *decision
-variable* — the value is known above, not computable below) or an equilibrium
-constraint, i.e. a job for the trim service, not for init.
+definition. A would-be init value that depends on swept outputs is therefore
+either analytically known to the caller or an equilibrium constraint. The first
+case is trim's `α_filt = α_a`: α is a *decision variable*, so the value is known
+above, not computable below. The second is a job for the trim service, not for
+init.
+
 "Caller-computable" reaches past closed-form knowledge to **environment
-queries**: a condition needing one constructs the same handle the sweep will
-produce — through the [value-level constructor](#g-value-level-constructor) ([§4.4][s4-4]), applied to the same values
-its `baseline` writes into the environment [component](#g-component)'s slots, or, in a rig
-where the handle itself is a root slot value, by simply holding the value it
-wrote there — and then calls the same query function the consuming component
-calls. One implementation of the field math, evaluated one level up: no
-pre-sweep, no new mechanism. And where closed-form enforcement of a target is
-not wanted at all, the second escape already covers the case — promote the
-eliminated state coordinates to decision variables and enforce the targets as
-residuals on swept outputs, which needs no environment access at condition time
+queries**. A condition needing one constructs the same handle the sweep will
+produce, and then calls the same query function the consuming component calls.
+One route to that handle is the [value-level constructor](#g-value-level-constructor) (the plain
+exported function building a field handle from input values, [§4.4][s4-4]), applied
+to the same values the [`baseline`](#g-baseline) writes into the environment
+[component](#g-component)'s slots. The other applies in a rig where the handle
+itself is a root slot value: the condition simply holds the value the `baseline`
+wrote there. One implementation of the field math, evaluated one level up: no
+pre-sweep, no new mechanism. Where closed-form enforcement of a target is not
+wanted at all, the second escape already covers the case: promote the eliminated
+state coordinates to decision variables and enforce the targets as residuals on
+swept outputs. That route needs no environment access at condition time
 whatsoever.
 
 ### 14.2 Fragment composition: locality without schema
