@@ -1146,7 +1146,7 @@ h_xu(::SumJunction, (; u)) = (; Σ = +(u...))
 ```
 
 The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`.
-UnionAlls are legal type parameters. Both [contracts](#g-contract) derive their
+UnionAlls are legal type parameters, so both [contracts](#g-contract) derive their
 entries from it by applying it to the scalar of the [activation](#g-activation)
 (a re-run of Stratum C at a given scalar type).
 
