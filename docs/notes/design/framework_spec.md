@@ -297,42 +297,46 @@ the navigation/introspection hierarchy (GUI, logging, paths) and as declaration-
 ### 4.1 Immutable value semantics
 
 [Ports](#g-port) exchange **immutable values** — typically isbits structs (floats, `SVector`s,
-enums, nested immutables). The framework owns a **[signal table](#g-signal-table)**: one concretely-typed
-**[cell](#g-cell)** per output port in the flattened model. A producer's
+enums, nested immutables). The framework owns a **[signal table](#g-signal-table)**: one
+concretely-typed **[cell](#g-cell)** per output port in the flattened model. A producer's
 output-[stage function](#g-stage-function) (`h_x` or `h_xu`, the two output stages every component
-provides) returns a named tuple of fresh values; the framework writes each into
-its cell; consumers read cells. (Vocabulary, binding throughout this document:
-bare *cell* is the table entry, and only that — the discrete-state and mode
-registers are *stores*, [§7.3][s7-3], not cells; *[staging cell](#g-staging-cell)* is a distinct compound
-term, the per-[device](#g-device) inbound register of [§9.4][s9-4], which unlike a table cell is
-mutated frame by frame and sits outside the table's publish-once discipline;
-*[slot](#g-slot)* is reserved for the root input slots of [§9.3][s9-3].)
+provides) returns a named tuple of fresh values. The framework writes each of those
+values into its cell, and consumers read cells.
 
-Consequences:
+**Vocabulary.** These names are binding throughout this document:
 
-- no aliasing, ever — nothing can be mutated under a consumer's feet;
-- safe concurrent reads (GUI/logging threads) by construction;
-- zero allocation for isbits [payloads](#g-payload) (named tuples of isbits are isbits);
-- each cell has a definite freshness tied to its producer's position in the [schedule](#g-schedule)
-  (row 4).
+- bare *cell* — the table entry, and only that;
+- *store* — the discrete-state and mode registers ([§7.3][s7-3]), which are not cells;
+- *[staging cell](#g-staging-cell)* — a distinct compound term, the per-[device](#g-device)
+  inbound register of [§9.4][s9-4]; unlike a table cell it is mutated frame by frame and
+  sits outside the table's publish-once discipline;
+- *[slot](#g-slot)* — reserved for the root input slots of [§9.3][s9-3].
 
 The signal requirement, stated precisely, is **immutability plus frozen references**:
 signals may reference bulk data (see [§4.4][s4-4]) provided that data is read-only for the
 duration of the run. `isbits` is the common case, not the rule.
 
+Consequences:
+
+- no aliasing, ever — nothing can be mutated under a consumer's feet;
+- safe concurrent reads (GUI/logging threads) by construction;
+- zero allocation for isbits payloads (named tuples of isbits are isbits);
+- each cell has a definite freshness tied to its producer's position in the [schedule](#g-schedule)
+  (row 4).
+
 ### 4.2 Consumers see ports, not stages
 
 The [port](#g-port) is the addressable unit. A [component](#g-component)'s outputs appear to consumers, GUI and
-logs as one flat namespace (`dyn.vel`, `dyn.f_c_c`, materializable lazily as a view);
-which output stage computes which port is a scheduling annotation, invisible outside
-the component. Moving an output between stages is non-breaking *for consumers* —
-no wire, log or panel sees it; the scheduler does (the [feedthrough](#g-feedthrough) graph and
-stage membership change, [§12.1][s12-1]).
+logs as one flat namespace (`dyn.vel`, `dyn.f_c_c`), materializable lazily as a view.
+Which output stage computes which port is a scheduling annotation, invisible outside
+the component. Moving an output between stages is non-breaking *for consumers*: no
+wire, log or panel sees it. The scheduler does see it — the [feedthrough](#g-feedthrough) graph and
+stage membership change ([§12.1][s12-1]).
 
 **Visibility.** Which ports exist at all is a declaration-layer decision: the output
-[contract](#g-contract) *is* the public interface, and stage-function results outside it never enter the
-table at all — they ride the stage's `w` return down to the component's own later
-functions, private by construction, see [§5.2][s5-2], [§11.3][s11-3]. A presentational
+[contract](#g-contract) *is* the public interface. Stage-function results outside that contract
+never enter the table at all. They ride the stage's `w` return down to the component's
+own later functions, private by construction ([§5.2][s5-2], [§11.3][s11-3]). A presentational
 *unlisted* flag — skipped in logs and GUI but still connectable — is closed (row 16).
 
 ### 4.3 Table mechanics and port granularity
