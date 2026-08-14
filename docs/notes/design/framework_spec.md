@@ -6651,7 +6651,7 @@ termination is model *state*, reaching the loop through declared machinery:
   named faces in the snapshot it just published. The first `true` initiates
   [§10.4][s10-4] shutdown with *this* snapshot as the final one: the terminal
   snapshot is the terminal state, no roll-back, nothing [§10.4][s10-4] doesn't
-  already do. That shutdown's status carries the run's final cumulative
+  already do. That terminal snapshot's status carries the run's final cumulative
   diagnostic counters ([§9.8][s9-8]). `run!` therefore checks the boundary-zero
   snapshot before the first step: an authored [condition](#g-condition) (the
   path-addressed sparse overlay that sets a build's state) already terminal
