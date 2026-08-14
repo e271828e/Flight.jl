@@ -4604,7 +4604,7 @@ violation is `TierSignatureMismatch`.
 
 Entries are **[face](#g-face) bounds, not [cell](#g-cell) types**, and the
 reading is **permissive** (row 167): an entry states, per leaf, what the
-consumer *allows* to arrive there. Three entry forms exhaust the vocabulary:
+consumer *allows* to arrive there. Entries come in three forms:
 
 | entry | the leaf is | what may lawfully arrive |
 |---|---|---|
