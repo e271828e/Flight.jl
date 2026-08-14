@@ -684,9 +684,9 @@ both. Padding forms — `((;), m⁺)`, `(x⁺, (;))` — do not exist
 
 Semantics per key: `x` present ⇒ the value is complete against the state field
 set; `m` present ⇒ the names-subset [predicate](#g-predicate); an unknown key ⇒
-did-you-mean against `{x, m}`. Those checks run on the same
-`FieldError`-shaped machinery [§13.2][s13-2] builds for bundles, now running in
-both directions ([§12.5][s12-5]).
+did-you-mean against `{x, m}` — the same `FieldError`-shaped machinery
+[§13.2][s13-2] builds for bundles, now running in both directions
+([§12.5][s12-5]).
 
 #### What the views are
 
