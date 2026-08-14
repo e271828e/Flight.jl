@@ -7843,14 +7843,15 @@ Fallback per problem: one `backend =` keyword.
 condition**: `condition` is a condition-*valued function* over the decision
 space, `reads`/`residuals` are the equations that pin the free variables
 down, `guess`/`bounds` say where to search. Solving makes the implicit
-condition explicit, and the commit is then literally an init —
-`override(baseline, condition(d*))` through [boundary zero](#g-boundary-zero). The services
+condition explicit. The commit is then literally an init:
+`override(baseline, condition(d*))` through [boundary zero](#g-boundary-zero) (the initialization
+boundary: the ordinary macro-sequence with an empty integrate). The services
 unify as clients of one condition algebra: `init!` applies an explicit
 condition, `capture` produces one, `trim!` searches a family for the member
 satisfying its equations.
 
 **`at` lifts to problems in five lines.** Every field of a problem is
-either condition-producing (path-relative) or path-free — the rule that residual
+either condition-producing (path-relative) or path-free. The rule that residual
 math sees only the gathered NamedTuple ([§14.7][s14-7]) pays off here:
 
 ```julia
@@ -7864,56 +7865,59 @@ at(prefix::String, p::TrimProblem) = TrimProblem(
     tolerances = p.tolerances)
 ```
 
-Resolution then needs nothing new: the flattening accumulator of [§14.3][s14-3]
+Resolution then needs nothing new. The flattening accumulator of [§14.3][s14-3]
 enters the `Scoped` wrapper and prefixes every entry
-(`"vehicle/dynamics"` → `"wing/vehicle/dynamics"`); [slot](#g-slot) entries authored
+(`"vehicle/dynamics"` → `"wing/vehicle/dynamics"`). [Slot](#g-slot) entries authored
 in the aircraft's [face](#g-face) vocabulary resolve through the export chain *from
 the mount point* (`throttle` at `"wing"` → root slot `"wing.throttle"`).
-An unexported face fails resolution by name — correctly: an internally
+An unexported face fails resolution by name, and correctly so. An internally
 wired input (a [scenario component](#g-scenario-component) driving the wingman's throttle) is
 untrimmable from outside, and the build says so. The service compiles the
 scoped condition and reads and runs the identical loop — it never knows
 where its paths are mounted.
 
-**A problem never authors the environment.** The environment — a sibling
-[component](#g-component)'s slots in a full world, a handle-valued root slot in a thin rig —
-is the world's and the `baseline`'s business; the problem *receives* its
-handles through the user parameter record ([§14.7][s14-7]) and only queries them. The
-reason is the resolution rule just stated: a condition entry naming a wired
-input fails by name, correctly — so a problem writing an environment face
-would be applicable only to those rigs where that face happens to be
-unconnected, and the relocatability this section exists to guarantee would be
-lost.
+**A problem never authors the environment.** The environment is the world's
+and the `baseline`'s business: a sibling [component](#g-component)'s slots in a full world,
+a handle-valued root slot in a thin rig. The problem *receives* its handles
+through the user parameter record ([§14.7][s14-7]), and only queries them.
+
+**Why.** The reason is the resolution rule just stated: a condition entry
+naming a wired input fails by name, correctly. A problem writing an
+environment face would therefore be applicable only to those rigs where that
+face happens to be unconnected, and the relocatability this section exists to
+guarantee would be lost.
 
 **The world wrapper dissolves.** Today's `f_init!(::Model{<:SimpleWorld})`
 (initialize environment, then call the aircraft's trim) has no successor
 method: the environment, the other aircraft and all slots are covered by
-the `baseline` condition ([§14.6][s14-6]), applied once at setup; the commit is
+the `baseline` condition ([§14.6][s14-6]), applied once at setup. The commit is
 `override(baseline, at(mount, condition(d*)))`. Method nesting became value
 layering.
 
 **"Aircraft as root" is a thin world.** By default the aircraft is not
-literally the root — its environment inputs ([§4.4][s4-4] function-valued
-signals) are wired from provider components — so design tasks use a shipped rig,
-`design_world(ac)` = aircraft + `SimpleAtmosphere(wind = NoWind())` +
-`HorizontalTerrain`: today's ad-hoc models inside `linearize` promoted to
-a named artifact. One register: the "root" case is the shallowest world,
-the trim problem mounts at `"aircraft"` like anywhere else. Leaving an
-environment face *unconnected* is legal by construction, though: the face
+literally the root: its environment inputs ([§4.4][s4-4] function-valued
+signals) are wired from provider components. Design tasks therefore use a
+shipped rig, `design_world(ac)` = aircraft + `SimpleAtmosphere(wind = NoWind())` +
+`HorizontalTerrain`. That rig is today's ad-hoc models inside `linearize`
+promoted to a named artifact. One register: the "root" case is the shallowest
+world, the trim problem mounts at `"aircraft"` like anywhere else. Leaving an
+environment face *unconnected* is legal by construction, though. The face
 becomes an ordinary root slot holding the handle **value**, written by the
-`baseline` like any other slot — the test-rig register, the function-valued
-sibling of a [constant source](#g-constant-source), zero ceremony for a frozen environment. For
-design tasks the shipped rig stays `design_world(ac)`, which keeps the
+`baseline` like any other slot. That is the test-rig register: the
+function-valued sibling of a [constant source](#g-constant-source) (a library component publishing
+a value its instance holds), zero ceremony for a frozen environment. For
+design tasks the shipped rig stays `design_world(ac)`. That keeps the
 environment's tunables in the slot vocabulary that conditions, `capture`,
 linearization's input surface and the [trace header](#g-trace-header) already speak.
 
 **Swarm doctrine.** The service solves *one problem at a time*. Sequential
 independent trims (trim lead, commit, trim wing against the committed
-world) cover weak/one-way coupling; a joint trim is user-side value
-composition — concatenate decision NamedTuples under prefixed names, merge
+world) cover weak/one-way coupling. A joint trim is user-side value
+composition: concatenate decision NamedTuples under prefixed names, merge
 the scoped condition trees, stack the residuals. If joint trims become
 routine, a `product(p₁ => "lead", p₂ => "wing")` helper belongs in the
-[§13.7][s13-7] library; [recorded, not built](#g-recorded-not-built).
+[§13.7][s13-7] library. That helper is [recorded, not built](#g-recorded-not-built) (a worked-out
+extension deliberately left unimplemented, its seams named).
 
 ### 14.10 Linearization: tap selectors, one seeded pass, a pure query
 
