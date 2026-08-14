@@ -6164,10 +6164,11 @@ rather than argued (row 162, `prototypes/cellstore_bench`).
 **[Phase bodies](#g-measurement-seam) are the outer decomposition, and they are
 semantically forced.** The [boundary sweep](#g-sweep)'s `h_x` block is order-free
 by definition (the no-[feedthrough](#g-feedthrough) stage reads no `u`). The
-`h_xu` block gates in the [due](#g-due) discrete stages — those admitted at this
-boundary by their compiled `(D, Φ)` pair. It is the only topologically ordered
-one. The `f` block — the [RHS](#g-flow) body the stepper calls per stage
-evaluation — and the `g` block are order-free with disjoint writes.
+`h_xu` block gates in the [due](#g-due) discrete stages — those whose components
+this boundary admits by their compiled `(D, Φ)` pair. It is the only
+topologically ordered one. The `f` block — the [RHS](#g-flow) body the stepper
+calls per stage evaluation — and the `g` block are order-free with disjoint
+writes.
 [Guards](#g-guard) and handlers are their own small callables inside the
 [§8.6][s8-6] iteration.
 
