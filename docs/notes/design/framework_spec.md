@@ -6623,74 +6623,91 @@ no-shared-mutable-model decision bought.
 
 FlightCore's `SimulationTermination` idiom — model code throws, the loop
 catches and logs it as informational — has **no counterpart here** (row 60).
-The discipline: **exceptions from model code are always
-abnormal**; graceful termination is model *state*, reaching the loop through
-declared machinery:
+The discipline: **exceptions from model code are always abnormal**. Graceful
+termination is model *state*, reaching the loop through declared machinery:
 
-- **Detection** is ordinary [guard](#g-guard)/handler/mode machinery. Declare the
-  [predicate](#g-predicate) as a sign-form (hence [localized](#g-localized)) event if the stop should be
-  localized — touchdown
-  overload is precisely a zero-crossing: the boundary is localized to the
-  crossing, the handler sets `m.crashed`, and the [snapshot](#g-snapshot) at the crossing
+- **Detection** is ordinary [guard](#g-guard)/handler/mode machinery. Declare
+  the [predicate](#g-predicate) as a sign-form event — hence
+  [localized](#g-localized), the crossing instant bracketed by root-finding
+  over probe sweeps — if the stop should be localized. Touchdown overload is
+  precisely a zero-crossing: the boundary is localized to the crossing, the
+  handler sets `m.crashed`, and the [snapshot](#g-snapshot) at the crossing
   instant carries the touchdown state.
-- **Publication** is an ordinary `Bool` output [face](#g-face), exported to the root.
-  Within concretely-declared structure, deep wires gather the condition at its
-  owning boundary in one visible block ([§6.1][s6-1]): `Ldg` ORs its three legs through
-  a junction (the ownership idiom, [§6.2][s6-2]; the library, [§13.7][s13-7]) and exports one `damaged`
-  face; intermediate [assemblies](#g-assembly) are untouched. Each *generic* [seam](#g-seam) costs one
-  output connection entry — and that hop is the substitutability [contract](#g-contract) doing its job,
-  not plumbing (the imposed contract, [§11.8][s11-8]).
+- **Publication** is an ordinary `Bool` output [face](#g-face), exported to
+  the root. Within concretely-declared structure, deep wires gather the
+  condition at its owning boundary in one visible block ([§6.1][s6-1]): `Ldg`
+  ORs its three legs through a junction (the ownership idiom, [§6.2][s6-2];
+  the library, [§13.7][s13-7]) and exports one `damaged` face; intermediate
+  [assemblies](#g-assembly) are untouched. Each *generic* [seam](#g-seam)
+  costs one output connection entry. That hop is the substitutability
+  [contract](#g-contract) doing its job, not plumbing (the imposed contract,
+  [§11.8][s11-8]).
 - **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
-  names root-exported `Bool` output faces, OR-combined, validated against the
-  `Build`, recorded in the [run metadata](#g-run-metadata) (the [trace header](#g-trace-header)'s deployment block,
-  [§9.5][s9-5]). After *every* published boundary —
-  grid, `t*` ([§8.4][s8-4]) and [boundary zero](#g-boundary-zero) ([§14.5][s14-5]) alike — the
-  loop reads the named faces in the snapshot it just published; the first
-  `true` initiates [§10.4][s10-4] shutdown with *this* snapshot as the final one — the
-  terminal snapshot is the terminal state, no roll-back, nothing [§10.4][s10-4] doesn't
-  already do (and its status carries the run's final cumulative diagnostic
-  counters, [§9.8][s9-8]). `run!` therefore checks the boundary-zero snapshot before the
-  first step: an authored [condition](#g-condition) (the path-addressed sparse overlay that
-  sets a build's state) already terminal ends the run at `t₀` with that
-  snapshot final, integrating nothing. Default: no stop faces, run to `t_end` —
-  `stop_on` is `t_end`'s model-declared sibling at the same declaration site.
+  names root-exported `Bool` output faces. They are OR-combined, validated
+  against the `Build`, and recorded in the [run metadata](#g-run-metadata) —
+  the [trace header](#g-trace-header)'s deployment block ([§9.5][s9-5]). After
+  *every* published boundary — grid, `t*` ([§8.4][s8-4]) and
+  [boundary zero](#g-boundary-zero) ([§14.5][s14-5]) alike — the loop reads the
+  named faces in the snapshot it just published. The first `true` initiates
+  [§10.4][s10-4] shutdown with *this* snapshot as the final one: the terminal
+  snapshot is the terminal state, no roll-back, nothing [§10.4][s10-4] doesn't
+  already do. That shutdown's status carries the run's final cumulative
+  diagnostic counters ([§9.8][s9-8]). `run!` therefore checks the boundary-zero
+  snapshot before the first step: an authored [condition](#g-condition) (the
+  path-addressed sparse overlay that sets a build's state) already terminal
+  ends the run at `t₀` with that snapshot final, integrating nothing. The
+  default is no stop faces and a run to `t_end` — `stop_on` is `t_end`'s
+  model-declared sibling at the same declaration site.
 
 **Both are `run!`-time overridable, with the constructor value as the
 default.** `Simulation(world; t_end, stop_on)` sets the defaults for the
 simulation; `run!(sim; t_end = …, stop_on = …)` binds them for **that run
-only** — the `run!` argument wins where given, the constructor's value stands
-where it is not, and nothing about the `Simulation` is mutated, so the next
+only**. The `run!` argument wins where given, and the constructor's value
+stands where it is not. Nothing about the `Simulation` is mutated, so the next
 `run!` without arguments gets the constructor's policy again. The effective
-values are what the run metadata records. `stop_on` face validation against the
-`Build` runs at **both** binding sites, identically: an unknown or non-`Bool` face fails at
-`run!` exactly as it fails at construction. This is not the root-declared stop
-policy rejected below: binding moves one notch *later* along the same axis —
-more deployment-flavored, not less — and the `stopped → init! → run!` cycle and
+values are what the run metadata records. `stop_on` face validation against
+the `Build` runs at **both** binding sites, identically: an unknown or
+non-`Bool` face fails at `run!` exactly as it fails at construction.
+
+```julia
+sim = Simulation(world; h = 0.02, t_end = 60, stop_on = (…))  # the Simulation's defaults
+
+init!(sim, cond); run!(sim)                # t_end = 60, stop_on as constructed
+init!(sim, cond); run!(sim; t_end = 10)    # this run only: t_end = 10, stop_on as constructed
+init!(sim, cond); run!(sim; stop_on = ())  # this run only: no stop faces, t_end still 60
+init!(sim, cond); run!(sim)                # the constructor's pair again: nothing was mutated
+```
+
+This is not the root-declared stop policy rejected below: the `run!` argument
+moves binding one notch *later* along the same axis, more deployment-flavored
+rather than less (rows 60 and 91). The `stopped → init! → run!` cycle and the
 `step!` register ([§10.6][s10-6]) are precisely where one `Simulation` wants
-different
-stopping policies on different runs. The honest cost is two homes for one fact,
-which the precedence rule above is what settles.
+different stopping policies on different runs. The honest cost is two homes for
+one fact; the precedence rule above settles it.
 
 **The termination record names the source.** Where run metadata carries the
-effective *policy*, the run's termination record carries its *outcome*: which of
-the four sources ended the run — `t_end` reached, a named `stop_on` face reading
-`true`, a control-plane stop (GUI button, [device](#g-device) handle, calling code), or an
-[operator interrupt](#g-operator-interrupt) ([§10.4][s10-4]) — so a `stopped` simulation answers "why did it
-stop?" without its consumer reconstructing the answer from the clock. The
-interrupt is a tag on an ordinary stop, not a diagnostic [kind](#g-kind) of its own
-([Appendix C][sC] gains nothing here): nothing failed.
+effective *policy*, the run's termination record carries its *outcome*: which
+of the four sources ended the run. Those sources are `t_end` reached, a named
+`stop_on` face reading `true`, a control-plane stop (GUI button,
+[device](#g-device) handle, calling code), and an
+[operator interrupt](#g-operator-interrupt) ([§10.4][s10-4]). A `stopped`
+simulation therefore answers "why did it stop?" without its consumer
+reconstructing the answer from the clock. The interrupt is a tag on an ordinary
+stop, not a diagnostic [kind](#g-kind) of its own ([Appendix C][sC] gains
+nothing here): nothing failed.
 
 Taught contract: **stop faces are sampled at completed boundaries; declare a
-sign-form event if you need the stop localized.** Both stop-flag shapes work without
-framework latching — a handler-set `m` flag is sticky by nature, a transient
-stage-2 Bool is caught because the loop reacts to the first `true`. Compound
-stop logic composes in-model — a monitor [component](#g-component) reading the relevant
-signals and outputting one Bool — the same move [§10.5][s10-5] made for scripts.
+sign-form event if you need the stop localized.** Both stop-flag shapes work
+without framework latching. A handler-set `m` flag is sticky by nature, and a
+transient stage-2 Bool is caught because the loop reacts to the first `true`.
+Compound stop logic composes in-model — a monitor [component](#g-component)
+reading the relevant signals and outputting one Bool — the same move
+[§10.5][s10-5] made for scripts.
 
-Post-terminal dynamics are the model's job, and that is a feature: today
-`robot2d` *throws* when it falls because it has no other way to say "my
-dynamics are no longer meaningful"; here it declares the fall as an event,
-switches to a frozen mode (mode-dependent `f` — machinery it already has), and
+Post-terminal dynamics are the model's job, and that is a feature. Today
+`robot2d` *throws* when it falls, because it has no other way to say "my
+dynamics are no longer meaningful". Here it declares the fall as an event,
+switches to a frozen mode — mode-dependent `f`, machinery it already has — and
 exports `fallen`. Wired, the sim ends at the fall; unwired, it integrates a
 frozen robot — well-defined, unlike an uncaught throw. The discipline forces
 models to have well-defined terminal states, which is better modeling.
