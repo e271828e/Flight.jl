@@ -438,48 +438,64 @@ pose). They are therefore carried by ordinary [ports](#g-port) as **immutable qu
 ("[field handles](#g-field-handle)"):
 
 - An environment [component](#g-component) emits a field value (`ISAField(T_sl, p_sl,
-  wind)`, `TerrainField(...)`); consumers receive it through ordinary input ports and
-  call query functions on it (`airdata(field, pos, vel)`, `ray_intersect(field, p, u)`)
-  inside their own [stage functions](#g-stage-function).
+  wind)`, `TerrainField(...)`); consumers receive it through ordinary input ports.
+  Inside their own [stage functions](#g-stage-function) (`h_x` or `h_xu`, the two
+  output stages every component provides) they call query functions on it:
+  `airdata(field, pos, vel)`, `ray_intersect(field, p, u)`.
 - **Parametric models are isbits** (ISA, uniform wind, horizontal terrain). **Bulk-data
   models use the handle pattern**: an immutable struct combining isbits parameters with
   references to bulk data (heightmaps, wind grids, the geoid undulation grid) loaded at
-  build time and frozen. Handles are rebuilt per evaluation allocation-free (immutable
-  structs with existing references — never `Ref`s, whose mutable cell allocates).
+  build time and frozen. Handles are rebuilt per evaluation allocation-free — immutable
+  structs with existing references. Never `Ref`s, whose mutable cell allocates.
 - **No mutable caches inside field objects** (memoizing interpolators, lazy loaders):
   concurrent consumers and the GUI thread would race. Caches belong in the consumer's
   state, or the interpolant is restructured to be pure.
 - Loggers treat field-handle signals specially (skip or summarize).
 
-**The [value-level constructor](#g-value-level-constructor).** Every field-emitting component must expose the
-map (component, input values) → handle as a plain, pure, exported function —
-`atmospheric_field(atm; T_sl, p_sl, wind)` for the `SimpleAtmosphere`
-successor — and its swept output stage must be a **one-line call to that
-function**, never the other way round (the query math written into the output
-stage, where only a [sweep](#g-sweep) can reach it). The reason is script-side:
-the condition math ([§14.1][s14-1]) must be able to construct, outside any
-sweep, bit-for-bit the
-same handle the sweep would produce from the same [slot](#g-slot) values — one
-implementation, two call sites, no drift (the silent-drift class [§5.3][s5-3] exists to
-kill). This is a *shipped component's obligation*, not something a consumer can
-retrofit: the real component composes sub-models, and anyone else
-reconstructing the map has re-created the drift class. For bulk-data components
-the obligation is only that the query math be reachable as a plain function —
-they own their resource loading, so building a handle outside a build may cost
-a load, which is acceptable because condition authoring is design-time code.
+**The [value-level constructor](#g-value-level-constructor).** Every field-emitting
+component must expose the map (component, input values) → handle as a plain,
+pure, exported function — `atmospheric_field(atm; T_sl, p_sl, wind)` for the
+`SimpleAtmosphere` successor. The field-emitting component's swept output stage
+must be a **one-line call to that function**, never the other way round. The
+other way round puts the query math in the output stage, where only a
+[sweep](#g-sweep) can reach it.
+
+The reason is script-side: the condition math ([§14.1][s14-1]) must be able to
+construct, outside any sweep, bit-for-bit the same handle the sweep would
+produce from the same [slot](#g-slot) values. One implementation, two call
+sites, no drift — and the drift avoided here is the silent-drift class that
+[§5.3][s5-3] exists to kill. This is a *shipped component's obligation*, not
+something a consumer can retrofit. The real component composes sub-models, so
+anyone else reconstructing the map has re-created the drift class.
+
+For bulk-data components the obligation is only that the query math be
+reachable as a plain function. They own their resource loading, so building a
+handle outside a build may cost a load. That cost is acceptable, because
+condition authoring is design-time code.
+
+**Example.** The map as a plain function, and the stage that does nothing but
+call it:
+
+```julia
+#the map: plain, pure, exported — callable outside any sweep
+atmospheric_field(atm; T_sl, p_sl, wind) = ISAField(…)
+
+#the swept output stage: one line, nothing but the call
+h_xu(atm, args) = (; … = atmospheric_field(atm; T_sl = …, p_sl = …, wind = …))
+```
 
 Pre-sampling — a component consuming the field and a pose and emitting plain data
 (`Airflow` emitting `AirData` for the whole vehicle) — is an **idiom built on top**,
 used where natural; not a separate mechanism. Resource injection (declare-and-resolve
 service registries) is closed for the first cut (row 8).
 
-This replaces threading `atmosphere`/`terrain` as arguments through every update
-signature, and dovetails with the terrain ray-query direction of the landing-gear
-redesign. Substitutability behind a stable [face](#g-face) is declared with an abstract
-input entry (`terrain = AbstractTerrainField` — structural substitutability,
-[§11.2][s11-2]): the consumer wires to any concrete field type below the
-bound, preserving today's `AbstractTerrain` polymorphism at the declaration
-layer.
+The field-handle mechanism replaces threading `atmosphere`/`terrain` as arguments
+through every update signature, and dovetails with the terrain ray-query direction
+of the landing-gear redesign. Substitutability behind a stable [face](#g-face) is
+declared with an abstract input entry — `terrain = AbstractTerrainField`, structural
+substitutability ([§11.2][s11-2]). The consumer wires to any concrete field type
+below the bound, preserving today's `AbstractTerrain` polymorphism at the
+declaration layer.
 
 ---
 
