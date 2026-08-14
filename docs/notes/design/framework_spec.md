@@ -4403,7 +4403,7 @@ line. That is the [§11.4][s11-4] inversion of [error locality](#g-error-localit
 — the property that a mistake fails at the site of the mistake — arriving
 through the namespace.
 
-**Two mitigations, both normative.** The first: the import list above is
+Two mitigations, both normative. The first: the import list above is
 authoring surface, stated wherever a component file is first shown. The second:
 the two diagnostics run a **shadowing check**. If the component's parent module
 defines a same-named function distinct from the framework's, the message says so
@@ -4424,9 +4424,9 @@ dispatches on never learns of the component, which therefore reads as one
 declaring nothing at all.
 
 ```julia
-@testset "engine" begin
+@testset "mycomp" begin
     h_x(::MyComp, (; x)) = …   #a NEW local h_x, not a method of Flight.h_x
-    ...                        #calls here resolve to it, and look correct
+    …                          #calls here resolve to it, and look correct
 end
 #outside: Flight.h_x still has no MyComp method
 ```
@@ -4482,8 +4482,8 @@ receives, and its key set *is* its contract's. An entry of the
 what selects code in type parameters and what is plain data in fields. A key set
 derivable only from field values would therefore have to go one of two ways. It
 could climb into the type parameters anyway, multiplying specialization and
-changing the cost model of [chunking](#g-chunking), the splitting of a large
-phase body into statically typed chunks ([§12.7][s12-7]). Or it could sit in
+changing the cost model ([§12.7][s12-7]) of [chunking](#g-chunking), the
+splitting of a large phase body into statically typed chunks. Or it could sit in
 fields, dissolving the static typing that the zero runtime graph logic
 ([§5.1][s5-1]), the allocation invariant ([§7.5][s7-5]) and the fold-away
 conformance test ([§12.5][s12-5]) all rest on.
