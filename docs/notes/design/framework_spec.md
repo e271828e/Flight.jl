@@ -8455,7 +8455,7 @@ One [frame](#g-frame) each:
   command vector on mode transitions. So the fork dissolved: semantic capture is
   aircraft design. That arrangement is the status quo, and it is uniform across
   writers — a script engages sanely staging one value.
-  The GUI [peek](#g-peek)-batch ([§9.7][s9-7])
+  The GUI [peek](#g-peek)-batch ([§9.7][s9-7]) therefore
   survives as display/slot-sync sugar only. Residual check for migration:
   order-sensitivity of latch vs. sync-write on the same [boundary](#g-boundary)
   (believed none — both derive from the same measurements).
