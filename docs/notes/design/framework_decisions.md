@@ -216,6 +216,8 @@ were derived.
 | D-189 | Unify `report!` on a single `(address, diagnostic)` shape | ratified |
 | D-190 | Reject a separate `derivative_type` declaration | ratified |
 | D-191 | Defer, not consume, the edge on a blocked event | ratified |
+| D-192 | Let the greedy claim empty the harness remainder | ratified |
+| D-193 | Keep per-writer liveness on one timestamp plus task state | ratified |
 
 ### D-001 — Hybrid causal formalism with two-tier events and projection
 
@@ -381,6 +383,8 @@ all-inputs `h_xu`, named per D-075); component split as the refinement.
 **Status.** ratified
 
 **Position.** Eltype genericity on the continuous path, three-tier scoping.
+
+**Spec.** §7.2
 
 **Rationale.** Recorded only through the rejections below.
 
@@ -1022,6 +1026,11 @@ author-visible; helper/macro sugar guarded.
   hazard.
 - *Bundled wrench/mass/momentum contribution structs:* ragged contributors →
   identity-element noise.
+- *Annotation (from §6.2's inline treatment, migrated at the P3.2 rewrite,
+  2026-08-15):* the raggedness census behind that rejection — aero has wrench
+  but no mass, fuel the reverse, only `pwp` has angular momentum; a bundle
+  forces zero-filled identity noise through every port, the "silently sum
+  nothing" hazard in a new coat.
 
 ### D-038 — Snapshot and log: derived trajectory, primary trace header
 
@@ -3010,6 +3019,13 @@ obligation is a loop body that never blocks between `running` checks); `gui =
 true` becomes idempotent attach sugar (ensure-rostered, attach only if absent,
 never detaches), so a persisted GUI renders on every later run without the
 flag.
+
+Annotation (from the R3(a) adjudication, 2026-08-13): the derivation point and
+its `init!`-outcomes term were sharpened after this entry was written —
+topology is derived *after initialization*, from the roster **plus `init!`
+outcomes**, not from the frozen roster alone. §9.1 and §10.4 carry the
+canonical statement, and the looser "roster-derived" shorthand elsewhere
+(D-093, §10.6) stands as shorthand for it.
 
 **Rejected.**
 - *Sugar-only idempotency guard:* leaves explicit double-attach of the GUI
@@ -6484,3 +6500,65 @@ update line.
 - *Reading "re-decided" as premise-recheck only:* the other horn of the flagged
   tension — quietly loses the still-holding blocked event, contradicting the
   blocked-not-lost promise.
+
+### D-192 — Let the greedy claim empty the harness remainder
+
+**Status.** ratified
+
+**Position.** A rostered greedy claimant empties the harness register's derived
+surface: the greedy claim wins and the harness surface genuinely goes empty, so
+every `stage!` in such a session is rejected at staging with `ClaimedFaceEntry`
+naming the incumbent — already-specified behavior, not a new diagnostic.
+
+**Spec.** §9.3
+
+**Rationale.** The precedence is an *implication* of the claimed-versus-derived
+distinction §9.3 already draws, not a new rule: the greedy claim is a **rostered
+claim** whose computed source is exhausted at the attach point, while the
+harness register's surface is the **derived** complement of the rostered claims
+— the faces no rostered device speaks for. A rostered greedy claimant therefore
+leaves that complement empty by construction. The harness register exists for
+script and test sessions without an interactive claimant, and a `stage!`
+rejected in a GUI session with `ClaimedFaceEntry` is informative, not broken;
+§9.6's `EmptyGreedyClaim` covers greedy-vs-greedy only and wants no companion
+here. Escape hatch on the record: a user who wants a non-empty harness surface
+alongside the GUI attaches the GUI under a non-greedy (returned) binding — the
+design already allows it, the same GUI device type being equally attachable
+under a binding that returns explicit claims (§9.6). Greedy-last attach is the
+idiom, computed claims staying exhausted at attach: attachment order is
+load-bearing by design.
+
+**Rejected.**
+- *Harness-first subtraction — subtract the harness remainder before computing
+  the greedy complement:* it would make the derived surface behave like a claim,
+  and it breaks greedy's purpose — everything unclaimed, without configuration.
+- *Recomputing computed claims at roster changes:* contradicts
+  exhaustion-at-attach — past the attach point nothing downstream can tell a
+  computed claim from a returned one — and the frozen-surface doctrine.
+
+### D-193 — Keep per-writer liveness on one timestamp plus task state
+
+**Status.** ratified
+
+**Position.** Per-writer liveness keeps the diagnostic cell's **single** atomic
+heartbeat timestamp (§9.8's mechanism untouched); the published per-writer
+status gains `task_state`, read by the loop from its own device `Task` handles
+at publication; §10.2's "last-staged and last-read wall time" split is dropped.
+
+**Spec.** §9.8, §10.2
+
+**Rationale.** §9.8 gives each cell a bounded accumulation plus one atomic
+liveness timestamp the device task stores on every loop pass, while §10.2's
+published status promised "last-staged and last-read wall time, task state" —
+two timestamps plus a task state that a single store-on-every-call timestamp
+cannot produce. Only one of the three is a genuine cell field: the loop already
+owns the device `Task` handles and can read their state where it publishes, so
+`task_state` costs the cell nothing. §10.2's "the per-writer cell and nothing
+besides, specified in full by §9.8" is qualified to admit those handles.
+
+**Rejected.**
+- *The two-timestamp decomposition — a three-field liveness record in the cell,
+  staged and read separated:* its signal is weakest exactly where it would fire,
+  a rare-data device legitimately parked in a blocking read showing a stale
+  last-staged (the case §10.2's loose 2 s threshold exists to tolerate), and it
+  grows the cell §9.8 deliberately keeps minimal.
