@@ -3924,7 +3924,7 @@ the device identity either way, which is why no call passes a device id
 macro-sequence with an empty integrate).
 
 That needs no machinery. Its [diagnostic cell](#g-diagnostic-cell) (the
-single-writer ring each writer owns for diagnostics and heartbeat) never
+single-writer cell each writer owns for diagnostics and heartbeat) never
 receives a heartbeat timestamp. The cell therefore reads stale against the
 [§10.2][s10-2] threshold from the first frame ([§9.8][s9-8]).
 
@@ -6349,7 +6349,7 @@ path), and the pairing is self-explanatory.
 ### 13.2 Diagnostics: structured values, one carrier exception
 
 Both reporting policies move the same thing. What a collecting pass returns and
-what a fail-fast site throws is in either case a *diagnostic*, so the shape of
+what a fail-fast site produces is in either case a *diagnostic*, so the shape of
 that value decides what an acceptance test can assert and what a user reads.
 
 **Rule.** A diagnostic is a plain value from a small closed set of
@@ -6415,7 +6415,7 @@ noisy one; a warnings-as-errors CI switch is addable, not built.
 
 The *runtime* status/log stream is a different channel, and it is not empty. It
 is per-occurrence, carried by the per-writer [diagnostic cells](#g-diagnostic-cell) ([§9.8][s9-8]) — the
-single-writer ring each writer owns for diagnostics and heartbeat. The cells are
+single-writer cell each writer owns for diagnostics and heartbeat. The cells are
 where the rate limit lives, as a structural bound (a bounded ring plus per-kind
 suppressed counts, drained at frame top) rather than a policy layered over the
 stream. So "rate-limited wherever its source can repeat" holds of every kind
