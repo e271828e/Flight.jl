@@ -6308,38 +6308,43 @@ machinery, which [§13.5][s13-5] replaces.
 
 ### 13.1 Reporting policy: collect the checks, fail the evaluations fast
 
-The fail-fast vs. compiler-style question dissolves once the build's failure
-sites are split into their two populations:
+The build's failure sites split into two populations, and that split settles the
+fail-fast vs. compiler-style question: each population takes the reporting
+policy that fits it.
 
 - **Declarative checks over collected structure** — unconnected inputs,
   two-producers, wire typos and type mismatches, [face](#g-face)-name uniqueness,
   `output_types`/state-field consistency, `sample_times` validation. Each is a
   pass over a list; the whole-tree obligation check literally computes *the
   set of* inputs whose obligation chain never terminates. Reporting every
-  violation is the natural output of the pass — truncating to the first would
-  be extra work — and these failures cluster in practice (a freshly written
-  [assembly](#g-assembly) has five unwired inputs; a renamed [port](#g-port) breaks three wires).
-  **These passes collect:** each returns its full violation list.
-- **User-code evaluation** — [boundary](#g-boundary)-connection bodies ([Stratum](#g-stratum) A), the stage-1 [probes](#g-probe)
-  (B), the probe chain (C). When user code throws there is no meaningful
-  rest-of-collection: a failed `input_connections` leaves the parent's face derivation
-  undefined; a failed stage-2 probe starves every downstream probe of its wired
-  inputs ([probe values](#g-probe-value) flow topologically, [§12.3][s12-3]).
+  violation is the natural output of the pass; truncating to the first would be
+  extra work. These failures also cluster in practice: a freshly written
+  [assembly](#g-assembly) has five unwired inputs, a renamed [port](#g-port)
+  breaks three wires. **These passes collect:** each returns its full violation
+  list.
+- **User-code evaluation** — the [boundary](#g-boundary)-connection bodies, run
+  in [Stratum](#g-stratum) A (one of the build's three phases: structure,
+  schedule, activation); the stage-1 [probes](#g-probe) in B; the probe chain in
+  C. When user code throws there is no meaningful rest-of-collection. A failed
+  `input_connections` leaves the parent's face derivation undefined, and a
+  failed stage-2 probe starves every downstream probe of its wired inputs, since
+  [probe values](#g-probe-value) flow topologically ([§12.3][s12-3]).
   **The first user-code exception aborts the phase** (row 57).
 
-Strata are barriers: a stratum that produced any error-severity diagnostic, of
-either kind, throws before the next stratum begins — probing against
-unresolved wiring is meaningless. The only partial results ever carried past a
-failure are violation lists from pure checking passes, so the cost that kept
-this decision open — build phases having to carry partial internal results
-across a failure, the machinery the strata ([§12][s12]) would otherwise need — never
-materializes.
+Strata are barriers. A stratum that produced any error-severity diagnostic, of
+either kind, throws before the next stratum begins; probing against unresolved
+wiring is meaningless. The only partial results ever carried past a failure are
+violation lists from pure checking passes. [§12][s12] lays the build out in
+three strata, and therefore no stratum needs machinery for carrying partial internal
+results across a failure. That machinery is the cost that kept this decision
+open, and it never materializes.
 
 **No cascade suppression within a stratum** — a deliberate simplification
-(row 57). A typo'd wire (`:throtle`) produces both the
-[did-you-mean](#g-did-you-mean) error and an unconnected-input error for the
-intended `throttle`; both are reported. They render adjacently (diagnostics
-sort by path), and the pairing is self-explanatory.
+(row 57). A wire typo'd as `:throtle` produces both a
+[did-you-mean](#g-did-you-mean) error (the offending name plus the list-in-hand
+it should have matched) and an unconnected-input error for the intended
+`throttle`; both are reported. They render adjacently (diagnostics sort by
+path), and the pairing is self-explanatory.
 
 ### 13.2 Diagnostics: structured values, one carrier exception
 
