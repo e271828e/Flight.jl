@@ -5549,7 +5549,7 @@ discrete component's divisor and [phase](#g-phase) in the [tick](#g-tick) units
 of its [anchor](#g-anchor) — the exact `(T, τ)` pair an `Absolute` entry
 establishes.
 
-The compilation is a fold down the tree, one rule per scope:
+The compilation is a fold down the tree, one rule per case:
 
 | the fold meets | the triple it produces |
 |---|---|
