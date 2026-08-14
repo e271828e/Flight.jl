@@ -428,7 +428,7 @@ guideline).
 
 The guideline and the rule compose into one principle: a port's granularity is set by
 the finest-grained party owning either end — producers on the read side,
-external writers on the write side. Field-addressed staging (a [lens](#g-lens) into
+external writers on the write side. Field-addressed staging (a lens into
 struct slots) stays a recorded guarded addition, unbuilt.
 
 ### 4.4 Function-valued signals: environment access
@@ -1158,7 +1158,7 @@ contributors are all admissible behind them. `output_types` re-types the output
 [cell](#g-cell) per activation ([§11.2][s11-2]). This is the same
 arity-via-computed-contracts pattern [§13.7][s13-7] commits to for `Or{N}`.
 
-Wired at an ownership [boundary](#g-boundary), the junction is ordinary
+Wired at an ownership boundary, the junction is ordinary
 structure: `wr_sum::SumJunction{Wrench, 3}` is a field of `Systems` like any
 other child ([§11.5][s11-5]).
 
@@ -1398,7 +1398,7 @@ three tiers (row 11):
 Lookups: **table data is a pinned parameter; the query coordinate is walked traffic.**
 Interpolations.jl evaluates generically over the coordinate (`itp(x::Dual)` works
 through the `BSpline`/`scale`/`extrapolate` compositions in use). Two caveats
-apply. `Linear()` [interpolants](#g-interpolant) have kinked derivatives at knots; that is no
+apply. `Linear()` interpolants have kinked derivatives at knots; that is no
 regression vs. finite differences, but upgrade to `Cubic` where Jacobian
 quality near a lookup matters. A manual chain rule via
 `Interpolations.gradient` is the escape hatch for anything exotic, and the
@@ -2975,7 +2975,7 @@ device [claims](#g-claim) its slots at attach, and claiming an already-claimed s
 an attach-time error. Detaching releases the claims: a released slot's GUI
 widgets are live again from the next run ([§9.7][s9-7]). Exclusivity replaces any
 cross-device conflict *policy* — attachment-order precedence at
-[drain](#g-drain), say (row 44). Per-device [cells](#g-cell), the CAS merge and the
+[drain](#g-drain), say (row 44). Per-device [cells](#g-staging-cell), the CAS merge and the
 atomicswap drain all stay; they serve atomicity and [coalescing](#g-coalescing), not
 arbitration.
 
@@ -3716,9 +3716,10 @@ detection — lives in the device struct, maintained by the loop, and arrives
 #### Bad datum versus bug: two classes, two fates
 
 A datum that cannot be mapped for environmental reasons — a truncated
-datagram, malformed JSON, an out-of-range field — is tolerated *in the loop
-body*: catch, stage nothing, `report!(handle, MalformedDatum(cause))`,
-continue. That tolerance is bounded by the [device](#g-device)'s own
+datagram, malformed JSON, an out-of-range field — is a
+[bad datum](#g-bad-datum), tolerated *in the loop body*: catch, stage nothing,
+`report!(handle, MalformedDatum(cause))`, continue. That tolerance is bounded
+by the [device](#g-device)'s own
 [diagnostic cell](#g-diagnostic-cell) (the ring and suppressed counts,
 [§9.8][s9-8]; the stream, [§13.2][s13-2]), and what it records is visible next
 to a live heartbeat. Any other exception propagates, and the wrapper turns it
@@ -3730,7 +3731,7 @@ author-owned loop is that no framework per-iteration catch site exists, so the
 framework's contribution is the diagnostic channel, not the catch; a marked
 exception type is not provided (row 105). `report!(handle, ...)` writes
 device-attributed runtime warnings into that device's diagnostic
-[cell](#g-cell), the single-writer entry point into the runtime warning stream
+[cell](#g-diagnostic-cell), the single-writer entry point into the runtime warning stream
 ([§13.2][s13-2], [§9.8][s9-8]), and nothing more. It is not a general
 user-diagnostics channel. Tolerating everything hides bugs as "device
 attached, nothing happens"; tolerating nothing kills a live telemetry link on
@@ -3788,7 +3789,7 @@ unpokeable** — FlightCore's poke-any-`u` workflow does not survive
 [contract](#g-contract) visibility ([§11.3][s11-3]), deliberately.
 
 **Peek rule:** a widget displays its **own pending write if any, else the snapshot
-value**. Own-[cell](#g-cell) only: another [device](#g-device)'s pending write is invisible
+value**. Own-[cell](#g-staging-cell) only: another [device](#g-device)'s pending write is invisible
 by design. Its applied value arrives via the snapshot one frame later, and
 cross-device peek is rejected (row 26). While paused, staged edits display
 indefinitely and apply at the un-pause [drain](#g-drain) (the frame-top swap that publishes
@@ -3796,7 +3797,7 @@ staged device inputs into the root slots). Fan-out is consistent for free:
 widgets on ports resolving to the same slot peek the same pending value.
 
 **Staging contract: widgets stage on interaction events only.** Value widgets (sliders, drags) stage
-the new absolute level on edit. Edge widgets (buttons) stage on [activation](#g-activation), as a
+the new absolute level on edit. Edge widgets (buttons) stage on activation, as a
 level computed from the peek: a flaps button peeks the current counter `k` and
 stages `k+1`. The levels doctrine makes this safe by construction. Repeated
 staging of the same level within a drain window is idempotent, so there is no
@@ -3845,7 +3846,7 @@ mutable state the two rules ([§9.1][s9-1]) exist to eliminate, so it gets the m
 [§9.4][s9-4] already established, not one of its own.
 
 **One [diagnostic cell](#g-diagnostic-cell) per writer — one per rostered device, one for the loop
-itself.** Each [cell](#g-cell) has a single writer, the same ownership argument as the
+itself.** Each [cell](#g-diagnostic-cell) has a single writer, the same ownership argument as the
 [staging cells](#g-staging-cell): no locking, no arbitration, no new primitive. The cell holds a
 **bounded accumulation** — a small ring of diagnostic values, capacity **16**,
 plus a per-kind count of what the ring could not hold — and one atomic
@@ -4021,7 +4022,7 @@ diagnosable. The record is the published
 [framework status](#g-framework-status), the frozen diagnostics value each
 snapshot carries beside the table. It includes per-device liveness — the
 liveness timestamp and the device's `task_state` — next to the pacer
-diagnostics. The mechanism is the per-writer [cell](#g-cell), specified in full
+diagnostics. The mechanism is the per-writer [cell](#g-diagnostic-cell), specified in full
 by [§9.8][s9-8], plus the device `Task` handles the loop already owns, and
 nothing besides. The cell carries the single liveness timestamp; `task_state`
 the loop reads off those handles where it publishes (row 193). A starved,
@@ -4144,7 +4145,7 @@ loop itself ends first.
    returns, at a window ✕ or a peer EOT. No `should_close` hook exists
    ([§9.6][s9-6]). With `should_abort` set, the wrapper's exit path also
    requests a sim stop. Otherwise the sim continues with the device's *task*
-   absent: its [cell](#g-cell) stops filling, and the loop is structurally
+   absent: its [cell](#g-staging-cell) stops filling, and the loop is structurally
    indifferent. Its [roster](#g-roster) entry and its [claims](#g-claim) persist
    to run end, because [§9.3][s9-3] freezes the roster for the run and death is
    not detach. The orphaned [slots](#g-slot) hold their last-drained values,
@@ -4453,7 +4454,7 @@ the duration spelling, mutually exclusive with `frames`. It advances whole
 frames until the boundary time first covers the duration, which is the
 migration suite's advance-by-duration idiom.
 
-Partial advance is the test-[harness register](#g-harness-register): advance,
+Partial advance is the test-harness register: advance,
 assert, advance. It is equally the REPL register: fly a while, inspect,
 continue. Neither is a script, so the scenario-[component](#g-component)
 doctrine does not absorb them ([§10.5][s10-5]).
@@ -4466,7 +4467,7 @@ always does: it registers ([§9.3][s9-3]). The task appears at the next `run!`.
 
 **The [frame-top drain](#g-drain) still runs**, `step!` frames staying
 bit-identical to `run!` frames. What it drains is the **harness
-[cell](#g-cell)**. The harness write path is
+[cell](#g-harness-cell)**. The harness write path is
 `stage!(sim, "face" => value, ...)` ([§9.3][s9-3]), with the calling task as
 writer. Staged batches are ordinary batches. They are traced, so
 [replay](#g-replay) and bit-identity hold. They are applied at the next frame
@@ -4613,7 +4614,7 @@ Everything else is the loop as already specified:
   anywhere.
 - **[Devices](#g-device) are readers.** Rostered devices init and spawn normally
   ([§9.1][s9-1]) and consume [snapshots](#g-snapshot) ([§9.2][s9-2],
-  [§10.3][s10-3]) — the visualizer case. But no live staging [cell](#g-cell) is
+  [§10.3][s10-3]) — the visualizer case. But no live staging [cell](#g-staging-cell) is
   drained while the trace feeds the loop: a batch found staged is discarded with
   a rate-limited warning (`ReplayDiscardedStaging`, [Appendix C][sC]). Mixing
   live writes into a replay would destroy the property replay exists to provide.
@@ -6622,7 +6623,7 @@ named callables bound over the simulation's own buffers. The four blocks:
 - `ticks` — takes the tick index its entries gate on.
 
 Returned with them are the per-event guards and handlers and the per-component
-`project` callables, keyed by the model's own [roster](#g-roster).
+`project` callables, keyed by the model's own roster.
 
 The four-body roster is fixed and total: the accessor returns all of it always,
 whatever the model happens to declare. A model with no discrete components, no
@@ -6783,7 +6784,7 @@ suppressed counts, drained at frame top) rather than a policy layered over the
 stream. So "rate-limited wherever its source can repeat" holds of every kind
 below without any kind arranging it. The stream surfaces through the published
 [framework status](#g-framework-status) ([§9.2][s9-2]) alongside the [§8.7][s8-7] pacer diagnostics and the
-[§10.2][s10-2] liveness heartbeats, which ride in the same [cells](#g-cell). It is never
+[§10.2][s10-2] liveness heartbeats, which ride in the same [cells](#g-diagnostic-cell). It is never
 collected, since there is no collection to join. Nothing in the argument
 (row 84) applies to it: that decision is about what the *build* warns on.
 
@@ -6910,7 +6911,7 @@ end
 
 **How handled.** The catch site wraps the original exception in `StepError`, the
 runtime counterpart of `BuildError`. A `StepError` carries four things: the
-cursor's [frame](#g-frame), the boundary time, the **frame-entry boundary index**, and
+cursor's frame, the boundary time, the **frame-entry boundary index**, and
 the original exception as `cause`. The frame-entry boundary index is the
 [replay](#g-replay) pointer: the frame-top boundary at which the failing frame began.
 That frame top is a grid boundary or [boundary zero](#g-boundary-zero) (the initialization
@@ -7525,7 +7526,7 @@ point" *is* zero partials. Zero partials are the whole of a linearization
 operating-point [condition](#g-condition), which is authored decision-free
 ([§14.10][s14-10]).
 
-The selection is a one-time [boundary](#g-boundary) decision, and it leaves the
+The selection is a one-time boundary decision, and it leaves the
 nominal exact-match doctrine for table [cells](#g-cell) ([§12.5][s12-5])
 untouched. Converters run here and in `capture`'s gather ([§14.10][s14-10]) —
 the write paths — never on state [views](#g-view) ([§7.1][s7-1]).
@@ -7549,7 +7550,7 @@ one plan:
   no strings, no dispatch. The per-iteration shape check is the mechanism
   ([§12.5][s12-5]) transferred. The tree type is proven by dispatch, and it
   carries the full nesting, every field name and leaf type. A `===`
-  [sweep](#g-sweep) over the interned path literals closes the remainder. Those
+  sweep over the interned path literals closes the remainder. Those
   pointer compares fold to nothing in the all-literal case, and shape drift is a
   structured error, not silent corruption. Cost: Julia codegen of ~10–50 ms
   *once per condition shape*. That cost is noise against the model's own
@@ -7694,7 +7695,7 @@ ordinary boundary is exact, not approximate. Piece by piece:
   category: nothing *fires* — the face simply reads `true` in the published `t₀`
   snapshot and the loop reacts, [§13.5][s13-5].)
 - **Due `g` updates run.** This follows from an interval-alignment fact that
-  is easy to mis-picture and is hereby a taught [contract](#g-contract), sibling
+  is easy to mis-picture and is hereby a taught contract, sibling
   to the boundary-sampling line ([§15.5][s15-5]): **a boundary's `g` is the
   *outgoing* transition** — at tick `t_k` it consumes the completed boundary's
   samples and produces `x_{k+1}`, the value the next tick reads. The transition
@@ -8473,7 +8474,7 @@ specified here:
 | `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` dissolves (row 34) |
 | Hand-ordered `f_ode!` body (kinematics → airdata → systems → route five `dynamics.u` assignments → dynamics last) | Build-time topological sort; wrong wiring = build error naming the cycle or dangling [port](#g-port) |
 | Velocity state duplicated in `dynamics.x` and `kinematics.u`, kept in sync by hand | One state, one owner; consumers wire to `dyn.vel` |
-| `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | [Summing junctions](#g-summing-junction) at ownership [boundaries](#g-boundary), one explicit wire per contributor, exported totals ([§6.2][s6-2]) |
+| `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | [Summing junctions](#g-summing-junction) at ownership boundaries, one explicit wire per contributor, exported totals ([§6.2][s6-2]) |
 | `f_step!` quaternion renorm + engine-phase/stall-latch checks | `project` hook + [boundary-detected](#g-boundary-detected) events with defined semantics |
 | `Aircraft.f_ode!` runs avionics before the vehicle → continuous avionics reads one-stage-stale `vehicle.y` (implicit delay) | Avionics scheduled inside the [sweep](#g-sweep), after the stage-1 outputs avionics consumes — no delay. Or avionics declared periodic, sampling post-step by stated semantics |
 | `atmosphere`/`terrain` threaded as arguments through every signature | Field-handle signals through ordinary ports ([§4.4][s4-4]) |
@@ -8581,7 +8582,7 @@ mode-transition resets: `f_init!` plus a bumpless-transfer latch, hand-ordered
 
 *Scheduled gains are inputs.* A scheduler component owns the lookup tables as
 inert parameters, reads the scheduling variables as inputs, and publishes one
-gain [bundle](#g-bundle) per compensator; compensators consume gains as `u`. What mutation
+gain bundle per compensator; compensators consume gains as `u`. What mutation
 hid, ports expose. Gain trajectories become observable in log, [trace](#g-trace) and
 [replay](#g-replay); the `Ref` writes were invisible to all three. The [feedthrough](#g-feedthrough)
 graph carries the dependency. Linearization holds unseeded gain [slots](#g-slot)
@@ -8626,7 +8627,7 @@ continuous-reset contract too.
 
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
-This case study is the exercise that selected per-[device](#g-device) [cells](#g-cell)
+This case study is the exercise that selected per-[device](#g-device) [cells](#g-staging-cell)
 ([§9.4][s9-4]) and produced the [§9.7][s9-7] [contracts](#g-contract). Setup (the
 `sketch_io.jl` listing): a first-order filter with root inputs `u_cmd` and `τ`;
 a fictitious 100 Hz single-axis joystick streaming a slow ramp onto `u_cmd`
@@ -8807,11 +8808,11 @@ The demo line by line:
 One [frame](#g-frame) each:
 
 - *Stick motion*: [device](#g-device) task polls, conditioning helper applies binding params,
-  complete [batch](#g-batch) overwrites the [cell](#g-cell) (inter-frame polls coalesce, ZOH-correct);
+  complete [batch](#g-batch) overwrites the [cell](#g-staging-cell) (inter-frame polls coalesce, ZOH-correct);
   [drain](#g-drain) applies + [traces](#g-trace); avionics [tick](#g-tick) reads the [slot](#g-slot) fresh; worst-case
   stick-to-physics latency = poll interval + frame, now by stated semantics.
 - *Flaps click*: button [peeks](#g-peek) counter `k` (own-pending-else-[snapshot](#g-snapshot)), stages
-  level `k+1` on [activation](#g-activation); drain applies; avionics compares slot counter to its
+  level `k+1` on activation; drain applies; avionics compares slot counter to its
   `x` counter, moves the detent, stores. Multi-click in one window counts via
   own-pending-first peek; repeated staging idempotent ([§9.7][s9-7]).
 - *Mode engage*: the GUI stages `mode_req`, plus optionally peek-captured
@@ -9145,7 +9146,7 @@ otherwise manufacture. The `VehicleDynamics` instance standing beside it
 alone.
 
 **Splitting `Strut`.** The residual remedy is to split `Strut`, its shared
-geometry crossing the new boundary as one `StrutGeometry` [bundle](#g-bundle)
+geometry crossing the new boundary as one `StrutGeometry` bundle
 port. It is recorded and not taken. The call is an aircraft-library one — a
 component's own contract — recorded here rather than in framework vocabulary.
 
@@ -9368,7 +9369,7 @@ For periphery authors and consumers:
   implies. `map_input`/`map_output` are the other kind of thing: conventions of
   the loop idiom, called only by your own `loop`, never by the framework — the
   names are worth keeping for readers, and nothing enforces them.
-- **[Bad datum](#g-bad-datum) vs. bug** ([§9.6][s9-6], [§13.4][s13-4]). Catch what your parser can throw,
+- **Bad datum vs. bug** ([§9.6][s9-6], [§13.4][s13-4]). Catch what your parser can throw,
   `report!(handle, MalformedDatum(cause))`, stage nothing, continue; let
   everything else propagate — the wrapper makes it `DeviceCrash`.
   Tolerating everything hides bugs as "device attached, nothing happens";
@@ -9851,8 +9852,11 @@ probe product, and excluded from the stage-1 hand-down `y_x` ([§5.3][s5-3], [§
 <a id="g-class"></a>**class** — a component's primitive-vs-assembly status, read off *which*
 well-known declarations its type defines: `child_connections` ⇒ assembly, any leaf
 declaration ⇒ primitive, neither ⇒ `ClassUnreadable` ([§11.5][s11-5]). Not to be
-confused with *tier* (continuous vs. discrete, [§D.4][sD-4]) or with a diagnostic
-*kind* ([§D.9][sD-9]).
+confused with *tier* (continuous vs. discrete, [§D.4][sD-4]) — though class
+*mandates* the contract shape that spells the tier ([§11.5][s11-5]) — or with a
+diagnostic *kind* ([§D.9][sD-9]). "Class" in the continuous-vs-discrete sense
+("class split", "two leaf classes", [§15.5][s15-5]) is ordinary English, a
+distinct usage, never linked here.
 
 <a id="g-component"></a>**component** — the unit of modeling: a leaf (continuous or periodic discrete
 primitive) or an assembly of components; "primitive" and "leaf" are used
