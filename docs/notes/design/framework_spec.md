@@ -7106,45 +7106,71 @@ produces ([§14.6][s14-6]).
 ### 14.3 Resolution: flatten, validate, compile once
 
 Resolution takes the root node plus a `Build`. Flattening is the only place
-path strings are ever concatenated — a trivial recursion with a path
-accumulator that also records each entry's **tree position** (its
-`getfield`/`getindex` step tuple). The collecting pass then checks each flat
-entry: path resolves ([did-you-mean](#g-did-you-mean) over children), field declared in the
-target's `init_x`/`init_m`, value type convertible to the declared
-leaf type, [slot](#g-slot) [faces](#g-face) reach root slots, no duplicate
-`(path, store, field)`. The `Build` supplies two lookup families: **schema**
-(the evaluated declarations: may you write this field, at what leaf type —
-the authority) and **layout** (`x` backing ranges, store indices for `m` and for discrete `x`, slot
-indices from the [activation](#g-activation); face chains from [Stratum](#g-stratum) A — the destination).
+path strings are ever concatenated: a trivial recursion with a path
+accumulator that also records each entry's **tree position**, its
+`getfield`/`getindex` step tuple.
 
-A valid list compiles to a plan: per leaf, a `Getter{P}` [lens](#g-lens) (the position
-tuple lifted to a type parameter — type-stable navigation of the fixed tree
-type), a destination offset, and a **converter baked now**, *selected per
-leaf from that leaf's type in the resolved shape* — leaf types are shape
-facts, carried by the tree type along with the full nesting and every field
-name ([§14.4][s14-4]), so selection consults no runtime fact and stays a
-resolution-time bake. Two cases. A leaf **already at the activation's scalar
-type** is decision-descended — under a `Dual`-seeded evaluation of a
-type-stable `trim_condition(d)` every decision-dependent leaf is `Dual`-typed
-in the shape ([§14.7][s14-7]) — and takes the type's ordinary `convert`/constructor
-methods *at that eltype*: an authored `RQuat` of `Dual`s → the `SVector{4}`
-state leaf at `Dual`, partials flowing through untouched, which is what makes
-the seeded decisions reach the [sweep](#g-sweep) at all; at the nominal activation the
-same rule is the ordinary `Float64` conversion (an authored `RQuat` value →
-the `SVector{4}` state leaf it initializes). A plain **`Float64` leaf against
-a non-nominal activation's scratch** is a held constant and takes the
-`Float64 → Dual` zero-partial embedding — semantically exact there, and
-exactly there: "held at the operating point" *is* zero partials, the whole of
-a linearization operating-point [condition](#g-condition), authored decision-free
-([§14.10][s14-10]). The
-selection is a one-time [boundary](#g-boundary) decision that leaves the nominal
-exact-match doctrine for table [cells](#g-cell) ([§12.5][s12-5]) untouched.
-Converters run here
-and in `capture`'s gather ([§14.10][s14-10]) — the write paths — never on state [views](#g-view)
-([§7.1][s7-1]). Overlay
-partiality for the `m` and discrete-`x` stores is baked the same way: the writer holds
-`merge(init_m_defaults, overlay)` with the base resolved at compile time (the
-fork, [§14.1][s14-1]).
+The collecting pass then checks each flat entry:
+
+- the path resolves, with [did-you-mean](#g-did-you-mean) (the offending name
+  plus the list-in-hand it should have matched) over children;
+- the field is declared in the target's `init_x`/`init_m`;
+- the value type is convertible to the declared leaf type;
+- [slot](#g-slot) [faces](#g-face) reach root slots;
+- no `(path, store, field)` is duplicated.
+
+The `Build` supplies two lookup families. **Schema** is the evaluated
+declarations — may you write this field, at what leaf type — and it is the
+authority. **Layout** is the destination: `x` backing ranges, store indices for
+`m` and for discrete `x`, and slot indices from the
+[activation](#g-activation) (a re-run of Stratum C at a given scalar type).
+Layout also carries the face chains from [Stratum](#g-stratum) A (one of the
+build's three phases: structure, schedule, activation).
+
+A valid list compiles to a plan. Per leaf, the plan holds a `Getter{P}`
+[lens](#g-lens) (the compiled navigation step of a condition entry), a
+destination offset, and a converter. The lens is the position tuple lifted to a
+type parameter, so navigation of the fixed tree type is type-stable.
+
+**Rule.** The converter is baked now, selected per leaf from that leaf's type
+in the resolved shape.
+
+**Why.** Leaf types are shape facts, carried by the tree type along with the
+full nesting and every field name ([§14.4][s14-4]). Selection therefore
+consults no runtime fact and stays a resolution-time bake.
+
+There are two cases:
+
+| leaf in the resolved shape | converter baked |
+|---|---|
+| already at the activation's scalar type — decision-descended | the type's ordinary `convert`/constructor methods *at that eltype* |
+| a plain `Float64` leaf against a non-nominal activation's scratch — a held constant | the `Float64 → Dual` zero-partial embedding |
+
+**A leaf already at the activation's scalar type** is decision-descended: under
+a `Dual`-seeded evaluation of a type-stable `trim_condition(d)`, every
+decision-dependent leaf is `Dual`-typed in the shape ([§14.7][s14-7]). Such a
+leaf takes the type's ordinary `convert`/constructor methods *at that eltype*:
+an authored `RQuat` of `Dual`s → the `SVector{4}` state leaf at `Dual`,
+partials flowing through untouched. That untouched flow of partials is what
+makes the seeded decisions reach the [sweep](#g-sweep) at all. At the nominal
+activation the same rule is the ordinary `Float64` conversion: an authored
+`RQuat` value → the `SVector{4}` state leaf it initializes.
+
+**A plain `Float64` leaf against a non-nominal activation's scratch** is a held
+constant, and takes the `Float64 → Dual` zero-partial embedding. That embedding
+is semantically exact in that case, and in no other: "held at the operating
+point" *is* zero partials. Zero partials are the whole of a linearization
+operating-point [condition](#g-condition), which is authored decision-free
+([§14.10][s14-10]).
+
+The selection is a one-time [boundary](#g-boundary) decision, and it leaves the
+nominal exact-match doctrine for table [cells](#g-cell) ([§12.5][s12-5])
+untouched. Converters run here and in `capture`'s gather ([§14.10][s14-10]) —
+the write paths — never on state [views](#g-view) ([§7.1][s7-1]).
+
+Overlay partiality for the `m` and discrete-`x` stores is baked the same way:
+the writer holds `merge(init_m_defaults, overlay)` with the base resolved at
+compile time (the fork, [§14.1][s14-1]).
 
 ### 14.4 Two application registers over one plan
 
