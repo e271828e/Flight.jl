@@ -5016,14 +5016,16 @@ the traces.
    list-in-hand it should have matched) against `output_types`, plus the
    unproduced-`P_shaft` error with both the stage-product and state-field lists
    in hand. A typo *inside* `w` (`q_dny` where the consumer reads `q_dyn`) has
-   no declaration to be checked against and surfaces one hop later, at the
-   consumer, as the framing diagnostic ([§13.2][s13-2]) carrying the producing stage's
-   observed field set ("`f` of `Foo` reads `w.q_dyn`; the stage returned
-   `q_dny`") — weaker than declaration-backed, since the framework cannot know
-   which of the two spellings was meant, but located at the pair of lines that
-   disagree and still name-shaped. That is the price of the private channel,
-   paid where no interface is at stake, and the remedy for an intermediate
-   worth stronger checking is the one [§11.3][s11-3] names: declare it an output.
+   no declaration to be checked against. It surfaces one hop later, at the
+   consumer, as the framing diagnostic ([§13.2][s13-2]). That diagnostic
+   carries the producing stage's observed field set: "`f` of `Foo` reads
+   `w.q_dyn`; the stage returned `q_dny`". It is weaker than a
+   declaration-backed error, since the framework cannot know which of the two
+   spellings was meant. Even so, it is located at the pair of lines that
+   disagree, and it is still name-shaped. That is the price of the private
+   channel, paid where no interface is at stake. The remedy for an intermediate
+   worth stronger checking is the one [§11.3][s11-3] names: declare it an
+   output.
 
 ### 11.5 Assembly declaration: type-based, class by declaration shape
 
