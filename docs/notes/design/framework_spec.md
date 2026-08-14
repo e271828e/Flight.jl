@@ -5209,19 +5209,25 @@ several internal endpoints (fan-out through the boundary)
 (`"trn" => ("systems/ldg/left/trn", …)`). **`output_connections(::A)`** runs the
 other way, internal source path => face name
 (`"aircraft/pose" => "view_pose"`), so that its pairs, like every other pair in
-the three declarations, read along the flow. **Face names are arbitrary strings with
-two build-checked invariants: no `/` (reserved for structural paths) and
-uniqueness across the union of the two boundary declarations' face names** — every other naming choice
-(separators, grouping prefixes like `"pilot.throttle_axis"`) is author
-convention, not framework law; the `input_passthrough` helper's defaults ([§11.8][s11-8]) document the
-house style without legislating it. The two-notation rule this rests on is directional —
-structure vs. contract, not read vs. write: **slash is structure** (endpoint
-paths walking real children and ports; the inspection [register](#g-register)'s [snapshot](#g-snapshot) and
-log addressing), **face names are opaque contract tokens** — the [periphery](#g-periphery)'s
-write side (input devices, mappings, the trace, the GUI write path) speaks
-face names exclusively ([§9.3][s9-3]), and the read side speaks them wherever it
-wants meaning that outlives the build: integration bindings (`get_face`,
-[§9.2][s9-2]) and load-bearing service reads ([§14.4][s14-4]).
+the three declarations, read along the flow.
+
+**Face names are arbitrary strings with two build-checked invariants.** The
+first is that a face name contains no `/` (reserved for structural paths). The
+second is uniqueness across the union of the two boundary declarations' face
+names. Every other naming choice (separators, grouping prefixes like
+`"pilot.throttle_axis"`) is author convention, not framework law. The
+`input_passthrough` helper's defaults ([§11.8][s11-8]) document the house style
+without legislating it.
+
+The two-notation rule this rests on is directional — structure vs. contract, not
+read vs. write. **Slash is structure**: endpoint paths walking real children and
+ports; the inspection [register](#g-register)'s [snapshot](#g-snapshot) and log
+addressing. **Face names are opaque contract tokens.** The
+[periphery](#g-periphery)'s write side (input devices, mappings, the trace, the
+GUI write path) speaks face names exclusively ([§9.3][s9-3]). The read side
+speaks them wherever it wants meaning that outlives the build: integration
+bindings (`get_face`, [§9.2][s9-2]) and load-bearing service reads
+([§14.4][s14-4]).
 The three declarations return pairs of strings rather than NamedTuples (row 46).
 
 One invariant spans all three declarations: every pair's arrow points the way the
@@ -5246,10 +5252,11 @@ face list. Publicity is never implicit ([§11.3][s11-3]).
 
 **Root [slots](#g-slot) fall out with no vocabulary**: at every non-root level an input face
 declared through `input_connections` is fed by the parent's wire; at the root there
-is no parent, and the
-face *is* the [write surface](#g-write-surface) ([§9.3][s9-3]). The whole-tree obligation model ([§6.1][s6-1]) states the
-complementary error rule. An assembly never declares its external connections —
-those live in the parent that instantiates it, exactly as a leaf's do.
+is no parent, and the face *is* the [write surface](#g-write-surface), the set
+of faces a writer's batch entries may reach ([§9.3][s9-3]). The whole-tree
+obligation model ([§6.1][s6-1]) states the complementary error rule. An
+assembly never declares its external connections — those live in the parent
+that instantiates it, exactly as a leaf's do.
 
 **A [worked](#g-worked) assembly.** The IMU ([§15.5][s15-5]), spelled in full — a mixed-tier assembly
 exercising paths, faces and sample times together:
