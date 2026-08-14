@@ -189,7 +189,8 @@ differs:
   compatible with fixed-step real-time execution.
 - **[Localized](#g-localized) (precise):** localization of the crossing instant by root-finding,
   for events where timing precision genuinely matters (mechanics in [§8.4][s8-4]).
-  Detection policy never depends on real-time [pacing](#g-pacing) ([§8.7][s8-7]).
+
+Detection policy never depends on real-time [pacing](#g-pacing) ([§8.7][s8-7]).
 
 This arrangement gives step-boundary logic *well-defined semantics*: the transition is
 defined by the crossing; detection resolution is an execution-policy detail.
@@ -415,7 +416,7 @@ output_connections(::Vehicle) = ("kin/pose" => "pose", "kin/q_eb" => "q_eb")
 
 #### Granularity, write side
 
-**Write-side corollary** (from [§15.4][s15-4]): **bundle what is written together.**
+**Write-side rule** (from [§15.4][s15-4]): **bundle what is written together.**
 
 **Rule.** Data written by different external writers, or at different cadences,
 must not share a port.
@@ -423,9 +424,9 @@ must not share a port.
 Pilot commands are the case in point: scalar faces under a namespace prefix,
 with the convenient bundle assembled *downstream*, inside the graph, by an
 ordinary component (single producer, consumed together — legal by the read-side
-rule).
+guideline).
 
-The two guidelines compose into one principle: a port's granularity is set by
+The guideline and the rule compose into one principle: a port's granularity is set by
 the finest-grained party owning either end — producers on the read side,
 external writers on the write side. Field-addressed staging (a [lens](#g-lens) into
 struct slots) stays a recorded guarded addition, unbuilt.
@@ -762,7 +763,8 @@ stage-1 position ([§11.3][s11-3]). The match is against the declared stores —
 plus `init_m` on the continuous tier — and the publication position is `h_x` on either
 tier. Publication is driven by the public [contract](#g-contract) (row 16).
 
-**`h_xu` receives all wired inputs plus `y_x`** — its own stage-1 ports. With them it
+**`h_xu` receives all wired inputs plus `y_x`** — its own stage-1 ports, auto-published
+names excluded (row 169). With them it
 receives stage 1's `w`, so shared intermediates are computed once, not re-derived,
 whether or not they are interface. It receives the [state views](#g-view) too.
 Conservatively, every stage-2 output is presumed dependent on every wired input.
@@ -852,8 +854,8 @@ while adding checked scheduling.
 publish, and let `f`/`g` consume the ports. External consumers read the same ports — an
 accelerometer model reading `f_c_c`, for instance. The **computer/integrator split**
 remains fully expressible without framework support ([§7.4][s7-4] carries the full
-statement, including when the factoring earns its keep). Purity rules forbid the third
-classic resolution, mutable caching, by design.
+statement, including when the factoring earns its keep). Purity rules forbid the
+classic resolution by mutable caching, by design.
 
 ### 5.4 Artificial loops and the escape hatch
 
@@ -1185,7 +1187,7 @@ child_connections(::Systems) = (
   inputs. Reassigning contributors to different slots changes summation order,
   hence bits (float non-associativity). The ordering is deterministic per
   configuration and under author control, which is strictly more explicit than a
-  framework-canonical order.
+  framework-canonical order (row 37).
 - For the handful of real sites, a **named site-specific junction** documents the
   contributor set better than generated slots, at the price of hard-coding it
   into a type:
@@ -1219,7 +1221,7 @@ applying their own mounting transforms at source.
 Do **not** bundle the three quantities into one contribution struct. Contributors
 are ragged: aero has wrench but no mass, fuel the reverse, only `pwp` has angular
 momentum. A bundle forces zero-filled identity noise through every port — the
-"silently sum nothing" hazard in a new coat.
+"silently sum nothing" hazard in a new coat (row 37).
 
 A `sum_ports!`-style helper (instantiate + wire + export in one call) is
 guarded-addition sugar, added when migration shows the pattern repeated.
@@ -1377,7 +1379,8 @@ scalar. The discrete side stays plain and pins wholesale. Nothing anywhere
 comes from inference through user code. Safety of the substitution rests on the
 embedding guarantee stated in [§12.5][s12-5].
 
-Scoping (what actually needs genericity — roughly half the type inventory):
+Scoping (what actually needs genericity — roughly half the type inventory) has
+three tiers (row 11):
 
 - **[Walked](#g-walked) — payload/value types constructed during evaluation (~25 structs):**
   the quaternion/attitude family, `Wrench`, `FrameTransform`, `MassProperties`,
@@ -1666,6 +1669,9 @@ Together they are ~a hundred lines: trivially zero-allocation, hence auditable
 against the CI invariant of [§7.5][s7-5], and trivially `T`-generic. Genericity is
 not even required of the stepper, since linearization and the tracer drive the
 *sweep*, never the integrator.
+
+Of the two, **`RK4` is the default method**. The step `h` has no default and is
+**required** of the caller — a domain rate is not a framework default.
 
 An `OrdinaryDiffEq`-backed stepper can exist later as a package extension, if an
 offline study genuinely demands adaptive or stiff methods. Per the
@@ -3011,7 +3017,9 @@ One claim mechanism, two claim sources. The source is exhausted at the attach
 point: past it, validation, roster-entry storage, shape compilation
 ([§9.4][s9-4]), the drain, the trace and detach-releases-claims treat a computed
 claim exactly as a returned one. The GUI is therefore not an exception but an
-ordinary enumerated writer whose enumeration the framework performed.
+ordinary enumerated writer whose enumeration the framework performed. Attaching
+the greedy claimant last is the idiom: its computed claim is taken at the attach
+point and never recomputed, so attachment order is load-bearing by design.
 Opportunistic writing by autonomous devices does not exist: a device that
 wants a face enumerates it, and greediness is an explicit declaration, never a
 default. Cross-writer races on one slot therefore cannot arise structurally:
@@ -3029,9 +3037,11 @@ than claimed: the unclaimed complement, the faces no rostered device speaks
 for. That surface is recomputed at every stopped-sim roster change, and is
 therefore as fixed within a run as any claim set. A `stage!` write to a
 claimed face is rejected at staging (`ClaimedFaceEntry`, naming the
-incumbent). The one seam — a batch staged while stopped whose face a
-subsequent `attach!` claims — is renormalized away at the attach itself
-(below). The [harness cell](#g-harness-cell) (the always-present staging cell of the harness
+incumbent). A rostered greedy claimant empties that surface outright: the
+greedy claim is itself a rostered claim, so the complement it leaves is empty
+and every `stage!` in such a session is rejected that way (row 192). The one
+seam — a batch staged while stopped whose face a subsequent `attach!` claims —
+is renormalized away at the attach itself (below). The [harness cell](#g-harness-cell) (the always-present staging cell of the harness
 register) drains **last**, by convention: with every surface disjoint the order
 is unobservable, so the rule exists to make the trace read the same way every
 time, not to arbitrate anything.
@@ -3548,6 +3558,10 @@ reads(b)                               # output side: §14.4 selectors → one c
 map_output(nt, b)                      #              the gather's NamedTuple → wire datum
 ```
 
+The root carries `is_greedy(::AbstractBinding) = false` beside the two
+side defaults, so silence is not greediness — the computed claim source is
+declared or absent.
+
 The framework needs no [contract](#g-contract) on the datum's shape. The datum
 travels only between `loop` and `map_input`, written by the same author, and
 the framework's structural knowledge comes entirely from the declared traits
@@ -3731,8 +3745,8 @@ component's own [ports](#g-port)**, never root [slots](#g-slot). The build-time 
 and exactly: *is this port transitively driven by a root input slot, and which one?*
 Every input port has exactly one source ([§6.1][s6-1]), so the resolution is total:
 
-- **root-driven → live widget**: [peeks](#g-peek) and stages the resolved slot through the
-  GUI's own [staging cell](#g-staging-cell);
+- **root-driven, within the GUI's claim → live widget**: [peeks](#g-peek) and stages the
+  resolved slot through the GUI's own [staging cell](#g-staging-cell);
 - **component-driven → read-only rendering**: displays the driven value from the
   [snapshot](#g-snapshot), visually distinct, with the source as provenance ("driven by
   `avionics/throttle_cmd`" — the canonical slash form of [§11.6][s11-6]).
@@ -3801,8 +3815,11 @@ No claim-transition policy exists, because no claim transition can occur
 mid-run (the freeze, [§9.3][s9-3]). The one liveness-adjacent display rule is
 the orphan case: a read-only widget whose claiming device's task has died
 renders the fact in its provenance — "claimed by `T16000M` — task dead", the
-heartbeat surfaced in place ([§10.2][s10-2]). An orphaned slot is therefore
-visible where the user is looking, not only in the status panel.
+heartbeat surfaced in place ([§10.2][s10-2]). What it displays beside that fact
+is the ordinary snapshot value, the orphaned slot's last drained level: an
+orphan widget is a read-only rendering like any other, never a blanked one. An
+orphaned slot is therefore visible where the user is looking, not only in the
+status panel.
 
 The panel-authoring calling convention — what the drawing context carries,
 how widgets name their component's ports, how an assembly's panel composes
@@ -4002,11 +4019,14 @@ thread for the duration. No pinning, no sticky tasks.
 **Liveness heartbeat.** Since starvation is survivable, it must be
 diagnosable. The record is the published
 [framework status](#g-framework-status), the frozen diagnostics value each
-snapshot carries beside the table. It includes per-device liveness — last-staged
-and last-read wall time, task state — next to the pacer diagnostics. The
-mechanism is the per-writer [cell](#g-cell) and nothing besides, specified in
-full by [§9.8][s9-8]. A starved, blocked or crashed device task shows in the
-GUI as a stale heartbeat with a name on it, not as mysteriously frozen physics.
+snapshot carries beside the table. It includes per-device liveness — the
+liveness timestamp and the device's `task_state` — next to the pacer
+diagnostics. The mechanism is the per-writer [cell](#g-cell), specified in full
+by [§9.8][s9-8], plus the device `Task` handles the loop already owns, and
+nothing besides. The cell carries the single liveness timestamp; `task_state`
+the loop reads off those handles where it publishes (row 193). A starved,
+blocked or crashed device task shows in the GUI as a stale heartbeat with a name
+on it, not as mysteriously frozen physics.
 
 **Stale means a liveness timestamp more than 2 s behind wall clock.** The
 threshold is deliberately loose, because the heartbeat is advisory: a liveness
@@ -4146,9 +4166,9 @@ The ordered part, in one line:
 > `finally shutdown!` → **(5)** join under the 5 s cap → `run!` returns
 
 **Why the final snapshot goes out before the status is set.** Publishing first
-guarantees that output devices can flush the true final state. The status that
-follows carries the run's cumulative diagnostic counters ([§9.8][s9-8]) — the
-complete warning account of a run nobody watched.
+guarantees that output devices can flush the true final state. The status in
+that terminal snapshot carries the run's cumulative diagnostic counters
+([§9.8][s9-8]) — the complete warning account of a run nobody watched.
 
 **Rule.** That terminal snapshot is retained in the log unconditionally, under
 any `log_every` and any `log_max` ([§9.2][s9-2]).
@@ -4228,8 +4248,8 @@ end
 ([§9.6][s9-6]) true of the path outside that wrapper. A device that throws
 half-way through acquisition is handed back to `shutdown!` right there, so its
 partially acquired OS resources are released rather than leaked. That is exactly
-why `shutdown!` owes tolerance of a partially initialized device, a taught
-obligation of [§9.6][s9-6].
+why `shutdown!` owes tolerance of a partially initialized device, a rule
+[§9.6][s9-6] teaches.
 
 **The report is the ordinary `DeviceCrash`, not a kind of its own**
 ([Appendix C][sC]). Its [payload](#g-payload) already carries everything an
@@ -4601,10 +4621,14 @@ Everything else is the loop as already specified:
   replay.
 - **Validation is loud and up front.** Before the first frame, the header is
   validated against the `Build` (store layout, slot [faces](#g-face)), and the
-  trace's batch entries against the root input-face list. The checks are
-  attach-style, and a failure reports [did-you-mean](#g-did-you-mean): the
-  offending name plus the list-in-hand it should have matched. The kinds are
-  `ReplayHeaderMismatch` and `ReplayUnknownFace` ([Appendix C][sC]).
+  trace's batch entries against the root input-face list. Each writer's
+  face-name → position schema ([§9.5][s9-5]) is **validated** in the same pass:
+  a recorded schema that disagrees with the target model's own root input faces
+  is a replay error. The checks are attach-style, and a failure reports
+  [did-you-mean](#g-did-you-mean): the offending name plus the list-in-hand it
+  should have matched. The kinds are
+  `ReplayHeaderMismatch`, `ReplaySchemaMismatch` and `ReplayUnknownFace`
+  ([Appendix C][sC]).
 
   The same pass pays the trace-record conversion in reverse. Every writer's
   sparse records ([§9.5][s9-5]) are normalized to positional batches against the
@@ -4643,6 +4667,7 @@ The dispositions, by header content:
 |---|---|
 | store layout, slot faces | compared against the `Build` |
 | the deployment block's seven trajectory-determining parameters: `Δt_base`, `h`, `n`, the algorithm, `localization_tol`, `localization_budget`, `firing_budget` | compared against the target `Simulation`'s own deployment binding |
+| each writer's face-name → position schema | validated against the target model's root input faces: disagreement is a replay error |
 | resolved stores, slot values | applied directly at boundary zero |
 | `t₀` | applied; `replay!` takes no `t0` argument |
 | `t_end`, `stop_on` | neither compared nor applied: a recorded fact of the recorded session |
@@ -5793,7 +5818,7 @@ constrains it exactly through the faces its wires and boundary connections refer
 required-faces declaration on domain abstract types remains possible sugar).
 Scalar faces make partial scripting compose: a guidance [scenario component](#g-scenario-component) wires
 `mode_req` and `EAS_ref` while the remaining faces stay exported for GUI or
-defaults — impossible with a bundled face ([§4.3][s4-3] write-side corollary).
+defaults — impossible with a bundled face ([§4.3][s4-3] write-side rule).
 
 ---
 
@@ -6145,7 +6170,7 @@ occur on component-fed inputs, which the probe sources from upstream products.
 Physically silly values are acceptable by
 construction: the probe checks types, and return types that depend on input
 *values* are type instabilities (banned by the branch-shape rule); the [§4.3][s4-3]
-write-side granularity corollary keeps root slots predominantly scalar, so the
+write-side granularity rule keeps root slots predominantly scalar, so the
 surface is small. Rejected (row 51): inputs declared by value à la `init_x`, NaN
 poison values, and init-service values.
 
@@ -9751,6 +9776,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.5][s14-5], [§14.8][s14-8] | warning (service) |
 | `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§12.1][s12-1], [§12.2][s12-2] | warning (service), at deployment binding (derivation path only) |
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§9.5][s9-5], [§10.7][s10-7] | service |
+| `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§9.5][s9-5], [§10.7][s10-7] | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§10.7][s10-7] | service (collected) |
 
 **Runtime:**
