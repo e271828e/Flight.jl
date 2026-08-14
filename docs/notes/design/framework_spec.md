@@ -6936,28 +6936,39 @@ a standing ergonomics test of the declaration rules.
 
 ## 14. Stopped-sim services
 
-[§12.6][s12-6] previewed the services — initialization, trim, linearization, [capture](#g-capture) —
-as [Stratum](#g-stratum)-C clients. Everything they share reduces to one artifact: the
-**[condition](#g-condition) value**, the datum that says "set this build to this state."
+[§12.6][s12-6] previewed the services as [Stratum](#g-stratum)-C clients:
+initialization, trim, linearization and [capture](#g-capture) (reading the
+current stores and slots back as a condition). Everything they share reduces to
+one artifact: the **[condition](#g-condition) value**, the datum that says "set
+this build to this state."
 [§14.1][s14-1]–[§14.4][s14-4] settle its representation, composition and application;
-[§14.5][s14-5]–[§14.6][s14-6] the [boundary](#g-boundary)-zero sequence and [slot totality](#g-slot-totality); [§14.7][s14-7]–[§14.9][s14-9] the
+[§14.5][s14-5]–[§14.6][s14-6] the [boundary](#g-boundary)-zero sequence and [slot totality](#g-slot-totality)
+(the requirement that an application cover every root slot); [§14.7][s14-7]–[§14.9][s14-9] the
 trim service in full; [§14.10][s14-10] linearization and `capture`.
 
-**Lifecycle preconditions.** Every service requires a non-running
-simulation — pause included, by the [roster](#g-roster) freeze's own doctrine ([§9.3][s9-3],
-[§10.1][s10-1]): while a run exists the loop owns the [stores](#g-store) between [drains](#g-drain), and a
-service reading or writing them would race it. Within the stopped-sim
-states, legality follows each service's inputs: `capture` requires
-`initialized` or `stopped` (it reads committed, boundary-consistent
-stores); `init!` and `trim!` are additionally legal from `built` — their
-inputs are authored conditions (`trim!`'s scratch world is built from
-[`override`](#g-override)`(baseline, condition(guess))`, [§14.8][s14-8], never from the sim's
-stores); `linearize` inherits `capture`'s precondition when its operating
-point defaults to `capture(sim)`, and `init!`'s legality with an explicit
-`about` ([§14.10][s14-10]). **`errored` is terminal for all four** (rows 59, 108).
-Post-mortem inspection of an errored sim's stores,
-log and [trace](#g-trace) stays available as a diagnostic read; it may not become a
-condition value. A violation is `ServiceLifecycle` ([Appendix C][sC] — the
+**Lifecycle preconditions.** Every service requires a non-running simulation:
+while a run exists the loop owns the [stores](#g-store) between [drains](#g-drain)
+(the frame-top swap that publishes staged device inputs into the root slots),
+and a service reading or writing them would race it. Pause is no exception, by
+the doctrine that freezes the [roster](#g-roster): pause is a control-plane state
+*inside* a run, so a prohibition that holds mid-run holds while paused
+([§9.3][s9-3], [§10.1][s10-1]).
+
+Within the stopped-sim states, legality follows each service's inputs:
+
+| service | `built` | `initialized` | `stopped` | its inputs |
+|---|---|---|---|---|
+| `capture` | error | legal | legal | committed, boundary-consistent stores |
+| `init!` | legal | legal | legal | authored conditions |
+| `trim!` | legal | legal | legal | authored conditions; the scratch world is [`override`](#g-override)`(baseline, condition(guess))` ([§14.8][s14-8]), never the sim's stores |
+| `linearize`, operating point defaulted to `capture(sim)` | error | legal | legal | inherits `capture`'s precondition |
+| `linearize`, explicit `about` ([§14.10][s14-10]) | legal | legal | legal | inherits `init!`'s legality — legal wherever `init!` is |
+
+**`errored` is terminal for all four** (rows 59, 108). Post-mortem inspection
+of an errored sim's stores, log and [trace](#g-trace) stays available as a
+diagnostic read; it may not become a condition value.
+
+A violation is `ServiceLifecycle` ([Appendix C][sC] — the
 operation, the current status, the legal statuses), the same kind
 `attach!`/`detach!` raise while `running` ([§9.3][s9-3]): one [register](#g-register) for "this
 operation is illegal in the current lifecycle state," distinct from
