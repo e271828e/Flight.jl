@@ -1424,7 +1424,7 @@ returns a new value.
 
 A store keeps the same immutable-value discipline as the table's
 [cells](#g-cell), in a separate home. The vocabulary of [§4.1][s4-1] reserves
-the bare word *store* for these registers and never counts them as cells.
+the word *store* for these registers and never counts them as cells.
 Stores never touch the integrator buffer, and no arithmetic is ever done on
 them.
 
