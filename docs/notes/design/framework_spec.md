@@ -947,46 +947,48 @@ framework-level loops does not forbid such models.
 ### 5.6 Diagnostics: feedthrough tracing
 
 Tracing is **diagnostic only, never load-bearing**: scheduling correctness comes
-exclusively from the structural two-stage split; tracing improves error messages and
-verification. Triggered when the scheduler finds a cycle, to classify it (genuine →
-"insert a state"; artificial → the remedy ladder, [§5.4][s5-4]).
+exclusively from the structural two-stage split. Tracing improves error messages
+and verification. It is triggered when the scheduler finds a cycle, to classify
+that cycle: genuine → "insert a state"; artificial → the remedy ladder
+([§5.4][s5-4]).
 
 **Detection and naming.** A cycle surfaces as a topological-sort stall in
 [Stratum](#g-stratum) B (one of the build's three phases: structure, schedule, activation).
-The stalled subgraph is decomposed into **strongly connected [components](#g-component)**, and
-each nontrivial SCC names one cyclic cluster exactly: one diagnostic, its
-members and the wires among them, presented as one readable loop in the
-canonical slash form ([§11.6][s11-6], `aero/F → dyn/a → aero/α̇ → aero/F`). Neither the
-raw stall residue nor a single back edge names the cluster correctly (row 12).
+The stalled subgraph is decomposed into **strongly connected [components](#g-component)**.
+Each nontrivial SCC names one cyclic cluster exactly, and each cluster becomes
+one diagnostic: the cluster's members and the wires among them, presented as one
+readable loop in the canonical slash form ([§11.6][s11-6],
+`aero/F → dyn/a → aero/α̇ → aero/F`). Neither the raw stall residue nor a single
+back edge names the cluster correctly (row 12).
 
 **Classification is [schedule](#g-schedule)-free.** It runs inside Stratum B's failure path,
-where no schedule exists — and needs none, because each SCC member is evaluated
-*once, in isolation*, at the [probe](#g-probe) point: state views from `init_*`,
-out-of-cycle [cells](#g-cell) from the acyclic prefix's probe values, in-cycle cells
-synthesized through `probe_value` ([§12.3][s12-3]) under tracer tags. The tracer's
-product is a per-member dependence set rather than a value, so no ordering has
-to be valid for the labels to come out right. The loop is **real** iff every hop
-of the structural cycle survives in the traced per-member maps; **artificial**
-([§5.4][s5-4]) iff some hop dies — the component whose stage-2 function does not in fact
-route that input to that output. No Stratum C machinery is touched: no
-[activation](#g-activation), no layouts, no table. This is the *local* variant (row 12) — the
+where no schedule exists. None is needed, because each SCC member is evaluated
+*once, in isolation*, at the [probe](#g-probe) point. That evaluation reads state views
+from `init_*`, out-of-cycle [cells](#g-cell) from the acyclic prefix's probe values, and
+in-cycle cells synthesized through `probe_value` ([§12.3][s12-3]) under tracer tags. The
+tracer's product is a per-member dependence set rather than a value, so no
+ordering has to be valid for the labels to come out right.
+
+The loop is **real** iff every hop of the structural cycle survives in the traced
+per-member maps. It is **artificial** ([§5.4][s5-4]) iff some hop dies — the component
+whose stage-2 function does not in fact route that input to that output. No
+Stratum C machinery is touched: no [activation](#g-activation) (a re-run of Stratum C at a
+given scalar type), no layouts, no table. This is the *local* variant (row 12): the
 schedule-free per-member trace at the probe point, which is what the cycle
-classifier uses; the "tracer activation" ([§12.4][s12-4]) names the other variant (row 12), the
-global set-tracer run as an ordinary Stratum-C activation, and the two must not
-be conflated.
+classifier uses. The "tracer activation" ([§12.4][s12-4]) names the other variant
+(row 12), the global set-tracer run as an ordinary Stratum-C activation. The two
+must not be conflated.
 
 **Caveats, carried in the diagnostic rather than assumed away.** The trace
 speaks for the branch taken at the probe state (the diagnostic-only doctrine,
-row 12). Discrete members trace *structurally* — the discrete [tier](#g-tier)'s
-plain,
-wholesale-pinning declarations admit no tracer scalar — which is sound as a
-may-depend answer but never sharp,
-so the remedy hint — split this component, *or* narrow the neighbor's [contract](#g-contract) when
-the dead hop's input is consumed only in a fallback branch (the ladder, [§5.4][s5-4]) — is
-offered only for continuous members. And
-if a member's evaluation itself throws, the diagnostic ships with the member
-list alone: classification is a bonus on the cycle error, never its
-precondition.
+row 12). Discrete members trace *structurally*, because the discrete
+[tier](#g-tier)'s plain, wholesale-pinning declarations admit no tracer scalar.
+Structural tracing is sound as a may-depend answer but never sharp, so the remedy
+hint is offered only for continuous members. The hint itself is to split this
+component, *or* to narrow the neighbor's [contract](#g-contract) when the dead hop's
+input is consumed only in a fallback branch (the ladder, [§5.4][s5-4]). And if a
+member's evaluation itself throws, the diagnostic ships with the member list
+alone. Classification is a bonus on the cycle error, never its precondition.
 
 Two modes, degrading gracefully:
 
@@ -998,17 +1000,17 @@ Two modes, degrading gracefully:
 - **Local (primal-carrying) set-tracer at sampled states** — the fallback whenever the
   global tracer hits an undecidable branch (piecewise friction, stall blending, any
   gridded lookup at an input-tainted coordinate). Reports the dependence pattern of the
-  taken paths, sampled across randomized states; its only misses are untaken branches
+  taken paths, sampled across randomized states. Its only misses are untaken branches
   (row 12).
 
-[Boundaries](#g-boundary): only *inputs* are seeded, so branching on state/modes/parameters/time never
-interferes (stage-2 functions also receive state views, but neither those nor `y_x`
-are ever seeded). Stage-1 functions are never traced (nothing to
-seed). Derivatives, [guards](#g-guard), handlers, [projections](#g-projection) are outside tracing's jurisdiction
-entirely. Known tracer blind
-spot: value-severing operations (dependence passed through a bare `Int` index, e.g.
-nearest-neighbor lookup) — documented; linear/cubic interpolation is immune (dependence
-flows through the fractional weights).
+**Boundaries.** Only *inputs* are seeded, so branching on
+state/modes/parameters/time never interferes. Stage-2 functions also receive
+state views, but neither those nor `y_x` are ever seeded. Stage-1 functions are
+never traced (nothing to seed). Derivatives, [guards](#g-guard), handlers,
+[projections](#g-projection) are outside tracing's jurisdiction entirely. The known tracer
+blind spot is documented: value-severing operations, where dependence passes
+through a bare `Int` index, e.g. a nearest-neighbor lookup. Linear/cubic
+interpolation is immune (dependence flows through the fractional weights).
 
 Both modes ride the same `T <: Real` genericity as `Dual`; Dual-cleanliness in CI
 effectively guarantees traceability.
