@@ -4340,29 +4340,49 @@ but still illustrative in spelling. The sketches (`sketch_decoder.jl`,
 
 ### 11.1 Position: a declarative trait layer — plain Julia, no macros
 
-[Stage functions](#g-stage-function) are ordinary multiple-dispatch methods (the `GUI.draw!` precedent).
-Structural facts are declared through a small set of well-known functions returning
-plain values, defined alongside the methods. No macro DSL: the charter's debugging,
-tooling and comprehension workflows ([§1][s1]) decide it (row 32). A macro can only
-ever *lower to* a layer like this one, so a convenience macro remains addable a
-posteriori as pure sugar (the `@kwdef` precedent), while never becoming
-load-bearing. Redundancy between declarations and function bodies is
-accepted deliberately, under one non-negotiable condition: **every inconsistency
-fails loudly**, at build time where possible, at first execution otherwise.
-The door stays open for the declaration layer specifically: a macro generating
-the well-known declarations — the `where {T <: Real}` ceremony of a continuous
-`output_types` ([§11.2][s11-2]) being the obvious candidate — is admissible sugar *on
-top of* the plain-Julia forms, never a replacement for them and never required
-to author a [component](#g-component) (row 166). Every rule in this part is stated over the
-generated methods, so a macro that lowers to them adds convenience and no
-semantics.
+A component is authored in ordinary Julia. Its
+[stage functions](#g-stage-function) — `h_x` or `h_xu`, the two output stages
+every component provides — are ordinary multiple-dispatch methods, on the
+`GUI.draw!` precedent, and its structural facts are declared through a small set
+of well-known functions returning plain values, defined alongside those methods.
+Four questions about that layer are settled here: what it rules out and what it
+still admits (macros); how an author's methods reach the framework's generic
+functions, and how they can silently fail to (the namespace); which of
+declaration and evaluation is authoritative (the schema); and what a component's
+contract may depend on (the type).
 
-**Namespace and extension.** The declarations and stage functions are
-**extended, not called**: authoring a component means adding methods to
-framework-owned generic functions, and Julia only does that through an explicit
-per-name `import` (or a qualified `Flight.f(…) = …` definition, the
-`Base.show` idiom [§16][s16] records for the extension-only [periphery](#g-periphery) surface). A
-component module therefore opens with
+#### Plain Julia, not a macro DSL
+
+**Rule.** There is no macro DSL.
+
+**Why.** The charter's debugging, tooling and comprehension workflows ([§1][s1])
+decide it (row 32).
+
+Redundancy between declarations and function bodies is accepted deliberately,
+under one non-negotiable condition: **every inconsistency fails loudly**, at
+build time where possible, at first execution otherwise.
+
+A macro can only ever *lower to* a layer like this one. A convenience macro
+therefore remains addable a posteriori as pure sugar — the `@kwdef` precedent —
+while never becoming load-bearing.
+
+The door stays open for the declaration layer specifically. A macro generating
+the well-known declarations is admissible sugar *on top of* the plain-Julia
+forms, never a replacement for them and never required to author a
+[component](#g-component) (row 166). The obvious candidate is the
+`where {T <: Real}` ceremony of a continuous `output_types` ([§11.2][s11-2]).
+Every rule in this part is stated over the generated methods, so a macro that
+lowers to them adds convenience and no semantics.
+
+#### The namespace: declarations are extended, not called
+
+**Rule.** The declarations and stage functions are extended, not called:
+authoring a component means adding methods to framework-owned generic functions.
+
+Julia admits that only through an explicit per-name `import`, or through a
+qualified `Flight.f(…) = …` definition — the `Base.show` idiom [§16][s16]
+records for the extension-only [periphery](#g-periphery) surface. A component
+module therefore opens with
 
 ```julia
 import Flight: init_x, init_m, workspace, input_types, output_types,
@@ -4370,75 +4390,113 @@ import Flight: init_x, init_m, workspace, input_types, output_types,
     input_connections, output_connections, sample_times
 ```
 
-because `using Flight` alone is a silent trap: `f(eng::Engine, …) = …` after a
-bare `using` defines a new, unrelated `MyModule.f` — no error, no warning (the
-short names are deliberately unexported, precisely because `f`, `g`, `events`,
-`project` are the most collision-prone identifiers in numerical Julia, so
-there is no clash for the language to detect) — and the build then sees a
-component with no `f` method and reports a *modeling* diagnostic
-(`StoreWithoutUpdate`; `ClassUnreadable` when the whole inventory was shadowed)
-for a one-line namespace mistake, pointed away from the wrong line — the [§11.4][s11-4]
-[error-locality](#g-error-locality) inversion arriving through the namespace. Two mitigations,
-both normative: the import list above is authoring surface, stated wherever a
-component file is first shown; and the two diagnostics run a **shadowing
-check** — if the component's parent module defines a same-named function
-distinct from the framework's, the message says so and names the missing
-import ("`MyEngine`'s module defines its own `f`, distinct from `Flight.f` —
-add `import Flight: f`"; a two-line `isdefined`/`!==` test on names the build
-already looks up). A convenience macro expanding to the import list remains
-addable-a-posteriori sugar per this section's macro doctrine; per-name `import`
-is the only extension register the language provides, so a re-export submodule
-is not an alternative (row 117).
+**Why the explicit list: `using Flight` alone is a silent trap.** After a bare
+`using`, `f(eng::Engine, …) = …` defines a new, unrelated `MyModule.f` — no
+error, no warning. The short names are deliberately unexported, precisely
+because `f`, `g`, `events` and `project` are the most collision-prone
+identifiers in numerical Julia, so there is no clash for the language to
+detect. The build then
+sees a component with no `f` method and reports a *modeling* diagnostic:
+`StoreWithoutUpdate`, or `ClassUnreadable` when the whole inventory was
+shadowed. A one-line namespace mistake is thereby reported away from the wrong
+line. That is the [§11.4][s11-4] inversion of [error locality](#g-error-locality)
+— the property that a mistake fails at the site of the mistake — arriving
+through the namespace.
 
-**The same trap has a local-scope sibling** (row 164): written inside a `let`,
-a function body or a `@testset`, `h_x(::MyComp, (; x)) = …` does not add a
-method to the global `h_x` — it binds a *new local function* of that name.
-Calls within the block resolve to it and look correct; the generic function the
-build dispatches on never learns of the component, which therefore reads as one
-declaring nothing at all. The shadowing check above cannot reach this case —
-there is no parent-module binding to compare, the shadow being a local binding
-that disappears with its block — so the mitigation is at the other end: **a
-component that declares nothing and defines no stage is rejected at build
-time**, an inert component being unwritable on purpose. That check costs a line
-and catches the misspelled-declaration family with it. Test code is the
-realistic victim (a fixture component defined inside its own `@testset`), and
-the authoring rule is one line: declarations live at module top level. The net
-under a *partially* shadowed component holds because `output_types` is still a
-declaration: a component whose [ports](#g-port) are declared but whose stage went to a
-local binding reads as "declared but not produced" ([§11.3][s11-3]), the shadowing
-note attached, rather than as a component with nothing to say.
+**Two mitigations, both normative.** The first: the import list above is
+authoring surface, stated wherever a component file is first shown. The second:
+the two diagnostics run a **shadowing check**. If the component's parent module
+defines a same-named function distinct from the framework's, the message says so
+and names the missing import: "`MyEngine`'s module defines its own `f`, distinct
+from `Flight.f` — add `import Flight: f`". The check is a two-line
+`isdefined`/`!==` test on names the build already looks up.
 
-**The schema-authority principle.** Declarations *define* the model's structure;
-evaluation *checks* conformance against them — never the reverse. The build [probes](#g-probe)
-user functions with real values (no reliance on compiler inference), compares
-observed against declared, and the same comparison runs on every subsequent
-evaluation for free (a `NamedTuple`-type check that constant-folds away when
-conformant). Inference-by-evaluation as schema authority is rejected on three
-counts, established by walkthrough ([§11.4][s11-4]) and litigated in row 32. Types by
+A convenience macro expanding to the import list remains addable-a-posteriori
+sugar per this section's macro doctrine. A re-export submodule is not an
+alternative: per-name `import` is the only extension register the language
+provides (row 117).
+
+**The same trap has a local-scope sibling** (row 164). Written inside a `let`, a
+function body or a `@testset`, `h_x(::MyComp, (; x)) = …` does not add a method
+to the global `h_x`; it binds a *new local function* of that name. Calls within
+the block resolve to it and look correct. The generic function the build
+dispatches on never learns of the component, which therefore reads as one
+declaring nothing at all.
+
+```julia
+@testset "engine" begin
+    h_x(::MyComp, (; x)) = …   #a NEW local h_x, not a method of Flight.h_x
+    ...                        #calls here resolve to it, and look correct
+end
+#outside: Flight.h_x still has no MyComp method
+```
+
+The shadowing check above cannot reach this case: there is no parent-module
+binding to compare, the shadow being a local binding that disappears with its
+block. So the mitigation is at the other end — **a component that declares
+nothing and defines no stage is rejected at build time**, an inert component
+being unwritable on purpose. That check costs a line, and it catches the
+misspelled-declaration family with it.
+
+Test code is the realistic victim: a fixture component defined inside its own
+`@testset`. The authoring rule is one line — declarations live at module top
+level.
+
+The net holds under a *partially* shadowed component too, because `output_types`
+is still a declaration. A component whose [ports](#g-port) are declared but whose
+stage went to a local binding reads as "declared but not produced"
+([§11.3][s11-3]), the shadowing note attached, rather than as a component with
+nothing to say.
+
+#### Declarations are the schema authority
+
+**Rule.** Declarations *define* the model's structure; evaluation *checks*
+conformance against them — never the reverse.
+
+The build [probes](#g-probe) user functions with real values, with no reliance on
+compiler inference, and compares observed against declared. The same comparison
+then runs on every subsequent evaluation for free: a `NamedTuple`-type check
+that constant-folds away when conformant.
+
+Inference-by-evaluation as schema authority is rejected on three counts,
+established by walkthrough ([§11.4][s11-4]) and litigated in row 32. Types by
 declaration, values by execution, conformance by comparison.
 
-**[Contracts](#g-contract) are functions of the type, not of the instance.** A leaf's contract
-declarations — `input_types`, `output_types`, `events`, and the
-shapes of `init_x`/`init_m` — must be determined by the component's
-**type**, its type parameters included, and never by its field *values*. The
-value-discarding signature (`input_types(::Engine, ::Type{T})`) is the visible form of the
-rule, and the idiom for a contract that genuinely varies is the type parameter,
-not the field: `SumJunction{Wrench, 3}` ([§6.2][s6-2]), `Or{N}` ([§13.7][s13-7]) — arity is spelled
-in the type, at the price [§6.2][s6-2] states openly. The reason is the entry typing ([§12.7][s12-7]): a
-component's [bundle](#g-bundle) is a `NamedTuple` whose key set *is* its contract's, and an
-[executor](#g-executor) entry carries what selects code in type parameters and what is plain
-data in fields. A key set derivable only from field values would have to either
-climb into the type parameters anyway — multiplying specialization and changing
-the [chunking](#g-chunking) cost model ([§12.7][s12-7]) — or sit in fields,
-dissolving the static typing that the zero runtime graph logic ([§5.1][s5-1]),
-the allocation invariant ([§7.5][s7-5]) and the fold-away conformance test
-([§12.5][s12-5]) all rest on. The build reads each declaration once,
-against the concrete instance, so a value-dependent contract does not announce
-itself: this is a rule authors keep, not a check the build can run. **`workspace`
-is the one exception**, and explicitly so: it is the by-allocation [register](#g-register) (row
-77) — an allocator the framework *calls*, not a schema it *walks* — and it
-legitimately takes sizes from the instance (`workspace(c::KF, ::Type{T})` reading
-`c.n`, [§7.3][s7-3]), because no entry type is derived from it.
+#### Contracts are functions of the type, not of the instance
+
+**Rule.** A leaf's [contract](#g-contract) declarations — `input_types`,
+`output_types`, `events`, and the shapes of `init_x`/`init_m` — must be
+determined by the component's **type**, its type parameters included, and never
+by its field *values*.
+
+The value-discarding signature `input_types(::Engine, ::Type{T})` is the visible
+form of the rule. The idiom for a contract that genuinely varies is the type
+parameter, not the field: `SumJunction{Wrench, 3}` ([§6.2][s6-2]), `Or{N}`
+([§13.7][s13-7]). Arity is spelled in the type, at the price [§6.2][s6-2] states
+openly.
+
+**Why.** The entry typing decides it ([§12.7][s12-7]). A component's
+[bundle](#g-bundle) is the `NamedTuple` of zero-copy views a component function
+receives, and its key set *is* its contract's. An entry of the
+[executor](#g-executor), the compiled execution form of the schedule, carries
+what selects code in type parameters and what is plain data in fields. A key set
+derivable only from field values would therefore have to go one of two ways. It
+could climb into the type parameters anyway, multiplying specialization and
+changing the cost model of [chunking](#g-chunking), the splitting of a large
+phase body into statically typed chunks ([§12.7][s12-7]). Or it could sit in
+fields, dissolving the static typing that the zero runtime graph logic
+([§5.1][s5-1]), the allocation invariant ([§7.5][s7-5]) and the fold-away
+conformance test ([§12.5][s12-5]) all rest on.
+
+The build reads each declaration once, against the concrete instance, so a
+value-dependent contract does not announce itself. This is a rule authors keep,
+not a check the build can run.
+
+**`workspace` is the one exception**, and explicitly so. It is the by-allocation
+[register](#g-register) (row 77): an allocator the framework *calls*, not a
+schema it *walks*. It legitimately takes sizes from the instance
+(`workspace(c::KF, ::Type{T})` reads `c.n`, [§7.3][s7-3]), because no entry type
+is derived from it.
 
 ### 11.2 The declaration inventory
 
