@@ -8895,21 +8895,21 @@ ground the choices:
 ## Appendix A. Taught contracts: the author-facing index
 
 The build pipeline enforces structure — declarations, wiring, types,
-conformance. A residue of *semantic* facts is unenforceable by any check:
-knowing them is what makes component and periphery code come out right, and
-not knowing them produces defensive delays, duplicated math or mistimed
-samples with no diagnostic firing anywhere (the author-knowledge note,
-[§15.5][s15-5], is the archetype).
-This appendix is an **index, not a second home** — one recall line per
-contract, with the normative statement staying in the owning section (one
-home per datum, applied to the document itself).
+conformance. A residue of *semantic* facts is unenforceable by any check.
+Knowing them is what makes component and periphery code come out right.
+Not knowing them produces defensive delays, duplicated math or mistimed
+samples with no diagnostic firing anywhere; the author-knowledge note
+([§15.5][s15-5]) is the archetype.
+This appendix is an **index, not a second home**: one recall line per
+contract, with the normative statement staying in the owning section. That is
+one home per datum, applied to the document itself.
 
 For component authors:
 
 - **The stage funnel** ([§5.2][s5-2]). Stage name ⊇ bundle ⊇ destructured reads:
   the stage name fixes the maximal legal view set, the component's
   declarations narrow it to the bundle, and the signature's destructuring
-  narrows it to actual reads — so "no `u` in the name" *is* the
+  narrows the bundle to actual reads — so "no `u` in the name" *is* the
   no-feedthrough property. The teaching line: stage 1 publishes what you
   know from state alone; stage 2 adds what needs inputs; your dynamics
   read your own published results instead of recomputing them.
@@ -8925,20 +8925,20 @@ For component authors:
 - **Boundary sampling** ([§8.5][s8-5]/[§8.6][s8-6]; worked example [§15.5][s15-5]). "Sampling at
   `t_k`" means post-integration, post-projection, stage-1-fresh state: a
   due tick's gated stages run inside the boundary sweep and sample the
-  *completed* boundary. Distrusting this — a defensive one-tick delay, a
-  re-derivation inside the sampler — silently degrades the model.
+  *completed* boundary. Distrusting that guarantee — a defensive one-tick
+  delay, a re-derivation inside the sampler — silently degrades the model.
 - **Interval alignment** ([§14.5][s14-5]). A boundary's `g` is the *outgoing*
   transition: at tick `t_k` it consumes the completed boundary's samples
   and produces `x_{k+1}` — the value the component's *next* tick decodes
   (the sampled-data `z⁻¹` delay, by construction). Hence `g` runs at
-  boundary zero: it is the `t₀` sample's only chance.
+  boundary zero: that run is the `t₀` sample's only chance.
 - **Same-tick reset consumption** ([§15.2][s15-2]) — *discrete tier*. A commanded reset
   of a discrete component's `x` is an input. For same-tick output semantics
-  the *output stage* consumes it — overriding
-  the state-derived path — and `g` stores the matching `x⁺`; a reset honored
-  only in `g` reaches the outputs one tick late (the plant integrates a full
-  step under the stale command). Both spellings are legal; they mean
-  different things. The continuous tier has no such choice — next entry.
+  the *output stage* consumes that input — overriding the state-derived path —
+  and `g` stores the matching `x⁺`. A reset honored only in `g` reaches the
+  outputs one tick late: the plant integrates a full step under the stale
+  command. Both spellings are legal; they mean different things. The
+  continuous tier has no such choice — next entry.
 - **A continuous component's state reset is an event** ([§3.1][s3-1], [§8.6][s8-6], [§15.2][s15-2]).
   Only handlers write `x`, so even a *commanded* reset — the condition
   arriving as an ordinary `Bool` input, weight-on-wheels being the shipped
@@ -8966,7 +8966,7 @@ For component authors:
   `x`/`m` are all the firing round's sweep, and a component fires at most one
   event per round — later own events are re-decided against the next round's
   sweep, one round per causal link, within and across components alike. The
-  table is written only by sweeps.
+  signal table is written only by sweeps.
 - **Stage totality** ([§12.3][s12-3]; [§13.4][s13-4], [§13.5][s13-5]). Stage code is total over
   type-valid inputs: the probe evaluates every user function against values
   chosen for their types alone, and a value-level throw is a build failure
@@ -8991,9 +8991,9 @@ For periphery authors and consumers:
   send). A forgotten predicate check surfaces as `DeviceJoinTimeout` with
   your device's name; a stall as a stale heartbeat.
 - **`shutdown!` closes only what is open** ([§9.6][s9-6], [§10.4][s10-4]). The framework
-  runs it on every exit path, your own `init!`'s failure included: a throw
-  half-way through acquisition hands the half-built device straight back to
-  you, so guard each release (`isopen`, a `nothing` handle) rather than
+  runs `shutdown!` on every exit path, your own `init!`'s failure included:
+  a throw half-way through acquisition hands the half-built device straight
+  back to you, so guard each release (`isopen`, a `nothing` handle) rather than
   assuming initialization completed. The converse is a burden you do *not*
   carry: `init!` owes no cleanup of its own.
 - **Binding traits are declarations, mappings are your own idiom** ([§9.6][s9-6]).
