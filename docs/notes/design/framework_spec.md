@@ -8137,71 +8137,97 @@ reject-loops policy matches domain practice rather than fighting it.
 
 ### 15.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
 
-Two [components](#g-component) were transliterated to validate the decoder interfaces before adoption.
+Three exercises, each starting from code that exists today. Two [components](#g-component) were
+transliterated to validate the decoder interfaces before adoption: `PistonEngine`
+on the continuous side, `PID` and the C172X FCS on the discrete one. A third
+exercise takes the supervisor sitting one level above those compensators. Each
+is read first as what today's code does, then as what this design makes of it.
 
-**`PistonEngine`** (piston.jl:310-449) — mode enum with three [flow](#g-flow) regimes, four table
-lookups, two embedded continuous PI compensators, boolean transitions, argument-threaded
-`fuel_available`:
+#### `PistonEngine`: the continuous side
 
-- The compensator paths (`idle`, `frc`) are pure functions of the engine's own state
-  (`ω`), so their complete PI laws — outputs *and* state derivatives — evaluate in
-  `h_x`. (The alternative factoring, compensators as child components of an engine
-  [assembly](#g-assembly), also [schedules](#g-schedule) cleanly from the core's stage-1 [ports](#g-port).)
-- `h_xu` runs the lookup chain and the mode branch once; `f` is a three-field copy
-  (`ω̇`, `ẋ_idle`, `ẋ_frc`). Under the orthodox split, `f` would reproduce essentially
-  the whole `f_ode!` body — four lookups and the mode branch — ×4 RK stages per step.
+The current engine (piston.jl:310-449) carries a mode enum with three [flow](#g-flow)
+regimes, four table lookups, two embedded continuous PI compensators, boolean
+transitions and an argument-threaded `fuel_available`. Under the decoder
+interfaces, each of those features lands somewhere specific.
+
+- The compensator paths (`idle`, `frc`) are pure functions of the engine's own
+  state `ω`. Their complete PI laws — outputs *and* state derivatives —
+  therefore evaluate in `h_x`. (The alternative factoring, compensators as
+  child components of an engine [assembly](#g-assembly), also [schedules](#g-schedule) cleanly from the
+  core's stage-1 [ports](#g-port).)
+- `h_xu` runs the lookup chain and the mode branch once. `f` is a three-field
+  copy (`ω̇`, `ẋ_idle`, `ẋ_frc`). Under the orthodox split, `f` would reproduce
+  essentially the whole `f_ode!` body — four lookups and the mode branch — ×4
+  RK stages per step (row 15).
 - `f_step!`'s transitions become [boundary-detected](#g-boundary-detected) events with mixed [predicate](#g-predicate)/threshold [guards](#g-guard)
-  ([§2.1][s2-1]); `fuel_available` becomes an ordinary port (state-derived at the fuel system,
-  hence stage-1 — no loop).
+  ([§2.1][s2-1]).
+- `fuel_available` becomes an ordinary port. It is state-derived at the fuel
+  system, hence a stage-1 port — no loop.
 - Forced publications: none — everything `f` reads was already in `PistonEngineY`.
 
-**`PID`** (control.jl:431-471) and the C172X FCS — the discrete side's representative:
+#### `PID` and the C172X FCS: the discrete side
 
-- The current update entangles outputs and next state by construction (`y_i = x_i`:
-  this [tick](#g-tick)'s integral-path output *is* the updated integrator state). Under [§5.3][s5-3] the
-  law runs once in `h_xu`, publishing paths, saturation and the updated states;
-  `g` is a three-field copy. Under the orthodox split, `g(x, u, t)` would reproduce
-  the entire law per compensator per tick.
-- **Discovered latent delay.** The FCS chains anti-windup: outer compensators take
-  `sat_ext` from the inner LQR's `sat_out` (c172x_ctl.jl:332,345,...). Wired naively,
-  this is a *genuine* tick-domain [algebraic loop](#g-algebraic-loop)
-  (`outer.output → inner.input → inner.sat_out → outer.sat_ext → outer.int_halted →
-  outer.y_i → outer.output`), which the build correctly rejects. Today's code escapes
-  it only through hand-managed call order: the outer loops read the LQR's `sat_out`
-  *before* the LQR updates, silently consuming the **previous tick's** value — a unit
-  delay that exists nowhere in the code, only in statement ordering. Under this design
-  the fix is one visible wire: connect `outer.sat_ext` to the inner compensator's
-  stage-1 port for the previous saturation (`sat_out_0` — an `x` field declared in the
-  LQR's output [contract](#g-contract), hence auto-published at stage-1 position, [§11.3][s11-3]). The delay
-  becomes an explicit property of the wiring. (The loop and its fix are
-  formalism-independent; the framework's contribution is refusing to let the
-  ambiguity through, and stage 1's is having the delayed value already on a port.)
+`PID` (control.jl:431-471) and the C172X FCS around it are the discrete side's
+representative.
 
-Both components passed without blockers, with zero publications forced beyond current
-practice — the empirical basis for the claim ([§5.3][s5-3]) that derivative/output overlap is the
-domain norm and the decoder matches the codebase's grain.
+- The current update entangles outputs and next state by construction. The
+  spelling is `y_i = x_i`: this [tick](#g-tick)'s integral-path output *is* the updated
+  integrator state.
+- Under [§5.3][s5-3] the law runs once in `h_xu`, publishing paths, saturation and the
+  updated states; `g` is a three-field copy.
+- Under the orthodox split, `g(x, u, t)` would reproduce the entire law per
+  compensator per tick (row 15).
 
-**The supervisor slice: scheduled gains and bumpless engage.** One level
-above the compensators, today's `c172x_ctl.jl` runs on two idioms the
-[stores](#g-store)-and-[views](#g-view) rules deliberately remove: per-tick gain scheduling by
-mutation (`assign!` writing `Ref`-[cell](#g-cell) parameters from EAS/altitude lookups
-every 50 Hz tick, LQR matrix sets included) and mode-transition resets
-(`f_init!` plus a bumpless-transfer latch, hand-ordered *before* the same
-tick's `f_periodic!`). Both survive as dataflow.
+**Discovered latent delay.** The FCS chains anti-windup: outer compensators
+take `sat_ext` from the inner LQR's `sat_out` (c172x_ctl.jl:332,345,...). Wired
+naively, that chain is a *genuine* tick-domain [algebraic loop](#g-algebraic-loop), and the build
+correctly rejects it:
+
+```
+outer.output → inner.input → inner.sat_out → outer.sat_ext →
+outer.int_halted → outer.y_i → outer.output
+```
+
+Today's code escapes the loop only through hand-managed call order: the outer
+loops read the LQR's `sat_out` *before* the LQR updates, silently consuming
+the **previous tick's** value. That is a unit delay existing nowhere in the
+code, only in statement ordering.
+
+Under this design the fix is one visible wire: connect `outer.sat_ext` to the
+inner compensator's stage-1 port for the previous saturation, `sat_out_0`.
+That port is an `x` field declared in the LQR's output [contract](#g-contract), hence
+auto-published at stage-1 position ([§11.3][s11-3]). The delay becomes an explicit
+property of the wiring. The loop and its fix are formalism-independent: the
+framework's contribution is refusing to let the ambiguity through, and stage
+1's contribution is having the delayed value already on a port.
+
+Both components passed without blockers, with zero publications forced beyond
+current practice. That result is the empirical basis for the claim ([§5.3][s5-3]) that
+derivative/output overlap is the domain norm and that the decoder matches the
+codebase's grain.
+
+#### The supervisor slice: scheduled gains and bumpless engage
+
+One level above the compensators, today's `c172x_ctl.jl` runs on two idioms
+the [stores](#g-store)-and-[views](#g-view) rules deliberately remove. The first is per-tick gain
+scheduling by mutation: `assign!` writes `Ref`-[cell](#g-cell) parameters from
+EAS/altitude lookups every 50 Hz tick, LQR matrix sets included. The second is
+mode-transition resets: `f_init!` plus a bumpless-transfer latch, hand-ordered
+*before* the same tick's `f_periodic!`. Both survive as dataflow.
 
 *Scheduled gains are inputs.* A scheduler component owns the lookup tables as
 inert parameters, reads the scheduling variables as inputs, and publishes one
 gain [bundle](#g-bundle) per compensator; compensators consume gains as `u`. What mutation
-hid, ports expose: gain trajectories become observable in log, [trace](#g-trace) and
-[replay](#g-replay) (the `Ref` writes were invisible to all three), the [feedthrough](#g-feedthrough) graph
-carries the dependency, and linearization holds unseeded gain [slots](#g-slot) constant
-with zero special-casing ([§14.10][s14-10]). One-shot design-time gains (`robot2d`'s
-controller synthesis at init) are construction-time parameters or stopped-sim
-service outputs — not a runtime write path.
+hid, ports expose. Gain trajectories become observable in log, [trace](#g-trace) and
+[replay](#g-replay); the `Ref` writes were invisible to all three. The [feedthrough](#g-feedthrough)
+graph carries the dependency. Linearization holds unseeded gain [slots](#g-slot)
+constant with zero special-casing ([§14.10][s14-10]). One-shot design-time gains
+(`robot2d`'s controller synthesis at init) are construction-time parameters or
+stopped-sim service outputs — not a runtime write path.
 
 *Resets are same-tick inputs, consumed in the output stage.* The supervisor
 publishes `engage` and the latch value from its own feedthrough stage; the
-compensator, topologically after it, honors them **this tick**:
+compensator, topologically after the supervisor, honors them **this tick**:
 
 ```julia
 h_xu(c::PI, (; x, u)) = (; u_cmd = u.engage ? u.u_latch : c.k_p*u.e + x.x_i)
@@ -8209,27 +8235,30 @@ g(c::PI, (; x, u, Δt)) = (; x_i = u.engage ? u.u_latch - c.k_p*u.e
                                            : x.x_i + c.k_i*Δt*u.e)
 ```
 
-Honoring the reset only in `g` is legal and means something else: the state
-still lands correctly at the next tick, but the *output at the engagement
-tick* was already published from the stale state during the [sweep](#g-sweep) — and under
-ZOH the plant integrates a full step under it. That one-tick-late command is
-exactly the bump that bumpless transfer exists to remove, and no diagnostic
-can catch it (both spellings are meaningful designs). The update stage cannot
-rescue its own [boundary](#g-boundary) — republish-from-`x⁺` is rejected (row 67) — so the
-output stage is the *only* same-tick path. Today's hand-ordering (`f_init!`
-before `f_periodic!` in one call) is this contract enforced manually;
-[Appendix A][sA] carries it as the same-tick reset entry, and the
-bumpless-engage answer ([§9.7][s9-7]) — engage semantics live in the FCS —
-presupposes
-exactly this spelling. One relative outside the FCS: the landing gear's
-level-triggered cross-component reset (`!wow` re-initializing the friction
-regulator every step) becomes an edge-triggered event owned by the regulator
-— a semantic tightening recorded in the migration mapping ([§16][s16]). There the
-respelling is not a stylistic one: the continuous [tier](#g-tier) admits no input
-spelling at all, because only handlers write `x` ([§3.1][s3-1]), so the event is
-necessity rather than taste ([Appendix A][sA] carries the contract), and the
-reimplemented `PIVector`'s optional reset [face](#g-face) ([§16][s16]) is sugar over
-exactly this event.
+Honoring the reset only in `g` is legal, and it means something else. The
+state still lands correctly at the next tick. But the *output at the
+engagement tick* was already published from the stale state during the [sweep](#g-sweep),
+and under ZOH the plant integrates a full step under that stale command. That
+one-tick-late command is exactly the bump that bumpless transfer exists to
+remove. No diagnostic can catch the bump: both spellings are meaningful
+designs.
+
+The update stage cannot rescue its own [boundary](#g-boundary) — republish-from-`x⁺` is
+rejected (row 67) — so the output stage is the *only* same-tick path. Today's
+hand-ordering (`f_init!` before `f_periodic!` in one call) is that contract
+enforced manually. [Appendix A][sA] carries the contract as the same-tick reset
+entry, and the bumpless-engage answer ([§9.7][s9-7]) presupposes exactly this
+spelling — engage semantics live in the FCS.
+
+One relative lives outside the FCS. The landing gear's level-triggered
+cross-component reset (`!wow` re-initializing the friction regulator every
+step) becomes an edge-triggered event owned by the regulator, a semantic
+tightening recorded in the migration mapping ([§16][s16]). There the respelling is
+not a stylistic one: the continuous [tier](#g-tier) admits no input spelling at all,
+because only handlers write `x` ([§3.1][s3-1]). The event is therefore necessity
+rather than taste, and the reimplemented `PIVector`'s optional reset [face](#g-face)
+([§16][s16]) is sugar over exactly that event. [Appendix A][sA] carries the
+continuous-reset contract too.
 
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
