@@ -8715,9 +8715,9 @@ disposition exceeds a cell are expanded below the table.
 **The parametrization pass.** `Ranged` survives at [ports](#g-port) and
 parameters, and there the rewrite targets the walk rule ([§11.2][s11-2]):
 constructor discipline admitting the walked scalar with the value parameters
-left alone, plus a `probe_value` method. The state fields are the sites where
-`Ranged` does not survive; the state-declaration conversion below turns each
-into a plain scalar.
+left alone, plus a `probe_value` method. State fields are not among those
+survival sites; the state-declaration conversion below turns each `Ranged`
+state field into a plain scalar.
 
 **Comparison criteria.** FlightCore's demonstrated strengths are three:
 zero-alloc stepping, flexibility, interactive operation. Zero-alloc stepping is
@@ -8754,7 +8754,7 @@ the not-[holding](#g-edge-semantics) → holding semantics ([§2.1][s2-1]) — a
 gives fresh regulator state per contact episode. The liftoff edge (`!wow`) was
 rejected (row 141). [Boundary-detected](#g-boundary-detected) policy (checked
 for edges at step boundaries only, no root-finding) suffices, because the
-regulator's input ramps from zero at touchdown and localization buys nothing. A
+regulator's input ramps from zero at touchdown, so localization buys nothing. A
 sim initialized on ground fires the reset at [boundary zero](#g-boundary-zero)
 (the initialization boundary: the ordinary macro-sequence with an empty
 integrate). It fires harmlessly there: declared inits are zero, and
@@ -8856,8 +8856,8 @@ Five items are flagged for the sweep and deliberately not settled here:
 - Whether register (1) needs an explicit exemption for predicate traits
   (`is_greedy`, `needs_calling_task`).
 
-All five are boundary cases that arose after row 144 was adopted: the
-convention's list does not settle them, and they are not defects of it.
+All five are boundary cases row 144's convention does not settle, and they
+are not defects of its list.
 
 #### GUI panel authoring API
 
