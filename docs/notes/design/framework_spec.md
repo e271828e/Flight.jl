@@ -858,68 +858,87 @@ classic resolution, mutable caching, by design.
 ### 5.4 Artificial loops and the escape hatch
 
 A [component](#g-component) that bundles a no-[feedthrough](#g-feedthrough) output with a feedthrough output in one
-atomic evaluation unit can be **[port](#g-port)-level acyclic yet unschedulable** (Simulink's
-"artificial [algebraic loop](#g-algebraic-loop)"). The canonical instance in this domain is rigid-body
-dynamics: velocity out (pure state) + acceleration out (feedthrough from total force).
-The two-stage split resolves it, and it is the rung that absorbs most of the class:
-the `VehicleDynamics` instance ([§15.1][s15-1]) — velocity state-only,
-accelerations feedthrough — simply dissolves under it.
+atomic evaluation unit can be **[port](#g-port)-level acyclic yet unschedulable** — Simulink's
+"artificial [algebraic loop](#g-algebraic-loop)". The canonical instance in this domain is rigid-body
+dynamics: velocity out is pure state, acceleration out is feedthrough from total
+force. The two-stage split resolves it, and it is the rung that absorbs most of the
+class. The `VehicleDynamics` instance ([§15.1][s15-1]) is velocity state-only with
+accelerations feedthrough, and it simply dissolves under the split.
 
 What survives the split is the case where a single component's stage-2 outputs
-cross-couple through a neighbor (port-level acyclic, stage-level cyclic), which
-the tracer ([§5.6][s5-6]) labels **artificial**. Two remedies, in this order:
+cross-couple through a neighbor: port-level acyclic, stage-level cyclic. The tracer
+([§5.6][s5-6]) labels that case **artificial**. Two remedies apply, in this order:
 
 - **Re-factor the [contract](#g-contract).** Before moving any code, re-examine the cycle's wires. An
   input the neighbor consumes *only in a fallback branch* is the archetypal false
   dependency: the neighbor is computing, on the component's behalf, a fallback whose
   semantics belong on the component's own side of the [boundary](#g-boundary). Move the branch to its
-  natural owner and the wire disappears. The canonical instance is the landing gear's
-  strut/steering pair: the steering model consumes the contact-point velocity azimuth
-  `ψ_v` only in its disengaged (castoring) branch, but castoring is free-swiveling
-  wheel physics — the strut's business, not the steering law's. Re-factoring the
-  steering contract to emit `(engaged, ψ_cmd)` and computing
-  `ψ_sw = engaged ? ψ_cmd : ψ_v` inside the strut deletes the backward wire outright.
-  The factoring survives substitution, which is the test that it records structure
-  rather than dodging the diagnostic: a stateful steering actuator produces `ψ_cmd`
-  from its own state and still needs nothing from the strut ([§16][s16] records the
-  migration).
-- **Split the component** — the residual remedy, when both halves genuinely belong to
-  it, and it documents real structure. Its cost, stated where it bites:
-  visibility ([§11.3][s11-3]) is binary, so every intermediate shared across the
-  new boundary becomes
+  natural owner and the wire disappears.
+
+  The canonical instance is the landing gear's strut/steering pair. The steering
+  model consumes the contact-point velocity azimuth `ψ_v` only in its disengaged,
+  castoring branch. Castoring, however, is free-swiveling wheel physics: the strut's
+  business, not the steering law's.
+
+  ```
+  # before
+  strut ──ψ_v──▶ steering        # ψ_v consumed only by the castoring branch
+  steering ─────▶ strut          # the pair of wires is the cycle
+
+  # after
+  steering ──(engaged, ψ_cmd)──▶ strut
+  strut:  ψ_sw = engaged ? ψ_cmd : ψ_v    # nothing flows back
+  ```
+
+  Re-factoring the steering contract to emit `(engaged, ψ_cmd)`, and computing
+  `ψ_sw = engaged ? ψ_cmd : ψ_v` inside the strut, deletes the backward wire
+  outright. The factoring survives substitution, which is the test that it records
+  structure rather than dodging the diagnostic: a stateful steering actuator produces
+  `ψ_cmd` from its own state and still needs nothing from the strut ([§16][s16]
+  records the migration).
+- **Split the component.** This is the residual remedy, taken when both halves
+  genuinely belong to the component and the split documents real structure. Its cost
+  is stated where it bites: visibility ([§11.3][s11-3]) is binary. Every intermediate
+  shared across the new boundary therefore becomes
   `output_types` — public, connectable, substitution-relevant. The mitigating
   idiom is the granularity guideline ([§4.3][s4-3]), which the split case
-  satisfies trivially (one
-  producing stage, one consumer): **one struct-valued bundle port** — a
-  `StrutGeometry`-shaped value — not N loose ports. The bundle type is then contract,
-  a real cost but a bounded and honest one. No visibility register is added for the
-  orphaned intermediates: rows 34 and 55 (`unlisted`, `Private(T)`) stay closed, and
-  the `w` channel ([§5.2][s5-2]) is no exit — it hands values between one
-  component's own functions, so there is nothing for a wire to carry (row 165).
+  satisfies trivially: one producing stage, one consumer. The idiom spells out as
+  **one struct-valued bundle port**, a `StrutGeometry`-shaped value, not N loose
+  ports. The bundle type is then contract — a real cost, but a bounded and honest
+  one. No visibility register is added for the orphaned intermediates: rows 34 and 55
+  (`unlisted`, `Private(T)`) stay closed. The `w` channel ([§5.2][s5-2]) is no exit
+  either: it hands values between one component's own functions, so there is
+  nothing for a wire to carry (row 165).
 
-The build diagnostic offers both exits explicitly ("cycle through `systems/aero` is
-artificial at port level — split the component, or narrow the neighbor's contract",
-with the offending stage `h_xu` carried as a separate [payload](#g-payload) field rather than dotted
-onto the path, [§11.6][s11-6]/[§13.2][s13-2]). The split is rare, and the ladder is what earns the word
-rather than asserting it: the two-stage split dissolves the common shapes and the
-contract re-factoring absorbs the false wires, leaving the split for cycles whose
-halves really are one component's own work. One consequence of stage-2 conservatism
-worth recording: an input consumed only by `f` (never by `h_xu`) still creates a
-scheduling edge if the component has stage-2 outputs; in practice such components are
-integrator-shaped and have none, and the remedy, if ever needed, is the same ladder.
+The build diagnostic offers both exits explicitly: "cycle through `systems/aero` is
+artificial at port level — split the component, or narrow the neighbor's contract".
+The offending stage `h_xu` is carried as a separate [payload](#g-payload) field rather than dotted
+onto the path ([§11.6][s11-6]/[§13.2][s13-2]).
+
+The split is rare, and the ladder is what earns that word rather than asserting it:
+the two-stage split dissolves the common shapes, and the contract re-factoring
+absorbs the false wires. What is left for the split is cycles whose halves really are
+one component's own work.
+
+One consequence of stage-2 conservatism is worth recording. An input consumed only
+by `f`, never by `h_xu`, still creates a scheduling edge if the component has stage-2
+outputs. In practice such components are integrator-shaped and have no stage-2
+outputs, and the remedy, if ever needed, is the same ladder.
 
 ### 5.5 Algebraic loop policy: reject at build time
 
-A genuine cycle in the instantaneous dependency graph is a **build error** with a
-diagnostic naming the full path in the canonical slash form of [§11.6][s11-6]
-(`aero/F → dyn/a → aero/α̇ → aero/F`). The user breaks
-it explicitly: insert dynamics (the α-filter idiom — already standard practice in the
-domain and in the current C172 model), insert an explicit unit delay
-(`UnitDelay`, [§13.7][s13-7] — note that this remedy changes the model's
-[tier](#g-tier) structure: the broken
-signal becomes discrete, sampled at [`Δt_base`](#g-dt_base), which is a modeling decision, not a
-transparent wire), or restructure. Implicit delays and per-step numerical loop
-solving are both closed (row 5).
+A genuine cycle in the instantaneous dependency graph is a **build error**. The
+diagnostic names the full path in the canonical slash form of [§11.6][s11-6]:
+`aero/F → dyn/a → aero/α̇ → aero/F`.
+
+The user breaks it explicitly, by one of three routes: insert dynamics (the α-filter
+idiom), insert an explicit unit delay (`UnitDelay`, [§13.7][s13-7]), or restructure.
+The α-filter idiom is already standard practice in the domain and in the current C172
+model. The unit delay carries a caveat: it changes the model's [tier](#g-tier)
+structure. The broken signal becomes discrete, sampled at [`Δt_base`](#g-dt_base) (the
+base tick period, an integer multiple `n·h`). That is a modeling decision, not a
+transparent wire. Implicit delays and per-step numerical loop solving are both closed
+(row 5).
 
 Implicit *algebraic balances* inside a [component](#g-component) (e.g. a turbomachinery operating
 point) remain the component author's business: local, owned, bounded. Rejecting
