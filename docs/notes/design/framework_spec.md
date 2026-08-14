@@ -5668,17 +5668,23 @@ grid-independent, so they take no part in the harmonic-grid check
 
 ### 12.2 The `Build` artifact
 
-`build(world) → Build` is a standalone entry point; `Simulation(world; ...)`
+`build(world) → Build` is a standalone entry point. `Simulation(world; …)`
 (the spelling, [§15.4][s15-4]) is the convenience that calls it and adds
-deployment binding, [buffers](#g-buffer) and the stopped-sim services. The constructor is
-two entry points, not one: `Simulation(build::Build; ...)` accepts the
-artifact directly, and `Simulation(world; ...)` is *defined as*
-`Simulation(build(world); ...)` — the build CI checked, an acceptance test
-targeted or a [face](#g-face)-provenance table was printed from is the one deployed,
-never an assumed-equal reconstruction (computed [boundary](#g-boundary)-connection bodies are ordinary
-user code re-evaluated on every build, so equality between two builds of the
-same world is an assumption the factorization removes). Deployment binding
-still happens only at `Simulation` construction, whichever entry point runs.
+deployment binding, [buffers](#g-buffer) and the stopped-sim services.
+
+The constructor is two entry points, not one: `Simulation(build::Build; …)`
+accepts the artifact directly, and `Simulation(world; …)` is *defined as*
+`Simulation(build(world); …)`. The build CI checked, the build an acceptance
+test targeted, the build a [face](#g-face)-provenance table was printed from:
+that artifact is the one deployed, never an assumed-equal reconstruction.
+
+**Why.** Computed [boundary](#g-boundary)-connection bodies are ordinary user
+code re-evaluated on every build, so equality between two builds of the same
+world is an assumption the factorization removes.
+
+Deployment binding still happens only at `Simulation` construction, whichever
+entry point runs.
+
 **The `Build` is immutable and may back any number of `Simulation`s,
 concurrently** — true by construction once buffers are single-owner ([§12.4][s12-4]): each
 `Simulation` materializes its own from the shared layouts, so nothing writable
@@ -5710,27 +5716,52 @@ ticks — the gate is pure modulo arithmetic, so one hyperperiod is the
 complete truth, not a sample — rendered as a tick chart over
 `k = 0 … lcm(Dᵢ) − 1`, with a guard for absurd hyperperiods.
 
+**Example.** The model worked in [§8.5][s8-5] has three discrete components
+under two scopes: `sample_times` declares `fcs = Relative(1)` and
+`gnss = Absolute(Hz(50))` at the root, `inner = Relative(1)` and
+`outer = Relative(5, 2)` under `fcs`. Deploy it at `Δt_base = 2 ms`. The
+`Absolute` entry seeds the anchor `A₁ = (1//50, 0)` and the rest of the tree
+stays on anchor 0, so the three components carry these values through binding:
+
+| | `inner` | `outer` | `gnss` |
+|---|---|---|---|
+| declaration | `Relative(1)` under `fcs` | `Relative(5, 2)` under `fcs` | `Absolute(Hz(50))` at the root |
+| anchor | `A₀` | `A₀` | `A₁` |
+| triple `(m, c)` | `(1, 0)` | `(5, 2)` | `(1, 0)` |
+| bound `(D, Φ)` | `(1, 0)` | `(5, 2)` | `(10, 0)` |
+| bound `Δt` | 2 ms | 10 ms | 20 ms |
+
+`gnss` is the entry whose divisor could not exist before `Δt_base` bound:
+`D = m·D₁`, with `D₁ = T₁/Δt_base = (1//50)/(1//500) = 10`.
+
 **Grid diagnostics print from the pool, exactly.** The refusal path's
 suggestion message and the derivation path's info line share one substrate:
 the coarsest admissible `Δt_base` with the admissible set `gcd(pool)/k`, and
-per-entry attribution — **leave-one-out refinement factors**
+per-entry attribution. Attribution has two forms.
+
+**Leave-one-out refinement factors** are the first form:
 `r_p = gcd(pool ∖ p)/gcd(pool)`, an integer ≥ 1 read as "how much coarser the
-grid would be without this entry", every `r_p > 1` listed rather than one
-culprit crowned (joint responsibility is the honest answer); and **prime
-attribution**, each prime power of `1/Δt_base` traced to the pool entries
-whose denominators supply it, which pinpoints what an edit changed. When an
-offset is a driver, the message adds the nearest non-refining alternatives —
-the admissible offsets on the grid the rest of the pool supports — turning
-the diagnostic into a repair. Blame is computed against the actual pool; a
-simple-fraction-of-its-period test stays authoring guidance and never becomes
-the engine's (row 187). The derivation path — the one
-place refinement happens silently — always prints the derived value with its
-drivers, and carries the one advisory: `GridUtilization` ([Appendix C][sC]),
-reporting `min_i Dᵢ` — base ticks between the fastest component's ticks — as
-"grid is N× finer than the fastest declared work" with the drivers named,
-information rather than scolding, since a scope deliberately declared finer
-than its fastest member to buy stagger room ([§8.5][s8-5]) legitimately inflates the
-metric.
+grid would be without this entry". Every `r_p > 1` is listed rather than one
+culprit crowned, joint responsibility being the honest answer.
+
+**Prime attribution** is the second form: each prime power of `1/Δt_base` is
+traced to the pool entries whose denominators supply it. That pinpoints what
+an edit changed.
+
+When an offset is a driver, the message adds the nearest non-refining
+alternatives — the admissible offsets on the grid the rest of the pool
+supports. That turns the diagnostic into a repair.
+
+Blame is computed against the actual pool. A simple-fraction-of-its-period
+test stays authoring guidance and never becomes the engine's (row 187).
+
+The derivation path — the one place refinement happens silently — always prints
+the derived value with its drivers, and carries the one advisory:
+`GridUtilization` ([Appendix C][sC]), reporting `min_i Dᵢ` — base ticks between
+the fastest component's ticks — as "grid is N× finer than the fastest declared
+work" with the drivers named, information rather than scolding, since a scope
+deliberately declared finer than its fastest member to buy stagger room
+([§8.5][s8-5]) legitimately inflates the metric.
 
 ### 12.3 Probing and input synthesis
 
