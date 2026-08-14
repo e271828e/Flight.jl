@@ -7438,116 +7438,26 @@ solver's handful of values over full coverage (row 68).
 
 ### 14.7 The trim problem: NamedTuple decisions, declared reads, named residuals
 
-What the aircraft author ships, piece by piece against today's `c172.jl`:
+The aircraft author ships one value: what the solver may vary, what those
+decisions make of the model, what to read back after each evaluation, and which
+equations the readings must satisfy.
 
-- **Decision variables, initial guess and box bounds are plain, same-*named*,
-  all-`Float64` NamedTuples.** The `AbstractTrimState{N}`/`FieldVector`
-  supertype dies — its only job was vectorization, which is the service's
-  (pack/unpack by field order, that order being the `guess` NamedTuple's own —
-  [§12.5][s12-5]'s rule at this [seam](#g-seam): **the names are the pairing, order carries
-  no semantics**). `lower` and `upper` are checked at setup for key-set equality
-  with `guess` and `Float64` fields, then canonicalized to `guess`'s field order
-  by the same type-level reorder (`NamedTuple{keys(guess)}(lower)`), so a
-  permuted bound spelling is a non-event rather than `α`'s bound silently
-  applied to `throttle`; a key-set or field-type mismatch is
-  `TrimProblemInvalid`. Guess, bounds and
-  the returned solution share one spelling; `Base.merge(guess, (throttle =
-  0.3,))` is free warm-start tweaking; an author who wants a documented
-  `@kwdef` struct keeps it privately and converts.
-- **`TrimParameters` stays a plain user struct** the framework never sees;
-  the assignment is the pure `trim_condition(ac, params, d)` [fragment](#g-fragment)-tree
-  function ([§14.2][s14-2]), applied per iteration by the compiled plan ([§14.4][s14-4]).
-- **The read side is declared, then compiled**: `reads(name = get_state(path,
-  field) | get_deriv(path, field) | get_output(path, field) | get_slot([face](#g-face)) |
-  get_face(name), ...)` —
-  the load-bearing set ([§14.4][s14-4]). `get_state` and
-  `get_deriv` address a declared state field and its derivative (validated
-  against `init_x`), `get_output` a declared output [port](#g-port) (validated against
-  `output_types`), `get_slot` and `get_face` a root input and output face
-  (validated against the root face lists). The path [selectors](#g-selector) (the closed
-  family of deferred reads resolving against a source) reach only through the
-  locality scopes ([§6.1][s6-1]); an equilibrium equation crossing a generic seam reads
-  a face. A [component](#g-component)'s private intermediates are not addressable at all ([§5.2][s5-2],
-  [§14.4][s14-4]) — a trim evaluation needing one is a signal the component should
-  export it — and a derivative wanted across a [contract](#g-contract) [boundary](#g-boundary) takes the same
-  remedy: publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step
-  2's one-line binding, made contract), leaving `get_deriv` scoped to owned
-  concrete subtrees. The compiled reader (the gather twin, [§14.4][s14-4]) fills a
-  stack-only NamedTuple per evaluation.
-- **The user supplies a residual *system*, not a scalar cost** — authored as a
-  NamedTuple of named equations, packed to the solver's vector by field order —
-  `tolerances`' field order here, the declared side again, the residual return
-  canonicalized to it (the decisions rule, symmetric on both ends of the
-  seam: names pair, order never does). The
-  FlightCore formulation's core — analytic elimination (`θ_constraint`
-  substituting the pitch constraint, filter and actuator equilibria imposed
-  by construction, the minimal 7-variable search) — is correct and survives
-  verbatim as user math. What changes is the numerics: trim is a square
-  root-find, and FlightCore's derivative-free scalar minimization over
-  $\|r\|^2$ against a hand-scaled absolute `stopval` was the rational choice
-  only because Jacobians through the mutating `f_ode!` chain and the
-  assignment math were out of reach (row 69). Here the `Dual` [activation](#g-activation) seeds the decision variables through
-  the `T`-generic assignment, [sweep](#g-sweep) and `f`; the seeds survive the condition
-  write boundary because [§14.3][s14-3] selects the baked converter per leaf from the
-  shape — a decision-descended leaf is `Dual`-typed there and takes the
-  structural conversion, the zero-partial embedding staying on the held
-  `Float64` leaves — [§12.6][s12-6]'s "open option," now
-  the *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians
-  (trust-region/Levenberg–Marquardt register), quadratic convergence
-  (~5–15 evaluations), per-residual physical tolerances — the convergence
-  verdict itself service-owned and backend-independent
-  ([§14.8][s14-8]) —
-  and failure reports naming the unbalanced equations with magnitudes. Non-squareness
-  degrades gracefully (redundant actuation → weighted/minimum-norm LS;
-  infeasible demands → converged nonzero residual identifying the
-  impossible balance), and $\partial r / \partial d$ at the solution is free flight-physics
-  data (control effectiveness) cross-checking linearization. The
-  derivative-free scalar path survives as the fallback: the service squares
-  *and normalizes* the residuals against the tolerances
-  ($\sum (r_i/\mathit{tol}_i)^2$ at `stopval = 1`,
-  [§14.8][s14-8]),
-  which is where the hand-scaled absolute threshold is repaired — today's
-  algorithm as the degenerate case.
-- **[Recorded, not built](#g-recorded-not-built)**: closed-loop sampled-data trim (append
-  $g(x) - x = 0$ residuals via a nondestructive scratch evaluation of `g` —
-  structurally impossible under FlightCore's mutating `f_disc!`), and
-  on-ground static equilibrium (strut compressions and attitude against
-  gear forces) as simply another problem value over the same service.
+**Rule.** The field set is normative. The lift ([§14.9][s14-9]) is
+field-by-field, so this list is closed:
 
-**The field set, normative** — the lift ([§14.9][s14-9]) is field-by-field, so this list
-is closed: `guess`, `lower`, `upper` (same-named all-`Float64` NamedTuples),
-`condition` (the condition-valued function over decisions), `reads` (the
-declared read set), `residuals` (the residual function), and `tolerances` —
-an all-`Float64` NamedTuple, same-named as the residual function's return,
-carried *in the problem* because a relocated problem must carry its own
-convergence test (`at` passes it through untouched). The residual signature:
+- `guess`, `lower`, `upper` — same-named all-`Float64` NamedTuples;
+- `condition` — the condition-valued function over decisions;
+- `reads` — the declared read set;
+- `residuals` — the residual function;
+- `tolerances` — an all-`Float64` NamedTuple, same-named as the residual
+  function's return.
 
-```julia
-residuals(reads::NamedTuple, d::NamedTuple) → NamedTuple
-```
+`tolerances` is carried *in the problem* because a relocated problem must carry
+its own convergence test; `at` passes it through untouched.
 
-The rule: **what the solver varies is passed; what is fixed per problem is
-closed over.** The gathered reads and the decision NamedTuple arrive as
-arguments — `d` is the one value that *cannot* be closed over — while
-`TrimParameters` stays behind the closure, exactly as `condition` already
-holds it (the framework never sees it). Being user-shaped, that record is also
-where any environment handles the condition math needs conventionally ride
-(the [value-level constructor](#g-value-level-constructor), [§4.4][s4-4]; the pre-sweep doctrine, [§14.1][s14-1]): the problem
-*receives* the environment, and never writes it ([§14.9][s14-9]).
-The returned NamedTuple's names are
-the equation names the report and the failure messages use; the service packs
-residuals and tolerances by field order — `tolerances`' order, canonical for
-the r-side, each residual return reordered to it (`NamedTuple{keys(tolerances)}(r)`)
-before packing, so an equation list spelled in a different order inside the
-lambda pairs correctly and costs nothing. Names and types are checked at setup:
-the guess evaluation the service performs anyway observes the residual key set,
-and a `tolerances` key-set mismatch — or any field-type disagreement, on either
-side of the seam — is `TrimProblemInvalid` ([Appendix C][sC]), with the offending
-field and the names or types in hand. Order is never a mismatch.
-[Worked](#g-worked), the C172 cruise case reduced to
-its three-equation core (the real problem is the same shape with the full
-7-variable search; the θ-constraint elimination survives inside
-`trim_condition`):
+[Worked](#g-worked), the C172 cruise case reduces to its three-equation core.
+The real problem is the same shape with the full 7-variable search, and the
+θ-constraint elimination survives inside `trim_condition`:
 
 ```julia
 cruise = TrimProblem(
@@ -7562,6 +7472,115 @@ cruise = TrimProblem(
                             pitch_moment = r.ω̇_b[2]),
     tolerances = (axial_force = 1e-3, normal_force = 1e-3, pitch_moment = 1e-4))
 ```
+
+The rest of the section takes what the author ships one piece at a time,
+against today's `c172.jl`:
+
+- **Decision variables, initial guess and box bounds are plain, same-*named*,
+  all-`Float64` NamedTuples.** The `AbstractTrimState{N}`/`FieldVector`
+  supertype dies; its only job was vectorization, and vectorization is the
+  service's. The service packs and unpacks by field order, that order being the
+  `guess` NamedTuple's own. [§12.5][s12-5] states the rule this
+  [seam](#g-seam) runs on: **the names are the pairing, order carries no
+  semantics**. `lower` and `upper` are checked at setup for key-set equality
+  with `guess` and `Float64` fields, then canonicalized to `guess`'s field
+  order by the same type-level reorder (`NamedTuple{keys(guess)}(lower)`). A
+  permuted bound spelling is therefore a non-event rather than `α`'s bound
+  silently applied to `throttle`; a key-set or field-type mismatch is
+  `TrimProblemInvalid`. Guess, bounds and the returned solution share one
+  spelling, and `Base.merge(guess, (throttle = 0.3,))` is free warm-start
+  tweaking. An author who wants a documented `@kwdef` struct keeps it privately
+  and converts.
+- **`TrimParameters` stays a plain user struct** the framework never sees;
+  the assignment is the pure `trim_condition(ac, params, d)` [fragment](#g-fragment)-tree
+  function ([§14.2][s14-2]), applied per iteration by the compiled plan ([§14.4][s14-4]).
+- **The read side is declared, then compiled**: `reads(name = get_state(path,
+  field) | get_deriv(path, field) | get_output(path, field) | get_slot([face](#g-face)) |
+  get_face(name), ...)` — the load-bearing set ([§14.4][s14-4]). `get_state` and
+  `get_deriv` address a declared state field and its derivative (validated
+  against `init_x`), `get_output` a declared output [port](#g-port) (validated against
+  `output_types`), `get_slot` and `get_face` a root input and output face
+  (validated against the root face lists). The path [selectors](#g-selector) (the closed
+  family of deferred reads resolving against a source) reach only through the
+  locality scopes ([§6.1][s6-1]). An equilibrium equation crossing a generic seam reads
+  a face. A [component](#g-component)'s private intermediates are not addressable at all ([§5.2][s5-2],
+  [§14.4][s14-4]); a trim evaluation needing one is a signal the component should
+  export it. A derivative wanted across a [contract](#g-contract) [boundary](#g-boundary) takes the same
+  remedy: publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step
+  2's one-line binding, made contract). That leaves `get_deriv` scoped to owned
+  concrete subtrees. The compiled reader (the gather twin, [§14.4][s14-4]) fills a
+  stack-only NamedTuple per evaluation.
+- **The user supplies a residual *system*, not a scalar cost.** It is authored
+  as a NamedTuple of named equations and packed to the solver's vector by field
+  order — `tolerances`' field order here, the declared side again, with the
+  residual return canonicalized to it. The decisions rule holds symmetrically
+  on both ends of the seam: names pair, order never does.
+- **The FlightCore formulation's core is correct and survives verbatim as user
+  math.** That core is analytic elimination: `θ_constraint` substituting the
+  pitch constraint, filter and actuator equilibria imposed by construction, and
+  the minimal 7-variable search.
+- **What changes is the numerics.** Trim is a square root-find, and
+  FlightCore's derivative-free scalar minimization over $\|r\|^2$ against a
+  hand-scaled absolute `stopval` was the rational choice only because Jacobians
+  through the mutating `f_ode!` chain and the assignment math were out of reach
+  (row 69).
+- **Nonlinear least squares with exact AD Jacobians is the default.** The
+  `Dual` [activation](#g-activation) seeds the decision variables through the
+  `T`-generic assignment, [sweep](#g-sweep) and `f`. The seeds survive the condition
+  write boundary because [§14.3][s14-3] selects the baked converter per leaf from the
+  shape: a decision-descended leaf is `Dual`-typed there and takes the
+  structural conversion, while the zero-partial embedding stays on the held
+  `Float64` leaves. What [§12.6][s12-6] leaves open as an option is now the
+  *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians, in the
+  trust-region/Levenberg–Marquardt register. Convergence is quadratic (~5–15
+  evaluations), the tolerances are per-residual and physical, and failure
+  reports name the unbalanced equations with magnitudes. The convergence
+  verdict itself is service-owned and backend-independent ([§14.8][s14-8]).
+- **Non-squareness degrades gracefully.** Redundant actuation becomes weighted
+  or minimum-norm least squares; infeasible demands converge to a nonzero
+  residual identifying the impossible balance. At the solution,
+  $\partial r / \partial d$ is free flight-physics data (control effectiveness)
+  cross-checking linearization.
+- **The derivative-free scalar path survives as the fallback.** The service
+  squares *and normalizes* the residuals against the tolerances —
+  $\sum (r_i/\mathit{tol}_i)^2$ at `stopval = 1` ([§14.8][s14-8]). That
+  normalization is where the hand-scaled absolute threshold is repaired,
+  leaving today's algorithm as the degenerate case.
+- **[Recorded, not built](#g-recorded-not-built)** (a worked-out extension
+  deliberately left unimplemented, its seams named): closed-loop sampled-data
+  trim and on-ground static equilibrium, each simply another problem value over
+  the same service. Closed-loop trim appends $g(x) - x = 0$ residuals via a
+  nondestructive scratch evaluation of `g`, structurally impossible under
+  FlightCore's mutating `f_disc!`. On-ground static equilibrium is the other:
+  strut compressions and attitude against gear forces.
+
+The residual signature:
+
+```julia
+residuals(reads::NamedTuple, d::NamedTuple) → NamedTuple
+```
+
+**Rule.** What the solver varies is passed; what is fixed per problem is closed
+over.
+
+The gathered reads and the decision NamedTuple arrive as arguments; `d` is the
+one value that *cannot* be closed over. `TrimParameters` stays behind the
+closure, exactly as `condition` already holds it (the framework never sees it).
+Being user-shaped, that record is also where any environment handles the
+condition math needs conventionally ride (the [value-level constructor](#g-value-level-constructor),
+[§4.4][s4-4]; the pre-sweep doctrine, [§14.1][s14-1]). The problem *receives* the
+environment, and never writes it ([§14.9][s14-9]).
+
+The returned NamedTuple's names are the equation names the report and the
+failure messages use. The service packs residuals and tolerances by field
+order: `tolerances`' order is canonical for the r-side, and each residual
+return is reordered to it (`NamedTuple{keys(tolerances)}(r)`) before packing.
+An equation list spelled in a different order inside the lambda therefore pairs
+correctly and costs nothing. Names and types are checked at setup: the guess
+evaluation the service performs anyway observes the residual key set. A
+`tolerances` key-set mismatch — or any field-type disagreement, on either side
+of the seam — is `TrimProblemInvalid` ([Appendix C][sC]), with the offending
+field and the names or types in hand. Order is never a mismatch.
 
 ### 14.8 The trim service: solver seam, scratch stores, commit and report
 
