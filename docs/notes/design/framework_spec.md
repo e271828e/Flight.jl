@@ -6462,49 +6462,63 @@ place:
 
 ### 13.3 Build primitives: `resolve` and the face-list accessors
 
-The [§11.8][s11-8] sketch's primitives, made normative:
+The `input_passthrough` sketch ([§11.8][s11-8]) calls two of the primitives
+below without defining them. All three are normative in the forms given here:
 
 - `resolve(asm, path::String) → AbstractComponent` — the getfield walk along
-  `/`-segments. Its one non-obvious duty is enforcing the
-  generic-[boundary](#g-boundary) rule ([§6.1][s6-1]): it walks *declared field
-  types* alongside instances, and a segment
-  that traverses **past** a generically-held field (non-concrete declared
-  type) is a diagnostic even though the concrete instance in hand would
-  resolve it — resolving *to* a generic child is [port](#g-port)-level access and legal.
-  An unknown segment errors with the sibling field list in hand.
-  **The duty is [register](#g-register)-scoped** — the load-bearing/diagnostic
-  line (row 83) carried into resolution, client policy riding on one primitive
-  exactly as
-  in [§14.4][s14-4]:
-    - *Structural* (wiring resolution, [Stratum](#g-stratum) A): the strict rule above,
-      verbatim — the register the law ([§6.1][s6-1]) lives in.
-    - *Load-bearing* ([condition](#g-condition) entries, trim `reads`, [taps](#g-taps) — [§14.3][s14-3], [§14.7][s14-7],
-      [§14.10][s14-10]): strict, evaluated **at the authoring or mount level**. The
-      locality law is an authoring-level law ([§14.2][s14-2]: absolute paths are a
-      compiled derivative), and a mount prefix is checked by the mount
-      itself ([§14.9][s14-9] validates the problem's declared type against the mount
-      point's [contract](#g-contract)) — this register checks the authored path below it.
-    - *Diagnostic* ([device](#g-device) read [bindings](#g-binding), GUI panels, [snapshot](#g-snapshot) and log
-      inspection — [§9.2][s9-2], [§9.7][s9-7]): the instance walk. A generic [seam](#g-seam) is not an
-      error for a client that never claimed substitutability — "what is in
-      *this* build" is the inspection register's defining question — and
-      drift stays loud: an unknown path is an attach-time
-      `ReadBindingUnresolved` with [did-you-mean](#g-did-you-mean) (the offending name plus the
-  list-in-hand it should have matched). Which register a client resolves under
-  is internal framework fact, never user-facing API — the same status as the
-  two `apply!` registers ([§14.4][s14-4]).
+  `/`-segments.
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — the stringified keys of
   a leaf's `input_types` (the key set is `T`-independent); the entries of
-  `input_connections(c)` / `output_connections(c)` for an [assembly](#g-assembly). Declaration order is preserved: deterministic
+  `input_connections(c)` / `output_connections(c)` for an
+  [assembly](#g-assembly). Declaration order is preserved: deterministic
   printouts, stable diagnostics.
-- `resolve_terminal(asm, path) → (component, name)` — splits a terminal
-  path's final segment (unambiguous: [face](#g-face) names may contain dots, never
-  slashes, [§11.6][s11-6]) and resolves the prefix through `resolve`. First-class
-  because five clients share it across the three registers — wiring
-  resolution (structural); condition addressing ([§14.3][s14-3]) and tap
-  resolution ([§14.10][s14-10]) (load-bearing); device-binding validation ([§9.2][s9-2])
-  and snapshot inspection (diagnostic) — one splitter, one did-you-mean
-  site.
+- `resolve_terminal(asm, path) → (component, name)` — splits a terminal path's
+  final segment and resolves the prefix through `resolve`. The split is
+  unambiguous because [face](#g-face) names may contain dots, never slashes
+  ([§11.6][s11-6]).
+
+**Enforcing the generic-[boundary](#g-boundary) rule is the one non-obvious duty
+in `resolve`** ([§6.1][s6-1]). The walk follows *declared field types* alongside
+instances, and a segment that traverses **past** a generically-held field — one
+whose declared type is non-concrete — is a diagnostic even though the concrete
+instance in hand would resolve it. Resolving *to* a generic child is
+[port](#g-port)-level access and legal. An unknown segment errors with the
+sibling field list in hand.
+
+**The duty is [register](#g-register)-scoped.** The load-bearing/diagnostic line
+(row 83) is carried into resolution. Client policy rides on one primitive, the
+same arrangement as the two application registers over one plan
+([§14.4][s14-4]).
+
+| register | who resolves under it | what the walk enforces |
+|---|---|---|
+| **structural** | wiring resolution, in [Stratum](#g-stratum) A (one of the build's three phases: structure, schedule, activation) | the strict rule above, verbatim |
+| **load-bearing** | [condition](#g-condition) entries (the path-addressed sparse overlay that sets a build's state), trim `reads`, [taps](#g-taps) ([§14.3][s14-3], [§14.7][s14-7], [§14.10][s14-10]) | strict, evaluated **at the authoring or mount level** |
+| **diagnostic** | [device](#g-device) read [bindings](#g-binding), GUI panels, [snapshot](#g-snapshot) and log inspection ([§9.2][s9-2], [§9.7][s9-7]) | the instance walk |
+
+Each register's treatment has its own warrant. The structural register is the
+one the law ([§6.1][s6-1]) lives in, so it applies that law verbatim. The
+load-bearing register evaluates at the authoring or mount level for two
+reasons: the locality law is an authoring-level law, absolute paths being a
+compiled derivative ([§14.2][s14-2]); and a mount prefix is checked by the
+mount itself, which validates the problem's declared type against the mount
+point's [contract](#g-contract) ([§14.9][s14-9]). So this register checks the
+authored path below that prefix. The diagnostic register walks instances
+instead. A generic [seam](#g-seam) is not an error for a client that never
+claimed substitutability: "what is in *this* build" is the inspection
+register's defining question. Drift still stays loud — an unknown path is an
+attach-time `ReadBindingUnresolved` with [did-you-mean](#g-did-you-mean) (the
+offending name plus the list-in-hand it should have matched).
+
+Which register a client resolves under is internal framework fact, never
+user-facing API — the same status as the two `apply!` registers
+([§14.4][s14-4]).
+
+`resolve_terminal` is first-class because five clients share it across the three
+registers: wiring resolution (structural); condition addressing
+([§14.3][s14-3]) and tap resolution ([§14.10][s14-10]) (load-bearing);
+device-binding validation ([§9.2][s9-2]) and snapshot inspection (diagnostic).
+The result is one splitter, one did-you-mean site.
 
 ### 13.4 Runtime failures: one catch site, an execution cursor
 
