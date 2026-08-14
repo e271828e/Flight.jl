@@ -8262,52 +8262,61 @@ continuous-reset contract too.
 
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
-The exercise that selected per-[device](#g-device) [cells](#g-cell) ([§9.4][s9-4]) and produced the [§9.7][s9-7]
-[contracts](#g-contract). Setup (the `sketch_io.jl` listing): a first-order filter with
-root inputs `u_cmd` and `τ`; a fictitious 100 Hz single-axis joystick streaming a
-slow ramp onto `u_cmd` (complete writer); a 60 Hz GUI with sliders for both [slots](#g-slot)
-(sparse writer); 50 Hz [boundaries](#g-boundary); pace 1. The interference on `u_cmd` is the
-point. The user-level listing came out identical across the three candidate
-staging shapes — ergonomics cannot discriminate between them; behavior under a
-concrete interleaving did:
+This case study is the exercise that selected per-[device](#g-device) [cells](#g-cell)
+([§9.4][s9-4]) and produced the [§9.7][s9-7] [contracts](#g-contract). Setup (the
+`sketch_io.jl` listing): a first-order filter with root inputs `u_cmd` and `τ`;
+a fictitious 100 Hz single-axis joystick streaming a slow ramp onto `u_cmd`
+(complete writer); a 60 Hz GUI with sliders for both [slots](#g-slot) (sparse
+writer); 50 Hz [boundaries](#g-boundary); pace 1. The interference on `u_cmd` is
+the point.
 
-- **Drag against the stream** (the user grabs the `u_cmd` slider while the
-  joystick streams): under per-slot cells and the [batch](#g-batch) stack, each [frame](#g-frame)'s
-  conflict resolves by last-store/last-push wall-clock order — with 16.7 ms
-  renders against 10 ms polls, the applied input alternates between drag value
-  and ramp on the cadence beat, the filter visibly wobbles, and the pattern
-  differs run to run (the [trace](#g-trace) replays any given run exactly; the behavior is
-  still a timing artifact). Under per-device cells the GUI stages in every drag
-  frame (≥ one render per 20 ms frame, plus the active-widget contract), so it
-  wins every [drain](#g-drain) by attachment order: a clean, deterministic override for
-  exactly the grab duration. Same user code, qualitatively different physics.
-- **Edits while paused**: per-slot cell — the user's `u_cmd` edit is overwritten
-  by the still-polling joystick ~10 ms later; the knob visibly snaps back and
-  the edit never applies. Batch stack — the edit is buried under newer pushes,
-  and the pending chain grows at the polling rate (~10³ nodes per 10 s pause)
-  with every [peek](#g-peek) walking it. Per-device cell — the edit holds in the GUI's own
-  cell across the pause (the knob keeps it, [§9.7][s9-7] peek rule), merges with the
-  `τ` edit (the sparse-accumulation case), and applies at the un-pause drain —
-  for one deterministic frame before the joystick reclaims the slot, which is
-  the honest semantics of one-shot editing a streamed input. The uncontested
-  `τ` edit works under all three shapes.
-- **Corrections the exercise forced**: the sparse-writer lost-write hazard is
-  specific to one-cell-per-device layouts (per-slot cells cannot lose
-  independent-slot writes — the CAS merge is per-device cells' antidote, not a
-  general need); and the batch stack's conflict order is temporal, not an
-  attachment-order policy — only per-device cells make precedence a rule rather
-  than a race.
-- **Discoveries**: the active-widget contract, and the [port](#g-port)-resolution answer to
-  panel reuse ([§9.7][s9-7]) — prompted by asking how the filter's panel survives the
-  filter becoming an embedded [component](#g-component) with `u_cmd` driven by another component
-  (the `Cessna172Xv0` → `Xv1` throttle situation).
-- **Note**: under slot exclusivity ([§9.3][s9-3]) the contested-`u_cmd`
-  scenario cannot arise — a second writer on `u_cmd` is an attach-time error.
-  What the test settles is therefore the cell *shapes*: atomicity,
-  [coalescing](#g-coalescing), pause behavior and the peek rule. Its
-  conflict-precedence comparison and the active-widget stage-every-pass
-  contract ([§9.7][s9-7]) describe a contested-slot world the design does not
-  have.
+Three candidate staging shapes were on the table: **per-slot cells**, a shared
+**[batch](#g-batch) stack**, and **per-device cells**. The user-level listing
+came out identical across all three — ergonomics cannot discriminate between
+them; behavior under a concrete interleaving did.
+
+**Slot exclusivity rules out the very contest the setup builds.** Under slot
+exclusivity ([§9.3][s9-3]) the contested-`u_cmd` scenario cannot arise — a
+second writer on `u_cmd` is an attach-time error. What the test settles is
+therefore the cell *shapes*: atomicity, [coalescing](#g-coalescing), pause
+behavior and the peek rule. Its conflict-precedence comparison and the
+active-widget stage-every-pass contract ([§9.7][s9-7]) describe a contested-slot
+world the design does not have. The findings below are read under that scope.
+
+- **Drag against the stream** — the user grabs the `u_cmd` slider while the
+  joystick streams. Under per-slot cells and the batch stack, each
+  [frame](#g-frame)'s conflict resolves by last-store/last-push wall-clock order
+  (row 24). With 16.7 ms renders against 10 ms polls, the applied input
+  alternates between drag value and ramp on the cadence beat, the filter visibly
+  wobbles, and the pattern differs run to run. The [trace](#g-trace) replays any
+  given run exactly; the behavior is still a timing artifact. Under per-device
+  cells the GUI stages in every drag frame: ≥ one render per 20 ms frame, plus
+  the active-widget contract. The GUI therefore wins every [drain](#g-drain) (the
+  frame-top swap that publishes staged device inputs into the root slots) by
+  attachment order. That win is a clean, deterministic override for exactly the
+  grab duration. Same user code, qualitatively different physics.
+- **Edits while paused.** Under per-slot cells, the user's `u_cmd` edit is
+  overwritten by the still-polling joystick ~10 ms later (row 24); the knob
+  visibly snaps back and the edit never applies. Under the batch stack, the edit
+  is buried under newer pushes, and the pending chain grows at the polling rate
+  — ~10³ nodes per 10 s pause — with every [peek](#g-peek) walking that chain
+  (row 24). Under per-device cells, the `u_cmd` edit holds in the GUI's own cell
+  across the pause, the knob keeping the edit by the [§9.7][s9-7] peek rule. That
+  edit merges with the `τ` edit — the sparse-accumulation case — and applies at
+  the un-pause drain, for one deterministic frame before the joystick reclaims
+  the slot. That one-frame application is the honest semantics of one-shot
+  editing a streamed input. The uncontested `τ` edit works under all three
+  shapes.
+- **Corrections the exercise forced.** The sparse-writer lost-write hazard is
+  specific to one-cell-per-device layouts: per-slot cells cannot lose
+  independent-slot writes; the CAS merge is per-device cells' antidote, not a
+  general need. And the batch stack's conflict order is temporal, not an
+  attachment-order policy (row 24).
+- **Discoveries.** Two: the active-widget contract, and the
+  [port](#g-port)-resolution answer to panel reuse ([§9.7][s9-7]) — prompted by
+  asking how the filter's panel survives the filter becoming an embedded
+  [component](#g-component) with `u_cmd` driven by another component. That
+  embedded-filter case is the `Cessna172Xv0` → `Xv1` throttle situation.
 
 ### 15.4 The interactive C172X demo: the periphery under load
 
