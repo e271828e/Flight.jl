@@ -1007,7 +1007,7 @@ Two modes, degrading gracefully:
 state/modes/parameters/time never interferes. Stage-2 functions also receive
 state views, but neither those nor `y_x` are ever seeded. Stage-1 functions are
 never traced (nothing to seed). Derivatives, [guards](#g-guard), handlers,
-[projections](#g-projection) are outside tracing's jurisdiction entirely. The known tracer
+[projections](#g-projection) are outside tracing's jurisdiction entirely. A known tracer
 blind spot is documented: value-severing operations, where dependence passes
 through a bare `Int` index, e.g. a nearest-neighbor lookup. Linear/cubic
 interpolation is immune (dependence flows through the fractional weights).
