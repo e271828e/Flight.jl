@@ -6736,36 +6736,55 @@ model-detected channel specified here meets it at [§10.4][s10-4] and nowhere el
 
 ### 13.6 Abnormal shutdown: one tail, two entries
 
-Why a `StepError` cannot break [§10.4][s10-4]: **the [boundary](#g-boundary) is all-or-nothing outside
-the sim task**. [Sweeps](#g-sweep) write into table [buffers](#g-buffer), integration intermediates
-live in framework-owned integrator buffers (never any [component](#g-component)'s `workspace`
-in [§7.3][s7-3]'s sense), and the only externally visible act is [snapshot](#g-snapshot) publication
-at the very end of the sequence. A boundary that throws has published nothing;
-the last *published* snapshot — a complete, consistent boundary by
-construction — is still the newest thing any [device](#g-device), logger or waiter has
-seen. The abnormal path is therefore: **discard the failed boundary, promote
-the previous snapshot to final, and rejoin the ordinary tail.** The protocol
-becomes one tail with two entry points — graceful entry after a *completed*
-final boundary, abnormal entry after a *discarded* one — and everything
-downstream of "final snapshot" runs identically: sticky stopped, waiters
-woken through the boundary-counter + `Condition` path (they observe stopped
-rather than a new boundary — no device task hangs), `unblock!`/close hooks,
-named joins with timeout. This fills the seat [§10.4][s10-4]'s "loop failure runs the
-same protocol from the catch path" reserved.
+**The [boundary](#g-boundary) is all-or-nothing outside the sim task.** That is
+why a `StepError` cannot break [§10.4][s10-4]. [Sweeps](#g-sweep) write into
+table [buffers](#g-buffer), and integration intermediates live in
+framework-owned integrator buffers, never in a [component](#g-component)'s
+`workspace` as [§7.3][s7-3] defines it. The only externally visible act is
+[snapshot](#g-snapshot) publication at the very end of the sequence. A boundary
+that throws has published nothing. The last *published* snapshot — a complete,
+consistent boundary by construction — is still the newest thing any
+[device](#g-device), logger or waiter has seen.
+
+The abnormal path is therefore: **discard the failed boundary, promote the
+previous snapshot to final, and rejoin the ordinary tail.** The protocol becomes
+one tail with two entry points: graceful entry after a *completed* final
+boundary, abnormal entry after a *discarded* one. Everything downstream of
+"final snapshot" runs identically: sticky stopped, waiters woken through the
+boundary-counter + `Condition` path, `unblock!`/close hooks, named joins with
+timeout. Those waiters observe stopped rather than a new boundary, so no device
+task hangs.
+
+```
+  graceful entry                      abnormal entry
+  final boundary completes            failed boundary discarded
+  final snapshot published            previous snapshot promoted to final
+             |                                   |
+             +-----------------+-----------------+
+                               |
+                       "final snapshot"
+                               |
+       sticky stopped → waiters woken → unblock!/close hooks
+                     → named joins with timeout
+```
+
+This fills the seat [§10.4][s10-4] reserved for it: a loop-side failure runs
+the same protocol from the catch path.
 
 Tail hygiene: the hooks are user code too, so each is individually
-caught-and-logged — shutdown runs to completion even if a device's hook
-misbehaves — and the join timeout already bounds a hook that hangs rather
-than throws.
+caught-and-logged. Shutdown therefore runs to completion even if a device's hook
+misbehaves. The join timeout already bounds a hook that hangs rather than
+throws.
 
-What is lost is quarantined: the state [stores](#g-store) may hold mid-boundary values (a
-half-written `m`, integration intermediates). They are retained on the
+What is lost is quarantined: the state [stores](#g-store) may hold mid-boundary
+values (a half-written `m`, integration intermediates). They are retained on the
 errored `Simulation` for post-mortem inspection, but an errored sim is
-terminally stopped, not resumable — the reproduction tool is [trace](#g-trace) [replay](#g-replay),
-not resurrection, and the stopped-sim services enforce it by refusing an
-errored simulation outright (`ServiceLifecycle`, [§14][s14]). The published record (snapshot chain, log, trace) ends at
-the last consistent boundary; nothing downstream of the sim ever sees half a
-boundary.
+terminally stopped, not resumable. The reproduction tool is [trace](#g-trace)
+[replay](#g-replay), not resurrection, and the stopped-sim services enforce that
+non-resumability by refusing an errored simulation outright
+(`ServiceLifecycle`, [§14][s14]). The published record (snapshot chain, log,
+trace) ends at the last consistent boundary. Nothing downstream of the sim ever
+sees half a boundary.
 
 ### 13.7 Tooling consequences: provenance and the component library
 
