@@ -5029,52 +5029,75 @@ the traces.
 
 ### 11.5 Assembly declaration: type-based, class by declaration shape
 
-An [assembly](#g-assembly) is a plain struct: fields whose type is `<: AbstractComponent` are its
-children (field names = path segments), all other fields are inert parameters;
-substitutability and variants use ordinary parametric fields — exactly today's
-`Cessna172X{K, A}` shape. Alongside it, well-known declarations:
-`child_connections(::A)` (mandatory, even when empty), `input_connections(::A)`,
-`output_connections(::A)`, `sample_times(::A)`.
+**Rule.** An [assembly](#g-assembly) is a plain struct: fields whose type is
+`<: AbstractComponent` are its children, and all other fields are inert
+parameters.
 
-**[Container children](#g-container-children).** A field whose type is a `Tuple` or
-`NamedTuple` with *every* element `<: AbstractComponent` contributes its
-elements as children, path-named `"field/1"…"field/N"` (tuples) or
-`"field/key"` (NamedTuples), declaration order governing layout. Containers
-are **transparent grouping, not assemblies**: no [contract](#g-contract), no `child_connections`,
-no [rate scope](#g-rate-scope), no existence beyond the path segment — the elements are
-children *of the parent*, whose `child_connections`/`input_connections`/
-`output_connections`/`sample_times` address them
-by element name; anything wanting its own wiring or [faces](#g-face) declares itself an
-assembly. The payoff is parametric composition: `struct Formation{NT <:
-NamedTuple}; aircraft::NT; … end` holds any [roster](#g-roster) — size, names, mixed
-aircraft types — per instantiation, with the declaration bodies generating
-wires by comprehension over the keys (the arity-via-computed-contracts
-pattern, [§6.2][s6-2]'s `SumJunction{W, N}`, at structure scale); the swarm
-worlds ([§14.9][s14-9]) and [`at`](#g-at)`("aircraft/red", problem)`
-[mounting](#g-mounting) consume it directly. Rules: a
-container mixing [component](#g-component) and non-component elements is a build error in
-this section's [did-you-mean](#g-did-you-mean) family (all-component = children;
-zero-component = inert parameter data); containers of containers are
-rejected in the first cut (deeper grouping is what assemblies are for);
-empty containers are legal (zero children — parametric code needs no special
-case); abstract element types follow the same concreteness discipline as
-plain fields (directly concrete or via type-parameter bounds, [§11.8][s11-8]'s
-[generic holding](#g-generic-holding)). `sample_times` needs no rule change: element names are
-immediate child names, hence legal keys; the bare field name is sugar for a
-uniform declaration across all elements.
+Field names are path segments. Substitutability and variants use ordinary
+parametric fields — exactly today's `Cessna172X{K, A}` shape. Alongside the
+struct come the well-known declarations: `child_connections(::A)`, mandatory
+even when empty, plus `input_connections(::A)`, `output_connections(::A)` and
+`sample_times(::A)`.
 
-**The builder is rejected** (`Assembly()` + `add!`/`connect!`; row 39 —
-[§11.1][s11-1]'s drift disease at assembly scale, mutable state threaded through
-declaration code). Its one real advantage, programmatic
-generation, survives intact in the type-based form: a declaration is an ordinary
-function body — loops and comprehensions build the returned tuple.
+#### Container children
 
-**`Group`: the on-the-fly assembly.** The *immutable* version of "grouping
-components by plain calls" needs no builder — it is already expressible under
-this section's rules as a single library component (the starting inventory,
-[§13.7][s13-7]), because the container-children rule makes a `NamedTuple` field
-contribute its elements as path-named children, and declarations are ordinary
-functions of the *instance*, free to read its fields:
+**Rule.** A field whose type is a `Tuple` or `NamedTuple` with *every* element
+`<: AbstractComponent` contributes its elements as
+[container children](#g-container-children).
+
+They are path-named `"field/1"…"field/N"` (tuples) or `"field/key"`
+(NamedTuples), declaration order governing layout. Containers are **transparent
+grouping, not assemblies**: no [contract](#g-contract), no `child_connections`,
+no [rate scope](#g-rate-scope), no existence beyond the path segment. The
+elements are children *of the parent*, whose `child_connections`/
+`input_connections`/`output_connections`/`sample_times` address them by element
+name. Anything wanting its own wiring or [faces](#g-face) declares itself an
+assembly.
+
+The payoff is parametric composition. `struct Formation{NT <: NamedTuple};
+aircraft::NT; … end` holds any [roster](#g-roster) — size, names, mixed
+aircraft types — per instantiation, the declaration bodies generating wires by
+comprehension over the keys. That is the arity-via-computed-contracts pattern
+[§6.2][s6-2] uses for `SumJunction{W, N}`, here at structure scale. The swarm
+worlds ([§14.9][s14-9]) consume it directly, and so does
+[mounting](#g-mounting), the relocation of a whole problem or tap set with
+[`at`](#g-at)`("aircraft/red", problem)`.
+
+The edges of the container form are fixed by rule:
+
+- A container mixing [component](#g-component) and non-component elements is a
+  build error in this section's [did-you-mean](#g-did-you-mean) family — the
+  offending name plus the list-in-hand it should have matched. All-component
+  elements are children; zero-component elements are inert parameter data.
+- Containers of containers are rejected in the first cut, deeper grouping being
+  what assemblies are for.
+- Empty containers are legal, contributing zero children: parametric code then
+  needs no special case.
+- Abstract element types follow the same concreteness discipline as plain
+  fields — directly concrete, or concrete through type-parameter bounds. That
+  is the [generic holding](#g-generic-holding) — a parent holding a child
+  through a non-concrete field type — that [§11.8][s11-8] allows.
+
+`sample_times` needs no rule change. Element names are immediate child names,
+hence legal keys, and the bare field name is sugar for a uniform declaration
+across all elements.
+
+#### The builder is rejected
+
+The builder — `Assembly()` plus `add!`/`connect!` — is rejected (row 39).
+
+**Why.** Its one real advantage, programmatic generation, survives intact in
+the type-based form: a declaration is an ordinary function body, and loops and
+comprehensions build the returned tuple.
+
+#### `Group`: the on-the-fly assembly
+
+The *immutable* version of "grouping components by plain calls" needs no
+builder. It is already expressible under this section's rules as a single
+library component (the starting inventory, [§13.7][s13-7]): the
+container-children rule makes a `NamedTuple` field contribute its elements as
+path-named children, and declarations are ordinary functions of the *instance*,
+free to read its fields:
 
 ```julia
 struct Group{C <: NamedTuple, W, I, O} <: AbstractComponent
@@ -5096,58 +5119,72 @@ world = Group(
 ```
 
 One type, defined once; every ad-hoc topology is a *value* of it. The type
-parameters still carry the children's concrete types, so [Stratum](#g-stratum) C
-specialization and the compiled [executor](#g-executor) ([§12.7][s12-7]) work unchanged; wiring
-validation, did-you-mean errors (the offending name plus the list-in-hand it
-should have matched) and the two-producer check all run at build against the
-instance exactly as for a named assembly. What is given up relative to a named
-type is exactly what named types are *for* — dispatching domain code on
-`::Cessna172X`, a reusable identity for the topology — which the exploratory
-and programmatic composition `Group` serves does not want anyway. The framing
-that earns it its place (row 184): the builder rejection above was never about
-type-based *semantics* — it was about mutable recipes — and named types were
-simply the only spelled-out route; `Group` ships in the library the way Julia
-ships anonymous functions alongside named ones, serving the model assembler
-with a library addition and zero new declaration rules.
+parameters still carry the children's concrete types, so [Stratum](#g-stratum)
+C specialization is unchanged (the strata being the build's three phases:
+structure, schedule, activation). So is the [executor](#g-executor), the
+compiled execution form of the schedule ([§12.7][s12-7]). Wiring validation,
+did-you-mean errors and the two-producer check all run at build against the
+instance exactly as for a named assembly.
 
-**No `AbstractAssembly`; one root `AbstractComponent`** (row 39). Julia's single
-inheritance is already spoken for by the domain hierarchies (`AbstractAircraft`,
-engine families — a [slot](#g-slot) `E <: AbstractEngine`
-must accept a primitive `PistonEngine` and a composite turbofan assembly alike),
-and [§11.3][s11-3] holds [class](#g-class) to be an implementation detail behind the
-contract.
-Class is instead declared by *which* well-known declarations a type defines:
-`child_connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
-precedent) makes an **assembly**; any leaf declaration makes a **primitive** —
-`init_x`/`init_m`, `workspace`,
-`input_types`/`output_types`, `events`, or any stage, `f`, `g` or
-`project` method. The rule is total: a `<: AbstractComponent` type declaring
-neither family has no class to read, and is a build error naming both families
-rather than a silence that fails later and elsewhere.
+What is given up relative to a named type is exactly what named types are
+*for*: dispatching domain code on `::Cessna172X`, a reusable identity for the
+topology. The exploratory and programmatic composition `Group` serves does not
+want it anyway.
+
+The reach of the builder rejection is fixed by row 184: it targets mutable
+recipes, not type-based *semantics*. `Group` is the library's anonymous
+assembly form beside the named types, shipped the way Julia ships anonymous
+functions alongside named ones, and it serves the model assembler with a
+library addition and zero new declaration rules.
+
+#### Class by declaration shape
+
+**No `AbstractAssembly`; one root `AbstractComponent`** (row 39;
+[§11.3][s11-3]).
+
+**Why.** The domain hierarchies — `AbstractAircraft`, the engine families —
+have to carry both classes: a [slot](#g-slot) declared `E <: AbstractEngine`
+must accept a primitive `PistonEngine` and a composite turbofan assembly alike.
+
+[Class](#g-class) — a component's primitive-vs-assembly status — is declared
+instead by *which* well-known declarations a type defines. `child_connections`
+is the marker, mandatory even when empty (the `LowPassFilter` precedent), and
+defining it makes an **assembly**. Any leaf declaration makes a **primitive**:
+`init_x`/`init_m`, `workspace`, `input_types`/`output_types`, `events`, or any
+stage, `f`, `g` or `project` method.
+
+The rule is total. A `<: AbstractComponent` type declaring neither family has
+no class to read, and is a build error naming both families rather than a
+silence that fails later and elsewhere. That error sharpens into a did-you-mean
+when the type has component-typed fields ("holds components but declares no
+`child_connections`"). `child_connections` plus `init_x` or a stage on one type
+is a build error as well: assemblies have no state of their own —
+no-atomic-assemblies at declaration time ([§8.5][s8-5]).
+
 Reading which declarations exist is reading declarations — the same move as
 visibility-by-declaration-site ([§11.3][s11-3]), not the banned
-inference-by-evaluation ([§11.1][s11-1]). Class also **mandates the shape of the
-contract
-signatures** rather than merely being read from them (rows 166, 167): **both**
-contract declarations follow the [tier](#g-tier) — a continuous leaf's `input_types` and
-`output_types` must take the two-argument form
-`input_types(::C, ::Type{T}) where {T <: Real}`,
-`output_types(::C, ::Type{T}) where {T <: Real}`, a discrete leaf's both the plain
-one-argument form, and either violation — a continuous declaration missing the
-`T`-form, a discrete declaration carrying one — is `TierSignatureMismatch`
-([Appendix C][sC]), reported with the component path, the declaration at fault, the tier its
-other declarations announce and the form found versus the form mandated. The
+inference-by-evaluation ([§11.1][s11-1]).
+
+#### Contract signature shape follows the class
+
+Class also **mandates the shape of the contract signatures** rather than merely
+being read from them (rows 166, 167). **Both** contract declarations follow the
+[tier](#g-tier): on a continuous leaf, `input_types` and `output_types` must
+take the two-argument form `input_types(::C, ::Type{T}) where {T <: Real}` and
+`output_types(::C, ::Type{T}) where {T <: Real}`; on a discrete leaf, both must
+take the plain one-argument form.
+
+Either violation — a continuous declaration missing the `T`-form, a discrete
+declaration carrying one — is `TierSignatureMismatch` ([Appendix C][sC]). The
+diagnostic reports the component path, the declaration at fault, the tier its
+other declarations announce, and the form found versus the form mandated. The
 check is Stratum A and collected: declaration shape is read, nothing is
-evaluated. So the tier fact is spelled in the signature *and* fixed by the
-class, the two kept in agreement by a check rather than by convention — which
-is what makes the whole-signature forgotten-`T` bug (the worst case, row 79)
-unwritable. Error
-taxonomy: `child_connections` plus `init_x`/stages on one type is a build error
-(assemblies have no state of their own — no-atomic-assemblies at declaration
-time, [§8.5][s8-5]); the neither-family error sharpens into a did-you-mean when
-the
-type has component-typed fields ("holds components but declares no
-`child_connections`").
+evaluated.
+
+The tier fact is therefore spelled in the signature *and* fixed by the class,
+the two kept in agreement by a check rather than by convention. That is what
+makes the whole-signature forgotten-`T` bug (the worst case, row 79)
+unwritable.
 
 ### 11.6 Paths, wiring and faces
 
