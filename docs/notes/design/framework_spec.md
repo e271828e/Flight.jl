@@ -191,38 +191,41 @@ differs:
   for events where timing precision genuinely matters (mechanics in [§8.4][s8-4]).
   Detection policy never depends on real-time [pacing](#g-pacing) ([§8.7][s8-7]).
 
-This gives step-boundary logic *well-defined semantics*: the transition is defined by
-the crossing; detection resolution is an execution-policy detail.
+This arrangement gives step-boundary logic *well-defined semantics*: the transition is
+defined by the crossing; detection resolution is an execution-policy detail.
 
-A guard defines a **[predicate](#g-predicate)**: a `Bool`-valued form, or the sign of a
-continuous function with **positive = predicate holds** (normative; writing the
-guard's sign value `σ`, holding = `σ ≥ 0`). An event fires when its
-predicate transitions from
-not-holding to holding — [edge semantics](#g-edge-semantics), uniform across both forms, with the
-prior bookkeeping stated in [§8.6][s8-6]; the opposite crossing direction is
-declared as a second event with the negated guard (stall entry/exit as a
-pair).
+A guard defines a **[predicate](#g-predicate)**: either a `Bool`-valued form, or the
+sign of a continuous function under the normative convention **positive = predicate
+holds**. Writing the guard's sign value `σ`, holding = `σ ≥ 0`.
 
-Which form an author declares is not a free choice: **the
-guard's return type is the declared policy** — `Bool` boundary-detected, the
-sign form localized (row 179). [§8.4][s8-4] states the rule, the exactness result that
+An event fires when its predicate transitions from not-holding to holding —
+[edge semantics](#g-edge-semantics), uniform across both forms. The prior bookkeeping
+is stated in [§8.6][s8-6]. The opposite crossing direction is declared as a second
+event with the negated guard (stall entry/exit as a pair).
+
+Which form an author declares is not a free choice: **the guard's return type is the
+declared policy**. A `Bool` return declares boundary-detected; the sign form declares
+localized (row 179). [§8.4][s8-4] states the rule, the exactness result that
 motivates the `Bool` form, and the gate idiom for localizing mixed
 predicates.
 
 ### 2.2 Exclusions (deliberate)
 
-- **No DAEs / algebraic constraints.** [Projection](#g-projection) is what covers the actual
-  need, state manifolds (row 1).
-- **No SDEs / stochastic integrators.** Noise processes (Dryden/von Kármán turbulence,
-  sensor noise) are modeled as ordinary RNG-driven discrete processes (shaping filters),
-  which is both faithful to how they are specified and cheap. Consequence elevated to a
-  framework guarantee: **deterministic [replay](#g-replay)** — RNG state lives in [component](#g-component) discrete
-  state (`x`), never in ambient globals, so same seed ⇒ bit-identical trajectory.
+- **No DAEs / algebraic constraints.** [Projection](#g-projection) is what covers the
+  actual need: state manifolds (row 1).
+- **No SDEs / stochastic integrators.** Noise processes such as Dryden/von Kármán
+  turbulence and sensor noise are modeled as ordinary RNG-driven discrete processes
+  (shaping filters). That modeling is both faithful to how they are specified and cheap.
+  One consequence is elevated to a framework guarantee: **deterministic
+  [replay](#g-replay)**. RNG state lives in [component](#g-component) discrete state
+  (`x`), never in ambient globals, so same seed ⇒ bit-identical trajectory.
 - **No unconditional per-step hook** (no `f_step!` equivalent). Every current use
-  decomposes into projection (quaternion renorm) or [boundary-detected](#g-boundary-detected) events (engine phase
-  transitions, stall hysteresis latch) — for one class the mapping tightens
-  semantics: level-triggered cross-component resets (the gear friction
-  regulator under `!wow`) become edge-triggered events ([§15.2][s15-2], [§16][s16], row 1).
+  decomposes into one of two mechanisms. Projection covers quaternion renorm;
+  [boundary-detected](#g-boundary-detected) events (checked for edges at step boundaries
+  only, no root-finding) cover engine phase transitions and the stall hysteresis latch.
+  For one class the mapping tightens semantics: level-triggered cross-component resets
+  become edge-triggered events ([§15.2][s15-2], [§16][s16], row 1). The gear friction
+  regulator under `!wow` is one such reset.
 
 ---
 
