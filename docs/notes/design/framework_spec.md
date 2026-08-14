@@ -5086,8 +5086,8 @@ across all elements.
 
 The builder — `Assembly()` plus `add!`/`connect!` — is rejected (row 39).
 
-**Why.** Its one real advantage, programmatic generation, survives intact in
-the type-based form: a declaration is an ordinary function body, and loops and
+Its one real advantage, programmatic generation, survives intact in the
+type-based form: a declaration is an ordinary function body, and loops and
 comprehensions build the returned tuple.
 
 #### `Group`: the on-the-fly assembly
@@ -5139,12 +5139,12 @@ library addition and zero new declaration rules.
 
 #### Class by declaration shape
 
-**No `AbstractAssembly`; one root `AbstractComponent`** (row 39;
-[§11.3][s11-3]).
+**No `AbstractAssembly`; one root `AbstractComponent`** (row 39).
 
 **Why.** The domain hierarchies — `AbstractAircraft`, the engine families —
 have to carry both classes: a [slot](#g-slot) declared `E <: AbstractEngine`
 must accept a primitive `PistonEngine` and a composite turbofan assembly alike.
+And class is implementation detail behind the contract ([§11.3][s11-3]).
 
 [Class](#g-class) — a component's primitive-vs-assembly status — is declared
 instead by *which* well-known declarations a type defines. `child_connections`
