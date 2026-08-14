@@ -8326,8 +8326,10 @@ The full-fidelity successor to [§15.3][s15-3], against the real deployment:
 an XPlane12 output [device](#g-device), ground/trim init, paced run, post-run plots. Method:
 FlightCore's mechanisms are reference *behavior*, not requirements — the question
 is whether the new machinery expresses the experience (move stick, plane banks),
-never how to reproduce `assign_input!`. Inventory of the complete interactive
-surface, with each item's home:
+never how to reproduce `assign_input!`. The interactive surface is *not* one
+thing: pilot commands cluster under a prefix; environment knobs stay with their
+components' panels. Inventory of the complete interactive surface, with each
+item's home:
 
 - **Streamed commands** (`throttle_axis`, `elevator/aileron/rudder_axis`): today
   written by joystick mappings after shaping *and* by GUI sliders on the same
@@ -8348,17 +8350,12 @@ surface, with each item's home:
   conditioning upstream as mapping data, semantics in-model ([§9.4][s9-4]).
 - **Mode engage** (`mode_req` + setpoint capture from current measurements — the
   GUI handler does `u.EAS_ref = EAS` read from `vehicle.y`): the one place the
-  GUI composes writes from model state. Resolved under *Frame anatomies* below:
-  semantic capture is aircraft design — the FCS already latches each controller's
-  reference on mode transitions — so the GUI [peek](#g-peek)-batch ([§9.7][s9-7]) survives as
-  display/slot-sync sugar only.
+  GUI composes writes from model state. Resolved under *Frame anatomies* below.
 - **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
   masses, terrain surface enum, sea-level T/p, wind NED): ordinary [component](#g-component)
   inputs exported to root faces; the GUI writes them under its [greedy claim](#g-greedy-claim)
   (the unclaimed complement, computed by the framework instead of returned) via
-  [§9.7][s9-7]; no machinery. The interactive surface is *not* one thing: pilot
-  commands cluster under a prefix; environment knobs stay with their
-  components' panels.
+  [§9.7][s9-7]; no machinery.
 - **The Xv1 actuator sliders**: FlightCore's dead sliders; resolved read-only by
   [§9.7][s9-7]. No action.
 - **Outbound** (XPlane12: control-surface angles, nose-wheel steering, prop
@@ -8424,20 +8421,21 @@ The demo line by line:
   claim set registered (second joystick on the same faces errors here). The
   Gladiator variant is the same table with different keys, zero shaping code —
   the duplication smell structurally gone.
-- `run!(sim; gui = true, pace = 1)` — a [greedy claim](#g-greedy-claim) over every unclaimed face
-  and liveness with zero configuration, both settled at run start against the
-  [frozen roster](#g-roster) ([§9.3][s9-3]; the flag's attachment lasts exactly this run,
-  [§10.6][s10-6]):
-  axis mirrors read-only (claimed, with provenance), mode/setpoint/mixture/
-  payload/environment widgets live, actuator sliders read-only ([component](#g-component)-fed).
-  Unplug the joystick → its task exits, the mirrors stay read-only with the
-  death in their provenance ("claimed by `T16000M` — task dead") and the axes
-  hold their last-drained values — the accepted orphan anomaly ([§9.3][s9-3]);
-  recovery is between runs: stop, `detach!`, then `init!` for a fresh
-  trajectory or `replay!`-to-end + `run!` to continue the interrupted one
-  ([§10.7][s10-7]). Post-run: `TimeSeries` over retained snapshots; the [trace](#g-trace) can re-drive
-  a fresh `Simulation(world)` bit-identically — which is also the state-trajectory
-  inspector (row 38 paying its way).
+- `run!(sim; gui = true, pace = 1)` — a [greedy claim](#g-greedy-claim) over every
+  unclaimed face and liveness with zero configuration, both settled at run start
+  against the [frozen roster](#g-roster) ([§9.3][s9-3]): axis mirrors read-only
+  (claimed, with provenance), mode/setpoint/mixture/payload/environment widgets
+  live, actuator sliders read-only ([component](#g-component)-fed). The `gui`
+  flag's attachment lasts exactly this run ([§10.6][s10-6]).
+  Unplug the joystick → its task exits. The mirrors stay read-only with the
+  death in their provenance ("claimed by `T16000M` — task dead"), and the axes
+  hold their last-drained values; those two behaviors are the accepted orphan
+  anomaly ([§9.3][s9-3]). Recovery is between runs: stop, `detach!`, then
+  `init!` for a fresh trajectory, or `replay!`-to-end + `run!` to continue the
+  interrupted one ([§10.7][s10-7]).
+  Post-run: `TimeSeries` over retained snapshots; the [trace](#g-trace) can
+  re-drive a fresh `Simulation(world)` bit-identically. That replay is also the
+  state-trajectory inspector (row 38 paying its way).
 
 #### Frame anatomies
 
@@ -8451,14 +8449,16 @@ One [frame](#g-frame) each:
   level `k+1` on [activation](#g-activation); drain applies; avionics compares slot counter to its
   `x` counter, moves the detent, stores. Multi-click in one window counts via
   own-pending-first peek; repeated staging idempotent ([§9.7][s9-7]).
-- *Mode engage*: the GUI stages `mode_req` (plus optionally peek-captured
-  setpoint slots); **bumpless-engage semantics live in the FCS already** — the
+- *Mode engage*: the GUI stages `mode_req`, plus optionally peek-captured
+  setpoint slots. **Bumpless-engage semantics live in the FCS already**: the
   current `ControlLaws` latches each controller's reference from the present
-  command vector on mode transitions, so the fork dissolved: semantic capture is
-  aircraft design (status quo, uniform across writers — a script engages sanely
-  staging one value); the GUI peek-batch survives as display/slot-sync sugar
-  only. Residual check for migration: order-sensitivity of latch vs. sync-write
-  on the same [boundary](#g-boundary) (believed none — both derive from the same measurements).
+  command vector on mode transitions. So the fork dissolved: semantic capture is
+  aircraft design. That arrangement is the status quo, and it is uniform across
+  writers — a script engages sanely staging one value.
+  The GUI [peek](#g-peek)-batch ([§9.7][s9-7])
+  survives as display/slot-sync sugar only. Residual check for migration:
+  order-sensitivity of latch vs. sync-write on the same [boundary](#g-boundary)
+  (believed none — both derive from the same measurements).
 - *Wind slider*: sparse CAS-merge, the uncontested-`τ` case ([§15.3][s15-3]), live in the
   real cast.
 - *Pause/un-pause*: [control plane](#g-control-plane); GUI edits hold in its cell (peek displays),
