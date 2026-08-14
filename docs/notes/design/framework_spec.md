@@ -8100,29 +8100,40 @@ zero rows suffice.
 
 ### 15.1 `Vehicle` today → this framework
 
-The grounding exercise that validated [§5][s5]. Current `Vehicle.f_ode!`
-(`aircraftbase.jl:142-170`) is a hand-woven instance of the machinery specified here:
+This case study is the grounding exercise that validated [§5][s5]. Current
+`Vehicle.f_ode!` (`aircraftbase.jl:142-170`) is a hand-woven instance of the machinery
+specified here:
 
 | Today (convention) | This design (checked structure) |
 |---|---|
-| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` (velocity state-only, accelerations [feedthrough](#g-feedthrough)) dissolves |
+| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` dissolves |
 | Hand-ordered `f_ode!` body (kinematics → airdata → systems → route five `dynamics.u` assignments → dynamics last) | Build-time topological sort; wrong wiring = build error naming the cycle or dangling [port](#g-port) |
-| Velocity state duplicated (`dynamics.x` and `kinematics.u`) with manual sync, incl. `dynamics.x .= kinematics.u  #essential` in `f_init!` | One state, one owner; consumers wire to `dyn.vel` |
+| Velocity state duplicated in `dynamics.x` and `kinematics.u`, kept in sync by hand | One state, one owner; consumers wire to `dyn.vel` |
 | `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | [Summing junctions](#g-summing-junction) at ownership [boundaries](#g-boundary), one explicit wire per contributor, exported totals ([§6.2][s6-2]) |
 | `f_step!` quaternion renorm + engine-phase/stall-latch checks | `project` hook + [boundary-detected](#g-boundary-detected) events with defined semantics |
-| `Aircraft.f_ode!` runs avionics before the vehicle → continuous avionics reads one-stage-stale `vehicle.y` (implicit delay) | Avionics scheduled inside the [sweep](#g-sweep) after the stage-1 outputs it consumes — no delay; or declared periodic and samples post-step by stated semantics |
+| `Aircraft.f_ode!` runs avionics before the vehicle → continuous avionics reads one-stage-stale `vehicle.y` (implicit delay) | Avionics scheduled inside the [sweep](#g-sweep), after the stage-1 outputs avionics consumes — no delay. Or avionics declared periodic, sampling post-step by stated semantics |
 | `atmosphere`/`terrain` threaded as arguments through every signature | Field-handle signals through ordinary ports ([§4.4][s4-4]) |
 
-The migration cost surfaced by the same exercise: today's monolithic `KinData` splits
-into `pose` (stage 1: `q_eb`, `r_eb_e`, `ϕ_λ_h`, ...) and `kin_vel` (stage 2:
-`v_eb_n`, `v_gnd`, `χ`, `γ`, ...) because the parts genuinely have different
-dependencies. The recurring trade, stated once: the framework asks authors to write
-down structure previously kept in their heads, and pays them back by never letting it
+Two of those entries carry detail a cell cannot hold. The artificial loop in
+`VehicleDynamics` is the pairing of a state-only velocity output with
+[feedthrough](#g-feedthrough) accelerations. The hand sync of the duplicated velocity
+state reaches into initialization, where `f_init!` carries the line
+`dynamics.x .= kinematics.u  #essential`.
+
+The same exercise surfaced a migration cost: today's monolithic `KinData` splits in
+two, because its parts genuinely have different dependencies.
+
+- `pose` — stage 1: `q_eb`, `r_eb_e`, `ϕ_λ_h`, ...
+- `kin_vel` — stage 2: `v_eb_n`, `v_gnd`, `χ`, `γ`, ...
+
+The recurring trade, stated once: the framework asks authors to write down structure
+previously kept in their heads, and pays them back by never letting that structure
 silently rot.
 
-The genuine [algebraic loop](#g-algebraic-loop) in the domain — α̇-dependent aerodynamics — is already
-broken in the current C172 model by a filter state, exactly the explicit break [§5.5][s5-5]
-prescribes. Evidence that reject-loops matches domain practice rather than fighting it.
+The genuine [algebraic loop](#g-algebraic-loop) in the domain — α̇-dependent
+aerodynamics — is already broken in the current C172 model by a filter state, exactly
+the explicit break [§5.5][s5-5] prescribes. That precedent is evidence that the
+reject-loops policy matches domain practice rather than fighting it.
 
 ### 15.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
 
