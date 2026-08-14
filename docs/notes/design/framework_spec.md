@@ -8482,26 +8482,28 @@ whether the two declaration sets should be exclusive.)
 #### Why the merge buys nothing
 
 The split is between *time bases*, not state
-classes — the continuous primitive is already hybrid (`m`, [guards](#g-guard), handlers, [§3.1][s3-1]);
-what separates the classes is [sweep](#g-sweep)-driven versus [tick](#g-tick)-driven execution. And the
-settled rules force a merged [component](#g-component)'s two halves to communicate exactly as two
-siblings do: [one home per datum](#g-one-home-per-datum) ([§5.2][s5-2]), `f` sees only the continuous
-state and `g` only the discrete one,
-and `x⁺` is decoded only at the owner's next tick (`g` runs last) — the very
-fact that makes ticks→events structurally impossible and terminates the [boundary](#g-boundary) iteration ([§8.6][s8-6]). Cross-[tier](#g-tier)
-influence inside the merged class still routes through published table [cells](#g-cell), so
-the all-in-one component is an [assembly](#g-assembly) of two primitives in a trench coat — with
-real costs on top of the zero gain: stage doubling, per-[port](#g-port) tier vocabulary,
-facet-conditional obligations, and the sampling [seam](#g-seam) — ZOH and the `z⁻¹` delay, the
-most bug-prone boundary in a flight-control stack — disappearing into a monolith
-where the split keeps it a visible wire (row 56).
+classes — the continuous primitive is already hybrid (`m`, [guards](#g-guard),
+handlers, [§3.1][s3-1]); what separates the classes is [sweep](#g-sweep)-driven
+versus [tick](#g-tick)-driven execution. And the settled rules force a merged
+[component](#g-component)'s two halves to communicate exactly as two siblings
+do: [one home per datum](#g-one-home-per-datum) ([§5.2][s5-2]), `f` sees only
+the continuous state and `g` only the discrete one, and `x⁺` is decoded only at
+the owner's next tick (`g` runs last). That deferred decode is what makes
+ticks→events structurally impossible and what terminates the
+[boundary](#g-boundary) iteration ([§8.6][s8-6]). Cross-[tier](#g-tier)
+influence inside the merged class still routes through published table
+[cells](#g-cell). The all-in-one component is therefore an
+[assembly](#g-assembly) of two primitives in a trench coat, buying no
+expressiveness and incurring costs of its own that row 56 enumerates. One of
+those costs is not bookkeeping. The sampling [seam](#g-seam) — ZOH and the
+`z⁻¹` delay — is the most bug-prone boundary in a flight-control stack. A
+monolith swallows it; the split keeps it a visible wire.
 
 #### The counterexample
 
-From a pre-design FlightCore sketch, `navsensors.jl`,
-whose operative content and companion derivation note are recorded here in
-full: a
-strapdown IMU integrates raw increments continuously — `ẋ.ϑ_c = ω_ic_c`,
+The source is a pre-design FlightCore sketch, `navsensors.jl`, whose operative
+content and companion derivation note are recorded here in full. In that sketch
+a strapdown IMU integrates raw increments continuously — `ẋ.ϑ_c = ω_ic_c`,
 `ẋ.υ_c = f_c_c`, the coning attitude increment `q_c_cc` and the sculling integral
 `ẋ.υ_c_sc = q_c_cc(f_c_c)` — and `f_disc!`, at the IMU's own `Δt`, reads the
 integrals, publishes the sample, and **zeroes them**. In interval terms, the
@@ -8513,10 +8515,10 @@ and `υ_c` $= \int_{t_{k-1}}^{t_k} f^{c} \, dt$ from zero,
 anchored at the interval
 start — exactly the forms the differencing bullets below recover from the
 cumulative [stores](#g-store), term by term. The reset is periodic, not
-condition-triggered, so events are the wrong [tier](#g-tier); and it is a discrete-tier write
-into continuous state, exactly the operation this design forbids (`g` writes only
-its own `x`; handlers are the sole resetters of continuous state, and they are
-[guard](#g-guard)-driven).
+condition-triggered, so events are the wrong [tier](#g-tier); and the reset is a
+discrete-tier write into continuous state, exactly the operation this design
+forbids (`g` writes only its own `x`; handlers are the sole resetters of
+continuous state, and they are [guard](#g-guard)-driven).
 Integrate-and-dump falls squarely into the crack between the classes:
 tightly-coupled continuous and periodic dynamics in one physical [device](#g-device).
 
