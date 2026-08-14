@@ -1268,66 +1268,70 @@ Consumer-declared folds with multi-connection legality are closed
 
 ### 7.1 Continuous state: structured immutable, flat backing
 
-Each [continuous component](#g-continuous-component) declares its state by value (`init_x`, [§11.2][s11-2]): a
-NamedTuple whose leaves are drawn from a **deliberately closed vocabulary —
-plain real scalars and `SArray`s (static vectors and matrices) of a common
-eltype `T`** — and nothing else. `Int`s/enums/`Bool`s belong in modes, and
-domain wrapper types (`RQuat`, `Ranged`) are not state leaves — an attitude
+Each [continuous component](#g-continuous-component) declares its state by value (`init_x`, [§11.2][s11-2]). The
+declaration is a NamedTuple whose leaves are drawn from a **deliberately closed
+vocabulary — plain real scalars and `SArray`s (static vectors and matrices) of
+a common eltype `T`** — and nothing else. `Int`s/enums/`Bool`s belong in modes,
+and domain wrapper types (`RQuat`, `Ranged`) are not state leaves: an attitude
 state is an `SVector{4,T}`, cast where rotation semantics are wanted (below).
 The framework:
 
 - computes a **flat layout** at build time (compile-time offsets over one contiguous
   `Vector{T}` [buffer](#g-buffer) it owns);
 - **reconstructs** the typed immutable state value for a [component](#g-component) at each evaluation
-  and passes it to every function receiving state views ([§5.2][s5-2] argument rule — field
+  and passes it to every function receiving state views ([§5.2][s5-2] argument rule; field
   loads at known offsets, register-level, zero cost);
 - receives immutable results back: derivative functions return an `Ẋ`-typed value
   (scatter-stored into the flat `ẋ` buffer); event handlers and [projection](#g-projection) return a new
-  `X` (written back — projection at the two [schedule](#g-schedule) positions, [§5.3][s5-3]).
+  `X` (written back; projection at the two [schedule](#g-schedule) positions, [§5.3][s5-3]).
 
 **What `Ẋ` is.** With the leaf vocabulary closed, the answer takes one line:
-`Ẋ` has exactly `X`'s shape at the [activation](#g-activation) scalar — a scalar leaf's
-derivative is a `T`, an `SArray` leaf's is the same `SArray` at `T`. (This is
-the vocabulary rule paying rent: an invariant-carrying leaf like a unit
+`Ẋ` has exactly `X`'s shape at the [activation](#g-activation) scalar. A scalar leaf's
+derivative is a `T`, and an `SArray` leaf's is the same `SArray` at `T`. This
+is the vocabulary rule paying rent: an invariant-carrying leaf like a unit
 quaternion has a derivative off its own type, and `Ẋ` would need a separate
-derivation; here the attitude leaf is an `SVector{4,T}` and so is its rate.)
-The conformance [predicate](#g-predicate) is structural — *each field of `f`'s return
-scatters into its field's block at `T`* ([§12.5][s12-5] states the check) — which
-makes derivative completeness a property of the layout rather than of author
+derivation; here the attitude leaf is an `SVector{4,T}` and so is its rate.
+The conformance [predicate](#g-predicate) is structural: *each field of `f`'s return
+scatters into its field's block at `T`* ([§12.5][s12-5] states the check). That makes
+derivative completeness a property of the layout rather than of author
 discipline. There is deliberately **no `derivative_type` hook** (row 190).
 
 **The buffer is authoritative; typed values are ephemeral reconstructions.** Nobody
 outside the framework ever holds a mutable reference to state. "Ephemeral" is
-literal: an isbits view materializes in the caller's frame (registers or spilled
-stack, the compiler's business) for exactly the duration of the call and has no
-existence between calls — re-materializing is the same loads, value-identical
-because the value is immutable and the buffer unchanged within a [sweep](#g-sweep). Whether
-repeated reads within a sweep re-materialize or reuse the loads is codegen freedom
-in the literal sense: the [executor](#g-executor) (the compiled execution form of the
-schedule) is spelled rebuild-per-call, and hoisting is the code generator's
-CSE, whose legality condition is exactly the buffer-unchanged-within-a-sweep
-rule ([§12.7][s12-7]). The complementary rule ([§5.2][s5-2]): **[one home per datum](#g-one-home-per-datum)** — buffer
-for continuous `x`, stores for discrete `x` and for `m`, table for produced
-signals — and no store ever mirrors another; in particular there are no state
-[cells](#g-cell) in the table beyond [contract](#g-contract)-driven [auto-published ports](#g-auto-published-port), which are
-interface, not transport.
+literal: an isbits view materializes in the caller's frame for exactly the
+duration of the call, and has no existence between calls. Where it
+materializes — registers or spilled stack — is the compiler's business.
+Re-materializing is the same loads, and it is value-identical because the value
+is immutable and the buffer is unchanged within a [sweep](#g-sweep).
+
+Whether repeated reads within a sweep re-materialize or reuse the loads is
+codegen freedom, in the literal sense that the freedom is the code generator's.
+The [executor](#g-executor) (the compiled execution form of the schedule) is spelled
+rebuild-per-call, and hoisting a repeated read is the code generator's CSE. The
+legality condition of that CSE is exactly the buffer-unchanged-within-a-sweep
+rule ([§12.7][s12-7]).
+
+The complementary rule is **[one home per datum](#g-one-home-per-datum)** ([§5.2][s5-2]): buffer for
+continuous `x`, stores for discrete `x` and for `m`, table for produced
+signals. No store ever mirrors another. In particular there are no state
+[cells](#g-cell) in the table beyond [contract](#g-contract)-driven [auto-published ports](#g-auto-published-port) (published by
+the framework from the state or mode store), which are interface, not
+transport.
 
 **Why the vocabulary is closed: views must materialize without running
 anyone's invariants.** Scalars and `SArray`s have invariant-free
-constructors — `SVector`'s stores its tuple, `NamedTuple` construction runs
-no user code, nothing normalizes or clamps — so building a view through
-ordinary public construction is bit-faithful automatically:
+constructors: `SVector`'s stores its tuple, `NamedTuple` construction runs
+no user code, and nothing normalizes or clamps. Building a view through
+ordinary public construction is therefore bit-faithful automatically —
 `reconstruct(flatten(x)) == x` identically, with no constructor bypass, no
 `reinterpret`, and no reliance on a custom struct's memory layout mirroring
 the buffer's. Invariant-carrying leaves are closed (row 94). Domain semantics
-are instead an **explicit, invariant-free cast at the
-point of use** — `q = RQuat(x.q, normalization = false)` — the conversion
-today's `f_ode!` code performs on its raw views, now visible and chosen.
-Invariants live where the design already put them: in `project` at
-[boundaries](#g-boundary), and in writers — handlers build their returned values through
-ordinary constructors, and the condition apply converts authored values
-through ordinary `convert` methods ([§14.3][s14-3]). Constructors run on the write
-paths, never on views.
+are instead an **explicit, invariant-free cast at the point of use**, the
+conversion today's `f_ode!` code performs on its raw views. Invariants live
+where the design already put them: in `project` at [boundaries](#g-boundary), and in
+writers. Handlers build their returned values through ordinary constructors,
+and the condition apply converts authored values through ordinary `convert`
+methods ([§14.3][s14-3]). Constructors run on the write paths, never on views.
 
 What this buys, against today's flat-`Vector` + `ComponentArrays`-views pattern:
 
@@ -1352,37 +1356,37 @@ are generic over `T <: Real`. One design property, four consumers:
 1. exact Jacobians for **linearization** (ForwardDiff duals through the whole model,
    replacing finite differences),
 2. derivatives for **trim** solvers,
-3. the **[feedthrough tracer](#g-feedthrough-tracer)** ([§5.6][s5-6]),
+3. the **[feedthrough tracer](#g-feedthrough-tracer)** (the set-propagation instrument classifying a
+   rejected cycle, [§5.6][s5-6]),
 4. a trivially checkable **CI invariant**: one evaluation [sweep](#g-sweep) with `T = Dual` fails
    loudly (`MethodError`/`InexactError` at the offending line) on any Float64-pinning.
 
-Consumer 1 is also where the *discrete* side's exemption stops being a
-limitation and becomes the exact answer: a frozen discrete [cell](#g-cell) is a constant
-with zero partials, which is what "linearize the continuous dynamics with the
-discrete state held" means (`frozen_discrete_walkthrough.md` works the chain through in
-detail).
+For consumer 1, the *discrete* side's exemption is not a limitation but the
+exact answer. A frozen discrete [cell](#g-cell) is a constant with zero partials, which
+is what "linearize the continuous dynamics with the discrete state held" means
+(`frozen_discrete_walkthrough.md` works the chain through in detail).
 
 The declaration layer keeps this scoping legible without putting it in the
-author's way: a continuous producer's output declaration is a function of the
-[activation](#g-activation) scalar ([§11.2][s11-2]), and cell types per activation are that declaration
-*evaluated* at the scalar — participation authored per leaf, `T` where the leaf
-follows the activation and a concrete type where it is deliberately [pinned](#g-walked). The
-state type is still derived: the framework walks the `init_x`-derived type, real
-leaves and `Real` type parameters following the scalar. The discrete side stays
-plain and pins wholesale. Nothing anywhere comes from inference through user
-code. (Safety of the substitution rests on
-the [§12.5][s12-5] embedding guarantee.)
+author's way. A continuous producer's output declaration is a function of the
+[activation](#g-activation) scalar ([§11.2][s11-2]), and cell types per activation are that
+declaration *evaluated* at the scalar. Participation is authored per leaf: `T`
+where the leaf follows the activation, a concrete type where the leaf is
+deliberately [pinned](#g-walked). The state type is still derived — the framework walks
+the `init_x`-derived type, real leaves and `Real` type parameters following the
+scalar. The discrete side stays plain and pins wholesale. Nothing anywhere
+comes from inference through user code. Safety of the substitution rests on the
+embedding guarantee stated in [§12.5][s12-5].
 
 Scoping (what actually needs genericity — roughly half the type inventory):
 
-- **[Walked](#g-walked) — [payload](#g-payload)/value types constructed during evaluation (~25 structs):**
-  the quaternion/attitude family (`Quaternion` becomes
-  `Quaternion{N,T} <: AbstractVector{T}` — by invariance, `Float64` instances still
-  match every existing `AbstractVector{Float64}` method, so existing behavior is
-  untouched), `Wrench`, `FrameTransform`, `MassProperties`, `KinData`, `AirData`,
-  geodesy value types, `TerrainData`, continuous output structs. Mechanical
-  parametrization; constructors infer `T`, so call sites don't change; `@kwdef`
-  defaults pin the no-argument case to `Float64`.
+- **[Walked](#g-walked) — payload/value types constructed during evaluation (~25 structs):**
+  the quaternion/attitude family, `Wrench`, `FrameTransform`, `MassProperties`,
+  `KinData`, `AirData`, geodesy value types, `TerrainData`, continuous output
+  structs. `Quaternion` becomes `Quaternion{N,T} <: AbstractVector{T}`; by
+  invariance, `Float64` instances still match every existing
+  `AbstractVector{Float64}` method, so existing behavior is untouched. The
+  parametrization is mechanical: constructors infer `T`, so call sites don't
+  change, and `@kwdef` defaults pin the no-argument case to `Float64`.
 - **Pinned — parameters and definitions:** stay `Float64` (promotion handles mixing);
   no migration.
 - **[Exempt](#g-walked) — the discrete side** (compensators, avionics): linearization and
@@ -1390,17 +1394,19 @@ Scoping (what actually needs genericity — roughly half the type inventory):
 
 Lookups: **table data is a pinned parameter; the query coordinate is walked traffic.**
 Interpolations.jl evaluates generically over the coordinate (`itp(x::Dual)` works
-through the `BSpline`/`scale`/`extrapolate` compositions in use). Caveats: `Linear()`
-[interpolants](#g-interpolant) have kinked derivatives at knots (no regression vs. finite differences;
-upgrade to `Cubic` where Jacobian quality near a lookup matters); a manual chain rule
-via `Interpolations.gradient` is the escape hatch for anything exotic (and the pattern
-for wrapping non-Julia black boxes).
+through the `BSpline`/`scale`/`extrapolate` compositions in use). Two caveats
+apply. `Linear()` [interpolants](#g-interpolant) have kinked derivatives at knots; that is no
+regression vs. finite differences, but upgrade to `Cubic` where Jacobian
+quality near a lookup matters. A manual chain rule via
+`Interpolations.gradient` is the escape hatch for anything exotic, and the
+pattern for wrapping non-Julia black boxes.
 
-Author-facing rules (three): no `::Float64` argument annotations in math (use `<:Real`
-or nothing — the codebase already mostly does); no `Float64`-pinned intermediates
-(`zero(SVector{3,T})`); **no `::SomeType{Float64}` return-type annotations** on the
-continuous path (they force converts → `InexactError`; see `attitude.jl` `*` for the
-live example pattern).
+**Rule.** Three rules are author-facing. First, no `::Float64` argument
+annotations in math: use `<:Real` or nothing, which the codebase already mostly
+does. Second, no `Float64`-pinned intermediates — write `zero(SVector{3,T})`.
+Third, **no `::SomeType{Float64}` return-type annotations** on the continuous
+path, because they force converts and hence `InexactError` (see `attitude.jl`
+`*` for the live example pattern).
 
 ### 7.3 Discrete state, modes, and workspace
 
