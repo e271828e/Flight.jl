@@ -1026,61 +1026,102 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
 
 ### 6.1 Connections and hierarchy
 
-- **Deep connection paths** are allowed, with one structural rule: both endpoints must
-  resolve **within the [assembly](#g-assembly) type being defined**. You may deep-route into structure
-  you declared (`Cessna172` routing its single `trn` input to
-  `systems/ldg/{left,right,nose}/trn_field` in one visible block — no per-level
-  re-exports); you may only connect [port](#g-port)-level into submodels held **generically**
-  (`World` connects `terrain/field => aircraft/trn` and knows nothing more). This kills
-  the re-export ceremony where it is ceremony, and preserves substitutability where the
-  [boundary](#g-boundary) is load-bearing. Operationally: a path may traverse any chain of
-  concretely-typed fields and stops at the first generically-held child, whose
-  [faces](#g-face) are the only things addressable beyond that point — a rule about
-  the *declaration's* knowledge, not the build's (a deep path into a generic child
-  is forbidden even where the concrete instantiation would resolve it, because it
-  hard-codes one implementation and breaks on substitution). Enforcement lives
-  in the path-resolution primitive itself (`resolve`, [§13.3][s13-3]), which walks
-  declared field types alongside instances.
-- Paths are validated at build time; renames break loudly.
-- **Two clauses type-check a wire** ([§11.2][s11-2]). The **nominal bound check** is
-  stated over declaration evaluations: the producer's declaration
-  at `Float64` must be `<:` the consumer's entry at `Float64` — one uniform rule,
-  degenerating to exact equality for a concrete entry, violated as
-  `WireTypeMismatch`. Beside it, and **for a continuous consumer only**, the
-  **walk-compatibility clause**: a walking producer leaf (the producer declared
-  `T` there) requires a `T` entry, while a [pinned](#g-walked) producer leaf satisfies either,
-  frozen values embedding upward under any [activation](#g-activation). Both sides are declaration
-  functions of `T`, so the clause is decided in [Stratum](#g-stratum) A by evaluating them at a
-  marker scalar — declaration reading, no user stage code ([§12.1][s12-1]) — and a
-  violation is `WalkingFaceAtFrozenEntry`, naming both endpoints, the leaf and
-  both declared leaf types, with both remedies in the message: declare the entry
-  `T` if the consumer promotes, or feed it from a non-walking source if the freeze
-  is genuine. **The [tier](#g-tier) scope is load-bearing, not tidiness.** A discrete consumer
-  takes the bound check alone, because its stages read exclusively at real [ticks](#g-tick)
-  in the [nominal](#g-nominal) world — a `Dual`-carrying [cell](#g-cell) exists only inside activations the
-  discrete tier never runs in ([§12.4][s12-4]) — so a continuous producer feeding a
-  discrete consumer is unconditionally legal (row 167). The clause is also what gives the
-  two [contract](#g-contract) sides their **failure asymmetry**: the input-side forgotten-`T` —
-  the habitual `Float64` written at an entry whose consumer really promotes —
-  fails at the *first nominal build*, at the wire, with both endpoints named,
-  because an input has a build-time counterparty; the output side has none, so its
-  forgotten-`T` lurks (loudly, never silently) until the first `Dual` activation
-  ([§11.2][s11-2]).
-- Fan-out is free (one producer, many consumers). The converse is strict: every
-  input port takes **exactly one** connection, no exceptions (aggregation is
-  junctions, [§6.2][s6-2]). The rule spans levels: an input fed both inside a sub-assembly
-  and by an ancestor's deep route is a two-producers build error — deep routing
-  cannot silently double-feed.
-- No auto-bubbling of unconnected inputs (row 43).
-- Unconnected output ports: legal, silently, with no build-time warning (row 84).
-  Unconnected input ports: build error
-  (no silent defaults). **The check is a whole-tree property, not a
-  per-declaration one**: within a single assembly declaration an unfed child input
-  is simply *awaiting a claim from above* — a sibling wire, an ancestor's deep
-  route, or an `input_connections` entry handing the obligation up one level ([§11.6][s11-6]). The
-  error fires at the root build for any input whose obligation chain never
-  terminates. The one legitimate terminus fed by no [component](#g-component) is the root
-  assembly's own input face — a root slot ([§9.3][s9-3]).
+A wire names its two endpoints by path, and those paths run down the hierarchy
+of children. How deep a path may reach decides whether a parent addresses a
+grandchild's [port](#g-port) directly or every intermediate level must re-export it;
+that question comes first here, followed by what type-checks a wire once both
+endpoints resolve, how many connections each side may take, and what becomes of
+the ports left unconnected.
+
+#### How far a path may reach
+
+**Rule.** Deep connection paths are allowed, with one structural rule: both
+endpoints must resolve **within the [assembly](#g-assembly) type being defined**.
+
+The rule has two halves. You may deep-route into structure you declared:
+`Cessna172` routes its single `trn` input to
+`systems/ldg/{left,right,nose}/trn_field` in one visible block, with no
+per-level re-exports. You may only connect port-level into submodels held
+**generically**: `World` connects `terrain/field => aircraft/trn` and knows
+nothing more.
+
+**Why.** The rule kills the re-export ceremony where it is ceremony, and
+preserves substitutability where the [boundary](#g-boundary) is load-bearing.
+
+The permission and the restriction meet in a single traversal: a path may
+traverse any chain of concretely-typed fields, and it stops at the first
+generically-held child, whose [faces](#g-face) are the only things addressable
+beyond that point. This is a rule about the *declaration's* knowledge, not the
+build's. A deep path into a generic child is forbidden even where the concrete
+instantiation would resolve it, because it hard-codes one implementation and
+breaks on substitution.
+
+Enforcement lives in the path-resolution primitive itself (`resolve`,
+[§13.3][s13-3]), which walks declared field types alongside instances. Paths are
+validated at build time, and renames break loudly.
+
+#### Type-checking a wire
+
+**Rule.** Two clauses type-check a wire ([§11.2][s11-2]).
+
+**The nominal bound check** is stated over declaration evaluations: the
+producer's declaration at `Float64` must be `<:` the consumer's entry at
+`Float64`. It is one uniform rule, degenerating to exact equality for a concrete
+entry. A violation is `WireTypeMismatch`.
+
+Beside it, and **for a continuous consumer only**, stands the
+**walk-compatibility clause**. A walking producer leaf — the producer declared
+`T` there — requires a `T` entry. A [pinned](#g-walked) producer leaf satisfies
+either entry: frozen values embed upward under any [activation](#g-activation) (a
+re-run of Stratum C at a given scalar type).
+
+Both sides are declaration functions of `T`, so the clause is decided in
+[Stratum](#g-stratum) A (one of the build's three phases: structure, schedule,
+activation) by evaluating them at a marker scalar. That is declaration reading;
+no user stage code runs ([§12.1][s12-1]). A violation is
+`WalkingFaceAtFrozenEntry`, naming both endpoints, the leaf and both declared
+leaf types. The message carries both remedies: declare the entry `T` if the
+consumer promotes, or feed it from a non-walking source if the freeze is genuine.
+
+**The [tier](#g-tier) scope is load-bearing, not tidiness.** A discrete consumer
+takes the bound check alone, because its stages read exclusively at real
+[ticks](#g-tick) in the [nominal](#g-nominal) world (the `Float64` activation, and
+a declaration's `Float64` face). A `Dual`-carrying [cell](#g-cell) exists only
+inside activations the discrete tier never runs in ([§12.4][s12-4]). A continuous
+producer feeding a discrete consumer is therefore unconditionally legal
+(row 167).
+
+The same clause also gives the two [contract](#g-contract) sides their **failure
+asymmetry**. The input-side forgotten-`T` — the habitual `Float64` written at an
+entry whose consumer really promotes — fails at the *first nominal build*, at the
+wire, with both endpoints named, because an input has a build-time counterparty.
+The output side has none, so its forgotten-`T` lurks until the first `Dual`
+activation; it lurks loudly, never silently ([§11.2][s11-2]).
+
+#### Fan-out and fan-in
+
+Fan-out is free: one producer, many consumers. The converse is strict.
+
+**Rule.** Every input port takes **exactly one** connection, no exceptions;
+aggregation is junctions ([§6.2][s6-2]).
+
+The rule spans levels: an input fed both inside a sub-assembly and by an
+ancestor's deep route is a two-producers build error. Deep routing cannot
+silently double-feed.
+
+#### Unconnected ports
+
+There is no auto-bubbling of unconnected inputs (row 43). Unconnected output
+ports are legal, silently, with no build-time warning (row 84). Unconnected input
+ports are a build error, with no silent defaults.
+
+**The check is a whole-tree property, not a per-declaration one.** Within a
+single assembly declaration an unfed child input is simply *awaiting a claim from
+above*: a sibling wire, an ancestor's deep route, or an `input_connections` entry
+handing the obligation up one level ([§11.6][s11-6]). The error fires at the root
+build for any input whose obligation chain never terminates. The one legitimate
+terminus fed by no [component](#g-component) is the root assembly's own input face
+— a root slot ([§9.3][s9-3]).
 
 ### 6.2 Aggregation: explicit summing junctions
 
