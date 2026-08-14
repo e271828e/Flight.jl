@@ -710,114 +710,150 @@ no minimization of the set survives without introducing a copy (row 35).
 
 ### 5.3 Structural feedthrough: stage roles, schedule and step boundaries
 
-**The letters**: `f` is the continuous [flow](#g-flow), `g` the discrete
-update, `h_*` the output stages — the hybrid-systems flow/jump pair
-(Goebel–Sanfelice–Teel) joined to the control/estimation convention that `h` is
-the output map (`y = h(x, u)`; every navigation filter's measurement function).
-Bare `h` denotes the integration step size only ([§8][s8]). Stage suffixes name
-the **dependence class**, not the argument
-list: `x` versus `xu` — state-only versus
-state-plus-input, the `y = h(x)` / `y = h(x, u)` distinction spelled in the
-name, identically on both [tiers](#g-tier). So "no `u` in the
-name" *is* the no-[feedthrough](#g-feedthrough) property, visible at every definition site.
-The letters are deliberately non-exhaustive: modes fold under the state
-letter (`m` is state, and the suffix names the [feedthrough](#g-feedthrough)
-split rather than an argument inventory — row 75), and ambient facts (`t`,
-`Δt`) and scratch (`ws`) ride
-unnamed. The stage names do not distinguish the tiers at all — the state
-letter is shared (row 173), so what declares a stateful leaf's tier is its
-update law, `f` versus `g`, with the remaining tier-implying declarations
-agreeing ([§11.2][s11-2]).
+[§5.2][s5-2] fixes the two-stage surface and the laws that govern it. What remains is
+the reading. A stage's role has two halves: what its name asserts, and what it may see.
+The rest of the section orders the stages into a schedule, then puts that schedule
+inside a step [boundary](#g-boundary).
 
-- **`h_x` is the no-feedthrough stage** — defined entirely by what it
-  cannot see: its [bundle](#g-bundle) carries no `u`, so "no feedthrough" is unfalsifiable,
-  and that structural guarantee is what its [ports](#g-port) contribute to the [schedule](#g-schedule)
-  (they break would-be loops). It exists when the [component](#g-component) has state-derived
-  ports, or shared state-derived intermediates to hand down its `w` return
-  ([§5.2][s5-2]); otherwise it is
-  simply absent — and a stage that would produce neither is the `DeadStage`
-  error, an empty stage being unwritable on purpose. Guidance rather than law:
-  when the component also defines `h_xu`, a `w`-only `h_x` earns nothing — fold
-  the intermediates into `h_xu`, which runs exactly once per [sweep](#g-sweep) just as `h_x`
-  does. The port-less `h_x` earns its keep where there is no `h_xu` at all,
-  its no-`u` bundle being the honest spelling of "these intermediates do not
-  depend on inputs". **A declared output that matches a state or mode field by
-  name and type, and that no stage produces, is auto-published** by the framework
-  from the state stores at stage-1 position ([§11.3][s11-3]) — the match is against
-  the declared stores (`init_x`, plus `init_m` on the continuous tier) and the
-  publication position is `h_x` on either tier — publication driven by the
-  public [contract](#g-contract) (row 16).
-- **`h_xu` receives all wired inputs plus `y_x`** — its own
-  stage-1 ports, and with them stage 1's `w`, so shared intermediates are
-  computed once, not re-derived, whether or not they are interface —
-  plus the [state views](#g-view); conservatively, every stage-2 output is presumed
-  dependent on every wired input.
-- **`f` and `g` run after the sweep**, when the full [signal table](#g-signal-table) — including the
-  component's own stage-2 ports — is complete and fresh. The fused idiom stands:
-  compute each law once, in a stage; publish it; let `f`/`g` copy from `y`. The
-  interfaces *reward* single-source-of-truth (nothing ever needs computing twice)
-  rather than making duplication unwritable (rows 15, 35).
-- **[Guards](#g-guard) and handlers read the same fresh world.** At a step [boundary](#g-boundary), the order
-  is *integrate → project → [boundary sweep](#g-sweep) → guards*, so by guard/handler time `y`
-  is a fresh decode of exactly the state being transformed, and the state views are
-  that state itself. Handlers construct their `x`/`m` returns from raw state
-  naturally — a reset map is `(; x = (; x..., ω = 0.0))`, no reassembly from
-  published fields.
-- **`project` runs between a state write and its decode** (after integration, and
-  after any handler `x`-reset) — the only positions in the schedule where no fresh
-  `y` of the new state can exist yet. It is not *unique* in receiving raw state
-  (every function gets state views), but it is unique in that schedule position.
-- All output stages must be pure (no side effects); state types make mutation
-  impossible anyway ([§7][s7]).
+#### Stage roles: the letters
 
-The schedule: all stage-1 functions (any order), then stage 2 in topological order, then all `f`
-against the now-consistent signal table. Note the systemic consequence: *evaluating
-the [RHS](#g-flow) means running the sweep* — there is no incremental `f`-only re-evaluation.
-Implicit solvers, linearization and trim already work this way (seed `x`, run the
-composite), so nothing is lost; [§8.3][s8-3]/[§8.4][s8-4] restate it as a property of the
-execution model (RHS evaluations and guard [probes](#g-probe) alike run the *interior* sweep,
-the continuous-only variant of [§8.5][s8-5] — discrete entries are absent from it by
-construction, so discrete [cells](#g-cell) hold across the step).
+**The letters**: `f` is the continuous [flow](#g-flow), `g` the discrete update, `h_*`
+the output stages. The scheme joins two traditions: `f` and `g` are the hybrid-systems
+flow/jump pair (Goebel–Sanfelice–Teel), and `h` is the control/estimation convention
+that the output map is `y = h(x, u)` — every navigation filter's measurement function.
+Bare `h` denotes the integration step size only ([§8][s8]).
 
-**Step-boundary semantics.** At each boundary: integrate → project → boundary sweep →
-evaluate **all guards once** against that sweep → fire the eligible events, **at most
-one per component per round** (declaration order picking among a component's
-simultaneously-eligible events), each firing being `handler → project`. The signal
-table is written **only by sweeps**: a transition reaches the table — everyone's ports,
-the firing component's own included — at the next round's re-sweep, and the round that
-detects [quiescence](#g-quiescence) leaves the table post-transition-consistent for whatever else the
-boundary does (discrete [ticks](#g-tick), logging). Hence the [epoch rule](#g-input-epoch): **a handler executes
-against exactly the world its guard fired on** — own `y`, foreign `u`, own `x`/`m`
-alike are the firing round's sweep, so `y = h(x)` holds at every handler entry.
-Same-component sequential composition happens *across* rounds, each later event
-re-decided against the post-transition sweep rather than fired on a stale premise.
-Newly-enabled guards fire within the *same* boundary: the
-sweep → guards → handlers phase iterates to quiescence, with each event firing
-under the [firing budget](#g-firing-budget) ([§8.6][s8-6]) and each component
-firing at most once per round (settled in [§8.6][s8-6]).
+**Rule.** Stage suffixes name the **dependence class**, not the argument list. `x`
+versus `xu` is state-only versus state-plus-input — the `y = h(x)` / `y = h(x, u)`
+distinction spelled in the name, identically on both [tiers](#g-tier). So "no `u` in the
+name" *is* the no-[feedthrough](#g-feedthrough) property, visible at every definition
+site.
+
+The letters are deliberately non-exhaustive. Modes fold under the state letter: `m` is
+state, and the suffix names the [feedthrough](#g-feedthrough) split rather than an
+argument inventory (row 75). Ambient facts (`t`, `Δt`) and scratch (`ws`) ride unnamed.
+
+The stage names do not distinguish the tiers at all — the state letter is shared
+(row 173). So what declares a stateful leaf's tier is its update law, `f` versus `g`,
+with the remaining tier-implying declarations agreeing ([§11.2][s11-2]).
+
+#### Stage roles: what each stage may see
+
+**`h_x` is the no-feedthrough stage**, defined entirely by what it cannot see. Its
+[bundle](#g-bundle) (the NamedTuple of zero-copy views a component function receives)
+carries no `u`, so "no feedthrough" cannot be violated by construction. That structural
+guarantee is what `h_x` [ports](#g-port) contribute to the [schedule](#g-schedule): they
+break would-be loops.
+
+`h_x` exists when the [component](#g-component) has state-derived ports, or shared
+state-derived intermediates to hand down its `w` return ([§5.2][s5-2]); otherwise it is
+simply absent. A stage that would produce neither is the `DeadStage` error, an empty
+stage being unwritable on purpose.
+
+Guidance rather than law: when the component also defines `h_xu`, a `w`-only `h_x`
+earns nothing. Fold the intermediates into `h_xu`, which runs exactly once per
+[sweep](#g-sweep) just as `h_x` does. The port-less `h_x` earns its keep where there is
+no `h_xu` at all, its no-`u` bundle being the honest spelling of "these intermediates do
+not depend on inputs".
+
+**Rule.** A declared output that matches a state or mode field by name and type, and
+that no stage produces, is auto-published by the framework from the state stores at
+stage-1 position ([§11.3][s11-3]). The match is against the declared stores — `init_x`,
+plus `init_m` on the continuous tier — and the publication position is `h_x` on either
+tier. Publication is driven by the public [contract](#g-contract) (row 16).
+
+**`h_xu` receives all wired inputs plus `y_x`** — its own stage-1 ports. With them it
+receives stage 1's `w`, so shared intermediates are computed once, not re-derived,
+whether or not they are interface. It receives the [state views](#g-view) too.
+Conservatively, every stage-2 output is presumed dependent on every wired input.
+
+**`f` and `g` run after the sweep**, when the full [signal table](#g-signal-table) is
+complete and fresh — the component's own stage-2 ports included. The fused idiom stands:
+compute each law once, in a stage; publish it; let `f`/`g` copy from `y`.
+
+**Why.** The interfaces *reward* single-source-of-truth rather than making duplication
+unwritable: nothing ever needs computing twice (rows 15, 35).
+
+All output stages must be pure (no side effects); state types make mutation impossible
+anyway ([§7][s7]).
+
+#### The schedule
+
+**Rule.** The schedule runs all stage-1 functions in any order, then stage 2 in
+topological order, then all `f` against the now-consistent signal table.
+
+Note the systemic consequence: *evaluating the [RHS](#g-flow) means running the sweep*.
+There is no incremental `f`-only re-evaluation. Nothing is lost by that, because
+implicit solvers, linearization and trim already work this way — seed `x`, run the
+composite. [§8.3][s8-3]/[§8.4][s8-4] restate that consequence as a property of the
+execution model. RHS evaluations and guard [probes](#g-probe) alike run the *interior*
+sweep, the continuous-only variant of [§8.5][s8-5]; discrete entries are absent from it
+by construction, so discrete [cells](#g-cell) hold across the step.
+
+#### Step boundaries
+
+**[Guards](#g-guard) and handlers read the same fresh world.** At a step boundary the
+order is *integrate → project → [boundary sweep](#g-sweep) → guards*, so by
+guard/handler time `y` is a fresh decode of exactly the state being transformed, and the
+state views are that state itself. Handlers construct their `x`/`m` returns from raw
+state naturally: a reset map is `(; x = (; x..., ω = 0.0))`, no reassembly from published
+fields.
+
+**`project` runs between a state write and its decode** — after integration, and after
+any handler `x`-reset. Those are the only positions in the schedule where no fresh `y`
+of the new state can exist yet. `project` is not *unique* in receiving raw state (every
+function gets state views), but it is unique in that schedule position.
+
+**The boundary sequence.** At each boundary: integrate → project → boundary sweep →
+evaluate **all guards once** against that sweep → fire the eligible events, each firing
+being `handler → project`. The sweep → guards → handlers phase then iterates to
+[quiescence](#g-quiescence) (the fixed point where a round of handlers fires nothing),
+so newly-enabled guards fire within the *same* boundary:
+
+> integrate → project → **[ sweep → guards → handlers ]** iterated to quiescence
+
+The signal table is written **only by sweeps**, so a transition reaches the table at the
+next round's re-sweep ([§8.6][s8-6]). The round that detects quiescence leaves the table
+post-transition-consistent for whatever else the boundary does — discrete
+[ticks](#g-tick), logging.
+
+**Rule.** Hence the [epoch rule](#g-input-epoch): a handler executes against exactly the
+world its guard fired on. Own `y`, foreign `u`, own `x`/`m` alike are the firing round's
+sweep, so `y = h(x)` holds at every handler entry.
+
+[§8.6][s8-6] settles the iteration itself: how far it runs, and how often each event may
+fire under the [firing budget](#g-firing-budget) (the per-boundary cap on how often each
+event fires). Two of its rules matter here. Within a round each component
+fires at most one event, declaration order picking among that component's
+simultaneously-eligible events. And same-component sequential composition happens
+*across* rounds, each later event re-decided against the post-transition sweep rather
+than fired on a stale premise.
+
+#### Why derivatives may read outputs
 
 **Departure from the orthodox formalism, stated openly.** The textbook form is
 $\dot{x} = f(x, u)$, $y = g(x, u)$; this design's `f` receives the orthodox arguments
-*plus* the published table: $\dot{x} = f(x, m, y, u, t)$. The composite map $x \mapsto \dot{x}$ is
-mathematically identical (linearization, trim and AD are untouched); the heterodox
-element is only that derivatives may read outputs. The teaching line: *"stage 1
-publishes what you know from state alone; stage 2 adds what needs inputs; your
-dynamics read your own published results instead of recomputing them."* The decision
-was grounded in a component-by-component survey of FlightPhysics/FlightApps ([§15.2][s15-2]):
-derivative/output overlap is the *norm* in this domain (Newton–Euler, kinematics,
-piston engine, gear friction, every discrete compensator), which is what makes the
-orthodox split expensive here (row 15). FlightCore's
-fused `f_ode!` already embodied the same economics; this design keeps them while
-adding checked scheduling.
+*plus* the published table: $\dot{x} = f(x, m, y, u, t)$. The composite map
+$x \mapsto \dot{x}$ is mathematically identical (linearization, trim and AD are
+untouched). The heterodox element is only that derivatives may read outputs.
 
-**Shared expensive computations** are thereby solved uniformly: compute once in
-stage 2, publish, and let `f`/`g` (and external consumers, e.g. an accelerometer model
-reading `f_c_c`) consume the ports. The **computer/integrator split** — a stateless
-component computing derivatives as outputs, wired into a trivial state-holding
-component — remains fully expressible without framework support and is the idiom of
-choice when the factoring earns reuse (one Newton–Euler solver shared across vehicle
-variants; swappable kinematic descriptors against a common integrator shape). Purity
-rules forbid the third classic resolution, mutable caching, by design.
+The teaching line: *"stage 1 publishes what you know from state alone; stage 2 adds what
+needs inputs; your dynamics read your own published results instead of recomputing
+them."*
+
+**Why.** The decision was grounded in a component-by-component survey of
+FlightPhysics/FlightApps ([§15.2][s15-2]). Derivative/output overlap is the *norm* in
+this domain — Newton–Euler, kinematics, piston engine, gear friction, every discrete
+compensator — which is what makes the orthodox split expensive here (row 15).
+FlightCore's fused `f_ode!` already embodied the same economics; this design keeps them
+while adding checked scheduling.
+
+**Shared expensive computations** are thereby solved uniformly: compute once in stage 2,
+publish, and let `f`/`g` consume the ports. External consumers read the same ports — an
+accelerometer model reading `f_c_c`, for instance. The **computer/integrator split**
+remains fully expressible without framework support ([§7.4][s7-4] carries the full
+statement, including when the factoring earns its keep). Purity rules forbid the third
+classic resolution, mutable caching, by design.
 
 ### 5.4 Artificial loops and the escape hatch
 
