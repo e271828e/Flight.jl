@@ -1410,66 +1410,106 @@ path, because they force converts and hence `InexactError` (see `attitude.jl`
 
 ### 7.3 Discrete state, modes, and workspace
 
-- **Storage:** discrete state (a discrete leaf's `x`) and modes (`m`) live in
-  **typed stores** (the same immutable-value
-  discipline as the table's [cells](#g-cell), in a separate home — [§4.1][s4-1]'s vocabulary),
-  overwritten by the framework when an update/handler returns a new value. They never
-  touch the integrator [buffer](#g-buffer); no arithmetic is ever done on them.
-- **Type freedom:** a discrete leaf's `x` may be *any immutable value* (frozen-reference rule; isbits not
-  required). Enums, integers, nested structs, RNG state (four `UInt64`s of `Xoshiro` —
-  required to live in discrete state for deterministic [replay](#g-replay)).
-- **[Snapshots](#g-snapshot) are free:** copying a store copies a reference to immutable data —
-  checkpoint/replay of the entire discrete side is "copy the store values."
-- **[Workspace](#g-workspace)** (for heavy algorithms, e.g. an n≈20 Kalman filter):
-  [component](#g-component)-declared mutable scratch, instantiated by the framework and arriving
-  as the `ws` [bundle](#g-bundle) field ([§5.2][s5-2]) in every bundle-receiving function of the
-  declaring component (`project` is positional and receives none),
-  and **excluded from state semantics** — not snapshotted, not replayed, never a
-  condition target ([§14.1][s14-1]), must carry no information between calls. The framework
-  **never inspects or mutates a workspace** — the workspace is an opaque,
-  opt-in escape hatch from value semantics, used at the author's own risk, and
-  its rules are [contract](#g-contract), not checks: at call entry, contents are unspecified
-  beyond the structure the allocator itself established (a plan or
-  factorization configured at allocation is valid from then on); scratch is
-  garbage until written this call; nothing a previous call left behind may be
-  relied upon. No poisoning of scratch is attempted (row 183).
-  Declared **by allocation**: the well-known method *is* the
-  allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
-  c.n, c.n), x̂ = Vector{T}(undef, c.n))` on the continuous [tier](#g-tier), plain
-  `workspace(::C)` on the discrete (the contract declarations' tier split) — called
-  once per [activation](#g-activation) and once per scratch-store set ([§14.8][s14-8]), sizes from the
-  instance, eltypes from the activation. The `T`-signature was never in doubt
-  here — `workspace` is the by-allocation register, so the method is an
-  allocator the framework *calls*, not a schema it reads — and it is the
-  precedent the register criterion ([§11.2][s11-2]) cites now that row 166 has restored the
-  scalar to the by-type register as well: a `T` appears in a signature exactly
-  where the author makes a choice with it. Nothing
-  downstream derives from a workspace's type, and mistyped scratch detonates
-  loudly at the `Dual` [probe](#g-probe). The `undef` spelling is the
-  recommended idiom and the sole visible marker that contents are meaningless:
-  it puts that fact in the declaration, which is the register this store
-  actually lives in — declaration by allocation, never by initial value (row 77).
-  Available
-  on **both tiers**: nothing in the contract is tier-specific, and a continuous
-  workspace simply joins the `T`-generic surface — under a `Dual` activation
-  the allocator is called at `Dual`, and the in-place math runs through Julia's
-  generic fallbacks (no BLAS; activations probe and linearize, they don't run
-  marathons). The calls-per-[boundary](#g-boundary) multiplicity of the continuous side (RK
-  stages, localization probes, event re-[sweeps](#g-sweep)) makes the no-information-between-
-  calls contract *more* load-bearing there, not less.
-- **Blessed idiom — zero-allocation [ticks](#g-tick) with immutable `x`:** do the in-place math
-  (`mul!`, `cholesky!`, BLAS) on the workspace; at the end, snapshot into an isbits
-  container (`x = KFState(SVector{20}(ws.x̂), SMatrix{20,20}(ws.P))`) and return it.
-  Construction and storage of large `SArray`s are cheap and compile fine — the
-  StaticArrays "codegen catastrophe" lives in its *operations* (unrolled matmuls),
-  which are never called on snapshots. Discipline: snapshot values are for storage,
-  logging, and element access only — never arithmetic. Optionally enforceable by an
-  op-forbidding `ValueSnapshot{N,T}` wrapper (an `NTuple` with only
-  `getindex`/iteration — structurally what `SArray` is, minus the methods). Practical
-  ceiling: a few KB comfortable, tens of KB defensible, beyond that value semantics
-  stop making sense.
-- **Double-buffered mutable state**: a possible future extension only,
-  deferred (row 13).
+Two homes sit outside the continuous [buffer](#g-buffer), and the rules they
+obey are opposites. Discrete state and modes are state in the full sense:
+immutable values that the framework owns and that a checkpoint copies
+wholesale. A [workspace](#g-workspace) is mutable scratch, deliberately not
+state at all, governed by contract rather than by checks.
+
+#### Stores: discrete state and modes
+
+**Rule.** Discrete state — a discrete leaf's `x` — and the modes `m` live in
+**typed stores**. The framework overwrites a store when an update or a handler
+returns a new value.
+
+A store keeps the same immutable-value discipline as the table's
+[cells](#g-cell), in a separate home. The vocabulary of [§4.1][s4-1] reserves
+the bare word *store* for these registers and never counts them as cells.
+Stores never touch the integrator buffer, and no arithmetic is ever done on
+them.
+
+**Type freedom.** A discrete leaf's `x` may be *any immutable value*: the
+frozen-reference rule governs, and isbits is not required. Enums, integers,
+nested structs and RNG state all qualify. RNG state — the four `UInt64`s of
+`Xoshiro` — is required to live in discrete state, for deterministic
+[replay](#g-replay).
+
+**[Snapshots](#g-snapshot) are free.** Copying a store copies a reference to
+immutable data, so checkpoint and replay of the entire discrete side is "copy
+the store values."
+
+#### Workspace
+
+A workspace serves heavy algorithms — an n≈20 Kalman filter, for example.
+
+**Rule.** A workspace is [component](#g-component)-declared mutable scratch,
+instantiated by the framework. It arrives as the `ws` field of the
+[bundle](#g-bundle) — the NamedTuple of zero-copy views a component function
+receives — in every bundle-receiving function of the declaring component
+([§5.2][s5-2]). `project` is positional and receives none.
+
+**Rule.** A workspace is **excluded from state semantics**: not snapshotted,
+not replayed, never a condition target ([§14.1][s14-1]). It must carry no
+information between calls.
+
+The framework **never inspects or mutates a workspace**. The workspace is an
+opaque, opt-in escape hatch from value semantics, used at the author's own
+risk, and its rules are [contract](#g-contract), not checks. At call entry,
+contents are unspecified beyond the structure the allocator itself established:
+a plan or factorization configured at allocation is valid from then on. Scratch
+is garbage until written this call, and nothing a previous call left behind may
+be relied upon. No poisoning of scratch is attempted (row 183).
+
+**Declared by allocation.** The well-known method *is* the allocator:
+
+```julia
+workspace(c::KF, ::Type{T}) where {T} =
+    (P = Matrix{T}(undef, c.n, c.n), x̂ = Vector{T}(undef, c.n))
+```
+
+That two-argument form is the continuous [tier](#g-tier); the discrete tier
+takes plain `workspace(::C)`, the same tier split the contract declarations
+follow. The allocator is called once per [activation](#g-activation) — a re-run
+of Stratum C at a given scalar type — and once per scratch-store set
+([§14.8][s14-8]). Sizes come from the instance, eltypes from the activation.
+Nothing downstream derives from a workspace's type, and mistyped scratch
+detonates loudly at the `Dual` [probe](#g-probe).
+
+The `undef` spelling is the recommended idiom and the sole visible marker that
+contents are meaningless. It puts that fact in the declaration, which is the
+register this store actually lives in: declaration by allocation, never by
+initial value (row 77).
+
+**Available on both tiers.** Nothing in the contract is tier-specific, and a
+continuous workspace simply joins the `T`-generic surface. Under a `Dual`
+activation the allocator is called at `Dual`, and the in-place math runs
+through Julia's generic fallbacks. No BLAS is involved: activations probe and
+linearize, they don't run marathons.
+
+The continuous side runs many calls per [boundary](#g-boundary): RK stages,
+localization probes, event re-[sweeps](#g-sweep). That multiplicity makes the
+no-information-between-calls contract *more* load-bearing there, not less.
+
+**Blessed idiom — zero-allocation [ticks](#g-tick) with immutable `x`.** Do the
+in-place math (`mul!`, `cholesky!`, BLAS) on the workspace. At the end, snapshot
+into an isbits container and return it:
+`x = KFState(SVector{20}(ws.x̂), SMatrix{20,20}(ws.P))`.
+
+Construction and storage of large `SArray`s are cheap and compile fine. The
+StaticArrays "codegen catastrophe" lives in its *operations* — unrolled
+matmuls — which are never called on snapshots.
+
+Discipline: snapshot values are for storage, logging, and element access only,
+never arithmetic. It is optionally enforceable by an op-forbidding
+`ValueSnapshot{N,T}` wrapper: an `NTuple` with only `getindex`/iteration,
+structurally what `SArray` is minus the methods. Practical ceiling: a few KB
+comfortable, tens of KB defensible, beyond that value semantics stop making
+sense.
+
+#### Double-buffered mutable state (deferred)
+
+Double-buffered mutable state is a possible future extension only, deferred
+(row 13).
 
 ### 7.4 The fused-evaluation lineage (prior art and how we got here)
 
