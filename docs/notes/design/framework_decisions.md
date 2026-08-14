@@ -176,7 +176,7 @@ were derived.
 | D-149 | Check slot totality wherever a virgin world is established | ratified |
 | D-150 | Make the service the sole authority on convergence | ratified |
 | D-151 | Canonicalize NamedTuple field order at every author↔framework seam | ratified |
-| D-152 | Join auto-publication to the per-event re-decode at stage 1 | ratified |
+| D-152 | Join auto-publication to the per-event re-decode at stage 1 | superseded → D-154 |
 | D-153 | Add re-arm tracking to complete the once-per-event rule | ratified |
 | D-154 | Remove per-event re-decode; serialize same-component events | ratified |
 | D-155 | Name projection as the second legitimate mover of the committed point | ratified |
@@ -1879,7 +1879,7 @@ label-indexed slicing; `LinearizedSS` survives as an ordinary continuous
 component; guidance: surfaces select minimal-coordinate mechanizations (the
 `{NED}` rig practice, now stated).
 
-**Spec.** §7.1
+**Spec.** §7.1, §14.10
 
 **Rationale.** Recorded only through the rejections below.
 
@@ -2447,7 +2447,7 @@ validation identical at both binding sites.
 
 **Position.** The diagnostic kind set is a normative table — Appendix C: kind
 name, payload fields, owning section, severity (five values, incl. `service`
-for post-build validation against the `Build`).
+for post-build validation against the `Build`; six since D-159).
 
 **Spec.** Appendix C
 
@@ -3279,7 +3279,7 @@ NamedTuple` under one rule: what the solver varies is passed (`d` cannot be
 closed over), what is fixed per problem is closed over (`TrimParameters` stays
 framework-invisible, as `condition` already holds it). Returned names are the
 report's equation names; the service packs residuals and tolerances by field
-order (the decisions rule).
+order (the decisions rule, D-069).
 
 **Spec.** §14.7, §14.8, §14.9, Appendix B, Appendix C
 
@@ -4974,7 +4974,7 @@ non-event.
 
 ### D-152 — Join auto-publication to the per-event re-decode at stage 1
 
-**Status.** ratified
+**Status.** superseded → D-154
 
 **Position.** **Auto-publication joins the per-event re-decode at its stage-1
 position** — the sequence is `handler → project → auto-publish → h_x → h_xu`,
