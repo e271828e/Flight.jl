@@ -7921,126 +7921,176 @@ extension deliberately left unimplemented, its seams named).
 
 ### 14.10 Linearization: tap selectors, one seeded pass, a pure query
 
-**The tap declaration.** Today's per-aircraft `XStateSpace`/
-`UStateSpace`/`YStateSpace` structs plus the `get_*_ss`/`assign_*_ss!`
-shuttle methods (~150 lines of bookkeeping per variant) become three
-[selector](#g-selector) lists drawn from the family ([§14.4][s14-4]; `get_state`/`get_slot`/`get_output`), with the
-optional [component](#g-component) index so a vector leaf yields *named scalars* — the NamedTuple
-key is the label control design slices by:
-`x = (p = get_state("vehicle/dynamics", :ω_eb_b, 1), θ = get_state("vehicle/kinematics", :θ_nb), …)`,
-`u = (throttle_cmd = get_slot("throttle"), …)`,
-`y = (EAS = get_output("vehicle/airflow", :EAS), …)`. Validated at resolution
-against `init_x`/[faces](#g-face)/`output_types` with [did-you-mean](#g-did-you-mean) errors, compiled to
-offsets once, relocatable whole via `at(prefix, taps)` — the shuttle
-layer's successor is the compiled writer/reader pair, and the promised
-`get_x_ss` deletion ([§7.1][s7-1]) is discharged.
+**The tap declaration.** Today's per-aircraft `XStateSpace`/`UStateSpace`/
+`YStateSpace` structs, plus the `get_*_ss`/`assign_*_ss!` shuttle methods, run
+to ~150 lines of bookkeeping per variant. All of it becomes three
+[selector](#g-selector) lists (the closed family of deferred reads resolving
+against a source). Three members of the read-selector family supply them:
+`get_state`, `get_slot` and `get_output` ([§14.4][s14-4]). The lists carry the
+optional [component](#g-component) index, so a vector leaf yields *named
+scalars*. The NamedTuple key is the label control design slices by:
 
-**The evaluation.** Instantiate a per-invocation scratch store set
-(the mechanism verbatim, [§14.8][s14-8]), apply the operating-point condition, run
-**one** Dual evaluation with a seed direction per `x`- and `u`-tap
-entry (chunked internally). Value parts give `ẋ₀`, `y₀`; partials give
-`A`, `B`, `C`, `D` simultaneously, exact to machine precision — replacing
-four `FiniteDiff` jacobians, their step-size heuristics and ~4n perturbed
-evaluations. Unseeded states sit constant at the operating point, and so do
-unseeded [slots](#g-slot) (a root-slot [cell](#g-cell) follows the [activation](#g-activation) scalar by *evaluating*
-its consuming `input_types` entry at that scalar, [§11.2][s11-2]; the condition apply embeds
-their `Float64` values as zero-partial constants); the discrete [tier](#g-tier) is
-frozen with zero partials — precisely "linearize with the discrete state held" ([§11.2][s11-2]).
-Differentiation participation is a per-invocation *seeding* fact for every
-slot the schema leaves seedable — one register for `x` and slots alike — with
-one declared exception now visible in the schema: a slot whose entry is
-declared `Float64` is **declaredly unseedable**, its cell frozen at every
-activation, so selecting it as a `B`-matrix tap is rejected at tap resolution
-with the offending entry in hand rather than silently yielding a zero column
-(row 167). Under fan-out the rejection names the **pinning consumer**, not
-the face alone: a slot is unseedable whenever any one of its consumers demands
-frozen (the meet, [§11.2][s11-2]; row 168), and the author's next move — promote
-that leaf
-to a tolerant entry, or route the tap around it — depends on knowing which leaf
-froze the slot.
+```julia
+x = (p = get_state("vehicle/dynamics", :ω_eb_b, 1),
+     θ = get_state("vehicle/kinematics", :θ_nb), …)
+u = (throttle_cmd = get_slot("throttle"), …)
+y = (EAS = get_output("vehicle/airflow", :EAS), …)
+```
+
+The three lists are validated at resolution against
+`init_x`/[faces](#g-face)/`output_types`, with
+[did-you-mean](#g-did-you-mean) errors (the offending name plus the
+list-in-hand it should have matched). They compile to offsets once, and
+relocate whole via `at(prefix, taps)`. The shuttle layer's successor is that
+compiled writer/reader pair, and the promised `get_x_ss` deletion
+([§7.1][s7-1]) is discharged.
+
+**The evaluation.** Each invocation instantiates its own scratch store set —
+the trim service's mechanism verbatim ([§14.8][s14-8]) — and applies the
+operating-point condition. It then runs **one** Dual evaluation, seeded with
+one direction per `x`-tap and per `u`-tap entry (chunked internally). Value
+parts give `ẋ₀` and `y₀`; partials give `A`, `B`, `C`, `D` simultaneously,
+exact to machine precision:
+
+```
+  x-taps ─┐                                         ┌─ value parts → ẋ₀, y₀
+          ├─ seed directions → one Dual evaluation ─┤
+  u-taps ─┘          (chunked internally)           └─ partials    → A, B, C, D
+```
+
+That single pass replaces four `FiniteDiff` jacobians, their step-size
+heuristics and ~4n perturbed evaluations.
+
+**What the pass seeds, and what it holds frozen.** Unseeded states sit constant
+at the operating point, and so do unseeded [slots](#g-slot): the condition
+apply embeds their `Float64` values as zero-partial constants. A root-slot
+[cell](#g-cell) follows the [activation](#g-activation) scalar (a re-run of
+Stratum C at a given scalar type) by *evaluating* its consuming `input_types`
+entry at that scalar ([§11.2][s11-2]). The discrete [tier](#g-tier) is frozen
+with zero partials — precisely "linearize with the discrete state held"
+([§11.2][s11-2]). Differentiation participation is a per-invocation
+*seeding* fact for every slot the schema leaves seedable, one register for `x`
+and slots alike. One declared exception is visible in the schema: a slot whose
+entry is declared `Float64` is **declaredly unseedable**, its cell frozen at
+every activation. Selecting it as a `B`-matrix tap is therefore rejected at tap
+resolution with the offending entry in hand, rather than silently yielding a
+zero column (row 167). Under fan-out the rejection names the **pinning
+consumer**, not the face alone: a slot is unseedable whenever any one of its
+consumers demands frozen, which is the fan-out meet ([§11.2][s11-2]; row 168).
+The author's next move — promote that leaf to a tolerant entry, or route the
+tap around it — depends on knowing which leaf froze the slot. Seeded and
+frozen, side by side here:
+
+| leaf | in the one pass | what fixes it |
+|---|---|---|
+| a state leaf named by an `x` tap | seeded, one direction | per-invocation seeding |
+| any other state leaf | sits constant at the operating point | per-invocation seeding |
+| a root slot named by a `u` tap | seeded, one direction | per-invocation seeding |
+| any other seedable root slot | constant, its `Float64` value embedded as a zero-partial constant | per-invocation seeding |
+| a root slot whose entry is declared `Float64` | frozen at every activation, and rejected as a `B`-matrix tap | the schema: a declaration |
+| any discrete-tier leaf | frozen, zero partials | the tier |
 
 **A pure query, and the shape of `capture`.** Linearization is the first
-service with no commit and no [boundary zero](#g-boundary-zero): scratch [buffers](#g-buffer) only, nothing
-becomes authoritative, and today's restore-the-trim dance (re-`assign!`
-after `FiniteDiff` dirtied the model) has no successor. Default operating
-point = the sim's current committed state via `capture(sim) → (condition,
-t)` — the full gather of stores *and root slots* (the totality, [§14.6][s14-6],
-makes slot coverage mandatory for capture → apply): after a
-`trim!` commit, `linearize(sim, taps)` is about the trim point with
-nothing re-specified; an `about = <condition>` keyword linearizes anywhere
-else without touching the sim.
+service with no commit and no [boundary zero](#g-boundary-zero) (the
+initialization boundary: the ordinary macro-sequence with an empty integrate).
+It works on scratch [buffers](#g-buffer) only, and nothing it computes becomes
+authoritative. Today's restore-the-trim dance — re-`assign!` after
+`FiniteDiff` dirtied the model — has no successor. The default operating point
+is the sim's current committed state, taken through
+`capture(sim) → (condition, t)`. That gather covers stores *and root slots* in
+full, slot totality ([§14.6][s14-6]) making slot coverage mandatory for
+capture → apply. After a `trim!` commit, `linearize(sim, taps)` is about the
+trim point with nothing re-specified. An `about = <condition>` keyword
+linearizes anywhere else without touching the sim.
 
-**The returned object and `LinearizedSS`.** `linearize` returns labeled
-data — `(ẋ₀, x₀, u₀, y₀, A, B, C, D)` with the [taps](#g-taps)' label sets — on
-which `subsystem`/`delete_vars` survive as pure label-indexed matrix
-slicing (no model involvement); the `c172x_ctl` LQR pipeline consumes it
-with cosmetic changes. `LinearizedSS` the *component* survives separately
-as an ordinary [continuous component](#g-continuous-component) in the migrated library (`init_x` =
-the state vector, labeled faces, the affine update in `h_xu`/`f`) — no
-privileges, schema like everyone else.
+**The returned object and `LinearizedSS`.** `linearize` returns labeled data:
+`(ẋ₀, x₀, u₀, y₀, A, B, C, D)`, carrying the label sets of the
+[taps](#g-taps) (the three selector lists declaring what linearization seeds
+and reports). On that data, `subsystem`/`delete_vars` survive as pure
+label-indexed matrix slicing, with no model involvement. The `c172x_ctl` LQR
+pipeline consumes it with cosmetic changes. `LinearizedSS` the *component*
+survives separately, as an ordinary
+[continuous component](#g-continuous-component) in the migrated library:
+`init_x` = the state vector, labeled faces, the affine update in `h_xu`/`f`.
+It has no privileges, and its schema is everyone else's.
 
-**Recorded guidance.** Linearization taps should select
-minimal-coordinate mechanizations — perturbing Euler-angle states is
-meaningful where seeding quaternion components steps off the unit-norm
-manifold. This is why today's code linearizes the `{NED}` variant;
-`design_world(ac)` rigs it, promoting implicit practice to stated rule.
-The coordinate choice belongs to the tap author, not the framework.
+**Recorded guidance.** Linearization taps should select minimal-coordinate
+mechanizations. Perturbing Euler-angle states is meaningful where seeding
+quaternion components steps off the unit-norm manifold. This is why today's
+code linearizes the `{NED}` variant. `design_world(ac)` rigs that variant,
+promoting implicit practice to stated rule. The coordinate choice belongs to
+the tap author, not the framework.
 
-**[Recorded, not built](#g-recorded-not-built): the sampled-data Dual activation.** The
-frozen-exact doctrine is consumer-scoped, not a capability wall: today's
-services differentiate the continuous dynamics with the discrete state held, for which a
-frozen discrete output — a ZOH constant with zero partials — is the exact
-answer, enforced by the type system ([§11.2][s11-2]). Stated once, because the
-question recurs: **the frozen discrete cell is not an AD limitation on the
-signal path; it is the true zero of an instantaneous dependence that the hybrid
-semantics never had** — the dataflow through a discrete component is temporal,
-not instantaneous, and AD follows actual dataflow (`frozen_discrete_walkthrough.md`
-works the three-component chain through). Differentiating "through" the
-discrete side means differentiating a *different object*: the sampled-data
-step map $\Phi : (x_k, \mathrm{slots}) \to x_{k+1}$ over the model's *whole*
-state, continuous and discrete leaves alike (integrate one period,
-then run the [due](#g-due) [ticks](#g-tick)). The extension is additive along existing [seams](#g-seam):
-[walked](#g-walked)-leaf parametrization of the discrete tier's real-scalar state leaves (counters/enums stay
-[pinned](#g-walked), like `m`); opt-in participation on discrete components (frozen-exact
-stays the default; a participating component opts in through an explicit
-trait, which **brings the two-argument `T`-form of `output_types` with it** —
-the trait flips the leaf's mandated declaration shape from the plain form to
-the continuous one ([§11.2][s11-2], [§11.5][s11-5]), so participation stays authored per leaf on
-that tier too, and the hinge is recorded here so the two forms stay compatible
-— graceful migration, no flag day); one new [§12.4][s12-4] activation ("continuous chain + `f` +
-discrete `h_x`/`h_xu` + `g`"); and forward sensitivities through the in-house
-RK steppers for free, a payoff of owning the loop ([§8.1][s8-1]). The honest
-[boundary](#g-boundary): $\Phi$ is differentiable only where the event pattern is locally
-constant — exactness across a firing needs saltation corrections — so the
-scope is event-quiescent operating points (which [§14.5][s14-5]'s [guards](#g-guard)-at-commit
-already makes trim points) plus a loud diagnostic if an event fires inside
-a differentiated step. Consumers waiting: the closed-loop trim door
-([§14.7][s14-7]; $g(x) - x = 0$ residuals currently imply the derivative-free
-fallback, since frozen `g` has no Jacobian columns) and exact discrete-time
-linearization of the full loop (digital design on the exact discretized
-plant instead of continuous linearization + Tustin).
+**The sampled-data Dual activation is
+[recorded, not built](#g-recorded-not-built)** (a worked-out extension
+deliberately left unimplemented, its seams named). The frozen-exact doctrine is
+consumer-scoped, not a capability wall: today's services differentiate the
+continuous dynamics with the discrete state held, and for that a frozen
+discrete output — a ZOH constant with zero partials — is the exact answer. The
+type system enforces it ([§11.2][s11-2]). Stated once, because the question
+recurs: **the frozen discrete cell is not an AD limitation on the signal path;
+it is the true zero of an instantaneous dependence that the hybrid semantics
+never had**. The dataflow through a discrete component is temporal, not
+instantaneous, and AD follows actual dataflow
+(`frozen_discrete_walkthrough.md` works the three-component chain through).
+
+Differentiating "through" the discrete side means differentiating a *different
+object*: the sampled-data step map $\Phi : (x_k, \mathrm{slots}) \to x_{k+1}$,
+taken over the model's *whole* state, continuous and discrete leaves alike. One
+evaluation of $\Phi$ integrates one period, then runs the [due](#g-due)
+[ticks](#g-tick). The extension is additive along existing [seams](#g-seam):
+
+- **[Walked](#g-walked)-leaf parametrization** of the discrete tier's
+  real-scalar state leaves; counters and enums stay [pinned](#g-walked), like
+  `m`.
+- **Opt-in participation** on discrete components, frozen-exact staying the
+  default. A participating component opts in through an explicit trait, and
+  that trait **brings the two-argument `T`-form of `output_types` with it**: it
+  flips the leaf's mandated declaration shape from the plain form to the
+  continuous one ([§11.2][s11-2], [§11.5][s11-5]). Participation therefore
+  stays authored per leaf on that tier too. The hinge is recorded here so the
+  two forms stay compatible — graceful migration, no flag day.
+- **One new activation** ([§12.4][s12-4]): "continuous chain + `f` + discrete
+  `h_x`/`h_xu` + `g`".
+- **Forward sensitivities** through the in-house RK steppers, for free — a
+  payoff of owning the loop ([§8.1][s8-1]).
+
+The honest [boundary](#g-boundary): $\Phi$ is differentiable only where the
+event pattern is locally constant. Exactness across a firing needs saltation
+corrections. The scope is therefore event-quiescent operating points, which
+trim points already are — [guards](#g-guard) at commit see to that
+([§14.5][s14-5]). The scope comes with a loud diagnostic if an event fires
+inside a differentiated step. Two consumers wait. The first is the closed-loop
+trim door ([§14.7][s14-7]), whose $g(x) - x = 0$ residuals currently imply the
+derivative-free fallback, since frozen `g` has no Jacobian columns. The second
+is exact discrete-time linearization of the full loop — digital design on the
+exact discretized plant instead of continuous linearization + Tustin.
 
 **Declarative non-participation: what the schema states, and what stays
 recorded.** **Both halves of this door have a spelling.** The output half
-(row 166): a continuous producer's declaration is per-leaf, so "this [port](#g-port) is frozen under
-differentiation" has a spelling — declare the leaf `Float64` and strip with
-`ForwardDiff.value` inside the stage ([§11.2][s11-2], [§12.5][s12-5]). An opaque wrapper (an FMU,
-a C aerodynamic table) and a deliberately severed coupling can therefore both
-say so in the schema instead of showing up in Jacobians as unexplained zero
-rows, and the conformance check holds them to it at every activation. The input
-half (row 167): a consumer's entries are per-leaf too, so a `Float64` entry
-declares "never hand me partials" — the AD-incompatible component's own
-statement, enforced at the wire ([§6.1][s6-1]) — and, at a root slot, *is* the
-forbid-seeding marker itself. That marker
-carries semantics rather than mere protection: it types
-the slot cell at every activation — so an unseeded slot is a *choice* where a
-`Float64`-entry slot is a *declaration* — and tap resolution rejects the latter
-with the offending entry in hand instead of returning a silent zero column. What
-stays recorded is only the remaining **tooling** over that visibility:
-pinned-face validation by the tap declaration (selecting a declared-frozen
-output = warning) and a [feedthrough](#g-feedthrough)-graph lint (a frozen output fed by
-participating inputs names the severed coupling). Additive when a consumer shows
-up, no flag day; until then the declared pins and the visible zero rows suffice.
+(row 166): a continuous producer's declaration is per-leaf, so "this
+[port](#g-port) is frozen under differentiation" has a spelling. Declare the
+leaf `Float64`, and strip with `ForwardDiff.value` inside the stage
+([§11.2][s11-2], [§12.5][s12-5]). An opaque wrapper (an FMU, a C aerodynamic
+table) and a deliberately severed coupling can therefore both say so in the
+schema, instead of showing up in Jacobians as unexplained zero rows. The
+conformance check holds them to it at every activation.
+
+The input half (row 167): a consumer's entries are per-leaf too, so a `Float64`
+entry declares "never hand me partials". That is the AD-incompatible
+component's own statement, enforced at the wire ([§6.1][s6-1]). At a root slot,
+such an entry *is* the forbid-seeding marker itself. That marker carries
+semantics rather than mere protection: it types the slot cell at every
+activation. An unseeded slot is therefore a *choice* where a `Float64`-entry
+slot is a *declaration*, and tap resolution rejects the latter with the
+offending entry in hand instead of returning a silent zero column.
+
+What stays recorded is only the remaining **tooling** over that visibility.
+Pinned-face validation by the tap declaration: selecting a declared-frozen
+output = warning. A [feedthrough](#g-feedthrough)-graph lint: a frozen output
+fed by participating inputs names the severed coupling. Both are additive when
+a consumer shows up, no flag day; until then the declared pins and the visible
+zero rows suffice.
 
 ---
 
