@@ -6348,23 +6348,48 @@ path), and the pairing is self-explanatory.
 
 ### 13.2 Diagnostics: structured values, one carrier exception
 
-A diagnostic is a plain value from a **small closed set of [kinds](#g-kind)**, enumerated
-normatively in **[Appendix C][sC]** — kind name, [payload](#g-payload) fields, owning section,
-severity — which is the artifact the [§11.4][s11-4] acceptance tests and the
-error-message work are written against. Each kind carries its structured payload: endpoint paths, [face](#g-face) names,
-expected/observed types, the *list-in-hand* for [did-you-mean](#g-did-you-mean) rendering, and a
-severity. Checking passes return diagnostics; the [stratum](#g-stratum) barrier throws a
-single `BuildError` wrapping the collection; `showerror` renders it compiler-style,
-grouped by kind and sorted by path. A user-code exception is wrapped in a
-framing diagnostic — [component](#g-component) path, which function, the [probe](#g-probe) context
-including synthesized inputs — with the original exception as `cause`, so the
-didactic frame renders first and the raw throw second. One class is recognized
-rather than merely framed: a `FieldError` — type and field carried as data —
-matched against the [bundle](#g-bundle)'s own NamedTuple type becomes the
-bundle-law did-you-mean ([§5.2][s5-2]), with the legal set and the
-undeclared-store / wrong-[tier](#g-tier) /
-illegal-for-this-function classification. Nothing is recovered by reading
-message text.
+Both reporting policies move the same thing. What a collecting pass returns and
+what a fail-fast site throws is in either case a *diagnostic*, so the shape of
+that value decides what an acceptance test can assert and what a user reads.
+
+**Rule.** A diagnostic is a plain value from a small closed set of
+[kinds](#g-kind). **[Appendix C][sC]** enumerates that set normatively: kind
+name, [payload](#g-payload) fields, owning section, severity. That table is the
+artifact the [§11.4][s11-4] acceptance tests and the error-message work are
+written against. Each kind carries its own structured payload: endpoint paths,
+[face](#g-face) names, expected/observed types, a severity, and the
+*list-in-hand* a [did-you-mean](#g-did-you-mean) needs (the offending name plus
+the list it should have come from).
+
+Checking passes return diagnostics; the [stratum](#g-stratum) barrier (a stratum
+is one of the build's three phases: structure, schedule, activation) throws a
+single `BuildError` wrapping the collection. `showerror` renders that
+`BuildError` compiler-style, grouped by kind and sorted by path.
+
+```julia
+# a diagnostic value: its kind is its identity, its payload is plain data
+struct WireTypeMismatch      # one kind of the closed Appendix C set
+    …                        # payload fields per Appendix C: paths and names
+                             # as Strings, expected/observed port types as types
+end
+
+# the carrier: one exception, thrown once at the stratum barrier
+struct BuildError <: Exception
+    …                        # the collection it wraps
+end
+```
+
+A user-code exception is wrapped in a framing diagnostic — [component](#g-component)
+path, which function, the [probe](#g-probe) context including synthesized inputs
+— with the original exception as `cause`. The didactic frame therefore renders
+first and the raw throw second.
+
+One class is recognized rather than merely framed. A `FieldError` carries its
+type and field as data. Matched against the [bundle](#g-bundle)'s own NamedTuple
+type — the NamedTuple of zero-copy views a component function receives — it
+becomes the bundle-law did-you-mean ([§5.2][s5-2]), carrying the legal set and
+the undeclared-store / wrong-[tier](#g-tier) / illegal-for-this-function
+classification. Nothing is recovered by reading message text.
 
 The [§11.4][s11-4] walkthroughs as acceptance tests target diagnostics: tests match on
 kind plus payload fields, never on message text. Messages become pure
@@ -6372,9 +6397,9 @@ presentation.
 
 Two rendering rules are doctrine, not style:
 
-- **Strings, never instances.** Diagnostics carry paths and names as strings —
-  never component instances, never model types (the `compact_backtrace`
-  lesson). Expected/observed *[port](#g-port)* types are the payload exception, and they
+- **Strings, never instances.** Diagnostics carry paths and names as strings,
+  never component instances and never model types — the `compact_backtrace`
+  lesson. Expected/observed *[port](#g-port)* types are the payload exception, and they
   are small: `Float64` vs. `Bool`, a NamedTuple field diff.
 - **The didactic [register](#g-register) is policy.** Every diagnostic states the fix or the
   lists-in-hand, not just the violation: "return `zero(x.ω)`, not `0`"; "no
@@ -6384,25 +6409,28 @@ Two rendering rules are doctrine, not style:
 **Two [warning streams](#g-warning-streams), scoped separately.** The *build* diagnostic stream is
 the one the build kinds ([Appendix C][sC]) ride: warnings there carry warning severity,
 render with the collection, and never trigger the throw. That stream's warning set
-is **currently empty** — the unconnected-output warning having been rejected as
-its sole candidate ([§6.1][s6-1], row 84) — and better an empty, trusted stream than a
-noisy one; a warnings-as-errors CI switch is addable, not built. The *runtime*
-status/log stream is a different channel and is not empty: it is
-per-occurrence, carried by the per-writer [diagnostic cells](#g-diagnostic-cell) ([§9.8][s9-8]) — which is
-where the rate limit lives, as a structural bound (a bounded ring plus
-per-kind suppressed counts, drained at frame top) rather than a policy
-layered over the stream, so "rate-limited wherever its source can repeat"
-holds of every kind below without any kind arranging it — and surfaced
-through the published [framework status](#g-framework-status) ([§9.2][s9-2]) alongside the [§8.7][s8-7] pacer
-diagnostics and the [§10.2][s10-2] liveness heartbeats, which ride in the same [cells](#g-cell)
-— never collected, since there is
-no collection to join. Nothing in the argument (row 84) applies to it: that decision is
-about what the *build* warns on. A *service* warning (`TrimCommitEvents`,
-`TrimCommitResiduals` — [Appendix C][sC]) is
-neither stream: a synchronous per-call annotation, emitted once at a
-stopped-sim service call's return beside the value it returns, its payload
-duplicated as plain report fields — no carrier cell, no collection, no rate
-limit to arrange. The committed runtime warnings, in one place:
+is **currently empty**, the unconnected-output warning having been rejected as
+its sole candidate ([§6.1][s6-1], row 84). Better an empty, trusted stream than a
+noisy one; a warnings-as-errors CI switch is addable, not built.
+
+The *runtime* status/log stream is a different channel, and it is not empty. It
+is per-occurrence, carried by the per-writer [diagnostic cells](#g-diagnostic-cell) ([§9.8][s9-8]) — the
+single-writer ring each writer owns for diagnostics and heartbeat. The cells are
+where the rate limit lives, as a structural bound (a bounded ring plus per-kind
+suppressed counts, drained at frame top) rather than a policy layered over the
+stream. So "rate-limited wherever its source can repeat" holds of every kind
+below without any kind arranging it. The stream surfaces through the published
+[framework status](#g-framework-status) ([§9.2][s9-2]) alongside the [§8.7][s8-7] pacer diagnostics and the
+[§10.2][s10-2] liveness heartbeats, which ride in the same [cells](#g-cell). It is never
+collected, since there is no collection to join. Nothing in the argument
+(row 84) applies to it: that decision is about what the *build* warns on.
+
+A *service* warning (`TrimCommitEvents`, `TrimCommitResiduals` —
+[Appendix C][sC]) is neither stream. It is a synchronous per-call annotation,
+emitted once at a stopped-sim service call's return beside the value it returns,
+its payload duplicated as plain report fields. There is no carrier cell, no
+collection, no rate limit to arrange. The committed runtime warnings, in one
+place:
 
 - **[chattering](#g-chattering) / localization-budget exhaustion** ([§8.4][s8-4]) — a [localized](#g-localized) event
   whose bracketing budget runs out at a [boundary](#g-boundary);
