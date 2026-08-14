@@ -9100,8 +9100,8 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   |---|---|---|---|
   | `algorithm` | `RK4()` | the stepper; `RK4` is the default | [§8.2][s8-2] |
   | `h` | — | required: a domain rate is not a framework default | [§8.2][s8-2] |
-  | `n` | `1` | absent the `Δt_base` keyword, the `n·h` product is the base period (the default path); given it, `n` is instead derived and validated an integer ≥ 1 | [§12.1][s12-1] |
-  | `Δt_base` | `nothing` | the base period as a `Rational`, `Period` or `Hz` value; one of three binding sources | [§12.1][s12-1] |
+  | `n` | `1` | absent the `Δt_base` keyword, the `n·h` product is the base tick period (the default path); given it, `n` is instead derived and validated an integer ≥ 1 | [§12.1][s12-1] |
+  | `Δt_base` | `nothing` | the base tick period as a `Rational`, `Period` or `Hz` value; one of three binding sources | [§12.1][s12-1] |
   | `t_end` | `Inf` | the run's end time — a **default**, overridable per run at `run!` | [§13.5][s13-5], [§10.6][s10-6] |
   | `stop_on` | `()` | root-exported `Bool` output faces, OR-combined — a **default**, overridable per run at `run!` | [§13.5][s13-5], [§10.6][s10-6] |
   | `localization_tol` | `1e-6` | the root-finder's relative bracket-width convergence test (`localization_tol · h`) | [§8.4][s8-4] |
@@ -9164,7 +9164,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   | `claims(b)` / `map_input(datum, b)` | — | the input side: the enumerated face set *is* the claim — what the device may write, not what it will | [§9.4][s9-4] |
   | `reads(b)` / `map_output(nt, b)` | — | the output side | [§14.4][s14-4], [§9.2][s9-2] |
 
-  The conformance check pairs each trait against its method: error fallbacks
+  The conformance check runs at attach, pairing each trait against its method: error fallbacks
   for a declared side whose `claims`/`reads` was never written,
   `which`-against-the-fallback for a method defined under a false trait, both
   `BindingContractMismatch` ([§9.6][s9-6]). A claim is registered with
@@ -9262,10 +9262,10 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   | `stop_on` | the constructor's value | overrides that default **for this run only**, validated against the `Build` here exactly as at construction | [§13.5][s13-5] |
 
   The GUI is an ordinary rostered device rendered on the calling task
-  ([§9.6][s9-6], [§9.7][s9-7]). Under `gui = true` the run's shutdown tail
-  detaches that GUI again ([§10.4][s10-4]), the error path included, so a
-  hand-attached GUI
-  makes the flag a no-op rather than an admission error and nothing the flag
+  ([§9.6][s9-6], [§9.7][s9-7]). Because the flag attaches only if no GUI is
+  already rostered, a hand-attached GUI makes it a no-op rather than an
+  admission error; and because the run's shutdown tail detaches that GUI again
+  ([§10.4][s10-4]), the error path included, nothing the flag
   did survives the run; a persistent GUI session is spelled `attach!`/`detach!`
   by hand. Placement follows the roster, not the flag: a rostered GUI moves the
   loop to a spawned task for as long as it is rostered ([§9.1][s9-1],
