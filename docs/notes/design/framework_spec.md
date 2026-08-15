@@ -7802,22 +7802,16 @@ ordinary boundary is exact, not approximate. Piece by piece:
 - **A guard firing at commit is a wanted failure signal.** Today's hand-written
   trim asserts (`!stall`, no weight-on-wheels, `ω > ω_idle`) become the model's
   own event logic, surfaced through the ordinary machinery instead of `@assert`.
-  And the signal has a channel: boundary zero reports the fired set on the
-  `TrimReport` and raises `TrimCommitEvents` when that set is non-empty
-  ([§14.8][s14-8], [Appendix C][sC]). A handler that fires at commit moves the
-  committed stores off the solved point, and saying nothing would be
-  warn-but-assign relocated.
+  A handler that fires at commit moves the committed stores off the solved
+  point, and saying nothing would be warn-but-assign relocated. The channel
+  that says it is the trim report ([§14.8][s14-8]).
 - **A commit-fired handler is not the only mover, and the second one is
   unconditional.** Boundary zero's *first* act is `project`, so the committed
   `x` is `project(x*)`, not the solver's `x*` — an attitude quaternion
   renormalized by a few ulps is the canonical case. That move is legitimate,
   wanted, and usually invisible in the residuals; but the point the stores sit
-  at is no longer the point the verdict was read at.
-- **The doctrine is the same for both movers, and so is the remedy.** The
-  `TrimReport` carries the committed-state residuals beside the solved-point
-  ones, and a converged solve whose committed-state residuals fail the box test
-  raises `TrimCommitResiduals` ([§14.8][s14-8]) — the move made visible rather
-  than silent.
+  at is no longer the point the verdict was read at. Both movers take the same
+  remedy, specified with the report in [§14.8][s14-8].
 
 ### 14.6 Slot totality: the missing-value error and the `override` combinator
 
@@ -8161,18 +8155,16 @@ The committed solution is applied as an `init!` in every respect:
 [slot totality](#g-slot-totality) check ([§14.6][s14-6]), the sequence
 ([§14.5][s14-5]) and [guards](#g-guard) at commit.
 
-The [harmonic grid](#g-harmonic-grid) (every discrete period an integer
-multiple of `Δt_base`) is anchored at `trim!`'s own `t0` argument, default
-`0.0`. That is `init!`'s default too: one rule for both init-service entry
-points. The [recorders](#g-recorders) are cleared exactly as [§12.6][s12-6]
-states for `init!`: the [trace](#g-trace), the log, and any
-[batches](#g-batch) still in [staging cells](#g-staging-cell) (where a device's
-pending write batch waits between drains).
+The `t0` argument that anchors the grid, and its default, are the same for both
+init-service entry points ([§14.5][s14-5]). The [recorders](#g-recorders) are
+cleared exactly as [§12.6][s12-6] states for `init!`: the [trace](#g-trace), the
+log, and any [batches](#g-batch) still in [staging cells](#g-staging-cell)
+(where a device's pending write batch waits between drains).
 
 A fresh recording starting at its own anchor is the unattended register's
-natural shape. Fly-then-retrim keeps continuity explicitly: `capture` returns
-`(condition, t)` separately for exactly this ([§14.1][s14-1]), so the resumed
-spelling is `trim!(sim, problem; baseline = c, t0 = t)`.
+natural shape. Fly-then-retrim keeps continuity explicitly: the resumed spelling
+is `trim!(sim, problem; baseline = c, t0 = t)`, with `(condition, t)` coming
+from a `capture` ([§14.1][s14-1]).
 
 #### The report, not an exception
 
@@ -9883,8 +9875,8 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `UninitializedSlots` | every uncovered root face, in declaration order | [§14.6][s14-6] | service (collected), pre-write |
 | `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates; for a declaredly-unseedable slot, the pinning consumer's path and its `input_types` entry | [§14.10][s14-10] | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7][s14-7], [§14.8][s14-8] | service (collected) |
-| `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.5][s14-5], [§14.8][s14-8] | warning (service) |
-| `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.5][s14-5], [§14.8][s14-8] | warning (service) |
+| `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.8][s14-8] | warning (service) |
+| `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.8][s14-8] | warning (service) |
 | `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§9.1][s9-1], [§9.2][s9-2] | warning (service), at deployment binding (derivation path only) |
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | service |
 | `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | service |
