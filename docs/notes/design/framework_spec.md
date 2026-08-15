@@ -788,7 +788,7 @@ Note the systemic consequence: *evaluating the [RHS](#g-flow) means running the 
 There is no incremental `f`-only re-evaluation. Nothing is lost by that, because
 implicit solvers, linearization and trim already work this way — seed `x`, run the
 composite. [§8.3][s8-3]/[§8.4][s8-4] restate that consequence as a property of the
-execution model. RHS evaluations and guard probes alike run the *interior*
+execution model. RHS evaluations and guard trial evaluations alike run the *interior*
 sweep, the continuous-only variant of [§8.5][s8-5]; discrete entries are absent from it
 by construction, so discrete [cells](#g-cell) hold across the step.
 
@@ -1483,14 +1483,14 @@ contents are meaningless. It puts that fact in the declaration, which is the
 register this store actually lives in: declaration by allocation, never by
 initial value (row 77).
 
-**Available on both tiers.** Nothing in the contract is tier-specific, and a
+**Available on both tiers.** Nothing in the workspace contract is tier-specific, and a
 continuous workspace simply joins the `T`-generic surface. Under a `Dual`
 activation the allocator is called at `Dual`, and the in-place math runs
 through Julia's generic fallbacks. No BLAS is involved: activations probe and
 linearize, they don't run marathons.
 
 The continuous side runs many calls per [boundary](#g-boundary): RK stages,
-localization probes, event re-[sweeps](#g-sweep). That multiplicity makes the
+localization trial evaluations, event re-[sweeps](#g-sweep). That multiplicity makes the
 no-information-between-calls contract *more* load-bearing there, not less.
 
 **[Blessed](#g-blessed) idiom — zero-allocation [ticks](#g-tick) with immutable `x`.** Do the
@@ -1638,7 +1638,7 @@ The seam contract has three clauses.
 - **Advance by arbitrary `h`.** This is required anyway: the loop lands on
   [tick](#g-tick) [boundaries](#g-boundary), and it resumes from a
   [localized](#g-localized) event time (the crossing instant bracketed by
-  root-finding over probe sweeps).
+  root-finding over trial sweeps).
 - **Dense output on demand over the last completed step.** Only event
   localization needs it ([§8.4][s8-4]), so it is constructed lazily.
 - **One-step methods only.** Event handlers reset state discontinuously, and a
@@ -1735,7 +1735,7 @@ time, and [boundary zero](#g-boundary-zero) (the initialization boundary at `t�
 
 A frame in which one event localizes runs like this, boundaries in bold:
 
-> **tₙ** → integrate → arrival sweep at tₙ₊₁ → trigger → θ = 0 probe → bracket
+> **tₙ** → integrate → arrival sweep at tₙ₊₁ → trigger → θ = 0 trial evaluation → bracket
 > → root-find → **t\*** → remainder step → **tₙ₊₁**
 
 That chain is the order of operations, not a walk along the time axis. The
@@ -1751,7 +1751,7 @@ flag:
   (checked for edges at step boundaries only, no root-finding);
 - a guard returning the nominal scalar, the continuous sign form, is
   **[localized](#g-localized)** (the crossing instant bracketed by root-finding
-  over probe sweeps).
+  over trial sweeps).
 
 The build reads the policy off the [probe](#g-probe) it already runs
 ([§12.3][s12-3], nominal [activation](#g-activation)), so `Event(guard, handler)`
@@ -1786,7 +1786,7 @@ fires on `ω > ω_idle && fuel_available`.
 gate form `(gate) ? σ : -one(σ)`. The `Bool` factors ride the branch, the
 continuous factor rides the value.
 
-**Why.** The idiom is honest, not a trick to defeat the check. Probes vary only
+**Why.** The idiom is honest, not a trick to defeat the check. Trial evaluations vary only
 θ, with `u` and `m` fixed through a localization, so the gates are constant over
 the bracket. σ restricted to the bracket is then the continuous atom,
 bracketable as such.
@@ -1805,7 +1805,7 @@ holding → not-holding transition neither fires nor localizes.
 **The trigger check runs against the arrival [sweep](#g-sweep) at tₙ₊₁**, the
 sweep that closes the integration step. It therefore runs *before* the due-gated
 [boundary sweep](#g-sweep) refreshes any discrete [cell](#g-cell). The ZOH clause
-below already forces that ordering, since probes must see the values the frame
+below already forces that ordering, since trial evaluations must see the values the frame
 actually held. Stating it here fixes the sequencing at the top: every `t*`
 firing precedes tₙ₊₁'s boundary sequence entirely.
 
@@ -1814,8 +1814,8 @@ firing precedes tₙ₊₁'s boundary sequence entirely.
 One localized event within one frame, sketched; every step is normed below.
 
 ```julia
-# θ = (t − tₙ)/h, and every σ(θ) is a probe: write the state, run the
-# interior sweep, evaluate the guard.
+# θ = (t − tₙ)/h, and every σ(θ) is a trial evaluation: write the state, run
+# the interior sweep, evaluate the guard.
 σ₁ = σ(1)                              # already computed by the arrival sweep
 (prior not-holding && σ₁ holding) || return    # no trigger, nothing to localize
 
@@ -1831,11 +1831,11 @@ end
 t* = tₙ + hi·h                         # the holding endpoint of the final bracket
 ```
 
-**The θ = 0 validation.** On trigger the *first* act is a probe at the left end:
+**The θ = 0 validation.** On trigger the *first* act is a trial evaluation at the left end:
 write xₙ into the state [buffer](#g-buffer), run one [interior sweep](#g-sweep),
 and evaluate the guard to get σ₀. Nothing new is kept, xₙ being already retained
 by the stepper for the [interpolant](#g-interpolant) (the cubic Hermite
-continuous extension over the last completed step). The probe runs before any
+continuous extension over the last completed step). The trial evaluation runs before any
 interpolant cost, because x̂(0) = xₙ identically and no interpolant is needed to
 place it.
 
@@ -1849,7 +1849,7 @@ Within an epoch a guard can change only through the trajectory; at a seam it can
 jump without crossing anything.
 
 **Why the discriminator is conclusive.** `u` is the *only* thing that can differ
-between the prior's evaluation context and this probe. `m` changes only via
+between the prior's evaluation context and this trial evaluation. `m` changes only via
 handlers at boundaries, and priors are sampled at quiescence, after them.
 Discrete cells ZOH-hold, and the interior sweep excludes discrete entries
 ([§8.5][s8-5]). `t = tₙ` exactly, by the indexed-grid rule below. And sweeps are
@@ -1877,18 +1877,18 @@ correct semantics rather than a degradation. It is the left-end mirror of the
 $\hat{x}(\theta)$, $\theta = (t - t_n)/h \in [0, 1]$, built from
 $(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$. $\dot{x}_n$ is the step's first
 stage; $\dot{x}_{n+1}$ costs one sweep, paid only on a validated trigger. The
-θ = 0 probe precedes it, so an epoch-caused edge never pays it at all. Uniform
+θ = 0 trial evaluation precedes it, so an epoch-caused edge never pays it at all. Uniform
 accuracy is $O(h^4)$, one order below the discrete solution and the standard
 pairing. The event time can only ever be as accurate as the interpolant, so
-nothing more expensive is worth probing.
+nothing more expensive is worth running trials against.
 
-**Probes run the interior sweep.** Guards read `y`, so evaluating a guard at an
+**Trial evaluations run the interior sweep.** Guards read `y`, so evaluating a guard at an
 interpolated state means writing $\hat{x}(\theta)$ into the state buffer and
 running the interior sweep. This is the rule the [RHS](#g-flow) already lives
-under ([§8.5][s8-5]): a probe is a mid-step evaluation. Discrete cells therefore
+under ([§8.5][s8-5]): a trial evaluation is mid-step. Discrete cells therefore
 hold their [tick](#g-tick) values through localization, and a guard reading a
 sampled output sees what the controller is holding. One interior sweep per
-probe.
+trial evaluation.
 
 **Root-finding is bracketed and derivative-free** (ITP or Brent; bisection is an
 acceptable fallback). The observed not-holding/holding bracket *is* an
@@ -1900,8 +1900,8 @@ is narrower than `localization_tol · h`, with `localization_tol` a `Simulation`
 deployment keyword defaulting to `1e-6`. Relative, because an absolute-in-`t`
 tolerance is not scale-free (row 133). `1e-6`, because the event time can only
 ever be as accurate as the interpolant — `O(h⁴)`, above — so at practical `h`
-anything tighter buys nothing while every probe costs a full sweep. The bill is
-a handful of probes under ITP, ~20 even in bisection's worst case.
+anything tighter buys nothing while every trial evaluation costs a full sweep. The bill is
+a handful of trial evaluations under ITP, ~20 even in bisection's worst case.
 
 **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
 invalidated** → resume integration from `t*` with the
@@ -1922,7 +1922,7 @@ machinery.
 #### Endpoint policy and grid integrity
 
 **Rule.** The root-finder returns the **holding endpoint of its final bracket**,
-the smallest probed point where the predicate holds.
+the smallest trial point where the predicate holds.
 
 **Consequence: `t* = tₙ` is structurally impossible**, not clamped away.
 
@@ -1977,15 +1977,15 @@ Replay pointers and error messages index boundaries by a monotonic counter with
 recorded `t`. The trace stays frame-indexed — `t*` boundaries consume no
 inputs.
 
-#### Projection's reach is the boundary, not the probe
+#### Projection's reach is the boundary, not the trial evaluation
 
-**Rule.** Guard probes evaluate the raw interpolated state. Authority rests with
+**Rule.** Guard trial evaluations run against the raw interpolated state. Authority rests with
 the `t*` boundary: [projection](#g-projection) runs there, and the [§8.6][s8-6]
 iteration's edge checks read the *projected* state.
 
 **Why.** RK-stage RHS evaluations already live under that same rule, being
 equally off-manifold, so sweeps must tolerate near-manifold states and already
-do. Per-probe projection is rejected (row 18).
+do. Per-trial projection is rejected (row 18).
 
 If projection moves the state back across a guard, the event does not fire and
 the run has published one extra boundary. That is harmless, and deterministic
@@ -2085,7 +2085,7 @@ static rather than a runtime test (row 147).
 
 - The **[interior sweep](#g-sweep)** walks *continuous entries only*. RK stage
   evaluations ([§8.3][s8-3]) and localization [guard](#g-guard)
-  probes ([§8.4][s8-4]) run this variant. The ZOH therefore holds
+  trial evaluations ([§8.4][s8-4]) run this variant. The ZOH therefore holds
   mid-step **by construction**: discrete entries are not gated out at runtime,
   they are absent from the walk at compile time. The hot path carries no gating
   test at all.
@@ -2292,7 +2292,7 @@ simulation**.
 A GPS receiver emitting at 1 Hz, a bus schedule, an ADC pipeline's fixed
 conversion offset are as intrinsic to the assembly as its wiring. Forcing them
 to the root breaks encapsulation, since the root would have to know
-device internals to re-declare them.
+instrument internals to re-declare them.
 
 "Run the controller at 400 Hz in this study" remains a deployment choice, and
 the existing idiom remains its answer: the assembly exposes its multiplier as a
@@ -2396,7 +2396,7 @@ post-iteration samples.** That update is unconditional, with no exception. Every
 prior is therefore an honest observation of a settled boundary, which is what
 makes the θ = 0 discriminator ([§8.4][s8-4]) conclusive: the
 [frame-top drain](#g-drain) is the sole possible source of disagreement between
-the prior and the probed left end.
+the prior and the left-end trial evaluation.
 
 All three registers are detection bookkeeping, not model memory. They are
 correctly *not* in any state store — not captured, not traced, reconstructed
@@ -3454,7 +3454,7 @@ end
 ```
 
 A `needs_calling_task` device runs the identical wrapper *inline* on the
-[calling task](#g-calling-task). The invocation site, not the contract, is its
+[calling task](#g-calling-task). The invocation site, not the authoring contract, is its
 only difference (the topology, [§9.1][s9-1]; the join exclusion,
 [§10.4][s10-4]).
 
@@ -3530,7 +3530,7 @@ returning. The wrapper's exit path releases the device's OS resources, marks
 it dead for the heartbeat and consults `should_abort`; [claims](#g-claim) and
 [roster](#g-roster) entry persist to run end (the freeze, [§9.3][s9-3]).
 [§10.4][s10-4](6) is literally "the task body returned." The GUI implements
-the same contract; the framework calls its `loop` inline on the
+the same authoring contract; the framework calls its `loop` inline on the
 [calling task](#g-calling-task) instead of spawning (the pinning,
 [§9.1][s9-1]).
 
@@ -3769,7 +3769,7 @@ GUI: read-only rendering is first-class, not an error state — the author of
 is live iff two things hold: its port's feed chain terminates in a root slot,
 *and* that slot lies **inside the GUI's own [claim](#g-claim)** in the run's
 frozen surface partition (slot exclusivity, [§9.3][s9-3]). The feed chain is
-walked through wires and boundary connections across *all*
+walked through wires and interface connections across *all*
 levels, not just the local assembly. The claim may have been computed from the
 unclaimed complement under `is_greedy`, or enumerated [face](#g-face) by face
 by a partial-claims binding ([§9.6][s9-6]); either way, "live" reads as
@@ -4136,7 +4136,7 @@ loop itself ends first.
    shutdown mechanism to an optional wire-protocol courtesy between remote
    peers.
 4. **Loop bodies exit.** The exit is the author's own `while running(handle)`
-   loop, the contract of [§9.6][s9-6]. That contract teaches two
+   loop, the authoring contract of [§9.6][s9-6]. That authoring contract teaches two
    obligations: the predicate check and interruptible blocking.
    Steps (2) and (3) are what make every blocking point interruptible. The
    wrapper's `finally shutdown!(device)` is guaranteed on every exit path.
@@ -4590,7 +4590,7 @@ Everything else is the loop as already specified:
   top. For a grid boundary the halt is exactly at `k`, the frame that publishes
   one ending at it. The frame-entry pointer ([§13.4][s13-4]) lands the same way.
   A [localized](#g-localized) `t*` boundary inside the frame — the crossing
-  instant bracketed by root-finding over probe sweeps — is reproduced but not
+  instant bracketed by root-finding over trial sweeps — is reproduced but not
   stoppable-at. [§8.4][s8-4] separates the two indices: the trace stays
   frame-indexed, and boundaries are the reporting index. Replay may also end
   earlier still under the ordinary policies, since `t_end` and `stop_on`
@@ -5176,7 +5176,7 @@ policy is declared by the guard's return type instead: a `Bool` guard makes the
 event [boundary-detected](#g-boundary-detected), checked for edges at step
 boundaries only, with no root-finding. A guard returning the nominal scalar
 makes it [localized](#g-localized), the crossing instant bracketed by
-root-finding over probe sweeps ([§8.4][s8-4]). Order is semantics: declaration
+root-finding over trial sweeps ([§8.4][s8-4]). Order is semantics: declaration
 order ([§5.3][s5-3]), priority with re-decision ([§8.6][s8-6]). Nothing here is
 inferrable.
 
@@ -5251,7 +5251,7 @@ or of neither, are the [§11.5][s11-5] class errors.
 **The root of a build is an [assembly](#g-assembly).** Root [slots](#g-slot)
 are the root's input [faces](#g-face) declared through `input_connections`
 ([§6.1][s6-1], [§9.3][s9-3]), and only assemblies declare
-boundary connections ([§11.6][s11-6]). A primitive root
+interface connections ([§11.6][s11-6]). A primitive root
 therefore has no root slots — its faces are just its own [port](#g-port) names
 — and every input it declares is an unconnected-input error. Exercising a leaf
 alone is what the [component test rig](#g-component-test-rig)
@@ -5305,7 +5305,7 @@ line, in exchange for "public" always meaning someone wrote it down.
   supply. A value flowing between two functions in one fused pass has no type
   contract to violate, and mixed branches are handled exactly by promotion. So
   the probe takes `w` as it finds it: it checks that the second return
-  slot is a `NamedTuple` at all, and it checks the *consumer's*
+  position is a `NamedTuple` at all, and it checks the *consumer's*
   reads against the observed field set. A destructured name that is not there
   fails inside the framing diagnostic ([§13.2][s13-2]) with did-you-mean from
   the actual fields. That is weaker than a declaration-backed message: it can
@@ -5576,10 +5576,10 @@ names. Every other naming choice (separators, grouping prefixes like
 `input_passthrough` helper's defaults ([§11.8][s11-8]) document the house style
 without legislating it.
 
-The two-notation rule this rests on is directional — structure vs. contract, not
-read vs. write. **Slash is structure**: endpoint paths walking real children and
+The two-notation rule this rests on is directional — structure vs. derived
+contract, not read vs. write. **Slash is structure**: endpoint paths walking real children and
 ports; the inspection [register](#g-register)'s [snapshot](#g-snapshot) and log
-addressing. **Face names are opaque contract tokens.** The
+addressing. **Face names are opaque derived-contract tokens.** The
 [periphery](#g-periphery)'s write side (input devices, mappings, the trace, the
 GUI write path) speaks face names exclusively ([§9.3][s9-3]). The read side
 speaks them wherever it wants meaning that outlives the build: integration
@@ -5681,7 +5681,7 @@ error at declaration time, [§8.5][s8-5]). `Δt_base`, `h` and `n` appear in no
 declaration — they are deployment decisions fixed at `Simulation` construction
 (the three sources for `Δt_base`, [§12.1][s12-1]). The declaration belongs to the
 [assembly](#g-assembly) type, not to the child instance: a sample time is a design ratio
-or a modeled device's intrinsic rate ([§8.5][s8-5]), never a per-instance value.
+or a modeled instrument's intrinsic rate ([§8.5][s8-5]), never a per-instance value.
 The FlightCore-`Subsampled`-style instance wrapper is rejected in row 42.
 
 ### 11.8 Computed connections and generic boundaries
@@ -5738,8 +5738,8 @@ then fails to wire is an ordinary unconnected input; a face both wired and
 passed through is a two-producers error; `except`/`only` naming a nonexistent
 face errors with the child's face list in hand; a `prefix = ""` collision is
 caught by the build's uniqueness check like any hand-written duplicate. The
-effective face list is plain printable data — the inspectable contract of this
-instantiation. What computation does *not* do is
+effective face list is plain printable data — the inspectable derived contract of
+this instantiation. What computation does *not* do is
 auto-bubble: the author wrote down "every input face of this child that I don't
 feed, I expose under this prefix" — explicit at the type level, evaluated at
 build.
@@ -5818,8 +5818,8 @@ helper spelled `except = fed(s, "aero")`, reading the assembly's own wire
 list. That is auto-bubbling under another name (rows 43, 145). The single source
 must be **authored data, never inferred structure**.
 
-**[Generic holding](#g-generic-holding) = imposed contract.** A parent holding a child generically
-constrains it exactly through the faces its wires and boundary connections reference: build a
+**[Generic holding](#g-generic-holding) = imposed derived contract.** A parent holding a child generically
+constrains it exactly through the faces its wires and interface connections reference: build a
 `World` whose concrete aircraft lacks a referenced face and the error names the
 `World` entry — build-time structural typing, no new vocabulary (a formal
 required-faces declaration on domain abstract types remains possible sugar).
@@ -5844,7 +5844,7 @@ results carried past failures are violation lists from pure checks.
 
 Three ordering constraints are forced by settled decisions: [face](#g-face)
 derivation is **bottom-up** (an [assembly](#g-assembly)'s
-boundary connections evaluate against child
+interface connections evaluate against child
 [contracts](#g-contract), [§11.8][s11-8]); the unconnected-input obligation
 check and cross-level two-producers detection are **global** — decidable only
 at the root, after every assembly's wires and faces are in hand ([§6.1][s6-1]);
@@ -6036,7 +6036,7 @@ accepts the artifact directly, and `Simulation(world; …)` is *defined as*
 test targeted, the build a [face](#g-face)-provenance table was printed from:
 that artifact is the one deployed, never an assumed-equal reconstruction.
 
-**Why.** Computed boundary-connection bodies are ordinary user
+**Why.** Computed interface-connection bodies are ordinary user
 code re-evaluated on every build, so equality between two builds of the same
 world is an assumption the factorization removes.
 
@@ -6049,7 +6049,7 @@ concurrently** — true by construction once buffers are single-owner ([§12.4][
 is shared. The one mutable thing on the artifact is the lazily populated
 [activation](#g-activation) cache, whose insertion [§12.4][s12-4] makes torn-state-free.
 The `Build` is the
-inspectable contract of the instantiation [§11.8][s11-8] gestures at — wire list, face
+inspectable derived contract of the instantiation [§11.8][s11-8] gestures at — wire list, face
 table, [schedule](#g-schedule), root [slots](#g-slot) as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
 `attach!` validates [device](#g-device) [bindings](#g-binding) against it. Build living only inside the
@@ -6145,7 +6145,7 @@ absent from the hand-down — [§5.2][s5-2]); wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
 topological order. **`w` threads through the probe in stage order.** It follows
 the one-hop law of [§5.2][s5-2]. If the [component](#g-component) defines an
-`h_xu`, the `h_x` probe's second return slot enters that stage's
+`h_xu`, the `h_x` probe's second return position enters that stage's
 probe [bundle](#g-bundle) (the NamedTuple of zero-copy views a component
 function receives). Otherwise it enters the downstream bundles. The `w` that
 survives the last output stage enters the `f`, guard and handler probes. So
@@ -6513,7 +6513,7 @@ gating compiles to `(idx − Φ) % D == 0` inside the specialized *[boundary](#g
 the interior bodies holding no discrete entries to test ([§8.5][s8-5]).
 
 **Cells are stored per element type, not per cell.** The [signal table](#g-signal-table) is one
-contiguous buffer per element type — the construction pointed at
+contiguous block per element type — the construction pointed at
 signals rather than state ([§7.1][s7-1]) — and a cell address is a build-time
 offset into it, carried
 in an entry *field* with the [port](#g-port) type as the address's own parameter; gathers
@@ -6687,7 +6687,7 @@ policy that fits it.
   [assembly](#g-assembly) has five unwired inputs; a renamed [port](#g-port)
   breaks three wires. **These passes collect:** each returns its full violation
   list.
-- **User-code evaluation** — the boundary-connection bodies, run
+- **User-code evaluation** — the interface-connection bodies, run
   in [Stratum](#g-stratum) A (one of the build's three phases: structure,
   schedule, activation); the stage-1 [probes](#g-probe) in B; the probe chain in
   C. When user code throws there is no meaningful rest-of-collection. A failed
@@ -6843,7 +6843,7 @@ below without defining them. All three are normative in the forms given here:
   unambiguous because [face](#g-face) names may contain dots, never slashes
   ([§11.6][s11-6]).
 
-**Enforcing the generic-boundary rule is the one non-obvious duty
+**Enforcing the generic-holding rule is the one non-obvious duty
 in `resolve`** ([§6.1][s6-1]). The walk follows *declared field types* alongside
 instances, and a segment that traverses **past** a generically-held field — one
 whose declared type is non-concrete — is a diagnostic even though the concrete
@@ -6897,11 +6897,11 @@ field in the loop state recording where in the compiled schedule execution is.
 The cursor records three facts. The first is the component path, as a schedule
 index. The second is which function is running: `h_x`, `h_xu`, `f`, `g`, a
 [guard](#g-guard), a handler, or `project`. The third is the boundary phase:
-integration stage *k*, event round *r*, localization probe at trial time, or
+integration stage *k*, event round *r*, a localization evaluation at trial time, or
 tick. Maintaining it costs one cheap store per dispatch on a single-tasked
 executor: no allocation, no exception frames. And it covers every user-code
 surface uniformly, including the forgettable ones: [RHS](#g-flow) evaluations at
-interior RK stage points, guard evaluations inside ITP/Brent probes,
+interior RK stage points, guard evaluations at ITP/Brent trial points,
 environment closures.
 
 ```julia
@@ -6995,7 +6995,7 @@ termination is model *state*, reaching the loop through declared machinery:
 - **Detection** is ordinary [guard](#g-guard)/handler/mode machinery. Declare
   the [predicate](#g-predicate) as a sign-form event — hence
   [localized](#g-localized), the crossing instant bracketed by root-finding
-  over probe sweeps — if the stop should be localized. Touchdown overload is
+  over trial sweeps — if the stop should be localized. Touchdown overload is
   precisely a zero-crossing: the boundary is localized to the crossing, the
   handler sets `m.crashed`, and the [snapshot](#g-snapshot) at the crossing
   instant carries the touchdown state.
@@ -7006,8 +7006,8 @@ termination is model *state*, reaching the loop through declared machinery:
   the library, [§13.7][s13-7]) and exports one `damaged` face; intermediate
   [assemblies](#g-assembly) are untouched. Each *generic* [seam](#g-seam)
   costs one output connection entry. That hop is the substitutability
-  [contract](#g-contract) doing its job, not plumbing (the imposed contract,
-  [§11.8][s11-8]).
+  [contract](#g-contract) doing its job, not plumbing (the imposed derived
+  contract, [§11.8][s11-8]).
 - **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
   names root-exported `Bool` output faces. They are OR-combined, validated
   against the `Build`, and recorded in the [run metadata](#g-run-metadata) —
@@ -7104,7 +7104,7 @@ model-detected channel specified here meets it at [§10.4][s10-4] and nowhere el
 
 **The [boundary](#g-boundary) is all-or-nothing outside the sim task.** That is
 why a `StepError` cannot break [§10.4][s10-4]. [Sweeps](#g-sweep) write into
-table buffers, and integration intermediates live in
+table blocks, and integration intermediates live in
 framework-owned integrator buffers, never in a [component](#g-component)'s
 `workspace` as [§7.3][s7-3] defines it. The only externally visible act is
 [snapshot](#g-snapshot) publication at the very end of the sequence. A boundary
@@ -7155,7 +7155,7 @@ sees half a boundary.
 ### 13.7 Tooling consequences: provenance and the component library
 
 Termination chains are the second structural customer of computed
-boundary connections, after generic-boundary
+interface connections, after generic-holding
 [contracts](#g-contract). Computed connections are therefore prominent in this
 section, and two commitments follow: a library and an idiom.
 
@@ -7437,7 +7437,7 @@ meaningless because the first sweep overwrites it. Unexported stays unpokeable
 for init exactly as it does for the GUI ([§9.7][s9-7], [§15.4][s15-4]).
 
 **The locality law** here is the one [§6.1][s6-1] states for connections, now in
-its third instance — child connections, computed boundary
+its third instance — child connections, computed interface
 connections, conditions. Each level speaks its own fields, its declared
 children's names, and its own faces; delegation runs by dispatch at every
 genericity [seam](#g-seam); deep `at` paths are legitimate exactly where deep
@@ -8614,8 +8614,8 @@ designs.
 
 The update stage cannot rescue its own [boundary](#g-boundary) — republish-from-`x⁺` is
 rejected (row 67) — so the output stage is the *only* same-tick path. Today's
-hand-ordering (`f_init!` before `f_periodic!` in one call) is that contract
-enforced manually. [Appendix A][sA] carries the contract as the same-tick reset
+hand-ordering (`f_init!` before `f_periodic!` in one call) is that same-tick
+reset contract enforced manually. [Appendix A][sA] carries it as the same-tick reset
 entry, and the bumpless-engage answer ([§9.7][s9-7]) presupposes exactly this
 spelling — engage semantics live in the FCS.
 
@@ -8632,7 +8632,7 @@ continuous-reset contract too.
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
 This case study is the exercise that selected per-[device](#g-device) [cells](#g-staging-cell)
-([§9.4][s9-4]) and produced the [§9.7][s9-7] contracts. Setup (the
+([§9.4][s9-4]) and produced the [§9.7][s9-7] staging contracts. Setup (the
 `sketch_io.jl` listing): a first-order filter with root inputs `u_cmd` and `τ`;
 a fictitious 100 Hz single-axis joystick streaming a slow ramp onto `u_cmd`
 (complete writer); a 60 Hz GUI with sliders for both [slots](#g-slot) (sparse
@@ -8770,7 +8770,7 @@ The demo line by line:
 - `Simulation(world; algorithm = RK4(), h = 0.02, n = 1, t_end = 1000)` — `n`
   binds `Δt_base = n·h` ([§8.5][s8-5]; default 1: base [tick](#g-tick) every step). The entire
   build pipeline runs here: [class](#g-class) resolution, path validation, face derivation
-  (computed boundary connections expanded, printable), two-producers/unconnected checks,
+  (computed interface connections expanded, printable), two-producers/unconnected checks,
   topological sort, [probe](#g-probe) passes, rate compilation, flat layout, [slot](#g-slot) table.
 - `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services ([§14][s14];
   trim is its own service, `trim!(sim, problem; baseline, ...)`, whose commit
@@ -8890,7 +8890,7 @@ discrete-tier write into continuous state, exactly the operation this design
 forbids (`g` writes only its own `x`; handlers are the sole resetters of
 continuous state, and they are [guard](#g-guard)-driven).
 Integrate-and-dump falls squarely into the crack between the classes:
-tightly-coupled continuous and periodic dynamics in one physical device.
+tightly-coupled continuous and periodic dynamics in one physical instrument.
 
 #### The idiom: integrate-and-difference
 
@@ -9442,14 +9442,14 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 
 **Build.**
 
-- `build(world) → Build` — standalone; the inspectable contract artifact:
+- `build(world) → Build` — standalone; the inspectable derived-contract artifact:
   wire list, face table with provenance, schedule, root slots ([§12.2][s12-2]).
   `build(world; activations = (Float64, ProbeDual))` additionally pins
   activation invariants for CI (`ProbeDual` the exported canonical concrete
   probe scalar, [§12.4][s12-4]), and pre-materializes activations so a parallel
   sweep shares a fully immutable `Build` ([§9.1][s9-1], [§12.4][s12-4]).
 - `resolve(asm, path) → AbstractComponent` — the getfield walk along `/`
-  segments, enforcing the generic-boundary rule ([§6.1][s6-1]) at the primitive ([§13.3][s13-3]).
+  segments, enforcing the generic-holding rule ([§6.1][s6-1]) at the primitive ([§13.3][s13-3]).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
   face names ([§13.3][s13-3]).
 - `input_passthrough(asm, path; prefix, sep, except, only)` — the declaration-site
@@ -9705,7 +9705,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 
 - **build (collected)** — a diagnostic from a declarative pass, collected with its
   siblings and thrown as one `BuildError` at the stratum barrier ([§13.1][s13-1]);
-- **build (fail-fast)** — raised while *user code* runs (a boundary-connection body, a
+- **build (fail-fast)** — raised while *user code* runs (an interface-connection body, a
   probe); the first one aborts the phase ([§13.1][s13-1]);
 - **service** — raised by a stopped-sim service, or by
   `attach!`/`Simulation`/`run!` validating against the `Build`; collected into one
@@ -9734,7 +9734,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 |---|---|---|---|
 | `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1][s6-1], [§11.4][s11-4] w1 | build (collected) |
 | `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1][s6-1], [§11.4][s11-4] w2 | build (collected) |
-| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / boundary connection entry) | [§6.1][s6-1], [§11.8][s11-8] | build (collected) |
+| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / interface connection entry) | [§6.1][s6-1], [§11.8][s11-8] | build (collected) |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1][s6-1], [§11.2][s11-2], [§11.4][s11-4] w4 | build (collected) |
 | `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1][s6-1], [§11.2][s11-2] | build (collected) |
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | [§6.1][s6-1], [§13.3][s13-3] | build (collected) |
@@ -9803,7 +9803,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 
 | kind | payload | owner | severity |
 |---|---|---|---|
-| `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization probe, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4][s13-4] | runtime |
+| `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization trial evaluation, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4][s13-4] | runtime |
 | `NonfiniteState` | component path, the offending state block, boundary time and index | [§13.4][s13-4] | runtime |
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted `localization_budget` and the frame's localization count | [§8.4][s8-4] | warning (runtime) |
 | `FiringBudget` | component path, event name, boundary time, the exhausted `firing_budget` and the boundary's firing count | [§8.6][s8-6] | warning (runtime) |
@@ -9881,13 +9881,25 @@ requirements, read permissively — what each entry *allows* to arrive) and
 Both take the two-argument `T`-form on the continuous tier and the plain form on
 the discrete one. Declared in
 `output_types` = public, returned in `w` = private by construction, returned in
-`y` and declared nowhere = build error ([§11.2][s11-2], [§11.3][s11-3]).
+`y` and declared nowhere = build error ([§11.2][s11-2], [§11.3][s11-3]). Not to be
+confused with the other contracts this spec names — the device authoring
+contract ([§9.6][s9-6]), the stepper seam's backend contract ([§8.2][s8-2]), the
+staging contract ([§9.7][s9-7]), the step-boundary contract ([§8.6][s8-6]) and the
+*derived contract* ([§D.1][sD-1] above) — each a distinct sense, linked never or
+at its own anchor.
 
 <a id="g-declaration-inventory"></a>**declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_m`, `workspace`,
 `input_types`/`output_types`, `events`, the stages, `f`/`g`/
 `project`, and `child_connections`/`input_connections`/`output_connections`/`sample_times` — each declared in a stated
 register of authority: by value, by type, by allocation ([§11.2][s11-2]).
+
+<a id="g-derived-contract"></a>**derived contract** — the checkable surface an assembly or the
+`Build` derives from its children's declarations and its own wiring instead of
+declaring itself: an assembly's effective face list, the `Build`'s wire list,
+face table, schedule and root slots. Plain printable data, and on a generic
+holding the constraint the referencing wires and interface connections impose on
+whatever concrete child is plugged in ([§11.6][s11-6], [§11.8][s11-8], [§12.2][s12-2]).
 
 <a id="g-function-family"></a>**function family** — which bundle fields a given function may legally
 receive: `h_x`/`h_xu`/`f`/`g`/guard/handler/`project` (the `h_*` sets being
@@ -9897,7 +9909,7 @@ family's maximal legal set and
 Not a diagnostic *kind* ([§D.9][sD-9]).
 
 <a id="g-generic-holding"></a>**generic holding** — a parent holding a child through a non-concrete field
-type; the child is opaque below its faces, and the wires and boundary connections
+type; the child is opaque below its faces, and the wires and interface connections
 referencing those faces *are* the imposed contract, checked per instantiation
 ([§11.8][s11-8], [§6.1][s6-1]).
 
@@ -10070,7 +10082,7 @@ order, stage 2 in topological order, then `f`. The hot loop runs a flat list of
 <a id="g-sweep"></a>**sweep** — one execution of that schedule against the current state, in one of
 two statically distinct variants compiled from the same entry list: the
 **interior sweep** walks continuous entries only — what RK stage evaluations and
-localization guard probes run, so discrete cells hold ZOH mid-step by
+localization guard trial evaluations run, so discrete cells hold ZOH mid-step by
 construction — and the **boundary sweep** walks the full list, with the
 boundary's due discrete entries gated in by counter modulo. Mid-step sweeps are
 integrator scratch; the boundary sweep restores table consistency, and the event
@@ -10094,7 +10106,10 @@ substrate of the grid diagnostics and the hyperperiod chart ([§12.2][s12-2], [�
 completes and a snapshot goes out. Every grid point is a boundary, but `t*`
 and boundary zero are boundaries that are not frame tops ([§8.4][s8-4]). *Boundary
 zero* ([§14.5][s14-5], [§D.8][sD-8]) is a hyponym — it is an ordinary boundary whose incoming
-transitions are authored rather than computed.
+transitions are authored rather than computed. "Boundary" in the structural
+sense — a component's boundary, its boundary declarations, the interface
+connections crossing it ([§11.6][s11-6]) — is ordinary English, a distinct
+usage, never linked here.
 
 <a id="g-boundary-detected"></a>**boundary-detected** — the detection policy a `Bool`-returning guard declares:
 guards are checked for
@@ -10151,20 +10166,20 @@ boundaries; grid times are indexed from the frame count, never accumulated
 <a id="g-input-epoch"></a>**input epoch** — a maximal span of constant `u`, delimited by the frame-top
 drains ([§9.4][s9-4]). Within an epoch a guard changes only through the
 trajectory; at a seam it can jump without crossing. Hence the **θ = 0
-validation**: the first act of a triggered localization is a probe at `xₙ`
+validation**: the first act of a triggered localization is a trial evaluation at `xₙ`
 under the frame's own `u`, whose `σ₀` both supplies the left bracket value and
 tells a *trajectory-caused* edge (root-find) from an *epoch-caused* one (no
 in-frame crossing exists — discard the localization and let the event fire in
 the boundary's ordinary iteration, no budget, no warning) ([§8.4][s8-4]).
 
 <a id="g-interpolant"></a>**interpolant** — the lazily built cubic Hermite continuous extension over the
-last completed step, from which localization probes read the states they sweep;
+last completed step, from which localization trial evaluations read the states they sweep;
 built only after the θ = 0 validation confirms an in-frame crossing, and
 invalidated at `t*`, where the handlers have made it a lie ([§8.4][s8-4]).
 
 <a id="g-localized"></a>**localized** — the detection policy a sign-form guard declares: the crossing
 instant is
-bracketed by derivative-free root-finding over probe sweeps of interpolated
+bracketed by derivative-free root-finding over trial sweeps of interpolated
 states, to a bracket narrower than `localization_tol · h` (a deployment
 keyword, default `1e-6`). Only the sign form can declare it — the `Bool` form
 offers no root to bracket — and it runs
@@ -10184,7 +10199,9 @@ ticks with `0 ≤ Φ < D` by construction; the boundary gate is
 <a id="g-predicate"></a>**predicate** — what a guard defines: a `Bool`-valued form, or the sign of a
 continuous function with positive = holding (writing the sign value `σ`,
 holding = `σ ≥ 0`) ([§2.1][s2-1]). Not to be confused with the *condition*
-([§14][s14]), the value that sets a build's state ([§D.8][sD-8]).
+([§14][s14]), the value that sets a build's state ([§D.8][sD-8]). The device
+loop's running check ([§9.6][s9-6], [§10.3][s10-3]) and structural conformance
+predicates ([§12.5][s12-5]) are distinct usages, never linked here.
 
 <a id="g-prior"></a>**prior** — the per-event stored sample of its predicate at the previous
 boundary's quiescence, always an honest observation and never a manufactured

@@ -21,6 +21,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | continuous component | g-continuous-component | 6 | B | the hybrid primitive: state, modes, flow, stages, events |
 | contract | g-contract | 48 | B | a component's declared `input_types` and `output_types` |
 | declaration inventory | g-declaration-inventory | 0 | — | the closed set of well-known functions a component defines |
+| derived contract | g-derived-contract | 0 | — | the checkable surface an assembly or the `Build` derives instead of declaring |
 | function family | g-function-family | 1 | A | which bundle fields a given function may legally receive |
 | generic holding | g-generic-holding | 2 | A | a parent holding a child through a non-concrete field type |
 | hybrid causal system | g-hybrid-causal-system | 1 | B | continuous flow, discrete dynamics, events and injected inputs |
@@ -83,7 +84,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | harmonic grid | g-harmonic-grid | 4 | A | every discrete period an integer multiple of `Δt_base` |
 | input epoch | g-input-epoch | 3 | A | a maximal span of constant `u`, delimited by frame-top drains |
 | interpolant | g-interpolant | 3 | A | the cubic Hermite continuous extension over the last completed step |
-| localized | g-localized | 8 | A | the crossing instant bracketed by root-finding over probe sweeps |
+| localized | g-localized | 8 | A | the crossing instant bracketed by root-finding over trial sweeps |
 | pacing / pacer debt | g-pacing | 8 | A | waits inserted between completed frames, never altering the boundary sequence |
 | phase (`Φ`) | g-phase | 3 | A | a schedule's offset against its grid, compiled to base ticks |
 | predicate | g-predicate | 14 | B | what a guard defines: a `Bool` form or a sign |
