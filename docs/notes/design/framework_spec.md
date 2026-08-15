@@ -43,7 +43,7 @@
     - [8.5 Assembly declaration: type-based, class by declaration shape](#85-assembly-declaration-type-based-class-by-declaration-shape)
     - [8.6 Paths, wiring and faces](#86-paths-wiring-and-faces)
     - [8.7 Rate scopes](#87-rate-scopes)
-    - [8.8 Computed connections and generic boundaries](#88-computed-connections-and-generic-boundaries)
+    - [8.8 Computed connections and generic holding](#88-computed-connections-and-generic-holding)
   - [9. The build pipeline](#9-the-build-pipeline)
     - [9.1 Three strata](#91-three-strata)
     - [9.2 The `Build` artifact](#92-the-build-artifact)
@@ -456,7 +456,7 @@ pose). They are therefore carried by ordinary [ports](#g-port) as **immutable qu
 ("[field handles](#g-field-handle)"):
 
 - An environment [component](#g-component) emits a field value (`ISAField(T_sl, p_sl,
-  wind)`, `TerrainField(...)`); consumers receive it through ordinary input ports.
+  wind)`, `TerrainField(…)`); consumers receive it through ordinary input ports.
   Inside their own [stage functions](#g-stage-function) (`h_x` or `h_xu`, the two
   output stages every component provides) they call query functions on it:
   `airdata(field, pos, vel)`, `ray_intersect(field, p, u)`.
@@ -561,7 +561,7 @@ private intermediate travels, and what a handler returns.
 **Rule.** Every function receives exactly two arguments: the component and one
 NamedTuple [bundle](#g-bundle) of zero-copy views. From that bundle the author
 **destructures by name** only what the body reads:
-`f(c::LowPassFilter, (; x, u)) = ...`, `h_xu(c::PID, (; x, u, Δt)) = ...`.
+`f(c::LowPassFilter, (; x, u)) = …`, `h_xu(c::PID, (; x, u, Δt)) = …`.
 
 **Why.** The [executor](#g-executor) (the compiled execution form of the
 schedule) issues one fixed call shape, `fn(comp, args)`. Unread fields are
@@ -698,7 +698,7 @@ That is the bundle law's *iff* shape, now governing the return side. A pure FSM
 (modes and events, no `x`) returns `(; m = (; phase = running))`; an `x`-only
 reset map returns `(; x = (; x..., ω = 0.0))`; a handler touching both returns
 both. Padding forms — `((;), m⁺)`, `(x⁺, (;))` — do not exist
-([D-090][d-090], on [D-074][d-074]'s argument-side ground).
+([D-090][d-090], on the argument-side ground of [D-074][d-074]).
 
 Semantics per key: `x` present ⇒ the value is complete against the state field
 set; `m` present ⇒ the names-subset predicate; an unknown key ⇒
@@ -1222,7 +1222,7 @@ internal junction and **exports the total** — the junction is a component insi
 the assembly, and the assembly exports its `Σ` port ([§3.3][s3-3]).
 
 **Why.** The [§6.1][s6-1] connection rules force this shape: a generically-held
-submodel is opaque, so every generic boundary must export its aggregate.
+submodel is opaque, so every such submodel must export its aggregate.
 
 **Example.** `Ldg` sums its three struts and exports `wr_b`; the systems assembly
 sums `aero + ldg + pwp`; the vehicle wires the systems totals into Newton–Euler.
@@ -2320,7 +2320,7 @@ the traces.
 4. **Type mismatch** (a `Float64` fraction wired into a `Bool` input): wiring-time
    error naming both endpoints and both [faces](#g-face).
 5. **Typo'd return field**, in its two [registers](#g-register). A typo'd *port*
-   (`P_shft = ...` for a declared `P_shaft`) keeps the full strength of the
+   (`P_shft = …` for a declared `P_shaft`) keeps the full strength of the
    declaration: a probe error with [did-you-mean](#g-did-you-mean) (the offending name plus the
    list-in-hand it should have matched) against `output_types`, plus the
    unproduced-`P_shaft` error with both the stage-product and state-field lists
@@ -2620,7 +2620,7 @@ the sampler's published latch, joins `child_connections` as one more ordinary pa
 ### 8.7 Rate scopes
 
 `sample_times(::A) = (nav = Relative(5), gnss = Absolute(Hz(10)))` — child name =>
-`Relative` or `Absolute` declaration ([§10.5][s10-5]'s two registers: relative entries
+`Relative` or `Absolute` declaration (the two registers of [§10.5][s10-5]: relative entries
 composing affinely down the tree, absolute entries anchoring; all compiled to one
 `(D, Φ)` pair per discrete [component](#g-component)). The wrappers are the whole value
 vocabulary — a bare integer or bare quantity is a declaration error. The
@@ -2638,7 +2638,7 @@ declaration — they are deployment decisions fixed at `Simulation` construction
 or a modeled instrument's intrinsic rate ([§10.5][s10-5]), never a per-instance value.
 The FlightCore-`Subsampled`-style instance wrapper is rejected in [D-042][d-042].
 
-### 8.8 Computed connections and generic boundaries
+### 8.8 Computed connections and generic holding
 
 `input_connections` and `output_connections` are ordinary functions evaluated at
 build against the concrete
@@ -3372,7 +3372,8 @@ would reject the constant-branch idiom that [§8.2][s8-2] keeps legal on the
 output side. Nothing is lost in correctness — a `Float64` arriving in `w` under
 a `Dual` activation is a true zero-partial constant by the embedding guarantee
 above, and promotion at its first use with a `Dual` operand is exact. The
-reasoning is [§8.3][s8-3]'s, recorded in [D-165][d-165].
+reasoning is the private-by-construction argument of [§8.3][s8-3], recorded in
+[D-165][d-165].
 
 **Uniform across all probed functions.** `f` checks against `X`'s own shape at
 the activation's `T` ([§7.1][s7-1]: a scalar leaf expects a `T`, an `SArray`
@@ -4538,7 +4539,7 @@ other event iterates normally. Exhaustion emits a `FiringBudget` warning
 warning carries the component path, the event name, the boundary time and the
 exhausted budget beside the boundary's firing count.
 
-The default of **4** is chosen the way [§10.4][s10-4]'s is: a legitimate re-enable
+The default of **4** is chosen the way [§10.4][s10-4] chooses 8: a legitimate re-enable
 is one or two firings deep, a toggling FSM pair chatters without bound, and 4
 separates them without ever binding on a healthy model. Like every other
 degradation here it is a function of the trajectory alone, so the run replays
@@ -5056,7 +5057,7 @@ a diagnostic fact (below) and lets a drained GUI value simply stay
 ([§11.7][s11-7]).
 
 **One framework-owned remainder: the [harness register](#g-harness-register).** Beside the roster
-sits a **task-free entry point**, `stage!(sim, "face" => value, ...)`, the
+sits a **task-free entry point**, `stage!(sim, "face" => value, …)`, the
 harness/REPL write path ([§12.6][s12-6]). It stages a batch from the
 [calling task](#g-calling-task) itself (the task that invoked `run!`). Its always-present
 cell is drained, traced and surface-checked exactly as any device's. The
@@ -5757,7 +5758,7 @@ The classification is the author's — only they know their parser — exactly a
 FlightCore's `InputMappingError` docstring assigned it. What changes under the
 author-owned loop is that no framework per-iteration catch site exists, so the
 framework's contribution is the diagnostic channel, not the catch; a marked
-exception type is not provided ([D-105][d-105]). `report!(handle, ...)` writes
+exception type is not provided ([D-105][d-105]). `report!(handle, …)` writes
 device-attributed runtime warnings into that device's diagnostic
 [cell](#g-diagnostic-cell), the single-writer entry point into the runtime warning stream
 ([§13.2][s13-2], [§11.8][s11-8]), and nothing more. It is not a general
@@ -5885,14 +5886,14 @@ liveness timestamp.
 capacity within one frame, the entry is not stored and its kind's suppressed
 count increments; the drop policy is earliest-in-frame retained, excess
 becomes counts — the first occurrences are the ones with diagnostic content,
-the hundredth is noise the count already reports. [§13.2][s13-2]'s "rate-limited
-wherever its source can repeat" is therefore not a policy layered over the
+the hundredth is noise the count already reports. Rate-limiting "wherever its
+source can repeat" ([§13.2][s13-2]) is therefore not a policy layered over the
 stream but a structural property of the channel that carries it: a [chattering](#g-chattering)
 model or a peer flooding malformed datagrams costs at most sixteen retained
 values and one integer increment per kind per frame, whatever its source
 does, and no writer can starve another — the cells are disjoint.
 
-**The [drain](#g-drain) is [§11.4][s11-4]'s drain.** One `atomicswap` per cell at frame top, at
+**This [drain](#g-drain) is the same drain [§11.4][s11-4] specifies.** One `atomicswap` per cell at frame top, at
 the same point and under the same indivisible-take argument as the staging
 drain; what the loop swaps *in* is a shared **empty sentinel**, so a quiet
 frame swaps the sentinel in and gets the sentinel back — no allocation, and
@@ -6499,7 +6500,7 @@ always does: it registers ([§11.3][s11-3]). The task appears at the next `run!`
 **The [frame-top drain](#g-drain) still runs**, `step!` frames staying
 bit-identical to `run!` frames. What it drains is the **harness
 [cell](#g-harness-cell)**. The harness write path is
-`stage!(sim, "face" => value, ...)` ([§11.3][s11-3]), with the calling task as
+`stage!(sim, "face" => value, …)` ([§11.3][s11-3]), with the calling task as
 writer. Staged batches are ordinary batches. They are traced, so
 [replay](#g-replay) and bit-identity hold. They are applied at the next frame
 top. They are surface-checked like any writer's ([§11.3][s11-3]).
@@ -6792,7 +6793,7 @@ written against. Each kind carries its own structured payload: endpoint paths,
 [face](#g-face) names, expected/observed types, a severity, and the
 *list-in-hand* a [did-you-mean](#g-did-you-mean) needs (the offending name plus
 the list it should have matched). A kind *is* a Julia type, and severity is one
-of its payload fields, [Appendix C][sC]'s severity column derived from it.
+of its payload fields, with the severity column of [Appendix C][sC] derived from it.
 
 Checking passes return diagnostics; the [stratum](#g-stratum) barrier (a stratum
 is one of the build's three phases: structure, schedule, activation) throws a
@@ -7075,7 +7076,7 @@ termination is model *state*, reaching the loop through declared machinery:
   costs one output connection entry. That hop is the substitutability
   [contract](#g-contract) doing its job, not plumbing (the imposed derived
   contract, [§8.8][s8-8]).
-- **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
+- **Policy** binds at deployment: `Simulation(world; …, stop_on = (…))`
   names root-exported `Bool` output faces. They are OR-combined, validated
   against the `Build`, and recorded in the [run metadata](#g-run-metadata) —
   the [trace header](#g-trace-header)'s deployment block ([§11.5][s11-5]). After
@@ -7145,7 +7146,7 @@ exports `fallen`. Wired, the sim ends at the fall; unwired, it integrates a
 frozen robot — well-defined, unlike an uncaught throw. The discipline forces
 models to have well-defined terminal states, which is better modeling.
 
-Rejected mechanisms — predicate closures (`stop_when = snap -> ...`),
+Rejected mechanisms — predicate closures (`stop_when = snap -> …`),
 root-type-declared stop policy, [blessed](#g-blessed) terminal types and
 `terminal` event flags, a [control-plane](#g-control-plane) capability for
 [components](#g-component), and observation-by-path (`stop_on` naming a deep path
@@ -7528,7 +7529,7 @@ closed explicitly. A `merge(::Fragment, ::NamedTuple)` — or any other blend of
 condition node with a bare NamedTuple — is an **error method**, defined so the
 call cannot fall through to `Base.merge`'s last-wins semantics on a payload that
 looks plausible. Its message is directive: wrap the NamedTuple in
-`fragment(...)` (or `at(prefix, fragment(...))`) and merge nodes with nodes. The
+`fragment(…)` (or `at(prefix, fragment(…))`) and merge nodes with nodes. The
 rejection carries a [kind](#g-kind) like every other: `ConditionNodeMisuse`
 ([Appendix C][sC]), carrying the offending argument's type and the node kinds in
 hand. It is raised at composition time, before any resolution pass or provenance
@@ -8846,12 +8847,12 @@ The demo line by line:
   (computed interface connections expanded, printable), two-producers/unconnected checks,
   topological sort, [probe](#g-probe) passes, rate compilation, flat layout, [slot](#g-slot) table.
 - `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services ([§14][s14];
-  trim is its own service, `trim!(sim, problem; baseline, ...)`, whose commit
+  trim is its own service, `trim!(sim, problem; baseline, …)`, whose commit
   runs the same boundary): they write `(x, m)`, **establish every root
   slot's initial value**, and capture the [trace header](#g-trace-header). Slot initialization
   decisively belongs here, not in declarations: the trim service writes slot
   values it *solved for* (throttle, elevator) — not declaration constants.
-- `attach!(sim, XPlane12Control(...), binding)` — output [device](#g-device): [claims](#g-claim) nothing,
+- `attach!(sim, XPlane12Control(…), binding)` — output [device](#g-device): [claims](#g-claim) nothing,
   consumes [snapshots](#g-snapshot) via [§12.3][s12-3], pure `map_output` on its task. Its [binding](#g-binding) names
   snapshot paths, **validated at attach against the actual [contract](#g-contract)** — an
   aircraft substitution that breaks the binding fails at attach, not with silent
@@ -9299,7 +9300,7 @@ Five items are flagged for the sweep and deliberately not settled here:
 - Whether register (1) needs an explicit exemption for predicate traits
   (`is_greedy`, `needs_calling_task`).
 
-All five are boundary cases [D-144][d-144]'s convention does not settle, and they
+All five are boundary cases the convention in [D-144][d-144] does not settle, and they
 are not defects of its list.
 
 #### GUI panel authoring API
@@ -9545,7 +9546,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   stop_on = (), localization_tol = 1e-6, localization_budget = 8,
   firing_budget = 4,
   trace = true, log = true, log_every = 1, log_max = 65536)` —
-  wraps the build (`Simulation(world; ...) = Simulation(build(world); ...)`;
+  wraps the build (`Simulation(world; …) = Simulation(build(world); …)`;
   the `Build` overload takes the same deployment keywords and deploys an
   inspected artifact directly, [§9.2][s9-2]).
 
@@ -9738,7 +9739,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   simulation reports `initialized`; `run!` may follow and continues from the
   current boundary; a stepping session is deviceless — write via `stage!`,
   read via `latest` ([§12.6][s12-6]).
-- `stage!(sim, "face" => value, ...)` — task-free staging from the calling
+- `stage!(sim, "face" => value, …)` — task-free staging from the calling
   task into the harness register ([§11.3][s11-3]; surface = the
   currently-unclaimed faces): traced, drained last at the next frame top,
   surface-checked exactly
@@ -11031,7 +11032,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [s8-5]: #85-assembly-declaration-type-based-class-by-declaration-shape
 [s8-6]: #86-paths-wiring-and-faces
 [s8-7]: #87-rate-scopes
-[s8-8]: #88-computed-connections-and-generic-boundaries
+[s8-8]: #88-computed-connections-and-generic-holding
 [s9]: #9-the-build-pipeline
 [s9-1]: #91-three-strata
 [s9-2]: #92-the-build-artifact

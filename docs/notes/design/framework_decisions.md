@@ -6838,7 +6838,7 @@ besides, specified in full by [§11.8][s11-8]" is qualified to admit those handl
 [s8-5]: framework_spec.md#85-assembly-declaration-type-based-class-by-declaration-shape
 [s8-6]: framework_spec.md#86-paths-wiring-and-faces
 [s8-7]: framework_spec.md#87-rate-scopes
-[s8-8]: framework_spec.md#88-computed-connections-and-generic-boundaries
+[s8-8]: framework_spec.md#88-computed-connections-and-generic-holding
 [s9]: framework_spec.md#9-the-build-pipeline
 [s9-1]: framework_spec.md#91-three-strata
 [s9-2]: framework_spec.md#92-the-build-artifact
