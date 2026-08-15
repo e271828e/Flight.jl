@@ -6,10 +6,13 @@
 #
 # Two checks:
 #
-#   1. Validity — every `row N` / `rows N–M` / `rows N and M` citation, and
-#      every `D-nnn` / `D-nnn–D-mmm` entry citation, in every scanned file,
-#      names an entry that exists in framework_decisions.md (`### D-nnn`
-#      headings; D-nnn preserves the retired table's row N).
+#   1. Validity — every `D-nnn` / `D-nnn–D-mmm` entry citation, and every
+#      citation still in the retired `row N` / `rows N–M` / `rows N and M`
+#      spelling, in every scanned file, names an entry that exists in
+#      framework_decisions.md (`### D-nnn` headings; D-nnn preserves the
+#      retired table's row N). Pass B swept the corpus to the `D-nnn` form, so
+#      a surviving `row N` is a regression and fails the run — the retired
+#      spelling stays parsed only so the report can name it.
 #   2. Coverage (spec only) — the set of rows framework_spec.md cites must be a
 #      superset of the committed baseline tools/row_baseline.txt. Phase 2 may
 #      consolidate duplicate citations of a row, but a row dropping out of the
@@ -43,6 +46,11 @@ const TOKEN = r"(\d+)(?:\s*[–-]\s*(\d+))?"
 # Entry citations in the post-table format: "D-037", "D-166–D-168".
 const DGROUP = r"\bD-(\d+)(?:\s*[–-]\s*D-(\d+))?"
 
+# linkify.jl links a range's endpoints, leaving the dash between two reference
+# links; unwrapping them first is what keeps `D-166–D-168` reading as the range
+# it is, so a range's interior entries still count as cited.
+const LINKED = r"\[(D-\d+)\]\[d-\d+\]"
+
 "All row numbers cited by one group match, ranges expanded."
 function expand(group::AbstractString)
     out = Int[]
@@ -71,13 +79,16 @@ function main(rebaseline::Bool)
     println("decision log: ", length(defined), " rows (max ", maximum(defined), ")")
 
     bad = Tuple{String,Int,String}[]
+    legacy = Tuple{String,Int,String}[]
     speccited = Set{Int}()
     for file in FILES
         path = joinpath(DESIGN, file)
         cited = Set{Int}()
         n = 0
-        for (lineno, line) in enumerate(eachline(path))
+        for (lineno, rawline) in enumerate(eachline(path))
+            line = replace(rawline, LINKED => s"\1")
             for g in eachmatch(GROUP, line)
+                push!(legacy, (file, lineno, g.match))
                 for r in expand(g[1])
                     n += 1
                     push!(cited, r)
@@ -116,13 +127,23 @@ function main(rebaseline::Bool)
         println("no baseline (", BASELINE, ") — run with --rebaseline to create it")
     end
 
-    if isempty(bad)
-        println("OK — every row citation names an existing row.")
+    if !isempty(legacy)
+        println("\nRETIRED SPELLING (", length(legacy),
+                ") — Pass B converted these to `D-nnn`; re-run tools/sweep_rows.jl:")
+        for (file, lineno, tok) in legacy
+            println("  $file:$lineno: $tok")
+        end
+    end
+
+    if isempty(bad) && isempty(legacy)
+        println("OK — every decision citation names an existing entry.")
         return 0
     end
-    println("\nDANGLING (", length(bad), "):")
-    for (file, lineno, tok) in bad
-        println("  $file:$lineno: $tok")
+    if !isempty(bad)
+        println("\nDANGLING (", length(bad), "):")
+        for (file, lineno, tok) in bad
+            println("  $file:$lineno: $tok")
+        end
     end
     return 1
 end

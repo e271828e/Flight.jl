@@ -9,16 +9,17 @@
 #      code spans and headings count too: the phase-2/3 sweeps rewrote them, and
 #      framework_decisions.md keeps all of its citations plain by design.
 #   2. Anchors — every markdown link target (`#slug` in-file,
-#      `framework_spec.md#slug` cross-file) resolves to a real heading anchor.
-#      In-file anchors are checked against the file's own headings, which is what
-#      keeps the companions' self-references (a walkthrough citing its own `§N`)
-#      honest.
+#      `framework_spec.md#slug` or `framework_decisions.md#slug` cross-file)
+#      resolves to a real heading anchor. In-file anchors are checked against the
+#      file's own headings, which is what keeps the companions' self-references
+#      (a walkthrough citing its own `§N`) honest.
 #   3. Reference links (Phase 1.1 form, `[§9.4][s9-4]` + a generated definitions
 #      block) — every label used outside code has a definition in the same file,
 #      every definition's target resolves like an inline anchor, and every
 #      definition is used (an unused one means the block is stale: re-run
-#      linkify.jl). Labels are `s`-prefixed by construction, and fenced code is
-#      skipped, so array indexing in sketches never reads as a reference link.
+#      linkify.jl). Labels are `s`- or `d`-prefixed by construction, and fenced
+#      code is skipped, so array indexing in sketches never reads as a reference
+#      link.
 #
 # Plus one advisory, not an error: in the walkthroughs — the companions that cite
 # their own numbered sections — a link labelled `§N` that points at the spec while
@@ -26,8 +27,10 @@
 # what is meant), but it is the shape a mis-resolved self-reference takes, so the
 # set is printed and any growth in it deserves a look.
 #
-# `row N` citations are out of scope: they name rows of framework_decisions.md,
-# not sections.
+# Decision citations are ordinary links after the Pass B sweep — `D-037` is a
+# `[D-037][d-037]` reference resolving into framework_decisions.md — so checks 2
+# and 3 cover them with no special case. check_rows.jl remains the guard on
+# citation *existence* for both the `D-nnn` and the retired `row N` spellings.
 #
 # Usage:  julia docs/notes/design/tools/check_refs.jl
 # Exits nonzero if anything dangles.
@@ -36,6 +39,7 @@ include(joinpath(@__DIR__, "slugs.jl"))
 
 const DESIGN = normpath(joinpath(@__DIR__, ".."))
 const SPEC = "framework_spec.md"
+const DECISIONS = "framework_decisions.md"
 
 const COMPANIONS = ["framework_decisions.md",
                     "framework_extensions.md",
@@ -53,8 +57,8 @@ const SELF_CITING = ["event_visibility_walkthrough.md",
 const CITATION = r"§([A-D]|\d+)(?:\.(\d+))?|Appendix ([A-D])(?![\w–—-])"
 const ANCHOR = r"\]\(([^)#]*)#([^)]+)\)"
 const LABELLED = r"\[§(\d+)\](?:\(([^)#]*)#|\[)"
-const REFUSE = r"\]\[(s[A-D0-9][A-Za-z0-9-]*)\]"
-const REFDEF = r"^\[(s[A-D0-9][A-Za-z0-9-]*)\]:\s*(\S*)#(\S+)\s*$"
+const REFUSE = r"\]\[(s[A-D0-9][A-Za-z0-9-]*|d-\d+)\]"
+const REFDEF = r"^\[(s[A-D0-9][A-Za-z0-9-]*|d-\d+)\]:\s*(\S*)#(\S+)\s*$"
 
 "Explicit HTML anchor ids in a file (`<a id=\"…\">` — the glossary's g- anchors),
 which are link targets exactly like heading slugs."
@@ -65,7 +69,14 @@ function main()
     hs = headings(joinpath(DESIGN, SPEC))
     numbers = keys(targets(hs))
     slugs = union(Set(h.slug for h in hs), htmlids(joinpath(DESIGN, SPEC)))
+    logslugs = union(Set(h.slug for h in headings(joinpath(DESIGN, DECISIONS))),
+                     htmlids(joinpath(DESIGN, DECISIONS)))
     dup = collisions(hs)
+
+    "Anchors a link destination may name, or `nothing` if it names no known file."
+    anchors(dest, own) = dest == "" ? own :
+                         dest == SPEC ? slugs :
+                         dest == DECISIONS ? logslugs : nothing
 
     println("outline of $SPEC: ", length(numbers), " citable headings (",
             count(h -> h.level == 1, hs) - 1, " parts, ",
@@ -103,7 +114,7 @@ function main()
             for m in eachmatch(ANCHOR, line)
                 na += 1
                 dest, slug = m[1], m[2]
-                pool = dest == "" ? own : dest == SPEC ? slugs : nothing
+                pool = anchors(dest, own)
                 if pool === nothing
                     push!(bad, (file, lineno, m.match, "unknown link destination"))
                 elseif !(slug in pool)
@@ -129,7 +140,7 @@ function main()
         for (l, (lineno, dest, slug)) in defs
             haskey(uses, l) ||
                 push!(bad, (file, lineno, "[$l]", "unused definition — re-run linkify.jl"))
-            pool = dest == "" ? own : dest == SPEC ? slugs : nothing
+            pool = anchors(dest, own)
             if pool === nothing
                 push!(bad, (file, lineno, "[$l]: $dest#$slug", "unknown link destination"))
             elseif !(slug in pool)
