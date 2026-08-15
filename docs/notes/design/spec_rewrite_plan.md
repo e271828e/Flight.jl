@@ -226,6 +226,17 @@ roadmaps are what carry the forward references that remain.
 
 ## Phase 5 — Final verification
 
+*Applied 2026-08-15 (`5100f5a9`) — the rewrite is closed. The full linear
+read found no structural, ordering or vocabulary defects; what survived was
+citation-language staleness from Pass B (§1's and the glossary's descriptions
+of the decision log still said "row N"; one line-break-split "rows 106–107"
+citation had escaped both the sweep and `check_rows.jl`'s line-by-line scan,
+now hardened) plus three wording nits. The battery ran green throughout; the
+walkthroughs quote no spec text verbatim, so the quote check was vacuous;
+`rewrite_test/` was already deleted 2026-08-13; `glossarize.jl` was the one
+one-shot tool retired (`slugs.jl` is a live include, `sweep_rows.jl` is
+check_rows' named fixer); the row-citation baseline was regrown 113 → 121.*
+
 - Full linear read-through of the spec (fresh session, reader's stance).
 - All Phase 0 checks green; row-citation set identical to the Phase 2 exit
   baseline; glossary bidirectional check (every entry linked from body, every
