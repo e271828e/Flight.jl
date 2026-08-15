@@ -169,13 +169,13 @@ Ground rules adopted for this design:
 All design axes are settled — the formalism, the [component](#g-component) taxonomy, the
 signal and scheduling model, time and execution, the runtime [periphery](#g-periphery), the
 declaration layer, the build pipeline, error discipline and the stopped-sim
-services. Only the items ([§16][s16]) — the migration outline, the GUI panel authoring
+services. Only the [§16][s16] items — the migration outline, the GUI panel authoring
 API and the log/[trace](#g-trace) persistence deferral — remain open.
 
 Decision rationale, including the alternatives considered and the reasons
 they were rejected, lives in `framework_decisions.md`, cited throughout as
-"row N": one row per settled decision. Row numbers are stable, so a citation
-here always names the same row there.
+linked `D-nnn` entries: one entry per settled decision. Entry numbers are
+stable and never reused, so a citation here always names the same entry there.
 
 ---
 
@@ -1533,7 +1533,7 @@ Double-buffered mutable state is a possible future extension only, deferred
 
 ### 7.4 The fused-evaluation lineage (prior art and how we got here)
 
-The [§5.2][s5-2] interfaces are the end point of a three-step simplification arc.
+The [§5.2][s5-2] interfaces are the end point of a four-step simplification arc.
 The arc is recorded here because each step replaced a mechanism with something
 smaller:
 
@@ -6350,8 +6350,9 @@ stop, and ends `stopped`. The result is boundary-consistent. It is fully
 serviceable by the [§14][s14] stopped-sim services and resumable by the next
 `run!` ([§12.6][s12-6]).
 
-The interrupt is the escape from a run nothing else can end: deviceless,
-`t_end = Inf`, empty `stop_on` (`UnboundedRun`, [Appendix C][sC]). It needs no
+The interrupt is the escape from a run nothing else can end — deviceless, with
+no finite `t_end` and no `stop_on` faces; the unpaced case is the
+configuration the `UnboundedRun` warning names ([Appendix C][sC]). It needs no
 entry point of its own. The stop already rides on the
 [control plane](#g-control-plane), the separate atomic surface carrying pause,
 pace and stop ([§12.1][s12-1]). The exceptions-are-abnormal doctrine
@@ -10774,10 +10775,16 @@ neighboring one is forbidden: derivation from other declarations ([§8.2][s8-2])
 one spot where evaluation feeds structure ([§9.1][s9-1]), the workspace-plus-snapshot
 idiom for zero-allocation ticks ([§7.3][s7-3]).
 
+<a id="g-row"></a>**decision entry / `D-nnn`** — a numbered entry of `framework_decisions.md`,
+cited throughout as a linked `D-nnn` reference: one settled decision with the
+alternatives weighed against it. Entry numbers are stable and never reused,
+and each entry states its *current* position, a superseded one marked
+`superseded → D-nnn` in its Status line rather than rewritten ([§1][s1]).
+
 <a id="g-the-freeze"></a>**the freeze** — the roster freeze: `attach!`/`detach!` are stopped-sim
 operations, so the roster, its claims and the run's partition of the root face
-set into write surfaces are static, inspectable facts of each run ([§11.3][s11-3], rows
-106–107).
+set into write surfaces are static, inspectable facts of each run ([§11.3][s11-3],
+[D-106][d-106]).
 
 <a id="g-guarded-addition"></a>**guarded addition** — a capability the design admits but does not build,
 weighed against Flight.jl's fundamental strengths and recorded with its shape
@@ -10800,12 +10807,6 @@ always compounded: the didactic register ([§13.2][s13-2]), the inspection and
 integration registers ([§11.2][s11-2]), the by-allocation register ([§8.2][s8-2]), the
 harness, unattended and what-if registers ([§12.6][s12-6], [§12.7][s12-7]). Reserved for this
 sense — the recording artifacts are the *recorders* ([§D.7][sD-7]).
-
-<a id="g-row"></a>**row** — a numbered entry of `framework_decisions.md`, cited throughout as
-"row N": one settled decision with the alternatives weighed against it. Row
-numbers are stable and never reused, and each row states its *current*
-position, a superseded one being demoted into its rejected-alternatives column
-rather than rewritten ([§1][s1]).
 
 <a id="g-seam"></a>**seam** — a narrow, named interface kept deliberately thin so what sits
 behind it can be replaced or measured: the stepper seam ([§10.2][s10-2]), the backend
@@ -10902,6 +10903,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-102]: framework_decisions.md#d-102--author-owned-device-loop-inside-a-framework-owned-bracket
 [d-104]: framework_decisions.md#d-104--coalesce-staged-writes-by-cas-merge-with-per-attachment-positional-shape
 [d-105]: framework_decisions.md#d-105--split-device-side-bad-datum-handling-into-tolerated-garbage-and-propagated-crashes
+[d-106]: framework_decisions.md#d-106--freeze-the-device-roster-for-the-duration-of-a-run
 [d-108]: framework_decisions.md#d-108--gate-stopped-sim-services-by-input-derived-lifecycle-preconditions
 [d-116]: framework_decisions.md#d-116--expose-phase_bodiessim-as-the-zero-allocation-invariants-measurement-seam
 [d-117]: framework_decisions.md#d-117--extend-declarations-and-stages-via-explicit-per-name-import

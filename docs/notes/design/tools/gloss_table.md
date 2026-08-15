@@ -208,12 +208,12 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | term | anchor | n | class | gloss |
 |---|---|---|---|---|
 | blessed | g-blessed | 5 | A | the spec's marker for a practice it explicitly sanctions |
+| decision entry / `D-nnn` | g-row | 0 | — | a numbered entry of `framework_decisions.md` |
 | the freeze | g-the-freeze | 2 | A | the roster freeze: `attach!`/`detach!` are stopped-sim operations |
 | guarded addition | g-guarded-addition | 8 | A | a capability the design admits but does not build |
 | normative / index, not a second home | g-normative | 1 | B | the spec norms; its appendices are indices |
 | recorded, not built | g-recorded-not-built | 3 | A | a worked-out extension deliberately left unimplemented, its seams named |
 | register | g-register | 10 | B | the spec's word for a mode or idiom, always compounded |
-| row | g-row | 0 | — | a numbered entry of `framework_decisions.md` |
 | seam | g-seam | 19 | B | a narrow, named interface kept deliberately thin |
 | torture test | g-torture-test | 1 | B | an awkward existing artifact transliterated to validate a mechanism |
 | worked (example) | g-worked | 4 | B | a full spelling of a mechanism against a real artifact |

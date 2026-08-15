@@ -106,6 +106,20 @@ function main(rebaseline::Bool)
                 end
             end
         end
+        # The per-line pass cannot see a retired spelling split across a line
+        # break ("rows\n106–107"); this whole-file pass catches exactly those —
+        # matches containing a newline, everything else being already counted.
+        whole = replace(read(path, String), LINKED => s"\1")
+        for g in eachmatch(GROUP, whole)
+            occursin('\n', g.match) || continue
+            lineno = count(==(UInt8('\n')), codeunits(whole)[1:g.offset-1]) + 1
+            push!(legacy, (file, lineno, replace(g.match, r"\s+" => " ")))
+            for r in expand(g[1])
+                n += 1
+                push!(cited, r)
+                r in defined || push!(bad, (file, lineno, "row $r"))
+            end
+        end
         file == SPEC && (speccited = cited)
         println("  ", rpad(file, 42), lpad(n, 4), " citations, ",
                 lpad(length(cited), 3), " distinct rows")
