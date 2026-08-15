@@ -1,11 +1,10 @@
 # Coinage inventory
 
-The working list of coined terms for the spec rewrite (plan:
-`spec_rewrite_plan.md`, P0.2). It drives Phase 1.3 (first-use gloss + glossary
-link per section) and feeds `tools/check_glossary.jl`. A working document: the
-initial list comes from the Appendix D extraction plus a heuristic
-head-noun sweep of the body ("the X rule/sweep/law/…"), and it grows as the
-Phase 2/3 reading uncovers coinages the sweep missed.
+The working list of the spec's coined terms. It governs the first-use gloss +
+glossary link per section and feeds `tools/check_glossary.jl`. A working
+document: the initial list came from the Appendix D extraction plus a heuristic
+head-noun sweep of the body ("the X rule/sweep/law/…"), and it grows as later
+reading uncovers coinages the sweep missed.
 
 **Triage rule.** A coinage used in three or more places, or used far from its
 definition, gets a glossary entry (bucket C until approved). A one- or two-use

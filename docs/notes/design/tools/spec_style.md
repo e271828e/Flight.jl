@@ -1,8 +1,7 @@
 # Spec style guide
 
-The rules the `framework_spec.md` rewrite enforces (plan: `spec_rewrite_plan.md`,
-Phase 3). Consulted at the top of every rewrite batch so the pass stays
-consistent across sessions. The target register: **rigorous but pedagogical,
+The rules `framework_spec.md` is written to. Consulted before editing the spec
+so its register stays consistent across sessions. The target register: **rigorous but pedagogical,
 economical but not terse**. Growth in word count is acceptable; a norm buried
 in pedagogy is not.
 
@@ -79,8 +78,20 @@ would destroy the signal. *Why* holds constructive rationale only.
 
 ## Content preservation
 
-Style edits never change what the spec norms. Every Phase 3 section rewrite
-follows the claim-inventory procedure (plan, P3.2): extract normative claims
-before, verify each survives after, diff decision citations and glossary links.
-When a sentence resists rewriting because its meaning is unclear, that is a
-finding, not an obstacle — flag it for discussion instead of guessing.
+Style edits never change what the spec norms. Every section rewrite follows the
+claim-inventory procedure: extract normative claims before, verify each survives
+after, diff decision citations and glossary links. When a sentence resists
+rewriting because its meaning is unclear, that is a finding, not an obstacle —
+flag it for discussion instead of guessing.
+
+## Document structure — settled, not open
+
+The part order is Foundations, Authoring and build, Execution, Failure and
+services, Grounding, with the appendices as back matter. It rests on conceptual
+dependency — a reader meets how a model is authored before how it executes —
+and deliberately *not* on forward-reference count: measured at the 2026-08-15
+swap, cross-part citation traffic between Authoring and Execution ran 30 one way
+against 31 the other, so the order trades one set of forward references for a
+set the same size. The Part roadmaps carry what remains. Stopped-sim services
+stay after Execution: §14.5 defines boundary zero in terms of §10.6's boundary
+machinery.
