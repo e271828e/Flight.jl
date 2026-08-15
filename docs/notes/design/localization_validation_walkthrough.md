@@ -14,37 +14,37 @@ preserving is the *reasoning*, because every piece of it follows from timing rul
 settled elsewhere in the spec, and a future change to any of those rules should be
 checked against this chain.
 
-## Section 1 — The problem: the prior and the probes straddle an input epoch
+## Section 1 — The problem: the prior and the trials straddle an input epoch
 
 The ordering of operations at a grid instant tₙ is:
 
 > boundary sequence of the completed frame → input drain → integrate the next frame
 
 Priors — each event's record of its predicate at the last boundary — are sampled at
-the boundary's *quiescence*, before the drain. Localization probes during the next
-frame evaluate guards by running sweeps against the *post-drain* inputs. So the prior
-and the probes sit on opposite sides of an input step:
+the boundary's *quiescence*, before the drain. Localization trial evaluations during
+the next frame evaluate guards by running sweeps against the *post-drain* inputs. So
+the prior and the trial evaluations sit on opposite sides of an input step:
 
 ```
       boundary tₙ                        frame [tₙ, tₙ₊₁]                boundary tₙ₊₁
 ──────┬────────────────────┬──────────────────────────────────────┬──────
       quiescence:          drain:          integrate under u_new  guards see u_new
-      priors sampled       u_old → u_new   probes: σ(x̂(θ), u_new)
+      priors sampled       u_old → u_new   trials: σ(x̂(θ), u_new)
       under u_old
 ```
 
 The localization trigger is "prior not-holding, holding now" ([§10.4][s10-4]). Its original
 endpoint argument claimed the bracket's left end stays strictly not-holding because
-the interpolant reproduces the endpoint exactly (x̂(0) = xₙ) and probe sweeps are
-deterministic. That argument silently assumes the θ = 0 probe reproduces the prior's
-*sample*. Determinism only guarantees it reproduces the prior's *state*. The two
+the interpolant reproduces the endpoint exactly (x̂(0) = xₙ) and trial sweeps are
+deterministic. That argument silently assumes the θ = 0 trial evaluation reproduces
+the prior's *sample*. Determinism only guarantees it reproduces the prior's *state*. The two
 coincide only if everything else the guard reads is also unchanged — and one input is
 not.
 
 ## Section 2 — Only `u` can differ: the availability audit
 
 Enumerate every channel a guard can read, and compare its value in the prior's
-evaluation context (tₙ's quiescence) against its value at a θ = 0 probe:
+evaluation context (tₙ's quiescence) against its value at a θ = 0 trial evaluation:
 
 | guard input | at θ = 0, comes from | consistent with the prior's context? |
 |---|---|---|
@@ -59,14 +59,14 @@ Sweeps are deterministic, so the audit is exhaustive: if the θ = 0 evaluation
 disagrees with the prior, the drain is the only possible culprit. (Under the retired
 deferral design there was a second source — the manufactured not-holding prior. With
 [D-181][d-181]'s honest priors, the prior is unconditionally the quiescent sample, and the
-drain is the *sole* source of disagreement. This is what makes the validation probe a
-conclusive discriminator rather than a heuristic.)
+drain is the *sole* source of disagreement. This is what makes the validation trial
+evaluation a conclusive discriminator rather than a heuristic.)
 
 One ordering rule makes the "still consistent" rows true, and the spec makes it
 explicit ([§10.4][s10-4]): the localized-event trigger checks run against the **arrival sweep**
 at tₙ₊₁ — *before* the boundary's due-gated sweep refreshes any discrete cells. So
-probes see the same held cell values the frame actually evolved under, and t\*
-firings strictly precede tₙ₊₁'s boundary sequence.
+trial evaluations see the same held cell values the frame actually evolved under,
+and t\* firings strictly precede tₙ₊₁'s boundary sequence.
 
 ## Section 3 — Input epochs, and the two kinds of edges
 
@@ -104,31 +104,31 @@ the trigger must handle them by design, not by accident.
 
 Nothing per-guard is stored across the boundary — the detection registers hold
 predicate samples and a counter, never values (detection bookkeeping, not model
-memory). The validation is a *reconstruction*, using the standard probe mechanics
-(write a state into the buffer, run the interior sweep, call the guard):
+memory). The validation is a *reconstruction*, using the standard trial-evaluation
+mechanics (write a state into the buffer, run the interior sweep, call the guard):
 
 1. Integration lands at tₙ₊₁; arrival sweep; each localized event's guard is
    evaluated. Event E: prior not-holding, σ₁ = σ(tₙ₊₁) holding → trigger.
-2. **θ = 0 probe, before anything else is built**: write xₙ into the state buffer —
-   xₙ is already retained by the stepper, because the Hermite interpolant needs
-   (xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁), so the probe requires no new retention — run one interior
-   sweep, evaluate E's guard → σ₀. No interpolant is needed for this probe:
-   x̂(0) = xₙ *identically*, so it runs before the interpolant exists.
+2. **θ = 0 trial evaluation, before anything else is built**: write xₙ into the
+   state buffer — xₙ is already retained by the stepper, because the Hermite
+   interpolant needs (xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁), so the trial requires no new retention —
+   run one interior sweep, evaluate E's guard → σ₀. No interpolant is needed for
+   this trial: x̂(0) = xₙ *identically*, so it runs before the interpolant exists.
 3. **σ₀ < 0 (not-holding)** — trajectory-caused. Genuine bracket. Now pay the lazy
    costs — one sweep for ẋₙ₊₁, build the interpolant — and hand ITP/Brent the
    bracket **with both endpoint values**, (tₙ, σ₀) and (tₙ₊₁, σ₁), σ₁ retained
    transiently from step 1's evaluation. This is where the left bracket value comes
    from: ITP and Brent are value-based, the prior stores only a predicate, and the
-   spec previously never said who supplies σ(tₙ). The validation probe *is* its
-   source.
+   spec previously never said who supplies σ(tₙ). The validation trial evaluation
+   *is* its source.
 4. **σ₀ ≥ 0 (holding)** — epoch-caused. The drain flipped the guard at the frame
    top; no in-frame crossing exists. Discard the localization: E fires inside
    tₙ₊₁'s ordinary iteration. Mechanically this is almost nothing — *not localizing
    is the action*: skip and fall through, and the boundary's event phase detects the
    edge (prior not-holding, sample holding) and fires E exactly as a
    boundary-detected event.
-5. The buffer is overwritten by the next probe or restored as usual — probes own the
-   buffer during localization.
+5. The buffer is overwritten by the next trial evaluation or restored as usual —
+   trial evaluations own the buffer during localization.
 
 Cost accounting for the degenerate path: one interior sweep total. ẋₙ₊₁'s sweep is
 never paid, the interpolant is never built, `localization_budget` is untouched (it
@@ -146,8 +146,9 @@ localization to recover — t\* doesn't exist**, not merely "isn't worth computi
 
 This is the discrete-driven exactness doctrine ([§2.1][s2-1], [D-179][d-179]) resurfacing: for edges
 caused by `u`/`m` steps, boundary detection is not a cheap approximation, it *is* the
-semantics. Localization's jurisdiction is trajectory facts; the θ = 0 probe is the
-jurisdictional check at its door. That is also why the degenerate path warns nothing:
+semantics. Localization's jurisdiction is trajectory facts; the θ = 0 trial
+evaluation is the jurisdictional check at its door. That is also why the degenerate
+path warns nothing:
 an input-gated event firing at boundary granularity is correct sampled-input timing,
 and a warning would fire on every such event — pure noise.
 
@@ -162,15 +163,15 @@ ordinary boundary iteration — one boundary, one snapshot, no special path.
 Before: "t\* = tₙ is structurally impossible" rested on the prior's *testimony*
 (not-holding at quiescence) plus determinism — and the testimony is about the wrong
 epoch for `u`-reading guards. After: the argument rests on the *observed* left end.
-The validation probe either establishes σ₀ strictly not-holding — from which
-everything downstream follows unconditionally: the returned endpoint (the smallest
-probed point where the predicate holds) is strictly later than tₙ, the guard
+The validation trial evaluation either establishes σ₀ strictly not-holding — from
+which everything downstream follows unconditionally: the returned endpoint (the
+smallest trial point where the predicate holds) is strictly later than tₙ, the guard
 observably holds at t\*, and the post-fire prior records an actual observation — or
 it routes the event to boundary firing, where none of those claims are needed.
 Observation replaces testimony at exactly one point, and the whole endpoint-policy
 chain becomes unconditional.
 
-A closing remark on design method: the probe never asks *why* the prior disagrees
+A closing remark on design method: the trial never asks *why* the prior disagrees
 with the left end — drain-staled, or (in the retired deferral design)
 manufactured. It replaces the register's account of the left end with an observation
 of the left end under the current epoch, and lets the ordinary machinery act on it:
