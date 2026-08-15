@@ -1196,11 +1196,17 @@ structurally cannot arise and drain order stays diagnostic.
 
 **Status.** ratified
 
-**Position.** GUI liveness is fully derived (transitive root-slot resolution ∧
-slot unclaimed); faces carry writer-independent post-conditioning semantics
-(GUI-parity test); mappings are declarative binding data with per-axis
-conditioning params, on the device task; edge logic is staged counters plus
-model-state accumulators; unexported ports are unpokeable.
+**Position.** Periphery input semantics are settled on five points — liveness,
+conditioning, mappings, edge logic and pokeability:
+
+- GUI liveness is fully derived: transitive root-slot resolution ∧ slot
+  unclaimed.
+- Faces carry writer-independent post-conditioning semantics, the GUI-parity
+  test.
+- Mappings are declarative binding data with per-axis conditioning params,
+  living on the device task.
+- Edge logic is staged counters plus model-state accumulators.
+- Unexported ports are unpokeable.
 
 **Spec.** [§11.7][s11-7], [§15.4][s15-4]
 
@@ -1285,11 +1291,14 @@ orphan case (claiming device's task dead) renders in the widget's provenance.
 
 **Status.** ratified
 
-**Position.** Build pipeline as three strata: A structure (pure declaration
-reading — tree/kinds/contracts, bottom-up faces, global wiring + obligations,
-rate compilation), B schedule (`h_x` probe → port classification → feedthrough
-graph → topo/cycle), C activation (per-`T` slot typing + probe chain +
-layouts); deployment binding at `Simulation` construction only.
+**Position.** The build pipeline runs as three strata — A structure, B schedule,
+C activation — with deployment binding at `Simulation` construction only.
+
+- A, structure: pure declaration reading — tree/kinds/contracts, bottom-up
+  faces, global wiring + obligations, rate compilation.
+- B, schedule: `h_x` probe → port classification → feedthrough graph →
+  topo/cycle.
+- C, activation: per-`T` slot typing + probe chain + layouts.
 
 **Rationale.** Recorded only through the rejections below.
 
@@ -1319,9 +1328,8 @@ list/face table/schedule/root slots; `Simulation(world; ...)` wraps it.
 
 **Status.** ratified
 
-**Position.** Probe-everything scope: all user functions (`h_*` stages, `f`,
-`g`, guards, handlers, `project`) probed once at the initial state, nominal
-`T`.
+**Position.** All user functions — the `h_*` stages, `f`, `g`, guards, handlers
+and `project` — are probed once, at the initial state and nominal `T`.
 
 **Rationale.** Recorded only through the rejections below.
 
@@ -1452,16 +1460,19 @@ nominal on both tiers, same activation leaf walk as `output_types` ([D-079][d-07
 
 **Status.** ratified
 
-**Position.** Two-kind taxonomy upheld under the integrate-and-dump challenge
-([§15.5][s15-5]): the kinds are time bases (sweep-driven vs. tick-driven), and
-cross-tier coupling always routes through table cells; idiom =
-integrate-and-difference — cumulative integrals in `x`, previous-sample latch
-in the sampler's `z`; exact whenever interval-dependence is a left action by
-the interval-start value of a cumulatively-integrable quantity (inertial-rate
-anchoring required; RK-exact by linearity of the kinematics); latch-back wire
-(feedthrough-stage ZOH latch) for interval-relative flow terms; tick-triggered
-continuous handlers = the recorded, unbuilt escape hatch; boundary-sampling
-semantics promoted to taught contract.
+**Position.** The two-kind taxonomy is upheld under the integrate-and-dump
+challenge ([§15.5][s15-5]): the kinds are time bases, sweep-driven vs. tick-driven, and
+cross-tier coupling always routes through table cells.
+
+- The idiom is integrate-and-difference: cumulative integrals in `x`,
+  previous-sample latch in the sampler's `z`.
+- It is exact whenever interval-dependence is a left action by the
+  interval-start value of a cumulatively-integrable quantity (inertial-rate
+  anchoring required; RK-exact by linearity of the kinematics).
+- A latch-back wire — a feedthrough-stage ZOH latch — carries interval-relative
+  flow terms.
+- Tick-triggered continuous handlers are the recorded, unbuilt escape hatch.
+- Boundary-sampling semantics are promoted to taught contract.
 
 **Spec.** [§3.2][s3-2], [§3.3][s3-3], [§15.5][s15-5]
 
@@ -1504,12 +1515,16 @@ cascade suppression within a stratum.
 
 **Status.** ratified
 
-**Position.** Diagnostics = plain structured values from a closed kind set
-(paths and names as strings, expected/observed port types, lists-in-hand,
-severity); single `BuildError` carrier thrown at the stratum barrier,
-compiler-style rendering; user-code exceptions wrapped in framing diagnostics
-with the original as `cause`; warnings ride the same stream and never throw;
-didactic register as policy; tests match kind + payload, never message text.
+**Position.** Diagnostics are plain structured values from a closed kind set —
+paths and names as strings, expected/observed port types, lists-in-hand,
+severity — carried by a single `BuildError` thrown at the stratum barrier, with
+compiler-style rendering.
+
+- User-code exceptions are wrapped in framing diagnostics, the original riding
+  as `cause`.
+- Warnings ride the same stream and never throw.
+- The didactic register is policy.
+- Tests match kind + payload, never message text.
 
 **Spec.** [Appendix C][sC]
 
@@ -1528,12 +1543,16 @@ didactic register as policy; tests match kind + payload, never message text.
 
 **Status.** ratified
 
-**Position.** Runtime failures: one catch site around the boundary
-macro-sequence + execution cursor (schedule index, function kind, boundary
-phase — one plain store per dispatch); `StepError` carrying cursor frame,
-boundary time, replay pointer, `cause`; [§9.5][s9-5]'s conformance failure a species;
-loop-level nonfinite-`x` boundary check; terminal `stopped`/`errored` status,
-synchronous runs rethrow after the tail.
+**Position.** Runtime failures are caught at one site, around the boundary
+macro-sequence, against an execution cursor — schedule index, function kind,
+boundary phase, one plain store per dispatch.
+
+- `StepError` carries the cursor frame, the boundary time, a replay pointer and
+  `cause`.
+- [§9.5][s9-5]'s conformance failure is a species of it.
+- A loop-level nonfinite-`x` check runs at the boundary.
+- Status goes terminal `stopped`/`errored`, and synchronous runs rethrow after
+  the tail.
 
 **Spec.** [§12.6][s12-6], [§9.5][s9-5], [§13.4][s13-4], [§14][s14]
 
@@ -1607,11 +1626,14 @@ terminal path's final segment (slash the only structural separator).
 
 **Status.** ratified
 
-**Position.** Tooling commitments: `faces` gains predicate selection; the
-`Build` printer renders face provenance (root face → producing terminal chain);
-standard component library (summing junctions, Bool gates) as ordinary
-components, demand-driven, arity by type parameter (`Or{N}` — computed
-contracts), stateless-continuous hence tier-transparent.
+**Position.** Three tooling commitments are made:
+
+- `faces` gains predicate selection.
+- The `Build` printer renders face provenance, the root face → producing
+  terminal chain.
+- A standard component library (summing junctions, Bool gates) ships as ordinary
+  components, demand-driven, arity by type parameter (`Or{N}` — computed
+  contracts), stateless-continuous hence tier-transparent.
 
 **Rationale.** Recorded only through the rejections below.
 
@@ -3145,22 +3167,26 @@ already); [D-075][d-075] amended.
 
 **Status.** ratified
 
-**Position.** Kind audit: four kindless rules closed, one sketch made honest:
-`UnknownPort` widened with a wire-end discriminator (`source`/`destination`,
-that end's path and port list — a typo'd source port is the same walkthrough-1
-mistake read at the other end); `DeploymentInvalid` (deployment parameter,
-value in hand, violated constraint; service batch per [D-057][d-057]'s declarative
-class, sibling of `StopFaceInvalid` at the `Simulation`-construction site);
-`TrimProblemInvalid` (offending problem field, shapes/names in hand; service
-batch, mirroring `SurfaceResolution`; the residual/tolerance length case joins
-when improvement #7's `tolerances` field is adjudicated in the authoring
-cluster — discharged, [D-118][d-118]); `ConditionNodeMisuse` for [§14.2][s14-2]'s mixed-`merge`
-error method (offending argument type, node kinds in hand; raised at
-composition time before any resolution pass or provenance chain exists — hence
-its own kind, not a `ConditionResolution` sub-kind); `faces` enforces
-`except`/`only` mutual exclusivity with a `declaration_error` and
-`UnknownFaceSelection` gains a reason field (unknown names / both selectors
-given).
+**Position.** The kind audit closes four kindless rules and makes one sketch
+honest:
+
+- `UnknownPort` is widened with a wire-end discriminator —
+  `source`/`destination`, that end's path and port list — a typo'd source port
+  being the same walkthrough-1 mistake read at the other end.
+- `DeploymentInvalid`: deployment parameter, value in hand, violated constraint;
+  service batch per [D-057][d-057]'s declarative class, sibling of `StopFaceInvalid` at
+  the `Simulation`-construction site.
+- `TrimProblemInvalid`: offending problem field, shapes/names in hand; service
+  batch, mirroring `SurfaceResolution` — the residual/tolerance length case
+  joins when improvement #7's `tolerances` field is adjudicated in the authoring
+  cluster (discharged, [D-118][d-118]).
+- `ConditionNodeMisuse` for [§14.2][s14-2]'s mixed-`merge` error method: offending
+  argument type, node kinds in hand; raised at composition time before any
+  resolution pass or provenance chain exists — hence its own kind, not a
+  `ConditionResolution` sub-kind.
+- `faces` enforces `except`/`only` mutual exclusivity with a
+  `declaration_error`, and `UnknownFaceSelection` gains a reason field (unknown
+  names / both selectors given).
 
 **Spec.** [§6.1][s6-1], [§8.4][s8-4], [§8.8][s8-8], [§9.1][s9-1], [§14.2][s14-2], [§14.8][s14-8], [Appendix C][sC]
 
