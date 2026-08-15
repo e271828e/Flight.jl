@@ -46,9 +46,10 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
 - **Status.** `ratified`, or `superseded → D-0NN` when a later entry replaced
   it. Nothing else; no dates.
 - **Position.** The headline ruling, one or two sentences. Everything else goes
-  to Rationale. Where an entry genuinely bundles parallel rulings with no
-  distinct headline, content preservation wins and Position holds the full
-  chain — see the Pass C queue.
+  to Rationale — a finding's narrative, its discovery story and its dead ends
+  are Rationale, not Position. Where an entry genuinely bundles parallel rulings
+  with no distinct headline, content preservation wins and Position holds the
+  full chain — see the Pass C queue.
 - **Spec.** The sections where the decided mechanism lives, sorted and
   deduplicated. Omit the field entirely if there are none.
 - **Rationale.** The recorded reasoning and any adjudication narrative. Where
@@ -88,177 +89,53 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
 
 ## Pass C queue — per-entry prose rewrite
 
-Pass A converted the table to entries structurally; Pass C is the optional,
-demand-driven prose pass. Nothing here is scheduled — it is the standing list
-of known-rough spots, from the Pass A findings adjudication (45/45 closed,
-2026-08-14).
+Pass A converted the table to entries structurally; Pass C is the optional
+prose pass. From the Pass A findings adjudication (45/45 closed, 2026-08-14),
+sized against the log 2026-08-15.
 
-- **No-headline bundle** — D-045, D-048, D-050, D-056, D-058, D-059, D-062,
-  D-067–D-072, and D-113's five-kinds-in-one-entry structure: Positions holding
-  full semicolon-chains that want a real headline.
-- **Provenance prefixes** in Positions ("Round-4 gaps finding 7:", …).
-- **`D.3`/`D.6`/`D.8` glossary-token spelling** normalization (D-131).
-- **Terse early entries** whose Rationale reads "Recorded only through the
-  rejections below." — expansion candidates.
+**Sequencing: after Phase 4 of the spec rewrite, not before.** Phase 4's
+renumber sweep rewrites the `§` citations inside these same entries, so doing
+prose first means reviewing them twice.
 
-## Calibration examples
+**Prerequisite: rebuild the content-preservation audit.** Pass A's
+`audit_fragments.jl` — a per-entry token-multiset comparison catching a dropped
+citation, code span or named diagnostic — was deleted with the scratch
+directory. Any batch claiming to preserve content needs it back first (~60
+lines, about half the work of `sweep_rows.jl`).
 
-Four hand-converted entries spanning the difficulty range, kept as the
-register's reference points. (Their originals are the retired table's rows;
-the row-citation forms they show were swept to `D-nnn` in Pass B.)
+Items 1–3 are ~21 distinct entries, one working session including the audit
+rebuild. Items 1 and 2 are conveniently clustered — D-067–D-072 and
+D-135–D-140 are each contiguous runs.
 
-### Example 1 — terse early entry (expansion into fields)
+1. **No-headline bundle** — 14 entries: D-045, D-048, D-050, D-056, D-058,
+   D-059, D-062, D-067–D-072, and D-113's five-kinds-in-one-entry structure.
+   1,208 Position words between them, mean 86 against a corpus mean of 61; the
+   worst are D-113 (143 words, 8 semicolons) and D-071 (132, 9). The work is to
+   extract a one-sentence headline and move the semicolon chain into Rationale,
+   every citation and code span preserved. **Note the tension:** the Position
+   field rule above currently blesses these chains. Moving the chain to
+   Rationale honours it; if this item lands, revisit that clause so the guide
+   and the log agree.
+2. **Provenance prefixes** in Positions — 7 entries: D-131 and D-135–D-140,
+   each opening "Round-4 gaps finding 5, amending D-052: …". **Ruled
+   2026-08-15: delete the prefix outright**, not relocate it to Rationale. The
+   Position keeps only the ruling; where the prefix also carries a substantive
+   clause ("amending D-052", "closing D-133's §13.2 deferral"), that clause
+   survives — it states what the decision does, not where it came from. The
+   round provenance stays recoverable from this file's git history.
+3. **Bare `D.n` glossary citations** — 9 tokens across 4 entries (D-131 and
+   neighbours), spelled `D.3`/`D.6`/`D.8` rather than `§D.3`. A real defect,
+   not cosmetics: `check_refs.jl` only recognises the `§D.n` form, so these
+   nine are unvalidated and unlinked. Small enough to fold into Phase 4's
+   mechanical sweeps instead of running it here.
 
-Original row 10:
-
-> Structured immutable state over framework-owned flat `Vector{T}` | Mutable
-> views (aliasing, silent missing-ẋ); fully structured/no flat vector (same
-> machinery needed anyway, loses standard integrator interface)
-
-Converted:
-
-```markdown
-### D-010 — Structure continuous state as immutable values over a flat backing
-
-**Status.** ratified
-
-**Position.** Structured immutable state over a framework-owned flat
-`Vector{T}`.
-
-**Spec.** §7.1
-
-**Rationale.** Recorded only through the rejections below.
-
-**Rejected.**
-- *Mutable views:* aliasing; silent missing-ẋ.
-- *Fully structured, no flat vector:* the same machinery is needed anyway;
-  loses the standard integrator interface.
-```
-
-### Example 2 — superseded entry
-
-Original row 7:
-
-> Superseded by row 37: aggregation is by explicit summing junctions | Earlier
-> design of record: reduce-ports with a canonical fold — reversed because it
-> was the declaration vocabulary's last wrapper, a three-site census (all
-> Newton–Euler, one library file) could not justify canonical-fold,
-> multi-connection legality and identity-element machinery, and the aggregate
-> wasn't even observable; Σ-junctions as default (arity/positional ceremony —
-> objection dissolved by §11's loud declarations); contribution buses
-> (invisible dataflow — verdict unchanged); contribution buses also import
-> scoping rules and admit accidental contributions — a component contributes
-> by being in scope rather than by being wired
-
-Converted:
-
-```markdown
-### D-007 — Aggregation mechanism
-
-**Status.** superseded → D-037
-
-**Position.** Aggregation is by explicit summing junctions (D-037).
-
-**Rationale.** See D-037 for the surviving decision.
-
-**Rejected.**
-- *Superseded position — reduce-ports with a canonical fold (the earlier
-  design of record):* reversed because it was the declaration vocabulary's
-  last wrapper, a three-site census (all Newton–Euler, one library file) could
-  not justify canonical-fold, multi-connection legality and identity-element
-  machinery, and the aggregate wasn't even observable.
-- *Σ-junctions as default:* arity/positional ceremony — objection dissolved by
-  §11's loud declarations.
-- *Contribution buses:* invisible dataflow — verdict unchanged; they also
-  import scoping rules and admit accidental contributions — a component
-  contributes by being in scope rather than by being wired.
-```
-
-### Example 3 — finding entry (narrative stays in Rationale)
-
-Original row 164 (abridged):
-
-> Increment-2 finding (§11.1 extended): **declarations written in a local
-> scope silently do not exist** — inside a `let`, a function body or a
-> `@testset`, `h_x(::MyComp, (; x)) = …` binds a new *local* function rather
-> than adding a method to the global `h_x` […] Mitigation adopted at the other
-> end: **a component that declares nothing and defines no stage is a build
-> error** […] | Documenting the caveat only (the failure is silent […]); a
-> world-age-style check comparing `which(...).primary_world` against the
-> caller's world (measures a mechanism that turned out not to be the cause)
-
-Converted (abridged to the same degree):
-
-```markdown
-### D-164 — Reject components that declare nothing and define no stage
-
-**Status.** ratified
-
-**Position.** A component that declares nothing and defines no stage is a
-build error; the authoring rule is that declarations live at module top level.
-An increment-2 finding, extending §11.1.
-
-**Spec.** §11.1
-
-**Rationale.** **Declarations written in a local scope silently do not
-exist** — inside a `let`, a function body or a `@testset`,
-`h_x(::MyComp, (; x)) = …` binds a new *local* function rather than adding a
-method to the global `h_x` […] Mitigation adopted at the other end: an inert
-component is unwritable on purpose, which costs a line and catches the
-misspelled-declaration family too […]
-
-**Rejected.**
-- *Documenting the caveat only:* the failure is silent and its symptom — an
-  inert component — is exactly what the check names.
-- *A world-age-style check comparing `which(...).primary_world` against the
-  caller's world:* measures a mechanism that turned out not to be the cause.
-```
-
-Note the sorting: the adopted mitigation is the Position; the trap narrative,
-the discovery story and the diagnosis dead-end are Rationale, wording intact.
-
-### Example 4 — monster entry (multi-part ruling)
-
-Original row 173 (abridged):
-
-> **The discrete state letter `z` fuses into `x`** (§3.2, §5.2, §7.3, §11.2,
-> §12.3, §12.5, §13.7, §14.1, §15.2, §15.5, Appendix C and all companions
-> swept; row 56 untouched and load-bearing […]): `h_z`/`h_zu` → `h_x`/`h_xu`
-> […] Motivation: `z` collided with the shift operator […] | Renaming `z` to
-> another letter (fixes the collision only […]); `is_discrete(::C)::Bool`
-> trait as stateless-leaf tier decider (derivable hence redundant […]); fusing
-> `z` into `m` instead (semantically tempting […])
-
-Converted (abridged to the same degree):
-
-```markdown
-### D-173 — Fuse the discrete state letter `z` into `x`
-
-**Status.** ratified
-
-**Position.** The discrete state letter `z` fuses into `x`: `h_z`/`h_zu` →
-`h_x`/`h_xu`, `init_z` → `init_x`, `y_z` → `y_x`, bundle field `z` → `x`,
-`z⁺ = g(z,u,t)` → `x⁺ = g(x,u,t)`; `f`/`g` stay distinct (flow and jump maps).
-
-**Spec.** §3.2, §5.2, §7.3, §11.2, §12.3, §12.5, §13.7, §14.1, §15.2, §15.5,
-Appendix C (all companions swept)
-
-**Rationale.** `z` collided with the shift operator (`z⁻¹`, five spec sites —
-§13.7's `UnitDelay` bullet had the letter meaning two things in three lines)
-and was nonstandard besides […] D-056 untouched and load-bearing — it is what
-makes the fusion safe […] Tier doctrine restated: […] (walking at `T` vs
-pinned, D-166–D-167) […]
-
-**Rejected.**
-- *Renaming `z` to another letter:* fixes the collision only, keeps the
-  doubled API; every candidate letter is taken […]
-- *An `is_discrete(::C)::Bool` trait as stateless-leaf tier decider:*
-  derivable hence redundant […] which D-039 refused for kind […]
-- *Fusing `z` into `m` instead:* semantically tempting — discrete state is
-  latched memory — but it kills the method fusion, breaks the `x[k]`/`x⁺`
-  convention, and §3.2 already ruled the discrete tier's state IS its memory.
-```
-
-Note: the sweep list in the original's opening parenthetical becomes the
-`**Spec.**` line; the multi-part tier-doctrine ruling stays in Rationale rather
-than bloating the Position.
+**Removed from the queue (2026-08-15): "terse early entries as expansion
+candidates."** Measured at 71 entries — 37% of the log — whose Rationale reads
+`Recorded only through the rejections below.` They read that way because the
+original table rows recorded nothing else; the reasoning survives only as the
+rejections. Expanding them means sourcing rationale that was never written, out
+of the cited spec sections (which state mechanism, not reasoning) or the git
+history of `framework_design.md` — historical reconstruction, not prose work,
+and in tension with standing rule 1, since writing a rationale into an old
+entry today is retrofitting. If ever revisited, first survey which entries have
+a real documented source; do not expand wholesale.
