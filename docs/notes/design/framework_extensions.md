@@ -8,7 +8,7 @@ What this document preserves is the *analysis*: where the current design sits re
 to a general-purpose causal simulation engine, and which gaps are reachable through
 seams the spec deliberately left open. For the sample-time gaps, the worked proposal
 lives in its own companion, [`sample_time_proposal.md`](sample_time_proposal.md)
-(adopted into the spec 2026-08-12, decision rows 185–187).
+(adopted into the spec 2026-08-12, decision D-185–D-187).
 
 Provenance: distilled from the gap-analysis discussion of 2026-08-08/09.
 
@@ -336,7 +336,7 @@ parameter carriers, or participation is opted into per component.
 
 ## Addendum A. The `Group` component: on-the-fly assemblies
 
-**Folded into the spec (2026-08-12, row 184).** `Group` is now normative: the
+**Folded into the spec (2026-08-12, D-184).** `Group` is now normative: the
 pattern, its sketch and the anonymous-functions framing live in [§11.5][s11-5],
 and the component joins [§13.7][s13-7]'s starting inventory as its one
 persona-admitted member. Nothing of the addendum's argument was lost in the

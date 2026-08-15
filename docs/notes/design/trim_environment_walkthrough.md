@@ -3,7 +3,7 @@
 *A companion explainer, not normative text. The ground truth is
 `framework_spec.md` [§4.4][s4-4] (field handles and the value-level constructor),
 [§14.1][s14-1] (the pre-sweep doctrine), [§14.7][s14-7] and [§14.9][s14-9] (the trim problem and its
-mounting), [§12.6][s12-6], and decision row 139, which settled all of it on
+mounting), [§12.6][s12-6], and decision D-139, which settled all of it on
 2026-08-05 during the round-4 dry-run adjudication (commit `daf3298d`). This
 document records the discussion that produced that row — the alternatives,
 the arguments, and the two shapes that were kept as legitimate options rather
@@ -544,17 +544,17 @@ depend on the baseline it happens to be applied against: the same
 That also breaks the pure condition algebra that lets [§14.9][s14-9]'s `at`-lifting be
 five lines, because `p.condition` is no longer a function of `d` alone.
 
-It is recorded as rejected in row 139, alongside the pre-application sweep,
+It is recorded as rejected in D-139, alongside the pre-application sweep,
 mandating enlargement as the sole route, reading the environment through
 `reads`, and duplicating the atmosphere's output stage in aircraft trim code.
-Worth stating once, to forestall the reading: none of this reopens row 8's
+Worth stating once, to forestall the reading: none of this reopens D-008's
 rejected resource injection. There is no registry and no invisible
 composition here — just a plain function call on values the caller already
 holds.
 
 ## What landed in the spec
 
-For the record, commit `daf3298d`, decision row 139:
+For the record, commit `daf3298d`, decision D-139:
 
 - **[§4.4][s4-4]** gains the value-level constructor as a shipped component's
   obligation, with the taught-contract entry in [Appendix A][sA] and the glossary

@@ -5,7 +5,7 @@ worked sample-time proposal for the framework: the declaration surface, compilat
 pipeline, runtime representation and diagnostics for **phase offsets** and **absolute
 rate declarations**. It supersedes section 2 of the extensions charter
 (`framework_extensions.md`), which sketched the same territory before the pipeline was
-worked out. **Adopted 2026-08-12 as decision rows 185–187**, with the section 9
+worked out. **Adopted 2026-08-12 as decision D-185–D-187**, with the section 9
 amendments applied ([§8.5][s8-5], [§11.7][s11-7], [§12.1][s12-1], [§12.2][s12-2], [§12.7][s12-7], [§14.5][s14-5], [§14.8][s14-8], Appendices B/C —
 the spec wins on any conflict) and two deltas from the proposal as written: the
 `ratespec` normalization of section 2 was **dropped** — the wrappers are the whole
@@ -362,7 +362,7 @@ code — component type, stage — in type parameters, and what is plain data �
 divisor, layout offsets — in fields."* `D`, `Φ` and `Δt` are exactly the second
 kind. Two instances of one controller type at different rates and phases differ only
 in field values, share an entry type, and compile to **one** body — the property the
-cell-store benchmark (row 162) was run to protect. Schematically:
+cell-store benchmark (D-162) was run to protect. Schematically:
 
 ```julia
 struct HxuBoundaryEntry{C, ...}   # C, stage → select code

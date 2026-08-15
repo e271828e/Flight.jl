@@ -2,9 +2,9 @@
 
 *A companion explainer, not normative text. The ground truth is
 `framework_spec.md` [§5.3][s5-3] (step-boundary semantics), [§8.6][s8-6] (event iteration)
-and decision row 154, which settled the visibility rule below (the table is
+and decision D-154, which settled the visibility rule below (the table is
 written only by sweeps; a component fires at most one event per round) on
-2026-08-07, superseding the round-3 rule of rows 16/100/152. If this document
+2026-08-07, superseding the round-3 rule of D-016/D-100/D-152. If this document
 and the spec ever disagree, the spec wins.*
 
 Everything here answers one question: **when several events fire at the same
@@ -181,7 +181,7 @@ rounds ([§5](#5-one-boundary-end-to-end)), each later event re-decided against 
   two genuinely simultaneous events takes one more intra-boundary round than
   it used to. Sweeps are microseconds and the case is rare.
 - **Per-event re-decode with a frozen round-start `u`** (rejected; the prior
-  design of record, rows 16/100/152): two freshness classes inside one
+  design of record, D-016/D-100/D-152): two freshness classes inside one
   bundle, delivered by pre-materializing the fired components' gathers —
   standing staging machinery whose only purchase was same-round multi-handler
   own-`y` freshness, which serialization provides for free.

@@ -2,11 +2,11 @@
 
 *A companion explainer, not normative text. The ground truth is
 `framework_spec.md` [§9.3][s9-3] (slots, claims, the roster freeze), [§9.4][s9-4] (staging and the drain), [§9.7][s9-7] (GUI write path),
-[§10.6][s10-6] (harness cell) and decision rows 44, 93, 96, 106, 174, 176, 177.
+[§10.6][s10-6] (harness cell) and decision D-044, D-093, D-096, D-106, D-174, D-176, D-177.
 Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
-for the roster freeze (rows 106–107) and 2026-08-11 for the surface
-unification (rows 174–177: the GUI as an ordinary enumerated writer, the
+for the roster freeze (D-106–D-107) and 2026-08-11 for the surface
+unification (D-174–D-177: the GUI as an ordinary enumerated writer, the
 harness register as the sole derived surface, uniform sparse trace records,
 declared binding traits). If this document and the spec ever
 disagree, the spec wins.*
@@ -161,7 +161,7 @@ end
 ```
 
 Note what is *absent*: the drain validates nothing. Every check ran at
-staging ([section 6](#6-the-write-surface-rule-rows-44-106-and-174)), so the drain is pure application — and since the roster is a
+staging ([section 6](#6-the-write-surface-rule-d-044-d-106-and-d-174)), so the drain is pure application — and since the roster is a
 fixed value at `run!`, the whole thing is compilable: the cells and their
 scatters form a known tuple the frame function can specialize on, with no
 name resolved and no dynamic dispatch at frame top.
@@ -173,7 +173,7 @@ of the drained batches. That purity is what makes the **input trace** (the
 per-frame sequence of device-tagged drained batches, plus the header's
 initial state, slot values and per-writer schemas) a complete record: replay
 feeds the same batches to the same drain and gets a bit-identical trajectory.
-One retention detail (row 176): **every** drained batch is converted at the
+One retention detail (D-176): **every** drained batch is converted at the
 drain into sparse (position ⇒ value) pairs against the writer's schema, so
 trace size tracks information rather than surface width and every consumer
 meets one record format; replay converts back once, up front, off the loop
@@ -206,7 +206,7 @@ The one sequencing rule: the harness cell drains **last**. With every surface
 disjoint the order is unobservable, so this is a convention that keeps traces
 reading the same way, not an arbitration policy.
 
-## 6. The write-surface rule (rows 44, 106 and 174)
+## 6. The write-surface rule (D-044, D-106 and D-174)
 
 **Every writer has a write surface, and staging enforces it**: a batch entry
 reaches a slot iff the named face is inside the writer's surface; anything

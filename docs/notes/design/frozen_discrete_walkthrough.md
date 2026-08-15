@@ -3,7 +3,7 @@
 *A companion explainer, not normative text. The ground truth is
 `framework_spec.md` [§7.2][s7-2] (genericity scoping), [§8.5][s8-5] (gated tick scheduling),
 [§11.2][s11-2] (the frozen-exact typing rule), [§12.5][s12-5] (the embedding guarantee) and
-[§14.10][s14-10] (linearization and the sampled-data door), with decision rows 70 and 72
+[§14.10][s14-10] (linearization and the sampled-data door), with decision D-070 and D-072
 scoping the AD consumers. If this document and the spec ever disagree, the
 spec wins. It was written during the 2026-08 declaration-signature
 re-adjudication, to preserve the answer to one recurring question.*
@@ -49,7 +49,7 @@ determined by past samples.
 
 ## 3. The derivative of the execution story
 
-Today's AD consumers — linearization (row 72) and trim (row 70) —
+Today's AD consumers — linearization (D-072) and trim (D-070) —
 differentiate the instantaneous vector field $\dot{x} = f(x, \cdot)$ at a
 frozen instant $t$, with the discrete state (and B's held cells, which are the same kind of
 fact: sampled state) held. Seed $x$. What is the true sensitivity of C's
