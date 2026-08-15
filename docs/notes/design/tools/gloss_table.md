@@ -1,4 +1,4 @@
-# Gloss table — Phase 3 sweep 3 (first-use glosses)
+# Gloss table — first-use glosses
 
 One gloss per Appendix D entry, compressed from that entry's own text.
 Column *class*: **A** = applied in the body at section first use (opaque
@@ -6,7 +6,7 @@ coinage); **B** = glossary link alone suffices (near-ordinary or
 domain-standard vocabulary, or core Part-I terms the spec teaches head-on and
 repeats on nearly every page); **—** = entry carries no body link (whitelisted
 in `check_glossary.jl`), gloss recorded for completeness only.
-*n* = body link count, recounted 2026-08-15 after the Phase 4.3 sweeps: the
+*n* = body link count, recounted 2026-08-15 after the last structural sweeps: the
 count of `](#g-…)` links to the anchor in chapters 1–16.
 
 ## D.1 Component model and declaration layer
@@ -222,8 +222,7 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 
 178 inline gloss applications standing in the body (chapters 1-16): Part I 27,
 Part II 34, Part III 60, Part IV 51, Part V 6. 64 of the 81 class-A terms are
-applied at least once. The Part IV figure lost one site to the Phase 4.3
-trim-commit dedup, which deleted the `harmonic grid` gloss in §14.8.
+applied at least once. The Part IV figure lost one site to the trim-commit dedup, which deleted the `harmonic grid` gloss in §14.8.
 
 An *application* is a gloss parenthetical or appositive (comma, dash or colon)
 attached to the term, carrying the gloss above or a close derivative of it. A

@@ -1,7 +1,7 @@
 # Decision log style guide
 
-The rules `framework_decisions.md` adheres to. Distilled from the Pass A
-conversion brief (2026-08-14) once that pass closed; consulted whenever an
+The rules `framework_decisions.md` adheres to. Distilled from the brief that
+converted the log's retired table form into entries; consulted whenever an
 entry is added, amended or rewritten. The counterpart of `spec_style.md`, which
 governs the spec.
 
@@ -93,34 +93,12 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
    compares every entry's multiset of code spans, inline math, citations and
    named identifiers against a git revision — losing one is fatal. Rewording an
    entry is licensed by that check, not by care.
-
-## Pass C — per-entry prose rewrite, closed 2026-08-15
-
-Pass A converted the table to entries structurally; Pass C was the optional
-prose pass over the queue drawn from the Pass A findings adjudication. Items
-1–3 are done:
-
-1. **No-headline bundle** — the fourteen entries whose Positions were semicolon
-   chains (D-045, D-048, D-050, D-056, D-058, D-059, D-062, D-067–D-072, D-113)
-   now open with a headline sentence over an enumerated chain, 5–38 words of
-   headline against the old 86-word mean. The Position field rule above was
-   rewritten to bless that shape rather than the chain.
-2. **Provenance prefixes** — D-131 and D-135–D-140 no longer open with
-   "Round-4 gaps finding 5, …". Where the prefix carried a substantive clause
-   ("amending D-052", "closing D-133's §13.2 deferral", D-140's
-   unchanged-sections scope) that clause survives as part of the ruling.
-3. **Bare `D.n` glossary citations** — nine tokens in D-131, D-149 and D-177,
-   plus D-149's Spec field `[Appendix D][sD].8`, which was a `§D.8` that
-   `linkify.jl` had mangled for want of the `§`. All now validate and link.
-
-**Item 4, "terse early entries as expansion candidates", was removed from the
-queue rather than done (2026-08-15).** Measured at 71 entries — 37% of the log
-— whose Rationale reads `Recorded only through the rejections below.` They read
-that way because the original table rows recorded nothing else; the reasoning
-survives only as the rejections. Expanding them means sourcing rationale that
-was never written, out of the cited spec sections (which state mechanism, not
-reasoning) or the git history of `framework_design.md` — historical
-reconstruction, not prose work, and in tension with standing rule 1, since
-writing a rationale into an old entry today is retrofitting. If ever revisited,
-first survey which entries have a real documented source; do not expand
-wholesale.
+8. **Do not expand the terse early entries.** 71 entries — 37% of the log —
+   have `Recorded only through the rejections below.` for a Rationale, because
+   the original table rows recorded nothing else and the reasoning survives
+   only as the rejections. Writing one today means sourcing rationale that was
+   never written, out of the cited spec sections (which state mechanism, not
+   reasoning) or out of `framework_design.md`'s git history: historical
+   reconstruction, not prose work, and retrofitting under rule 1. If ever
+   revisited, first survey which entries have a real documented source; do not
+   expand wholesale.

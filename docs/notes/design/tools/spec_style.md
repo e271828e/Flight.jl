@@ -1,7 +1,7 @@
 # Spec style guide
 
 The rules `framework_spec.md` is written to. Consulted before editing the spec
-so its register stays consistent across sessions. The target register: **rigorous but pedagogical,
+so its register stays consistent across sessions: **rigorous but pedagogical,
 economical but not terse**. Growth in word count is acceptable; a norm buried
 in pedagogy is not.
 
@@ -33,11 +33,11 @@ in pedagogy is not.
   section must be locally re-readable by a reader arriving cold.
 - Coinages are governed by `tools/coinage_inventory.md`: a term used in three
   or more places, or far from its definition, gets a glossary entry; a local
-  one- or two-use coinage gets an inline gloss only. New coinages introduced
-  during the rewrite join the inventory.
+  one- or two-use coinage gets an inline gloss only. New coinages join the
+  inventory.
 - Link plumbing is deliberately asymmetric: section citations are
-  reference-style (`[§9.4][s9-4]`, linkify-managed) because Phase 4 renumbers
-  sections; glossary links are inline (`[drain](#g-drain)`) because glossary
+  reference-style (`[§9.4][s9-4]`, linkify-managed) because section numbers can
+  change; glossary links are inline (`[drain](#g-drain)`) because glossary
   anchor ids are names, never renumbered, so the indirection would buy
   nothing. Not a defect; do not flag or convert.
 - **The wrap target is 80 columns of *rendered* text**, link markup collapsed.
@@ -68,7 +68,7 @@ would destroy the signal. *Why* holds constructive rationale only.
 - **Adversarial rationale goes** (why alternative X loses). It lives in
   `framework_decisions.md`, cited as "(D-nnn)". Before deleting an inline
   argument, verify the entry carries it; enrich the entry first if the inline
-  version is richer (Phase 2 procedure).
+  version is richer.
 - **Case-study measurements are exempt** (ch. 15, the grounding charter): a
   torture test's worked comparison — the concrete, measured cost of a losing
   candidate — is evidence, not litigation, and stays at full resolution.
