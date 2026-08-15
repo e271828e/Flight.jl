@@ -3683,11 +3683,11 @@ it.
 
 **Status.** ratified
 
-**Position.** Round-4 inconsistencies findings 4–11 are applied as a
-consistency sweep — stragglers of the restructure and of the [D-121][d-121]/[D-122][d-122]
-vocabulary overhauls, one citation retarget, one lifecycle count, and the
-walkthroughs' self-references; no settled decision changes, only text brought
-into line with decisions already recorded.
+**Position.** A consistency sweep over the spec and the walkthroughs —
+stragglers of the restructure and of the [D-121][d-121]/[D-122][d-122] vocabulary overhauls, one
+citation retarget, one lifecycle count, and the walkthroughs' self-references;
+no settled decision changes, only text brought into line with decisions already
+recorded.
 
 **Spec.** [§5.3][s5-3], [§6.2][s6-2], [§7][s7], [§7.1][s7-1], [§7.5][s7-5], [§11.4][s11-4], [§11.7][s11-7], [§12][s12], [§12.6][s12-6], [§9.5][s9-5], [§13.4][s13-4],
 [§14][s14], [§14.6][s14-6], [§15.4][s15-4], [§16][s16], [Appendix B][sB], [§D.3][sD-3], [§D.6][sD-6], [§D.8][sD-8]
@@ -3931,11 +3931,10 @@ open.
 
 **Status.** ratified
 
-**Position.** Round-4 gaps finding 5, amending [D-052][d-052]: the activation cache is
-scoped to **immutable compiled artifacts** — layouts, compiled plans, the
-validated flag — keyed by concrete scalar type and living on the **`Build`**,
-since an activation is a pure function of the build and the scalar ([§9.4][s9-4]'s own
-words).
+**Position.** Amending [D-052][d-052], the activation cache is scoped to **immutable
+compiled artifacts** — layouts, compiled plans, the validated flag — keyed by
+concrete scalar type and living on the **`Build`**, since an activation is a
+pure function of the build and the scalar ([§9.4][s9-4]'s own words).
 
 **Spec.** [§7.5][s7-5], [§11.1][s11-1], [§9.2][s9-2], [§9.4][s9-4], [§14.8][s14-8]
 
@@ -3979,13 +3978,12 @@ synchronization on any path.
 
 **Status.** ratified
 
-**Position.** Round-4 gaps finding 6, closing [D-133][d-133]'s [§13.2][s13-2] deferral: the
-runtime diagnostic stream and the liveness heartbeat get one mechanism — **one
-per-writer diagnostic cell**, one per rostered device plus one for the loop
-itself, single-writer by the same ownership argument as [§11.4][s11-4]'s staging cells
-(no lock, no arbitration, no new primitive), holding a **bounded ring of 16
-diagnostic values plus per-kind suppressed counts** and an atomic heartbeat
-timestamp.
+**Position.** Closing [D-133][d-133]'s [§13.2][s13-2] deferral, the runtime diagnostic stream and
+the liveness heartbeat get one mechanism — **one per-writer diagnostic cell**,
+one per rostered device plus one for the loop itself, single-writer by the same
+ownership argument as [§11.4][s11-4]'s staging cells (no lock, no arbitration, no new
+primitive), holding a **bounded ring of 16 diagnostic values plus per-kind
+suppressed counts** and an atomic heartbeat timestamp.
 
 **Spec.** [§7.5][s7-5], [§10.7][s10-7], [§11.1][s11-1], [§11.2][s11-2], [§11.4][s11-4], [§11.6][s11-6], [§11.8][s11-8], [§12.2][s12-2], [§12.4][s12-4], [§13.2][s13-2], [§13.5][s13-5],
 Appendices C/D
@@ -4054,9 +4052,9 @@ many*.
 
 **Status.** ratified
 
-**Position.** Round-4 gaps finding 7: snapshot-log retention gets a **bound**,
-`log_max` — the maximum number of retained snapshot references, a new
-`Simulation` keyword beside `log`/`log_every`.
+**Position.** Snapshot-log retention gets a **bound**, `log_max` — the maximum
+number of retained snapshot references, a new `Simulation` keyword beside
+`log`/`log_every`.
 
 **Spec.** [§4.1][s4-1], [§4.4][s4-4], [§7.5][s7-5], [§10.7][s10-7], [§11.2][s11-2], [§11.5][s11-5], [§11.8][s11-8], [§12.4][s12-4], [§12.7][s12-7], [§13.5][s13-5],
 Appendices B/D
@@ -4132,12 +4130,11 @@ which is also what defines the hint when `t_end = Inf`. No new diagnostic kind
 
 **Status.** ratified
 
-**Position.** Round-4 gaps finding 8: device `init!` becomes an **explicit step
-of the [§12.4][s12-4] protocol**, taken at the top of a run — once per roster entry, in
-attachment order, on the calling task, pre-spawn — with **each call in its own
-bracket**: on a throw the framework calls `shutdown!(dev)` on the failing
-device right there, reports `DeviceCrash` by name and marks it dead, no task
-being spawned.
+**Position.** Device `init!` becomes an **explicit step of the [§12.4][s12-4] protocol**,
+taken at the top of a run — once per roster entry, in attachment order, on the
+calling task, pre-spawn — with **each call in its own bracket**: on a throw the
+framework calls `shutdown!(dev)` on the failing device right there, reports
+`DeviceCrash` by name and marks it dead, no task being spawned.
 
 **Spec.** [§11.1][s11-1], [§11.3][s11-3], [§11.6][s11-6], [§11.8][s11-8], [§12.2][s12-2], [§12.4][s12-4], [§13.5][s13-5], [§14][s14], [§14.6][s14-6], Appendices
 A/B/C/D
@@ -4201,15 +4198,15 @@ natural end) and `gui = true`'s standard attachment stating that value
 
 **Status.** ratified
 
-**Position.** Round-4 dry-run finding 3: environment field handles get a
-**value-level constructor** — the map (component, input values) → handle
-exposed as a plain, pure, exported function (`atmospheric_field(atm; T_sl,
-p_sl, wind)` for the `SimpleAtmosphere` successor), with the component's swept
-output stage a **one-line call to it and never the reverse** — stated in [§4.4][s4-4]
-as a **shipped component's obligation** ([Appendix A][sA] taught contract, [Appendix D][sD]
-entry), because only the component's author can write it: the real component
-composes sub-models, and anyone else reconstructing the map has re-created the
-silent-drift class [§5.3][s5-3] exists to kill.
+**Position.** Environment field handles get a **value-level constructor** — the
+map (component, input values) → handle exposed as a plain, pure, exported
+function (`atmospheric_field(atm; T_sl, p_sl, wind)` for the `SimpleAtmosphere`
+successor), with the component's swept output stage a **one-line call to it and
+never the reverse** — stated in [§4.4][s4-4] as a **shipped component's obligation**
+([Appendix A][sA] taught contract, [Appendix D][sD] entry), because only the component's
+author can write it: the real component composes sub-models, and anyone else
+reconstructing the map has re-created the silent-drift class [§5.3][s5-3] exists to
+kill.
 
 **Spec.** [§4.4][s4-4], [§5.3][s5-3], [§9.6][s9-6], [§14.1][s14-1], [§14.2][s14-2], [§14.7][s14-7], [§14.9][s14-9], [§16][s16], Appendices A/D
 
@@ -4291,8 +4288,8 @@ on values the caller already holds.
 
 **Status.** ratified
 
-**Position.** Round-4 dry-run finding 4 ([§8.3][s8-3] and [§4.3][s4-3] unchanged): [§5.4][s5-4]'s
-escape hatch becomes a **three-rung remedy ladder** for artificial loops.
+**Position.** [§5.4][s5-4]'s escape hatch becomes a **three-rung remedy ladder** for
+artificial loops; [§8.3][s8-3] and [§4.3][s4-3] are unchanged.
 
 **Spec.** [§4.3][s4-3], [§5.4][s5-4], [§5.6][s5-6], [§8.3][s8-3], [§16][s16]
 

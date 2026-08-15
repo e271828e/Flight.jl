@@ -66,12 +66,14 @@ function entries(text::AbstractString)
     return out
 end
 
-"Token counts of one entry, keyed by (class, token)."
+"Token counts of one entry, keyed by (class, token). Whitespace inside a token is
+normalized, so a token the wrap happens to split across a line — a long code span
+is the usual case — reads the same before and after a refill."
 function tokens(body::AbstractString)
     plain = replace(replace(body, REFLINK => s"\1"), INLINK => s"\1")
     counts = Dict{Tuple{String,String},Int}()
     for (class, re) in CLASSES, m in eachmatch(re, plain)
-        key = (class, m.match)
+        key = (class, join(split(m.match), " "))
         counts[key] = get(counts, key, 0) + 1
     end
     return counts
