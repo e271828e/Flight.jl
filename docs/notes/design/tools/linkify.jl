@@ -204,18 +204,16 @@ end
 """
     toc(hs) -> Vector{String}
 
-The `## Contents` block. Parts and appendices sit at the outer level, chapters
-and the `D.x` glossary groups one level in, sections two. `####` headings are
-not listed.
+The `## Contents` block. Parts and the appendix back matter sit at the outer
+level, chapters and appendices one level in, sections and the `D.x` glossary
+groups two. `####` headings are not listed.
 """
 function toc(hs)
     out = ["## Contents", ""]
     for (i, h) in enumerate(hs)
         (i == 1 || h.level >= 4 || h.text == "Contents") && continue
-        isappendix = h.number !== nothing && occursin(r"^[A-D]", h.number)
-        indent = h.level == 1 ? "" :               # parts
-                 h.level == 2 ? (isappendix ? "" : "  ") :
-                 isappendix ? "  " : "    "        # D.x groups vs. N.M sections
+        indent = h.level == 1 ? "" :               # parts, appendix back matter
+                 h.level == 2 ? "  " : "    "
         push!(out, "$indent- [$(h.text)](#$(h.slug))")
     end
     push!(out, "")

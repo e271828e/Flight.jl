@@ -106,20 +106,21 @@
     - [15.4 The interactive C172X demo: the periphery under load](#154-the-interactive-c172x-demo-the-periphery-under-load)
     - [15.5 The strapdown IMU: integrate-and-dump across the tier boundary](#155-the-strapdown-imu-integrate-and-dump-across-the-tier-boundary)
   - [16. Open axes](#16-open-axes)
-- [Appendix A. Taught contracts: the author-facing index](#appendix-a-taught-contracts-the-author-facing-index)
-- [Appendix B. API synopsis: the entry points](#appendix-b-api-synopsis-the-entry-points)
-- [Appendix C. The diagnostic kind set](#appendix-c-the-diagnostic-kind-set)
-- [Appendix D. Glossary](#appendix-d-glossary)
-  - [D.1 Component model and declaration layer](#d1-component-model-and-declaration-layer)
-  - [D.2 Signals and data homes](#d2-signals-and-data-homes)
-  - [D.3 Evaluation and scheduling](#d3-evaluation-and-scheduling)
-  - [D.4 Time and events](#d4-time-and-events)
-  - [D.5 Build pipeline](#d5-build-pipeline)
-  - [D.6 Runtime periphery](#d6-runtime-periphery)
-  - [D.7 Recording and replay](#d7-recording-and-replay)
-  - [D.8 Stopped-sim services and the condition algebra](#d8-stopped-sim-services-and-the-condition-algebra)
-  - [D.9 Error discipline and diagnostics](#d9-error-discipline-and-diagnostics)
-  - [D.10 Meta-vocabulary](#d10-meta-vocabulary)
+- [Appendices](#appendices)
+  - [Appendix A. Taught contracts: the author-facing index](#appendix-a-taught-contracts-the-author-facing-index)
+  - [Appendix B. API synopsis: the entry points](#appendix-b-api-synopsis-the-entry-points)
+  - [Appendix C. The diagnostic kind set](#appendix-c-the-diagnostic-kind-set)
+  - [Appendix D. Glossary](#appendix-d-glossary)
+    - [D.1 Component model and declaration layer](#d1-component-model-and-declaration-layer)
+    - [D.2 Signals and data homes](#d2-signals-and-data-homes)
+    - [D.3 Evaluation and scheduling](#d3-evaluation-and-scheduling)
+    - [D.4 Time and events](#d4-time-and-events)
+    - [D.5 Build pipeline](#d5-build-pipeline)
+    - [D.6 Runtime periphery](#d6-runtime-periphery)
+    - [D.7 Recording and replay](#d7-recording-and-replay)
+    - [D.8 Stopped-sim services and the condition algebra](#d8-stopped-sim-services-and-the-condition-algebra)
+    - [D.9 Error discipline and diagnostics](#d9-error-discipline-and-diagnostics)
+    - [D.10 Meta-vocabulary](#d10-meta-vocabulary)
 
 ---
 
@@ -8537,12 +8538,10 @@ transliteration that validated [§5][s5], torture tests aimed at the [§5.2][s5-
 and at the [§11][s11] staging shapes, the full C172X demo read as a load test on the
 periphery, and the strapdown IMU challenge to the [§3][s3] class split. [§16][s16] records
 the three axes still to be settled, the migration of FlightPhysics and
-FlightApps among them. Appendices A–D follow: the taught-contract index, the
-API synopsis, the diagnostic kind set, and the glossary.
+FlightApps among them.
 
-Part V assumes the whole specification and norms almost none of it. [Appendix C][sC]
-is the exception, since its kind set is made normative. The case studies are
-evidence rather than rules, so where a measurement here and a rule earlier
+Part V assumes the whole specification and norms none of it. The case studies
+are evidence rather than rules, so where a measurement here and a rule earlier
 disagree, the rule wins. They keep their worked comparisons at full resolution,
 which is the one place the rationale-belongs-in-the-decision-log rule is
 relaxed.
@@ -9343,6 +9342,16 @@ ground the choices:
   [replay](#g-replay) pointers ([§13.4][s13-4]) name positions in it.
 
 ---
+
+# Appendices
+
+The appendices are reference matter, not a sixth part. [Appendix A][sA] indexes the
+semantic contracts an author must know and no check can enforce; [Appendix B][sB] is
+the API synopsis. Neither is a second home: each entry is normative only where
+its owning section settles it. [Appendix C][sC] is the exception — its diagnostic
+kind set is made normative here, and acceptance tests match on it. [Appendix D][sD]
+is the glossary, non-normative, with the owning section winning wherever the
+two diverge.
 
 ## Appendix A. Taught contracts: the author-facing index
 
@@ -11042,6 +11051,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [sA]: #appendix-a-taught-contracts-the-author-facing-index
 [sB]: #appendix-b-api-synopsis-the-entry-points
 [sC]: #appendix-c-the-diagnostic-kind-set
+[sD]: #appendix-d-glossary
 [sD-1]: #d1-component-model-and-declaration-layer
 [sD-4]: #d4-time-and-events
 [sD-5]: #d5-build-pipeline

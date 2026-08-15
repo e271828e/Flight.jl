@@ -79,7 +79,7 @@ function main()
                          dest == DECISIONS ? logslugs : nothing
 
     println("outline of $SPEC: ", length(numbers), " citable headings (",
-            count(h -> h.level == 1, hs) - 1, " parts, ",
+            count(h -> startswith(h.text, "Part "), hs), " parts, ",
             count(n -> !occursin('.', n), numbers), " chapters/appendices, ",
             count(n -> occursin('.', n), numbers), " sections)")
     isempty(dup) || println("  slug suffixes in use: ", dup)
