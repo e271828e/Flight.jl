@@ -1718,18 +1718,21 @@ primitive family in the `Build`'s client kit.
 
 **Status.** ratified
 
-**Position.** Boundary zero = the [§10.6][s10-6] macro-sequence with an empty integrate:
-project → sweep (every tick due; discrete stages publish from the authored `z`)
-→ events to quiescence → due `g` updates → header capture + first snapshot;
-interval-alignment taught contract (sibling of [§15.5][s15-5]'s boundary-sampling line):
-a boundary's update is the *outgoing* transition — `z_{k+1}` from `t_k`'s
-samples — so boundary zero's incoming transitions on both tiers are replaced by
-authorship, and the update at `t₀` is the `t₀` sample's only chance; `t₀` an
-init-service argument anchoring the harmonic grid (conditions time-free;
-`capture` returns condition and time separately); trim iterations bypass
-boundaries entirely (raw write→sweep→read on the activation), only the commit
-runs boundary zero — a guard firing at commit replaces today's hand-written
-trim asserts.
+**Position.** Boundary zero is the [§10.6][s10-6] macro-sequence run with an empty
+integrate: project → sweep (every tick due; discrete stages publish from the
+authored `z`) → events to quiescence → due `g` updates → header capture + first
+snapshot.
+
+- Interval alignment is a taught contract, sibling of [§15.5][s15-5]'s boundary-sampling
+  line: a boundary's update is the *outgoing* transition — `z_{k+1}` from
+  `t_k`'s samples — so boundary zero's incoming transitions on both tiers are
+  replaced by authorship, and the update at `t₀` is the `t₀` sample's only
+  chance.
+- `t₀` is an init-service argument anchoring the harmonic grid (conditions
+  time-free; `capture` returns condition and time separately).
+- Trim iterations bypass boundaries entirely — raw write→sweep→read on the
+  activation — and only the commit runs boundary zero, a guard firing at commit
+  replacing today's hand-written trim asserts.
 
 **Spec.** [§10.6][s10-6], [§14.5][s14-5], [§15.2][s15-2], [§15.5][s15-5]
 
@@ -1750,18 +1753,21 @@ trim asserts.
 
 **Status.** ratified
 
-**Position.** Slot totality enforced at the service: `init!`/commit compare
-resolved slot coverage against `input_faces` before writing anything —
-shortfall = one batched declaration-ordered `UninitializedSlots` diagnostic,
-all-or-nothing (rejected init leaves the sim untouched); `probe_value`
-structurally unreachable from the services path (condition value or error, no
-third branch; replay applies header-recorded slots, never synthesizes — header
-slot capture complete by construction); baselines = aircraft-shipped
-full-coverage condition functions (`ready_for_taxi(ac)` — `SystemsInitializer`
-defaults reborn as user math, one home); `override(base, patch)` admitted as
-the fourth node kind (ordered/asymmetric vs. `merge`'s symmetric
-collision-intolerance; patch wins with dual provenance; within-layer collisions
-still error; variadic layering; trim commits `override(baseline, solution)`).
+**Position.** Slot totality is enforced at the service: `init!` and commit
+compare resolved slot coverage against `input_faces` before writing anything,
+and a shortfall raises one batched, declaration-ordered `UninitializedSlots`
+diagnostic, all-or-nothing — a rejected init leaves the sim untouched.
+
+- `probe_value` is structurally unreachable from the services path: a condition
+  value or an error, no third branch; replay applies header-recorded slots and
+  never synthesizes, header slot capture being complete by construction.
+- Baselines are aircraft-shipped full-coverage condition functions
+  (`ready_for_taxi(ac)` — `SystemsInitializer` defaults reborn as user math, one
+  home).
+- `override(base, patch)` is admitted as the fourth node kind: ordered and
+  asymmetric against `merge`'s symmetric collision-intolerance, patch winning
+  with dual provenance; within-layer collisions still error; layering is
+  variadic; trim commits `override(baseline, solution)`.
 
 **Spec.** [§14.6][s14-6]
 
@@ -1781,20 +1787,25 @@ still error; variadic layering; trim commits `override(baseline, solution)`).
 
 **Status.** ratified
 
-**Position.** Trim problem spelling: decisions/guess/bounds as same-shaped
-all-`Float64` NamedTuples (service packs/unpacks by field order);
-`TrimParameters` a plain user struct; assignment = the pure `trim_condition`
-fragment function; reads declared via `deriv`/`output` selectors compiled to a
-stack NamedTuple reader; user returns a residual *vector* (physically scaled
-NamedTuple) — trim = nonlinear least squares on $r(d)$ with exact AD Jacobians
-(Dual activation seeded through the `T`-generic assignment math), per-residual
-tolerances, unbalanced-equation failure reports, graceful non-squareness,
-$\partial r / \partial d$ as free control-effectiveness data;
-analytic-elimination doctrine (`θ_constraint`, by-construction filter/actuator
-equilibria) preserved verbatim as user math; derivative-free scalar fallback =
-service squares the residuals (today's BOBYQA as degenerate case);
-recorded-unbuilt: closed-loop trim via $h(z) - z$ scratch residuals, ground
-static equilibrium as another problem value.
+**Position.** A trim problem is spelled as a residual *vector*: the user returns
+a physically scaled NamedTuple, making trim a nonlinear least squares on $r(d)$
+with exact AD Jacobians, the Dual activation seeded through the `T`-generic
+assignment math.
+
+- Decisions, guess and bounds are same-shaped all-`Float64` NamedTuples, which
+  the service packs and unpacks by field order; `TrimParameters` is a plain user
+  struct.
+- Assignment is the pure `trim_condition` fragment function, and reads are
+  declared via `deriv`/`output` selectors compiled to a stack NamedTuple reader.
+- The vector formulation carries per-residual tolerances, unbalanced-equation
+  failure reports, graceful non-squareness, and $\partial r / \partial d$ as
+  free control-effectiveness data.
+- The analytic-elimination doctrine (`θ_constraint`, by-construction
+  filter/actuator equilibria) is preserved verbatim as user math.
+- The derivative-free scalar fallback is the service squaring the residuals,
+  today's BOBYQA as the degenerate case.
+- Recorded unbuilt: closed-loop trim via $h(z) - z$ scratch residuals, and
+  ground static equilibrium as another problem value.
 
 **Spec.** [§14.7][s14-7]
 
@@ -1814,20 +1825,24 @@ static equilibrium as another problem value.
 
 **Status.** ratified
 
-**Position.** Trim service: in-house dense LM default behind a value-passed
-backend contract (`NLoptBackend` extension = squared residuals, today's
-algorithm one keyword away; core carries zero optimizer deps); box bounds by
-step projection with saturated-at-solution flagged in the report;
-per-invocation scratch store sets instantiated from activation layouts (layout
-reusable, buffers die with the call; Dual un-aliasability = defense in depth,
-not the mechanism) — authoritative stores have exactly one writer, the commit
-through boundary zero; no-throw structured `TrimReport` (non-convergence =
-expected envelope-sweep outcome; malformed problem = `BuildError` at setup); AD
-obligation scoped to continuous stages + `f` + user assignment/residual math
-(discrete tier frozen-exact), identical to linearization's activation,
-build-checked by the Dual probe; C172 audit = Interpolations tables (prefer
-cubic knots), saturation rank-deficiency (LM-tolerated, reported), gear zero
-airborne.
+**Position.** The trim service defaults to an in-house dense LM solver behind a
+value-passed backend contract: the `NLoptBackend` extension takes squared
+residuals, putting today's algorithm one keyword away, and core carries zero
+optimizer deps.
+
+- Box bounds are applied by step projection, with saturated-at-solution flagged
+  in the report.
+- Scratch store sets are instantiated per invocation from activation layouts —
+  the layout reusable, the buffers dying with the call, Dual un-aliasability
+  being defense in depth and not the mechanism — while authoritative stores have
+  exactly one writer, the commit through boundary zero.
+- `TrimReport` is a no-throw structured value: non-convergence is an expected
+  envelope-sweep outcome, a malformed problem a `BuildError` at setup.
+- The AD obligation is scoped to continuous stages, `f` and user
+  assignment/residual math, the discrete tier frozen-exact — identical to
+  linearization's activation, and build-checked by the Dual probe.
+- The C172 audit is Interpolations tables (prefer cubic knots), saturation
+  rank-deficiency (LM-tolerated, reported), gear zero airborne.
 
 **Rationale.** Recorded only through the rejections below.
 
@@ -1843,20 +1858,24 @@ airborne.
 
 **Status.** ratified
 
-**Position.** Mounting: `TrimProblem` = implicitly specified condition
-(condition-valued function over decisions + pinning equations; solving makes it
-explicit; commit = init with the solved condition — services unified as
-condition-algebra clients); `at(prefix, problem)` lifts in five lines
-(condition post-composed, reads wrapped — inert selector data reuse the
-`Scoped` node; guess/bounds/residuals path-free pass-through); slots resolve
-through export chains from the mount point (unexported face = untrimmable from
-outside, correctly — a model-driven input, named by the build); the world-level
-`f_init!` wrapper dissolves into the `baseline` condition (method nesting →
-value layering); `design_world(ac)` = today's ad-hoc linearize models promoted
-to a shipped rig ("root" = shallowest world, one register); swarm: one problem
-per solve — sequential commits or user-side joint composition (concatenated
-decisions, merged trees, stacked residuals); `product()` helper recorded for
-the [§13.7][s13-7] library, unbuilt.
+**Position.** A `TrimProblem` is an implicitly specified condition — a
+condition-valued function over decisions plus pinning equations, made explicit
+by solving and committed by initializing with the solved condition — which
+unifies the services as condition-algebra clients.
+
+- `at(prefix, problem)` lifts a problem in five lines: the condition is
+  post-composed and the reads wrapped, inert selector data reusing the `Scoped`
+  node, while guess, bounds and residuals pass through path-free.
+- Slots resolve through export chains from the mount point, so an unexported
+  face is untrimmable from outside — correctly, it being a model-driven input,
+  named by the build.
+- The world-level `f_init!` wrapper dissolves into the `baseline` condition:
+  method nesting becomes value layering.
+- `design_world(ac)` promotes today's ad-hoc linearize models to a shipped rig
+  ("root" = shallowest world, one register).
+- A swarm takes one problem per solve — sequential commits, or user-side joint
+  composition (concatenated decisions, merged trees, stacked residuals).
+- A `product()` helper is recorded for the [§13.7][s13-7] library, unbuilt.
 
 **Spec.** [§13.7][s13-7]
 
@@ -1874,19 +1893,23 @@ the [§13.7][s13-7] library, unbuilt.
 
 **Status.** ratified
 
-**Position.** Linearization: surface = three selector lists
-(`state`/`slot`/`output` with optional component index; NamedTuple key = the
-control-design label), validated against schema, compiled to offsets,
-relocatable via `at` — the `get_*_ss`/`assign_*_ss!` shuttle layer deleted
-([§7.1][s7-1] discharged); evaluation = one chunked Dual pass on per-invocation scratch
-at the operating point (exact `A`/`B`/`C`/`D` + `ẋ₀`/`y₀` simultaneously;
-unseeded states constant, discrete tier frozen-exact); linearization = pure
-query (no commit, no boundary zero, no restore dance), default operating point
-= `capture(sim)` — `capture` settled as the full-store gather returning
-`(condition, t)`; returns labeled data with `subsystem`/`delete_vars` as pure
-label-indexed slicing; `LinearizedSS` survives as an ordinary continuous
-component; guidance: surfaces select minimal-coordinate mechanizations (the
-`{NED}` rig practice, now stated).
+**Position.** The linearization surface is three selector lists —
+`state`/`slot`/`output`, each entry with an optional component index and a
+NamedTuple key that is the control-design label — validated against schema,
+compiled to offsets, relocatable via `at`.
+
+- The `get_*_ss`/`assign_*_ss!` shuttle layer is deleted, discharging [§7.1][s7-1].
+- Evaluation is one chunked Dual pass on per-invocation scratch at the operating
+  point, yielding exact `A`/`B`/`C`/`D` and `ẋ₀`/`y₀` simultaneously; unseeded
+  states stay constant, the discrete tier frozen-exact.
+- Linearization is a pure query — no commit, no boundary zero, no restore dance
+  — and its default operating point is `capture(sim)`, `capture` settled as the
+  full-store gather returning `(condition, t)`.
+- It returns labeled data, with `subsystem`/`delete_vars` as pure label-indexed
+  slicing.
+- `LinearizedSS` survives as an ordinary continuous component.
+- Guidance: surfaces select minimal-coordinate mechanizations, the `{NED}` rig
+  practice, now stated.
 
 **Spec.** [§7.1][s7-1], [§14.10][s14-10]
 
