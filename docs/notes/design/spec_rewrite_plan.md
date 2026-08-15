@@ -169,6 +169,16 @@ here.
 
 ## Phase 4 — Structural reorder
 
+*P4.1 and P4.2 applied 2026-08-15 (`7217b632`). Chapters were permuted*
+**8→10, 9→11, 10→12, 11→8, 12→9**, *subsection numbers preserved (old §8.6 =
+new §10.6), and the parts renumbered so that Authoring and build is Part II
+and Execution is Part III. This is the old→new map open decision 2 asks to be
+kept for archaeology; the one-shot scripts that applied it were deleted once
+spent. **Every § number in this plan is pre-swap — apply the map to read it.**
+In particular, P4.2's "§8–10 ↔ §11–12" below describes the move itself, not a
+citation to be updated. The corpus (spec plus the eight companions) and
+`tools/gloss_table.md` are fully swept.*
+
 **P4.1 The part swap.** Move Part III (Authoring and build) before Part II
 (Execution). Stopped-sim services *stay* after Execution: §14.5 defines
 boundary zero in terms of §8.6's boundary machinery, and the services'
@@ -193,8 +203,15 @@ moves). Add a short roadmap paragraph at the top of each Part: what it covers,
 in what order, what it assumes from earlier parts.
 
 **Done when:** every § citation in every document resolves to the section it
-meant before the move; forward references in the spec are the rare exception
-rather than the rule.
+meant before the move, and each Part opens with a roadmap naming what it
+assumes from earlier parts.
+
+Forward-reference *count* is deliberately not the criterion. Measured at the
+swap: cross-part citation traffic between the two swapped parts runs 30 one
+way against 31 the other, so the move trades one set of forward references for
+a set the same size. The swap stands on conceptual dependency instead — a
+reader meets how a model is authored before how it executes — and the P4.3
+roadmaps are what carry the forward references that remain.
 
 ## Phase 5 — Final verification
 
