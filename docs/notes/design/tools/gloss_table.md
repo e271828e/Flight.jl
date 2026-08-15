@@ -51,7 +51,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | staging cell | g-staging-cell | 8 | A | where a device's pending write batch waits between drains |
 | store | g-store | 9 | B | the typed home of `m` and a discrete leaf's `x` |
 | summing junction | g-summing-junction | 2 | B | a library component doing N-to-1 aggregation through explicit wires |
-| value-level constructor | g-value-level-constructor | 4 | A | the plain exported function building a field handle from input values |
+| value-level constructor | g-value-level-constructor | 4 | A | the plain exported function building a field handle from the component and input values |
 | view | g-view | 4 | B | a zero-copy reconstruction of a store handed through the bundle |
 | `w` (private intermediates) | g-w | 0 | — | the optional private second slot of a stage's return |
 
@@ -109,7 +109,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | measurement seam / phase bodies | g-measurement-seam | 2 | A | `phase_bodies(sim)`, the compiled bodies bound over the simulation's buffers |
 | nominal | g-nominal | 1 | A | the `Float64` activation, and a declaration's `Float64` face |
 | probe | g-probe | 23 | B | the build's single evaluation of a user function with real values |
-| probe value / input synthesis | g-probe-value | 2 | A | fabricated build-time values for root slots, which have no producer |
+| probe value / input synthesis | g-probe-value | 2 | A | fabricated build-time values, synthesized at producerless root slots and flowing the probe chain |
 | `ProbeDual` | g-probedual | 1 | B | the exported canonical concrete probe scalar |
 | schema vs. layout | g-schema-vs-layout | 0 | — | *(resists compression: the entry contrasts a pair)* |
 | stratum | g-stratum | 17 | A | one of the build's three phases: structure, schedule, activation |
@@ -182,7 +182,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | mounting | g-mounting | 2 | A | relocating a whole problem or tap set with `at(prefix, …)` |
 | override | g-override | 1 | B | the ordered, asymmetric layering combinator: the patch wins |
 | service lifecycle | g-service-lifecycle | 0 | — | the `Simulation` states and each service's legality against them |
-| slot totality | g-slot-totality | 4 | A | the requirement that an application cover every root slot |
+| slot totality | g-slot-totality | 4 | A | the requirement that an application establishing a complete world cover every root slot |
 | taps | g-taps | 3 | A | the three selector lists declaring what linearization seeds and reports |
 | `TrimProblem` | g-trimproblem | 1 | B | the closed seven-field value specifying a trim |
 
@@ -216,44 +216,89 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | torture test | g-torture-test | 1 | B | an awkward existing artifact transliterated to validate a mechanism |
 | worked (example) | g-worked | 4 | B | a full spelling of a mechanism against a real artifact |
 
-## Application record (sweep 3, 2026-08-13)
+## Application record (regenerated at the gloss ratification sitting, 2026-08-15)
 
-32 parentheticals inserted: Part I 4, Part II 10, Part III 10, Part IV 6,
-Part V 2. Glosses actually shipped, and where:
+179 inline gloss applications standing in the body (chapters 1-16): Part I 27,
+Part II 60, Part III 34, Part IV 52, Part V 6. 64 of the 81 class-A terms are
+applied at least once.
+
+An *application* is a gloss parenthetical or appositive (comma, dash or colon)
+attached to the term, carrying the gloss above or a close derivative of it. A
+bare glossary link is not one, and neither is a copular definition sentence
+("an X is ..."), which is the section's own definitional prose. Rows follow the
+Appendix D grouping above.
 
 | gloss | sites |
 |---|---|
-| activation | §11.3, §12.1, §12.5, §12.6, §12.7 |
-| did-you-mean | §11.2, §11.4, §11.5, §13.3 |
-| drain | §8.4, §9.7 |
-| bundle | §12.7, §15.5 |
-| stage function | §4.1, §4.3 |
-| calling task | §9.6, §10.6 |
-| stratum | §5.6, §11.2 |
-| executor | §7.1 |
-| harness cell | §9.3 |
-| unattended run | §9.8, §13.4 |
-| decimation | §9.8 |
-| guarded addition | §10.2 |
-| diagnostic cell | §10.4 |
-| staging cell | §10.7 |
-| condition | §13.5 |
 | abstract entry | §13.7 |
-| boundary zero | §14.6 |
-| selector | §14.7 |
+| auto-published port | §7.1, §14.4 |
+| class | §11.2, §11.5, §12.1 |
+| function family | §5.2 |
+| generic holding | §11.5 |
+| rate scope | §12.2 |
+| schema authority | §11.3, §13.7 |
+| stage function | §4.1, §4.3, §4.4, §11.1 |
+| workspace | §7.5, §11.2, §12.1, §14.1 |
+| bundle | §5.3, §7.3, §8.5, §8.6, §10.5, §12.3, §13.2, §15.5 |
+| field handle | §7.5, §9.2 |
+| staging cell | §10.7, §14.8 |
+| value-level constructor | §14.1 |
+| frame | §9.1 |
+| anchor | §12.1 |
+| bound schedule | §8.5, §12.1, §12.2 |
+| boundary-detected | §2.2, §8.4, §10.5, §11.2, §16 |
+| `Δt_base` | §5.5 |
+| due | §12.7 |
+| edge semantics | §8.6, §14.5 |
+| firing budget | §5.3 |
+| harmonic grid | §8.4, §14.5, §14.8 |
+| interpolant | §8.4 |
+| localized | §8.2, §8.4, §10.7, §11.2, §13.5 |
+| pacing | §8.1, §8.5, §10.7 |
+| phase (`Φ`) | §8.5 |
+| prior | §8.4, §8.6, §14.5 |
+| quiescence | §5.3, §8.4, §8.5, §8.6 |
+| activation | §5.6, §6.1, §6.2, §7.3, §11.2, §11.3, §12.7, §13.7, §14.3, §14.8, §14.10 |
+| chunking | §11.1 |
+| executor | §5.2, §7.1, §11.1, §11.5, §12.5, §13.4 |
+| leaf walk | §11.2 |
+| lens | §14.3 |
+| nominal | §6.1 |
+| stratum | §5.6, §6.1, §11.2, §11.5, §13.1, §13.2, §13.3, §14.3 |
+| calling task | §9.1, §9.2, §9.3, §9.6, §10.6 |
+| coalescing | §9.4 |
+| control plane | §10.4 |
+| diagnostic cell | §10.4, §13.2 |
+| drain | §8.4, §9.4, §9.5, §9.7, §14, §15.3 |
+| framework status | §8.7, §10.2 |
 | greedy claim | §15.4 |
+| harness cell | §9.3, §9.4, §10.6 |
+| peek | §9.2, §15.4 |
+| scenario component | §10.5 |
+| selector | §9.2, §14.7, §14.10 |
+| stage-on-interaction | §14.5 |
+| unattended run | §7.5, §9.8, §10.4, §13.4 |
+| write surface | §9.3, §11.6 |
+| decimation | §9.8 |
+| frame ordinal | §10.7 |
+| what-if register | §9.5, §10.7 |
+| boundary zero | §8.4, §8.5, §10.4, §10.6, §10.7, §13.4, §14.4, §14.6, §14.8, §14.9, §14.10, §16 |
+| capture | §14 |
+| condition | §11.2, §13.3, §13.5, §14.4, §14.5 |
+| mounting | §11.5, §14.4 |
+| slot totality | §14 |
+| taps | §14.4, §14.10 |
+| did-you-mean | §5.2, §9.2, §10.7, §11.3, §11.4, §11.5, §12.1, §13.1, §13.2, §13.3, §14.3, §14.10 |
+| error locality | §11.1 |
+| execution cursor | §13.4 |
+| feedthrough tracer | §7.2 |
+| guarded addition | §4.3, §7.5, §9.3, §10.2 |
+| recorded, not built | §14.7, §14.9, §14.10 |
 
-Class-A terms that found no admissible site anywhere in the body (every
-first use, and every later occurrence, sat in a sentence already carrying a
-parenthetical or a dash clause, or inside a compound noun the insertion would
-split): anchor, bad datum, blessed, boundary-detected, bound schedule,
-chattering, chunking, class, coalescing, container children, control plane,
-derived liveness, Δt_base, due, edge semantics, error locality, executable set,
-execution cursor, feedthrough tracer, field handle, firing budget, frame,
-frame ordinal, framework status, function family, generic holding, harmonic
-grid, harness register, input epoch, interpolant, leaf walk, lens, localized,
-measurement seam, mounting, nominal, one home per datum, operator interrupt,
-orphaned claims, pacing, peek, phase, prior, probe value, quiescence, rate
-scope, recorded-not-built, remainder step, scenario component, schema
-authority, slot totality, stage-on-interaction, taps, the freeze,
-value-level constructor, walked, what-if register, workspace, write surface.
+The seventeen class-A terms with no application anywhere in the body — each
+either defined copularly at its owning section and used bare thereafter, or
+carrying only a differently-worded expansion: `at`/`Scoped`, bad datum,
+blessed, chattering, container children, derived liveness, executable set,
+harness register, input epoch, measurement seam, one home per datum, operator
+interrupt, orphaned claims, probe value, remainder step, the freeze,
+walked/pinned/exempt.

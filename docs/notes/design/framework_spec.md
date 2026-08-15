@@ -863,7 +863,7 @@ A [component](#g-component) that bundles a no-[feedthrough](#g-feedthrough) outp
 atomic evaluation unit can be **[port](#g-port)-level acyclic yet unschedulable** — Simulink's
 "artificial [algebraic loop](#g-algebraic-loop)". The canonical instance in this domain is rigid-body
 dynamics: velocity out is pure state, acceleration out is feedthrough from total
-force. The two-stage split resolves it, and it is the rung that absorbs most of the
+force. The [two-stage split](#g-stage-function) resolves it, and it is the rung that absorbs most of the
 class. The `VehicleDynamics` instance ([§15.1][s15-1]) is velocity state-only with
 accelerations feedthrough, and it simply dissolves under the split.
 
@@ -1493,7 +1493,7 @@ The continuous side runs many calls per [boundary](#g-boundary): RK stages,
 localization probes, event re-[sweeps](#g-sweep). That multiplicity makes the
 no-information-between-calls contract *more* load-bearing there, not less.
 
-**Blessed idiom — zero-allocation [ticks](#g-tick) with immutable `x`.** Do the
+**[Blessed](#g-blessed) idiom — zero-allocation [ticks](#g-tick) with immutable `x`.** Do the
 in-place math (`mul!`, `cholesky!`, BLAS) on the workspace. At the end, snapshot
 into an isbits container and return it:
 `x = KFState(SVector{20}(ws.x̂), SMatrix{20,20}(ws.P))`.
@@ -7309,8 +7309,9 @@ one artifact: the **[condition](#g-condition) value**, the datum that says "set
 this build to this state."
 [§14.1][s14-1]–[§14.4][s14-4] settle its representation, composition and application;
 [§14.5][s14-5]–[§14.6][s14-6] the [boundary](#g-boundary)-zero sequence and [slot totality](#g-slot-totality)
-(the requirement that an application cover every root slot); [§14.7][s14-7]–[§14.9][s14-9] the
-trim service in full; [§14.10][s14-10] linearization and `capture`.
+(the requirement that an application establishing a complete world cover every
+root slot); [§14.7][s14-7]–[§14.9][s14-9] the trim service in full;
+[§14.10][s14-10] linearization and `capture`.
 
 **Lifecycle preconditions.** Every service requires a non-running simulation:
 while a run exists the loop owns the [stores](#g-store) between [drains](#g-drain)
@@ -7378,11 +7379,11 @@ init.
 queries**. A condition needing one constructs the same handle the sweep will
 produce, and then calls the same query function the consuming component calls.
 One route to that handle is the [value-level constructor](#g-value-level-constructor) (the plain
-exported function building a field handle from input values, [§4.4][s4-4]), applied
-to the same values the [`baseline`](#g-baseline) writes into the environment
-[component](#g-component)'s slots. The other applies in a rig where the handle
-itself is a root slot value: the condition simply holds the value the `baseline`
-wrote there. One implementation of the field math, evaluated one level up: no
+exported function building a field handle from the component and input values,
+[§4.4][s4-4]), applied to the same values the [`baseline`](#g-baseline) writes
+into the environment [component](#g-component)'s slots. The other applies in a
+rig where the handle itself is a root slot value: the condition simply holds
+the value the `baseline` wrote there. One implementation of the field math, evaluated one level up: no
 pre-sweep, no new mechanism. Where closed-form enforcement of a target is not
 wanted at all, the second escape already covers the case: promote the eliminated
 state coordinates to decision variables and enforce the targets as residuals on
@@ -10281,10 +10282,12 @@ checking shape and type conformance and discarding the result. Every user
 function is probed once, at the initial state; probes see only that state's
 branch ([§12.3][s12-3]).
 
-<a id="g-probe-value"></a>**probe value / input synthesis** — `probe_value(::Type)` fabricates values
-for the one kind of terminal with no producer, root slots
-(`zero(T)`/`false`/first enum/`T()`, overridable). Strictly probe-scoped:
-never an initial slot value, which [§14.6][s14-6] makes a structural barrier ([§12.3][s12-3]).
+<a id="g-probe-value"></a>**probe value / input synthesis** — the fabricated values a build-time probe
+runs on. `probe_value(::Type)` synthesizes them at the one kind of terminal
+with no producer, root slots (`zero(T)`/`false`/first enum/`T()`,
+overridable); from there they flow the probe chain as the probed stages' own
+returns ([§13.1][s13-1]). Strictly probe-scoped: never an initial slot value,
+which [§14.6][s14-6] makes a structural barrier ([§12.3][s12-3]).
 
 <a id="g-probedual"></a>**`ProbeDual`** — the framework's exported canonical concrete probe scalar
 (`ForwardDiff.Dual{ProbeTag, Float64, 1}`), which keys the CI activation
@@ -10626,7 +10629,7 @@ the site column spells the collecting case "build (collected)" ([§13.1][s13-1],
 [Appendix C][sC]).
 
 <a id="g-did-you-mean"></a>**did-you-mean** — the required shape of any name-shaped failure: the
-offending name plus the list-in-hand it should have come from, carried as
+offending name plus the list-in-hand it should have matched, carried as
 payload rather than baked into message text ([§13.2][s13-2]).
 
 <a id="g-error-locality"></a>**error locality** — the property the declaration layer buys: a mistake fails
