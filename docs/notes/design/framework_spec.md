@@ -1048,7 +1048,7 @@ per-level re-exports. You may only connect port-level into submodels held
 nothing more.
 
 **Why.** The rule kills the re-export ceremony where it is ceremony, and
-preserves substitutability where the [boundary](#g-boundary) is load-bearing.
+preserves substitutability where the boundary is load-bearing.
 
 The permission and the restriction meet in a single traversal: a path may
 traverse any chain of concretely-typed fields, and it stops at the first
@@ -3748,7 +3748,8 @@ Every input port has exactly one source ([§6.1][s6-1]), so the resolution is to
 
 - **root-driven, within the GUI's claim → live widget**: [peeks](#g-peek) and stages the
   resolved slot through the GUI's own [staging cell](#g-staging-cell);
-- **component-driven → read-only rendering**: displays the driven value from the
+- **component-driven, or root-driven under another device's claim → read-only
+  rendering**: displays the driven value from the
   [snapshot](#g-snapshot), visually distinct, with the source as provenance ("driven by
   `avionics/throttle_cmd`" — the canonical slash form of [§11.6][s11-6]).
 
@@ -3887,7 +3888,9 @@ present, never enumerated in [Appendix C][sC].
 carries `recent` — the ring this boundary drained, at most sixteen entries;
 `suppressed` — the per-kind counts the ring refused this boundary; `totals` —
 the cumulative per-writer × per-kind counts since the run began, owned
-privately by the loop and *copied* into each status; and `heartbeat`. Beside
+privately by the loop and *copied* into each status; and `heartbeat`, beside
+the `task_state` the loop reads off its own device `Task` handle at
+publication ([§10.2][s10-2]). Beside
 the per-writer records ride the pacer diagnostics ([§8.7][s8-7]). Delta
 plus total is what makes the status legible at any reading cadence: a GUI
 panel refreshing at 60 Hz sees each occurrence once in `recent`, while a
@@ -8471,7 +8474,7 @@ specified here:
 
 | Today (convention) | This design (checked structure) |
 |---|---|
-| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` dissolves (row 34) |
+| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` dissolves (row 35) |
 | Hand-ordered `f_ode!` body (kinematics → airdata → systems → route five `dynamics.u` assignments → dynamics last) | Build-time topological sort; wrong wiring = build error naming the cycle or dangling [port](#g-port) |
 | Velocity state duplicated in `dynamics.x` and `kinematics.u`, kept in sync by hand | One state, one owner; consumers wire to `dyn.vel` |
 | `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | [Summing junctions](#g-summing-junction) at ownership boundaries, one explicit wire per contributor, exported totals ([§6.2][s6-2]) |
