@@ -9910,7 +9910,7 @@ Not a diagnostic *kind* ([§D.9][sD-9]).
 
 <a id="g-generic-holding"></a>**generic holding** — a parent holding a child through a non-concrete field
 type; the child is opaque below its faces, and the wires and interface connections
-referencing those faces *are* the imposed contract, checked per instantiation
+referencing those faces *are* the imposed derived contract, checked per instantiation
 ([§11.8][s11-8], [§6.1][s6-1]).
 
 <a id="g-hybrid-causal-system"></a>**hybrid causal system** — what the framework simulates: continuous flow with
