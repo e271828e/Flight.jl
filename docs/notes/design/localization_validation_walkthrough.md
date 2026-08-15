@@ -1,6 +1,6 @@
 # The θ = 0 validation: input drains, epochs, and the localization trigger
 
-*Companion explainer, non-normative. The spec ([§8.4][s8-4], [§8.6][s8-6]; context in [§2.1][s2-1], [§9.4][s9-4]) wins
+*Companion explainer, non-normative. The spec ([§10.4][s10-4], [§10.6][s10-6]; context in [§2.1][s2-1], [§11.4][s11-4]) wins
 wherever the two disagree. Written against the design as of [D-179][d-179]–[D-182][d-182]: detection
 policy declared by the guard's return type, honest priors under budgeted re-firing,
 `localization_budget`/`firing_budget` as the two event budgets.*
@@ -33,7 +33,7 @@ and the probes sit on opposite sides of an input step:
       under u_old
 ```
 
-The localization trigger is "prior not-holding, holding now" ([§8.4][s8-4]). Its original
+The localization trigger is "prior not-holding, holding now" ([§10.4][s10-4]). Its original
 endpoint argument claimed the bracket's left end stays strictly not-holding because
 the interpolant reproduces the endpoint exactly (x̂(0) = xₙ) and probe sweeps are
 deterministic. That argument silently assumes the θ = 0 probe reproduces the prior's
@@ -63,7 +63,7 @@ drain is the *sole* source of disagreement. This is what makes the validation pr
 conclusive discriminator rather than a heuristic.)
 
 One ordering rule makes the "still consistent" rows true, and the spec makes it
-explicit ([§8.4][s8-4]): the localized-event trigger checks run against the **arrival sweep**
+explicit ([§10.4][s10-4]): the localized-event trigger checks run against the **arrival sweep**
 at tₙ₊₁ — *before* the boundary's due-gated sweep refreshes any discrete cells. So
 probes see the same held cell values the frame actually evolved under, and t\*
 firings strictly precede tₙ₊₁'s boundary sequence.
@@ -151,7 +151,7 @@ jurisdictional check at its door. That is also why the degenerate path warns not
 an input-gated event firing at boundary granularity is correct sampled-input timing,
 and a warning would fire on every such event — pure noise.
 
-Note the symmetry with the *right*-end degeneracy already in [§8.4][s8-4]: t\* = tₙ₊₁
+Note the symmetry with the *right*-end degeneracy already in [§10.4][s10-4]: t\* = tₙ₊₁
 exactly → localization result discarded, event fires inside tₙ₊₁'s ordinary
 iteration. The θ = 0 validation is its left-end mirror, discharging into the same
 mechanism: when localization has nothing to say, the event falls back into the
@@ -183,7 +183,7 @@ budgeted re-firing ([D-181][d-181]) without changing a single step.
 [d-179]: framework_decisions.md#d-179--derive-detection-policy-from-the-guards-return-type
 [d-181]: framework_decisions.md#d-181--replace-once-per-boundary-firing-with-budgeted-re-firing
 [d-182]: framework_decisions.md#d-182--add-a-θ0-validation-probe-to-the-localization-trigger
+[s10-4]: framework_spec.md#104-localization-mechanics
+[s10-6]: framework_spec.md#106-event-iteration-at-boundaries-to-quiescence-budgeted
+[s11-4]: framework_spec.md#114-inbound-per-device-staging-representation-and-the-drain
 [s2-1]: framework_spec.md#21-events-two-detection-policies
-[s8-4]: framework_spec.md#84-localization-mechanics
-[s8-6]: framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted
-[s9-4]: framework_spec.md#94-inbound-per-device-staging-representation-and-the-drain

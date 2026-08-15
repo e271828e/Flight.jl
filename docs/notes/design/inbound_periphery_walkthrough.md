@@ -1,8 +1,8 @@
 # The inbound periphery, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§9.3][s9-3] (slots, claims, the roster freeze), [§9.4][s9-4] (staging and the drain), [§9.7][s9-7] (GUI write path),
-[§10.6][s10-6] (harness cell) and decision [D-044][d-044], [D-093][d-093], [D-096][d-096], [D-106][d-106], [D-174][d-174], [D-176][d-176], [D-177][d-177].
+`framework_spec.md` [§11.3][s11-3] (slots, claims, the roster freeze), [§11.4][s11-4] (staging and the drain), [§11.7][s11-7] (GUI write path),
+[§12.6][s12-6] (harness cell) and decision [D-044][d-044], [D-093][d-093], [D-096][d-096], [D-106][d-106], [D-174][d-174], [D-176][d-176], [D-177][d-177].
 Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
 for the roster freeze ([D-106][d-106]–[D-107][d-107]) and 2026-08-11 for the surface
@@ -11,7 +11,7 @@ harness register as the sole derived surface, uniform sparse trace records,
 declared binding traits). If this document and the spec ever
 disagree, the spec wins.*
 
-Everything in [§9.3][s9-3]–[§9.4][s9-4] answers one question: **how do things outside the loop
+Everything in [§11.3][s11-3]–[§11.4][s11-4] answers one question: **how do things outside the loop
 feed values into a simulation that owns its data exclusively?** FlightCore's
 answer was a lock around the live model. This design's answer is a small
 pipeline of immutable handoffs, configured entirely while the simulation is
@@ -22,7 +22,7 @@ the story.
 
 ## 1. Slots and faces: *what* can be written
 
-The root assembly exports input faces ([§11.6][s11-6]) — named, typed inputs that no
+The root assembly exports input faces ([§8.6][s8-6]) — named, typed inputs that no
 component inside the model produces. Say our aircraft's root exports four:
 
 ```julia
@@ -44,7 +44,7 @@ may write** — the entire outside world (joysticks, network peers, GUI, your
 REPL) influences the model *only* by proposing new slot values. The write
 side addresses them by face *name* (`"throttle"`), never by structural path —
 the root contract is the vocabulary. (The read side is different: snapshot
-consumers address table cells by path or face, [§9.2][s9-2]/[§14.4][s14-4].)
+consumers address table cells by path or face, [§11.2][s11-2]/[§14.4][s14-4].)
 
 ## 2. The roster, attaching, claiming: *who* may write
 
@@ -67,7 +67,7 @@ end
 
 **Attaching** (`attach!(sim, device, binding)`) is: validate the binding's
 face names against the root contract (unknown face → `AttachUnknownFace`),
-admit through [§9.3][s9-3]'s three-part ordered check — **identity** (`AlreadyAttached`),
+admit through [§11.3][s11-3]'s three-part ordered check — **identity** (`AlreadyAttached`),
 **affinity** (at most one `needs_calling_task` holder, `CallerTaskConflict`),
 **claims** (face exclusivity, `ClaimConflict`) — ordered so a failing later
 check always names two *distinct* devices, then compile the staging shape
@@ -90,7 +90,7 @@ is_greedy(::StandardGUIBinding) = true
 Past that point nothing can tell the two apart: the complement is disjoint
 from every incumbent claim by construction, so it validates for exclusivity
 like any other claim and gets the same schema, cell, drain and trace
-([§9.6][s9-6]). A second greedy binding attached afterwards finds nothing left
+([§11.6][s11-6]). A second greedy binding attached afterwards finds nothing left
 and stakes the empty claim — legal, and reported as `EmptyGreedyClaim`.
 
 Because the roster is frozen per run, so is the **partition of the face set**
@@ -100,12 +100,12 @@ printable fact of the run — who writes what, decided before the first frame.
 
 One consequence is deliberate and worth stating early: **device death is not
 detach**. A task that crashes, returns voluntarily, or loses its hardware
-mid-run simply stops filling its cell; the [§10.2][s10-2] heartbeat reports the death
+mid-run simply stops filling its cell; the [§12.2][s12-2] heartbeat reports the death
 by name, and the entry — claims included — persists to run end. The orphaned
 slots hold their last-drained values, and the GUI renders the fact where the
-user is looking ("claimed by `T16000M` — task dead", [§9.7][s9-7]). Recovery is
+user is looking ("claimed by `T16000M` — task dead", [§11.7][s11-7]). Recovery is
 between runs: stop, `detach!`, then `init!` for a fresh trajectory or
-`replay!`-to-end + `run!` to continue the interrupted one ([§10.7][s10-7]).
+`replay!`-to-end + `run!` to continue the interrupted one ([§12.7][s12-7]).
 
 ## 3. Batches and staging cells: *how* a write is proposed
 
@@ -148,7 +148,7 @@ idempotent and survive coalescing.
 At the top of each frame — and only there — the loop takes each cell's
 contents atomically and applies it through the entry's attach-compiled
 **scatter** (position → slot store, statically typed, `nothing` skips — the
-mirror of [§9.2][s9-2]'s output gather), in attachment order (the harness cell
+mirror of [§11.2][s11-2]'s output gather), in attachment order (the harness cell
 last, [section 5](#5-registers-modes-of-use-not-more-machinery)):
 
 ```julia
@@ -177,7 +177,7 @@ One retention detail ([D-176][d-176]): **every** drained batch is converted at t
 drain into sparse (position ⇒ value) pairs against the writer's schema, so
 trace size tracks information rather than surface width and every consumer
 meets one record format; replay converts back once, up front, off the loop
-([§10.7][s10-7]).
+([§12.7][s12-7]).
 
 ## 5. "Registers": modes of use, not more machinery
 
@@ -188,14 +188,14 @@ register). There are two:
 - **The claimed register**: enumerate faces in your binding — or declare
   `is_greedy` and let the framework enumerate the remainder for you — claim
   them at attach, own them exclusively. The joystick lives here; so does the
-  GUI ([§9.7][s9-7]), which is an ordinary claimed writer whose claim happens to
+  GUI ([§11.7][s11-7]), which is an ordinary claimed writer whose claim happens to
   be computed, and so do several interactive front ends at once when their
   claims are explicit and disjoint (a web console on the autopilot faces, a
   local GUI on the stick faces). The only thing still limited to one holder
   per roster is `needs_calling_task`.
 - **The harness register**: the framework-owned task-free entry point
   `stage!(sim, "face" => value, ...)` and its always-present cell
-  ([§10.6][s10-6]). This is the design's one **derived** surface — the unclaimed
+  ([§12.6][s12-6]). This is the design's one **derived** surface — the unclaimed
   remainder of the run's partition, the complement of the union of all
   claims, computed rather than staked and every bit as static for the run as
   a claim set. It has its own compiled positional shape and scatter over that
@@ -234,7 +234,7 @@ enumerated, currently unclaimed. `map_input` dutifully produces
 `flaps` has no position in the peer's schema → `OutOfClaimEntry`, attributed
 to the device whose mapping drifted, before the value ever nears the loop.
 
-The GUI is therefore not an exception: one device contract ([§9.6][s9-6]), one
+The GUI is therefore not an exception: one device contract ([§11.6][s11-6]), one
 claim mechanism with two claim *sources*, one staging rule, one checkless
 drain. Opportunistic writing by autonomous devices does not exist — a device
 that wants a face enumerates it, and greediness is an explicit declaration —
@@ -257,7 +257,7 @@ its authority, unchanged, to every frame of the run.
 Joystick attached while stopped (claims `throttle`, `elevator`); GUI
 attached next under the greedy binding (claim computed at that instant:
 `flaps`, `brake`); `run!` reads the roster, bakes widget liveness
-([§9.7][s9-7]) and specializes the drain; slots as above.
+([§11.7][s11-7]) and specializes the drain; slots as above.
 
 1. *Between frames*: the joystick task polls at its own rate, runs
    `map_input` (deadzone, expo — pure, on the device task), stages
@@ -286,13 +286,13 @@ attached next under the greedy binding (claim computed at that instant:
 [d-174]: framework_decisions.md#d-174--re-class-the-gui-as-an-ordinary-enumerated-writer
 [d-176]: framework_decisions.md#d-176--unify-trace-retention-on-one-sparse-record-format
 [d-177]: framework_decisions.md#d-177--re-found-the-periphery-on-mandatory-roots-plus-declared-traits
-[s10-2]: framework_spec.md#102-loop-scheduling-wait-primitive-yields-thread-budget
-[s10-6]: framework_spec.md#106-run-lifecycle-and-partial-advance
-[s10-7]: framework_spec.md#107-replay-the-trace-re-drives-the-ordinary-loop
-[s11-6]: framework_spec.md#116-paths-wiring-and-faces
+[s11-2]: framework_spec.md#112-outbound-snapshot-publication
+[s11-3]: framework_spec.md#113-inbound-root-input-slots-claims-and-the-frozen-roster
+[s11-4]: framework_spec.md#114-inbound-per-device-staging-representation-and-the-drain
+[s11-6]: framework_spec.md#116-devices-one-authoring-contract-no-taxonomy
+[s11-7]: framework_spec.md#117-the-gui-write-path-port-resolution-peek-staging-contract
+[s12-2]: framework_spec.md#122-loop-scheduling-wait-primitive-yields-thread-budget
+[s12-6]: framework_spec.md#126-run-lifecycle-and-partial-advance
+[s12-7]: framework_spec.md#127-replay-the-trace-re-drives-the-ordinary-loop
 [s14-4]: framework_spec.md#144-two-application-registers-over-one-plan
-[s9-2]: framework_spec.md#92-outbound-snapshot-publication
-[s9-3]: framework_spec.md#93-inbound-root-input-slots-claims-and-the-frozen-roster
-[s9-4]: framework_spec.md#94-inbound-per-device-staging-representation-and-the-drain
-[s9-6]: framework_spec.md#96-devices-one-authoring-contract-no-taxonomy
-[s9-7]: framework_spec.md#97-the-gui-write-path-port-resolution-peek-staging-contract
+[s8-6]: framework_spec.md#86-paths-wiring-and-faces

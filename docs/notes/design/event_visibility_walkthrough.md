@@ -1,7 +1,7 @@
 # Event visibility at a boundary, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§5.3][s5-3] (step-boundary semantics), [§8.6][s8-6] (event iteration)
+`framework_spec.md` [§5.3][s5-3] (step-boundary semantics), [§10.6][s10-6] (event iteration)
 and decision [D-154][d-154], which settled the visibility rule below (the table is
 written only by sweeps; a component fires at most one event per round) on
 2026-08-07, superseding the round-3 rule of [D-016][d-016]/[D-100][d-100]/[D-152][d-152]. If this document
@@ -28,7 +28,7 @@ table[battery_bus_voltage] = 0.0     # cell now → ref to 0.0
 
 The old value is untouched by the overwrite. Anyone who already loaded the
 old reference keeps a perfectly coherent view of `24.0` for as long as they
-hold it, and the GC keeps it alive. This is exactly the mechanism [§9.2][s9-2] uses
+hold it, and the GC keeps it alive. This is exactly the mechanism [§11.2][s11-2] uses
 to publish snapshots across tasks; here the same property is what lets a
 handler's bundle stay meaningful no matter what later sweeps do.
 
@@ -51,15 +51,15 @@ round's sweep left, because that is the only table there is.
 
 ## 3. The round, and who writes what
 
-At a step boundary the event phase iterates ([§8.6][s8-6]): rounds of
+At a step boundary the event phase iterates ([§10.6][s10-6]): rounds of
 
 > re-run the boundary sweep → evaluate **all** guards once → fire the
 > eligible events, **at most one per component** → repeat until a round fires
 > nothing,
 
 with each declared event firing at most `firing_budget` times per boundary
-([§8.6][s8-6], default 4, eligibility read against its last-observed sample), and declaration
-order ([§11.2][s11-2]) picking among a component's simultaneously-eligible events.
+([§10.6][s10-6], default 4, eligibility read against its last-observed sample), and declaration
+order ([§8.2][s8-2]) picking among a component's simultaneously-eligible events.
 Firing an event means `handler → project`. That is all.
 
 Now the structural fact the whole design leans on: **the signal table has a
@@ -68,7 +68,7 @@ function: it returns `(; x, m)` as immutable values, and the *framework*
 latches them into the component's state stores immediately after the return,
 before `project`. Latching writes *stores*, not cells; `project` normalizes
 those stores; auto-publication is a stage-1 sweep act like any other
-([§12.5][s12-5]). Nothing — no user code, no framework step — writes the table
+([§9.5][s9-5]). Nothing — no user code, no framework step — writes the table
 between the sweep that opened a round and the sweep that opens the next.
 
 So the set of table cells that can change between a round's start and its
@@ -82,7 +82,7 @@ table before B's handler runs, then whether B sees pre- or post-transition A
 would depend on *execution order* — and "declaration order" orders events
 only within one component. Cross-component order would fall to the build's
 executor order, a schedule artifact that rewiring silently permutes: model
-semantics leaking from a build detail, the same disease [§8.6][s8-6] diagnosed when
+semantics leaking from a build detail, the same disease [§10.6][s10-6] diagnosed when
 it rejected the single-pass cascade.
 
 Under [§3](#3-the-round-and-who-writes-what) the hazard has no way to arise. A's transition reaches nothing
@@ -213,12 +213,12 @@ rule makes.
 [d-100]: framework_decisions.md#d-100--freeze-u-at-round-start-for-within-round-event-visibility
 [d-152]: framework_decisions.md#d-152--join-auto-publication-to-the-per-event-re-decode-at-stage-1
 [d-154]: framework_decisions.md#d-154--remove-per-event-re-decode-serialize-same-component-events
-[s11-2]: framework_spec.md#112-the-declaration-inventory
-[s12-5]: framework_spec.md#125-the-always-on-conformance-check
+[s10-6]: framework_spec.md#106-event-iteration-at-boundaries-to-quiescence-budgeted
+[s11-2]: framework_spec.md#112-outbound-snapshot-publication
 [s13-4]: framework_spec.md#134-runtime-failures-one-catch-site-an-execution-cursor
 [s4-1]: framework_spec.md#41-immutable-value-semantics
 [s5-2]: framework_spec.md#52-two-stage-outputs-signatures-bundles-and-the-hand-off-laws
 [s5-3]: framework_spec.md#53-structural-feedthrough-stage-roles-schedule-and-step-boundaries
 [s7]: framework_spec.md#7-state-and-data-representation
-[s8-6]: framework_spec.md#86-event-iteration-at-boundaries-to-quiescence-budgeted
-[s9-2]: framework_spec.md#92-outbound-snapshot-publication
+[s8-2]: framework_spec.md#82-the-declaration-inventory
+[s9-5]: framework_spec.md#95-the-always-on-conformance-check

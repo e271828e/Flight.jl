@@ -38,13 +38,13 @@ than the reference covers it:
 
 - **Hybrid execution** — continuous flow, multi-rate discrete updates, zero-crossing
   events, ZOH between ticks — is the core formalism ([§2][s2]), with the ZOH delivered *by
-  construction* through the interior/boundary sweep split ([§8.5][s8-5]) rather than by
+  construction* through the interior/boundary sweep split ([§10.5][s10-5]) rather than by
   runtime gating.
 - **Event detection** with cheap boundary detection plus opt-in localization
-  ([§2.1][s2-1], [§8.4][s8-4]) matches Simulink's zero-crossing machinery in semantics; the explicit
+  ([§2.1][s2-1], [§10.4][s10-4]) matches Simulink's zero-crossing machinery in semantics; the explicit
   two-policy split is arguably cleaner than a global zero-crossing option.
 - **Virtual hierarchy**: assemblies flatten for scheduling and survive for navigation
-  ([§3.3][s3-3]) — exactly Simulink's virtual subsystem, and deliberately *only* that. [§8.5][s8-5]
+  ([§3.3][s3-3]) — exactly Simulink's virtual subsystem, and deliberately *only* that. [§10.5][s10-5]
   records why atomic subsystems are an artificial-loop factory we refuse to
   reproduce.
 - **FSMs** fall out of the mode/event facets of the continuous primitive ([§3.1][s3-1]) —
@@ -52,7 +52,7 @@ than the reference covers it:
 - **Trim and linearization** ([§14.7][s14-7]–[§14.10][s14-10]) are engine-integrated, with exact AD
   Jacobians through the eltype-generic sweep ([§7.2][s7-2]); perturbation-based `linmod` is
   strictly weaker.
-- Guarantees the reference lacks: deterministic replay ([§2.2][s2-2], [§9.5][s9-5]), the
+- Guarantees the reference lacks: deterministic replay ([§2.2][s2-2], [§11.5][s11-5]), the
   zero-allocation invariant ([§7.5][s7-5]), and the error-locality discipline of [§13][s13].
 
 ### 1.2 Reachable through seams: the extension list
@@ -60,14 +60,14 @@ than the reference covers it:
 These gaps can be closed with limited, seam-respecting changes. Roughly in order of
 increasing effort:
 
-1. **Solver suite (adaptive, stiff, implicit).** The stepper seam ([§8.2][s8-2]) was shaped
+1. **Solver suite (adaptive, stiff, implicit).** The stepper seam ([§10.2][s10-2]) was shaped
    for exactly this: arbitrary `h`, dense output on demand, one-step methods only. An
    `OrdinaryDiffEq`-backed stepper as a package extension is already sanctioned prose
    in the spec. Adaptive stepping composes with the tick grid the same way Simulink
    handles sample-time hits: stretch steps between boundaries, land on them exactly.
    The multistep exclusion is a method-class restriction (event resets invalidate
    history), not a capability loss. Offline-mode only, which is fine.
-2. **Sample-time phase offsets.** Recorded in [§8.5][s8-5] as "no phase offsets in the first
+2. **Sample-time phase offsets.** Recorded in [§10.5][s10-5] as "no phase offsets in the first
    cut (no demonstrated use)". The gating machinery extends naturally; worked out in
    [`sample_time_proposal.md`](sample_time_proposal.md).
 3. **Non-trivial rate ratios.** Less of a gap than it looks: the harmonic grid
@@ -90,9 +90,9 @@ increasing effort:
    rather than limited. A triggered FSM is already covered (continuous component
    with no `x`, events at boundary granularity). Running a discrete component's `g`
    off a signal edge rather than a timer is closer than it first appears — the due
-   set is already per-boundary runtime data ([§8.5][s8-5]), and the interior/boundary sweep
+   set is already per-boundary runtime data ([§10.5][s10-5]), and the interior/boundary sweep
    split does not care *why* an entry is due — but the `Δt` story breaks: a
-   triggered component has no period, and [§8.5][s8-5] makes `Δt` a schedule-derived bundle
+   triggered component has no period, and [§10.5][s10-5] makes `Δt` a schedule-derived bundle
    field that discretized laws consume. It would need elapsed-time-since-last-firing
    semantics and a declaration surface for trigger wiring. Composable with the
    architecture, but real spec work, not a patch.
@@ -115,13 +115,13 @@ choice, not an oversight.
   algebraic variables — which are, definitionally, algebraic loops). The same fork as
   the previous item, larger.
 - **Arbitrary/asynchronous sample times** via a time-ordered tick queue. Rejected in
-  [§8.5][s8-5]; analyzed in depth in section 1.4 below, because it is the closed axis whose boundary
+  [§10.5][s10-5]; analyzed in depth in section 1.4 below, because it is the closed axis whose boundary
   is least obvious.
 - **Variable-size signals / dynamic structure.** Fundamental conflict with the cell
-  store, the flat state backing ([§7.1][s7-1]) and the compiled executor ([§12.7][s12-7]) — all sized
+  store, the flat state backing ([§7.1][s7-1]) and the compiled executor ([§9.7][s9-7]) — all sized
   at build — and with the zero-allocation invariant.
 - **Shared mutable state** (Data Store Memory, Goto/From). Excluded on principle:
-  no component reads another's state ([§3.2][s3-2]), no shared mutable model ([§9.1][s9-1]).
+  no component reads another's state ([§3.2][s3-2]), no shared mutable model ([§11.1][s11-1]).
   Emulation via ports is always available, and the reference's own documentation
   treats data stores as a diagnostics-laden escape hatch.
 
@@ -129,8 +129,8 @@ choice, not an oversight.
 
 Under the harmonic grid, every tick instant lies on a **static lattice** known at
 build time: `t = (k·K + φ)·Δt_base`. Everything downstream exploits this: the due set
-is a pure function of the frame index (counter modulo, [§8.5][s8-5]), frames have fixed
-length for real-time pacing ([§8.7][s8-7]), and the trace needs no tick timestamps because
+is a pure function of the frame index (counter modulo, [§10.5][s10-5]), frames have fixed
+length for real-time pacing ([§10.7][s10-7]), and the trace needs no tick timestamps because
 tick times are derivable. Ratios and offsets *enlarge* the lattice; they never change
 its nature.
 
@@ -156,7 +156,7 @@ tick times as runtime data**. This buys three distinct things:
   runtime-computed but external to model time.
 
 How much of this is genuinely lost? **(c)** the design answers by position rather
-than omission: asynchrony is an I/O phenomenon and lives at the periphery ([§9][s9]) —
+than omission: asynchrony is an I/O phenomenon and lives at the periphery ([§11][s11]) —
 staged writes entering at boundaries, timestamped in the trace — keeping
 model-internal time deterministic and replayable. **(b)** is mostly recoverable at
 boundary resolution with machinery we have: a guard on the wrapped crank angle is a
@@ -171,7 +171,7 @@ at the periphery, one is nearly reachable via events, and one is rare.
 ### 1.5 The bias, named
 
 Re-examination showed the two decisions most suspected of `FlightCore` inheritance
-were in fact re-derived on independent grounds: parent-relative rates ([§8.5][s8-5]
+were in fact re-derived on independent grounds: parent-relative rates ([§10.5][s10-5]
 explicitly identifies `Subsampled`'s parent-relative multipliers as a call-tree
 artifact, then re-chooses relative declaration because *ratios* are intrinsic to a
 control architecture while absolute rates are deployment decisions) and virtual
@@ -187,7 +187,7 @@ second persona requires no change to the execution semantics and no reversal of 
 recorded rejection: a `Group` library type (Addendum A), the rate-declaration
 extensions of `sample_time_proposal.md`, and item 7 of section 1.2 would cover it. The load-bearing observation
 throughout: **Stratum A flattens whatever was declared into the same `Build`
-artifact** ([§12.1][s12-1]–[§12.2][s12-2]) — resolved wires, absolute divisors, schedule — so the
+artifact** ([§9.1][s9-1]–[§9.2][s9-2]) — resolved wires, absolute divisors, schedule — so the
 sweep, the cell store and the executor never see how the model was written down.
 These are authoring-surface increments, not execution-model changes.
 
@@ -253,7 +253,7 @@ Everything rides seams already in place; no new evaluation machinery. Mechanism,
 verified end to end in plain Julia (2026-08-12):
 
 ```julia
-struct Actuator{G,L}     # parent generic over children — the §11.5 shape
+struct Actuator{G,L}     # parent generic over children — the §8.5 shape
     gain::G
     lag::L
 end
@@ -277,15 +277,15 @@ partials(f(a, xd, ud), 1)              # ∂ẋ/∂k = u/τ = 6.0, exact
   clause is already doing exactly this job.
 - **Parents must be generic over child types.** `Actuator{G,L}` absorbs a
   `Gain{Dual}` child; a parent pinning `gain::Gain{Float64}` re-erects the wall one
-  level up (loudly, at assembly construction). [§11.5][s11-5]'s type-based assembly shape
+  level up (loudly, at assembly construction). [§8.5][s8-5]'s type-based assembly shape
   already has this property — it is [§7.2][s7-2]'s "no `::SomeType{Float64}` annotations"
   rule transposed from method signatures to field declarations.
 - **Parameters mix; storage does not.** Cell types and the `x`-buffer eltype are
-  declarations *evaluated at the activation scalar* ([§7.2][s7-2], [§11.2][s11-2]), never inferred
+  declarations *evaluated at the activation scalar* ([§7.2][s7-2], [§8.2][s8-2]), never inferred
   from traffic. A seeded world therefore runs under the matching `Dual` activation:
   homogeneous `Dual` storage, heterogeneous parameters. Under the nominal `Float64`
   activation the first `Dual` product to reach a `Float64` cell throws — the same
-  loud-failure channel as [§12.4][s12-4]'s probe. Corollary: parameter duals carry the
+  loud-failure channel as [§9.4][s9-4]'s probe. Corollary: parameter duals carry the
   framework's canonical probe tag family, not private tags.
 - **Nominal cost is zero.** At the `Float64` activation a parametric field
   specializes to the same concrete struct; `@kwdef` defaults pin the no-argument
@@ -318,7 +318,7 @@ parameters carry partials is a value fact, not a type fact.
   steady-state sensitivity). But at an event crossing the crossing *time* depends on
   the parameter, and naive propagation misses that term; the standard sensitivity
   jump correction is research-grade machinery deliberately out of scope — consistent
-  with [§8.4][s8-4]'s rejection of Newton/AD localization on C⁰ grounds.
+  with [§10.4][s10-4]'s rejection of Newton/AD localization on C⁰ grounds.
 
 ### 3.5 What adoption would still need
 
@@ -337,7 +337,7 @@ parameter carriers, or participation is opted into per component.
 ## Addendum A. The `Group` component: on-the-fly assemblies
 
 **Folded into the spec (2026-08-12, [D-184][d-184]).** `Group` is now normative: the
-pattern, its sketch and the anonymous-functions framing live in [§11.5][s11-5],
+pattern, its sketch and the anonymous-functions framing live in [§8.5][s8-5],
 and the component joins [§13.7][s13-7]'s starting inventory as its one
 persona-admitted member. Nothing of the addendum's argument was lost in the
 move; this heading remains so section 1.5's persona discussion keeps its
@@ -347,12 +347,13 @@ pointer.
 [d-184]: framework_decisions.md#d-184--fold-group-into-the-spec-as-an-ordinary-library-component
 [d-185]: framework_decisions.md#d-185--adopt-the-phased-two-register-sample-time-declaration
 [d-187]: framework_decisions.md#d-187--make-the-bound-schedule-a-named-artifact-with-exact-grid-diagnostics
-[s11-2]: framework_spec.md#112-the-declaration-inventory
-[s11-5]: framework_spec.md#115-assembly-declaration-type-based-class-by-declaration-shape
-[s12-1]: framework_spec.md#121-three-strata
-[s12-2]: framework_spec.md#122-the-build-artifact
-[s12-4]: framework_spec.md#124-activations-executable-sets-laziness-caching
-[s12-7]: framework_spec.md#127-the-compiled-executor
+[s10-2]: framework_spec.md#102-the-stepper-seam
+[s10-4]: framework_spec.md#104-localization-mechanics
+[s10-5]: framework_spec.md#105-multi-rate-tick-scheduling
+[s10-7]: framework_spec.md#107-real-time-pacing
+[s11]: framework_spec.md#11-runtime-periphery-the-data-plane
+[s11-1]: framework_spec.md#111-no-shared-mutable-model-staged-writes-snapshot-reads
+[s11-5]: framework_spec.md#115-inbound-the-input-trace
 [s13]: framework_spec.md#13-error-discipline
 [s13-7]: framework_spec.md#137-tooling-consequences-provenance-and-the-component-library
 [s14-1]: framework_spec.md#141-conditions-are-path-addressed-overlays-on-the-declared-defaults
@@ -370,10 +371,9 @@ pointer.
 [s7-1]: framework_spec.md#71-continuous-state-structured-immutable-flat-backing
 [s7-2]: framework_spec.md#72-numeric-genericity-eltype
 [s7-5]: framework_spec.md#75-allocation-policy-a-scoped-invariant
-[s8-2]: framework_spec.md#82-the-stepper-seam
-[s8-4]: framework_spec.md#84-localization-mechanics
-[s8-5]: framework_spec.md#85-multi-rate-tick-scheduling
-[s8-7]: framework_spec.md#87-real-time-pacing
-[s9]: framework_spec.md#9-runtime-periphery-the-data-plane
-[s9-1]: framework_spec.md#91-no-shared-mutable-model-staged-writes-snapshot-reads
-[s9-5]: framework_spec.md#95-inbound-the-input-trace
+[s8-2]: framework_spec.md#82-the-declaration-inventory
+[s8-5]: framework_spec.md#85-assembly-declaration-type-based-class-by-declaration-shape
+[s9-1]: framework_spec.md#91-three-strata
+[s9-2]: framework_spec.md#92-the-build-artifact
+[s9-4]: framework_spec.md#94-activations-executable-sets-laziness-caching
+[s9-7]: framework_spec.md#97-the-compiled-executor
