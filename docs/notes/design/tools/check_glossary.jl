@@ -40,6 +40,10 @@ const WHITELIST = Dict(
     "g-schema-vs-layout" => "glossary-coined recall key; body says schema/layout separately",
     "g-fragment-tree" => "glossary-coined recall key; body says fragment functions",
     "g-service-lifecycle" => "glossary-coined recall key; body says run lifecycle",
+    # orphaned by the class-B glossary sense audit (2026-08-15): the anchor's
+    # sole body link was a subject-verb mis-parse ("the trace records...",
+    # verb "to record"), not the noun compound; delinked, leaving no body use
+    "g-trace-record" => "sense audit: sole link was a mis-parsed verb use, not the noun",
 )
 
 "Split the file at Appendix D. Returns (body, glossary) line vectors."

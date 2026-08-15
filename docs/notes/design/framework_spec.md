@@ -284,7 +284,7 @@ duplicate the discrete tier's own state semantics under another name.
 
 ### 3.3 Assembly
 
-Pure composition: submodels + child connections + [boundary](#g-boundary) [faces](#g-face). **No dynamics of its own.**
+Pure composition: submodels + child connections + boundary [faces](#g-face). **No dynamics of its own.**
 Hybridness emerges at the [assembly](#g-assembly) level (an aircraft = continuous vehicle parts +
 discrete avionics parts). The two-leaf split was upheld against the
 integrate-and-dump challenge ([§15.5][s15-5], row 56). Assemblies are flattened away for scheduling but retained as
@@ -343,7 +343,7 @@ own later functions, private by construction ([§5.2][s5-2], [§11.3][s11-3]). A
 ### 4.3 Table mechanics and port granularity
 
 [§4.2][s4-2] fixed the [port](#g-port) as the addressable unit. Four questions remain:
-what a port is on a [component](#g-component)'s [boundary](#g-boundary), how values travel into cells and
+what a port is on a [component](#g-component)'s boundary, how values travel into cells and
 out of them, what a port may hold, and how much a single port should carry. The
 last question has two answers, one owed to the parties that read a port and one
 to the parties that write it.
@@ -684,7 +684,7 @@ both. Padding forms — `((;), m⁺)`, `(x⁺, (;))` — do not exist
 (row 90, on row 74's argument-side ground).
 
 Semantics per key: `x` present ⇒ the value is complete against the state field
-set; `m` present ⇒ the names-subset [predicate](#g-predicate); an unknown key ⇒
+set; `m` present ⇒ the names-subset predicate; an unknown key ⇒
 did-you-mean against `{x, m}` — the same `FieldError`-shaped machinery
 [§13.2][s13-2] builds for bundles, now running in both directions
 ([§12.5][s12-5]).
@@ -788,7 +788,7 @@ Note the systemic consequence: *evaluating the [RHS](#g-flow) means running the 
 There is no incremental `f`-only re-evaluation. Nothing is lost by that, because
 implicit solvers, linearization and trim already work this way — seed `x`, run the
 composite. [§8.3][s8-3]/[§8.4][s8-4] restate that consequence as a property of the
-execution model. RHS evaluations and guard [probes](#g-probe) alike run the *interior*
+execution model. RHS evaluations and guard probes alike run the *interior*
 sweep, the continuous-only variant of [§8.5][s8-5]; discrete entries are absent from it
 by construction, so discrete [cells](#g-cell) hold across the step.
 
@@ -861,7 +861,7 @@ classic resolution by mutable caching, by design.
 
 A [component](#g-component) that bundles a no-[feedthrough](#g-feedthrough) output with a feedthrough output in one
 atomic evaluation unit can be **[port](#g-port)-level acyclic yet unschedulable** — Simulink's
-"artificial [algebraic loop](#g-algebraic-loop)". The canonical instance in this domain is rigid-body
+"artificial algebraic loop". The canonical instance in this domain is rigid-body
 dynamics: velocity out is pure state, acceleration out is feedthrough from total
 force. The [two-stage split](#g-stage-function) resolves it, and it is the rung that absorbs most of the
 class. The `VehicleDynamics` instance ([§15.1][s15-1]) is velocity state-only with
@@ -874,7 +874,7 @@ cross-couple through a neighbor: port-level acyclic, stage-level cyclic. The tra
 - **Re-factor the [contract](#g-contract).** Before moving any code, re-examine the cycle's wires. An
   input the neighbor consumes *only in a fallback branch* is the archetypal false
   dependency: the neighbor is computing, on the component's behalf, a fallback whose
-  semantics belong on the component's own side of the [boundary](#g-boundary). Move the branch to its
+  semantics belong on the component's own side of the boundary. Move the branch to its
   natural owner and the wire disappears.
 
   The canonical instance is the landing gear's strut/steering pair. The steering
@@ -956,7 +956,7 @@ that cycle: genuine → "insert a state"; artificial → the remedy ladder
 
 **Detection and naming.** A cycle surfaces as a topological-sort stall in
 [Stratum](#g-stratum) B (one of the build's three phases: structure, schedule, activation).
-The stalled subgraph is decomposed into **strongly connected [components](#g-component)**.
+The stalled subgraph is decomposed into **strongly connected components**.
 Each nontrivial SCC names one cyclic cluster exactly, and each cluster becomes
 one diagnostic: the cluster's members and the wires among them, presented as one
 readable loop in the canonical slash form ([§11.6][s11-6],
@@ -1293,7 +1293,7 @@ derivative is a `T`, and an `SArray` leaf's is the same `SArray` at `T`. This
 is the vocabulary rule paying rent: an invariant-carrying leaf like a unit
 quaternion has a derivative off its own type, and `Ẋ` would need a separate
 derivation; here the attitude leaf is an `SVector{4,T}` and so is its rate.
-The conformance [predicate](#g-predicate) is structural: *each field of `f`'s return
+The conformance predicate is structural: *each field of `f`'s return
 scatters into its field's block at `T`* ([§12.5][s12-5] states the check). That makes
 derivative completeness a property of the layout rather than of author
 discipline. There is deliberately **no `derivative_type` hook** (row 190).
@@ -1437,7 +1437,7 @@ nested structs and RNG state all qualify. RNG state — the four `UInt64`s of
 `Xoshiro` — is required to live in discrete state, for deterministic
 [replay](#g-replay).
 
-**[Snapshots](#g-snapshot) are free.** Copying a store copies a reference to
+**Snapshots are free.** Copying a store copies a reference to
 immutable data, so checkpoint and replay of the entire discrete side is "copy
 the store values."
 
@@ -1457,7 +1457,7 @@ information between calls.
 
 The framework **never inspects or mutates a workspace**. The workspace is an
 opaque, opt-in escape hatch from value semantics, used at the author's own
-risk, and its rules are [contract](#g-contract), not checks. At call entry,
+risk, and its rules are contract, not checks. At call entry,
 contents are unspecified beyond the structure the allocator itself established:
 a plan or factorization configured at allocation is valid from then on. Scratch
 is garbage until written this call, and nothing a previous call left behind may
@@ -1575,7 +1575,7 @@ commit.
 - **Periodic [ticks](#g-tick) and event handlers** — episodic execution, a tick when
   due and a handler only on firing. Allocation here is zero by idiom: the
   [workspace](#g-workspace) (component-declared mutable scratch arriving as the `ws` bundle
-  field) and [snapshot](#g-snapshot) pattern, plus immutable-value returns. The rare
+  field) and snapshot pattern, plus immutable-value returns. The rare
   exception has a documented tolerance, scoped per body by the seam's
   granularity so it never loosens the continuous assertions.
 - **Logging**: amortized-zero. Snapshots are records stored *inline* in a
@@ -1616,7 +1616,7 @@ boundary sequence).
 **Rule.** All six are **framework code, unconditionally**. The loop is written
 here, not assembled out of callbacks registered with a third-party solver.
 
-**Why.** The step-boundary [contract](#g-contract) is this design's central
+**Why.** The step-boundary contract is this design's central
 invariant, and only a loop the framework owns can enforce it by construction
 rather than by convention. Choreographing the same sequence as an ordered
 `CallbackSet` inside a foreign event loop is rejected on exactly that ground
@@ -1633,7 +1633,7 @@ without the loop changing.
 
 #### What the seam requires of a backend
 
-The seam [contract](#g-contract) has three clauses.
+The seam contract has three clauses.
 
 - **Advance by arbitrary `h`.** This is required anyway: the loop lands on
   [tick](#g-tick) [boundaries](#g-boundary), and it resumes from a
@@ -2085,7 +2085,7 @@ static rather than a runtime test (row 147).
 
 - The **[interior sweep](#g-sweep)** walks *continuous entries only*. RK stage
   evaluations ([§8.3][s8-3]) and localization [guard](#g-guard)
-  [probes](#g-probe) ([§8.4][s8-4]) run this variant. The ZOH therefore holds
+  probes ([§8.4][s8-4]) run this variant. The ZOH therefore holds
   mid-step **by construction**: discrete entries are not gated out at runtime,
   they are absent from the walk at compile time. The hot path carries no gating
   test at all.
@@ -2220,7 +2220,7 @@ fastest relative member**, the member that then gets `K = 1`.
 relative phase selects among scope ticks that already exist, so it never
 refines the base grid. And it cannot place a tick *between* scope ticks:
 staggering off-grid means declaring the offset in seconds, or declaring the
-scope base finer than its fastest member so unused [slots](#g-slot) exist.
+scope base finer than its fastest member so unused slots exist.
 
 #### An `Absolute` entry detaches its child from the scope's grid
 
@@ -2292,7 +2292,7 @@ simulation**.
 A GPS receiver emitting at 1 Hz, a bus schedule, an ADC pipeline's fixed
 conversion offset are as intrinsic to the assembly as its wiring. Forcing them
 to the root breaks encapsulation, since the root would have to know
-[device](#g-device) internals to re-declare them.
+device internals to re-declare them.
 
 "Run the controller at 400 Hz in this study" remains a deployment choice, and
 the existing idiom remains its answer: the assembly exposes its multiplier as a
@@ -2568,7 +2568,7 @@ applies only forward (row 21); un-pause re-anchors for the same reason. Debt is
 cleared at re-anchor: a deliberate user action is a natural sync point, and the
 counters record what was forgiven.
 
-**Deadline law: absolute [schedule](#g-schedule) with bounded [debt](#g-pacing)** (row 21). Frame deadlines come from
+**Deadline law: absolute schedule with bounded [debt](#g-pacing)** (row 21). Frame deadlines come from
 the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent frames
 repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
 (GC, scheduler) are invisible. Debt beyond a threshold — **five frames' worth of
@@ -2626,7 +2626,7 @@ statistics are published as [framework status](#g-framework-status) (the frozen
 diagnostics value each snapshot carries beside the table) for GUI and logs.
 Today's `SimControl` fields are the precedent.
 
-**Forward pointers.** The wait interval is the natural staging [slot](#g-slot) for externally
+**Forward pointers.** The wait interval is the natural staging slot for externally
 injected inputs, applied at the next boundary; the staging rules — and the
 concurrency model generally, which [§8.3][s8-3] constrains but does not decide — belong to
 [§9][s9], [§10][s10].
@@ -2644,7 +2644,7 @@ data crosses between them and the [§8][s8] loop:
   - root input [slots](#g-slot), [claims](#g-claim) and the [frozen roster](#g-roster) ([§9.3][s9-3]);
   - per-device staging and the [drain](#g-drain) ([§9.4][s9-4]);
   - the input [trace](#g-trace) ([§9.5][s9-5]);
-- the device authoring [contract](#g-contract) ([§9.6][s9-6]);
+- the device authoring contract ([§9.6][s9-6]);
 - the GUI write path ([§9.7][s9-7]);
 - the third cross-task channel, runtime diagnostics and liveness ([§9.8][s9-8]).
 
@@ -2709,7 +2709,7 @@ device rostered, the loop runs on the calling task.
 | spawned tasks | one per rostered device | the loop, plus one per other rostered device |
 
 The loop-on-the-calling-task case is the unattended register. It is what the synchronous
-rethrow ([§13.4][s13-4]) presupposes, and what lets parallel unattended [sweeps](#g-sweep) thread
+rethrow ([§13.4][s13-4]) presupposes, and what lets parallel unattended sweeps thread
 `run!` inline with no nested task fan-out: one immutable [`Build`](#g-build) is shared
 across the workers ([§12.2][s12-2]), and each `Simulation` owns its own [buffers](#g-buffer).
 Pre-materializing the sweep's [activations](#g-activation) — its per-eltype
@@ -2724,7 +2724,7 @@ failed returns the loop to the calling task.
 
 **Spawn-inside-`run!` is the start gate.** A task exists only once the run it
 serves exists. Any first-boundary synchronization a device needs is the
-counter-plus-condition [predicate](#g-predicate) wait ([§10.3][s10-3]), never an `Event` latch
+counter-plus-condition predicate wait ([§10.3][s10-3]), never an `Event` latch
 (row 93).
 
 Two rules bind the implementation:
@@ -2822,7 +2822,7 @@ references: the same objects, zero extra copies. The per-step `deepcopy` detour
 of the `SavingCallback` disappears. The cost is one snapshot allocation per
 boundary, on the framework side of the [§7.5][s7-5] scope, which already carved out
 logging. Logged snapshots are not garbage at all; unlogged ones die young.
-Preallocated snapshot [buffers](#g-buffer) are rejected (row 23).
+Preallocated snapshot buffers are rejected (row 23).
 
 **Retention: the trace's kill switch, plus [decimation](#g-decimation).** The log takes the
 same plain on/off switch the trace has ([§9.5][s9-5]), and additionally a
@@ -2965,7 +2965,7 @@ the *only* thing the periphery may write. The GUI reaches them through the
 resolution ([§9.7][s9-7]), and control commands are not writes ([§10.1][s10-1]).
 [Devices](#g-device), mappings, the [trace](#g-trace) and the GUI write path address slots by
 **face name** ([§11.6][s11-6]). Structural slash paths never cross the periphery's
-*write* [boundary](#g-boundary): the write side speaks the root [contract](#g-contract)'s names only.
+*write* boundary: the write side speaks the root [contract](#g-contract)'s names only.
 The read side chooses per binding — slash paths in the inspection register,
 face names in the integration register and in load-bearing service reads
 ([§9.2][s9-2]/[§13.5][s13-5]/[§14.4][s14-4]).
@@ -3198,7 +3198,7 @@ for whatever the datum touched, and `stage!` normalizes those pairs through an
 attach-compiled shim. The shim does three things: name → position, convert to
 the slot's declared type, fill `nothing`. It thereby confines the residual
 name-shaped dynamism to one framework-owned conversion on the device task, at
-the [boundary](#g-boundary) where wire-shaped data becomes system-shaped data.
+the boundary where wire-shaped data becomes system-shaped data.
 Author-built total tuples are rejected as a padding form, the same disease
 row 74 and the handler return law refuse (row 104).
 
@@ -3290,7 +3290,7 @@ Aircraft-semantic derivation must *not* ride along, the C172X
 lives in-model, in the avionics. Alternatively it is accepted as a small
 per-aircraft×device mapping entry, an aircraft-design fork ([§15.4][s15-4]).
 
-The [trace records](#g-trace-record) post-conditioning levels. Those are
+The trace records post-conditioning levels. Those are
 exactly what the model consumed, so [replay](#g-replay) is exact. Raw-stick
 provenance — re-running a session through *different* curves — is the known,
 accepted loss. Edge logic follows the levels doctrine: devices stage monotonic
@@ -3473,14 +3473,14 @@ One discrimination in that wrapper: **an `InterruptException` is never a
 running a device loop body inline — the GUI's ([§9.1][s9-1]). An operator
 Ctrl-C therefore raises *there*, inside user code that did nothing wrong. The
 wrapper forwards the control-plane stop and lets the body leave through the
-ordinary `running(handle)` [predicate](#g-predicate) ([§10.4][s10-4](4)). There
+ordinary `running(handle)` predicate ([§10.4][s10-4](4)). There
 is no crash report for what is not a crash, and no `should_abort`
 consultation, a stop being already requested.
 
 #### The author owns the loop body; the framework owns the bracket
 
 One device
-[contract](#g-contract) means author-owned loop bodies: a framework-owned hook
+contract means author-owned loop bodies: a framework-owned hook
 loop would have to ask each device what it waits on, which is the rejected
 taxonomy resurrected as a trait (row 102). Under the author-owned body, every
 wait structure is ordinary user code composed from handle primitives:
@@ -3519,7 +3519,7 @@ inside its own domain, rather than forcing a select engine into the
 framework. Two idioms are author obligations the framework can only teach
 and diagnose, never force ([Appendix A][sA]): loop on `running(handle)`, and make
 blocking calls interruptible (`unblock!`, or timeouts). A forgotten
-[predicate](#g-predicate) check surfaces as `DeviceJoinTimeout` with the
+predicate check surfaces as `DeviceJoinTimeout` with the
 device's name; a stall surfaces as a stale heartbeat ([§10.2][s10-2]).
 Liveness timestamps ride *inside* the handle primitives, which store them in
 the device's own [diagnostic cell](#g-diagnostic-cell) ([§9.8][s9-8]), so the
@@ -3620,7 +3620,7 @@ differently per aircraft, and narrowing the binding narrows the claim
 
 **Why the [periphery](#g-periphery) gets roots where [components](#g-component) have one.** [§11.5][s11-5] refuses
 a class supertype for two reasons, and neither reaches here. First, a
-component's single-inheritance [slot](#g-slot) is *already spoken for* by the
+component's single-inheritance slot is *already spoken for* by the
 domain hierarchies (`AbstractAircraft`, engine families), while a device's and
 a binding's are vacant — nothing else wants them. Second, a component's class
 is implementation detail behind its contract ([§11.3][s11-3]), while a
@@ -3769,7 +3769,7 @@ GUI: read-only rendering is first-class, not an error state — the author of
 is live iff two things hold: its port's feed chain terminates in a root slot,
 *and* that slot lies **inside the GUI's own [claim](#g-claim)** in the run's
 frozen surface partition (slot exclusivity, [§9.3][s9-3]). The feed chain is
-walked through wires and [boundary](#g-boundary) connections across *all*
+walked through wires and boundary connections across *all*
 levels, not just the local assembly. The claim may have been computed from the
 unclaimed complement under `is_greedy`, or enumerated [face](#g-face) by face
 by a partial-claims binding ([§9.6][s9-6]); either way, "live" reads as
@@ -3836,7 +3836,7 @@ loop; and assembly panels compose children by path.
 
 The chapter's two data channels are specified down to their memory ordering.
 The runtime warning stream ([§13.2][s13-2]) and the liveness heartbeat ([§10.2][s10-2]) are
-a third, and they cross the same task [boundaries](#g-boundary): they are written by the
+a third, and they cross the same task boundaries: they are written by the
 [device](#g-device) tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
 at staging ([§9.4][s9-4]), `MalformedDatum` from the author's loop body via
 `report!(handle, …)` ([§9.6][s9-6]) — and by the loop itself (`ChatteringBudget`,
@@ -3921,7 +3921,7 @@ drained non-empty ring is frozen into the snapshot and can never be written
 again, so the writer allocates a fresh ring lazily at its next emission —
 that cost, too, landing on the writer's task — which is the same
 GC-over-reuse trade [§9.2][s9-2] makes when it rejects preallocated snapshot
-[buffers](#g-buffer). The rate limit is therefore an allocation bound as well: one ring of
+buffers. The rate limit is therefore an allocation bound as well: one ring of
 sixteen entries per writer per boundary is the worst case, everything past it
 an integer increment. The zero-allocation invariant ([§7.5][s7-5]), scoped to the model
 [sweep](#g-sweep), is untouched — the cells sit on the framework side of that scope with
@@ -3941,7 +3941,7 @@ accumulator, ring reuse by double-buffering, and unbounded accumulation
 
 ## 10. Runtime periphery: lifecycle and orchestration
 
-Where [§9][s9] fixes how data crosses the loop [boundary](#g-boundary), this chapter covers the
+Where [§9][s9] fixes how data crosses the loop boundary, this chapter covers the
 machinery that drives the loop itself: the [control plane](#g-control-plane) and the scheduling
 primitives, the shutdown protocol, and the run lifecycle from `init!` through
 [replay](#g-replay).
@@ -3976,7 +3976,7 @@ needs.
 **Rule.** The coarse phase uses task-yielding `sleep`; there is no
 `systemsleep` variant (row 27).
 
-**Why.** What the choice buys is the wait [slot](#g-slot). `sleep` releases the
+**Why.** What the choice buys is the wait slot. `sleep` releases the
 loop's thread, which makes the pacer's wait the natural scheduling window for
 co-resident [device](#g-device) tasks. The design already spends that slot
 twice, as the staging slot ([§8.7][s8-7]) and as the [drain](#g-drain) source
@@ -4058,7 +4058,7 @@ the lock as part of parking.
 
 The device side is `wait_next_snapshot(handle)`, which blocks until
 `counter > last_seen && running` under the canonical
-[predicate](#g-predicate)-loop idiom. That idiom handles waiters at different
+predicate-loop idiom. That idiom handles waiters at different
 paces, frames skipped while transmitting, and shutdown, all with no per-frame
 reset. Shutdown works because [§10.4][s10-4] wakes all waiters and each
 predicate then routes its owner out.
@@ -4136,8 +4136,8 @@ loop itself ends first.
    shutdown mechanism to an optional wire-protocol courtesy between remote
    peers.
 4. **Loop bodies exit.** The exit is the author's own `while running(handle)`
-   loop, the [contract](#g-contract) of [§9.6][s9-6]. That contract teaches two
-   obligations: the [predicate](#g-predicate) check and interruptible blocking.
+   loop, the contract of [§9.6][s9-6]. That contract teaches two
+   obligations: the predicate check and interruptible blocking.
    Steps (2) and (3) are what make every blocking point interruptible. The
    wrapper's `finally shutdown!(device)` is guaranteed on every exit path.
 5. **Join with a timeout of 5 s.** A device task exceeding the timeout is
@@ -4736,7 +4736,7 @@ authoring a component means adding methods to framework-owned generic functions.
 
 Julia admits that only through an explicit per-name `import`, or through a
 qualified `Flight.f(…) = …` definition — the `Base.show` idiom [§16][s16]
-records for the extension-only [periphery](#g-periphery) surface. A component
+records for the extension-only periphery surface. A component
 module therefore opens with
 
 ```julia
@@ -4915,7 +4915,7 @@ discrete one, the method itself being the allocator. A workspace earns the
 exception because it is not memory and none of the by-value arguments below
 cover it ([§7.3][s7-3]).
 
-This is the [boundary](#g-boundary) of legitimate derivation: deriving from
+This is the boundary of legitimate derivation: deriving from
 another declaration is sound, deriving from evaluated user code is not.
 Declaring types here too, `input_types`-style, with `probe_value`
 ([§12.3][s12-3]) synthesizing the initial values, was rejected (row 73).
@@ -5251,7 +5251,7 @@ or of neither, are the [§11.5][s11-5] class errors.
 **The root of a build is an [assembly](#g-assembly).** Root [slots](#g-slot)
 are the root's input [faces](#g-face) declared through `input_connections`
 ([§6.1][s6-1], [§9.3][s9-3]), and only assemblies declare
-[boundary](#g-boundary) connections ([§11.6][s11-6]). A primitive root
+boundary connections ([§11.6][s11-6]). A primitive root
 therefore has no root slots — its faces are just its own [port](#g-port) names
 — and every input it declares is an unconnected-input error. Exercising a leaf
 alone is what the [component test rig](#g-component-test-rig)
@@ -5305,7 +5305,7 @@ line, in exchange for "public" always meaning someone wrote it down.
   supply. A value flowing between two functions in one fused pass has no type
   contract to violate, and mixed branches are handled exactly by promotion. So
   the probe takes `w` as it finds it: it checks that the second return
-  [slot](#g-slot) is a `NamedTuple` at all, and it checks the *consumer's*
+  slot is a `NamedTuple` at all, and it checks the *consumer's*
   reads against the observed field set. A destructured name that is not there
   fails inside the framing diagnostic ([§13.2][s13-2]) with did-you-mean from
   the actual fields. That is weaker than a declaration-backed message: it can
@@ -5330,7 +5330,7 @@ line, in exchange for "public" always meaning someone wrote it down.
   whose typing the check would be protecting. A strict probe-observed
   expectation would also fire on the legal constant-branch idiom — the
   one-probe-point argument, which is exactly what kills observation authority
-  for cells. Correctness needs no [guard](#g-guard) there: a `Float64` in `w`
+  for cells. Correctness needs no guard there: a `Float64` in `w`
   under a `Dual` activation is an honest zero-partial constant by the embedding
   guarantee ([§12.5][s12-5]), and its downstream promotion is exact. Walking
   the nominal observation to synthesize non-nominal expectations was rejected
@@ -5410,7 +5410,7 @@ name. Anything wanting its own wiring or [faces](#g-face) declares itself an
 assembly.
 
 The payoff is parametric composition. `struct Formation{NT <: NamedTuple};
-aircraft::NT; … end` holds any [roster](#g-roster) — size, names, mixed
+aircraft::NT; … end` holds any roster — size, names, mixed
 aircraft types — per instantiation, the declaration bodies generating wires by
 comprehension over the keys. That is the arity-via-computed-contracts pattern
 [§6.2][s6-2] uses for `SumJunction{W, N}`, here at structure scale. The swarm
@@ -5497,7 +5497,7 @@ library addition and zero new declaration rules.
 **No `AbstractAssembly`; one root `AbstractComponent`** (row 39).
 
 **Why.** The domain hierarchies — `AbstractAircraft`, the engine families —
-have to carry both classes: a [slot](#g-slot) declared `E <: AbstractEngine`
+have to carry both classes: a slot declared `E <: AbstractEngine`
 must accept a primitive `PistonEngine` and a composite turbofan assembly alike.
 And class is implementation detail behind the contract ([§11.3][s11-3]).
 
@@ -5559,7 +5559,7 @@ by path.
 **`child_connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
 pairs, strictly child-port → child-port; the rules ([§6.1][s6-1]) apply (one wire per input,
 deep paths through concretely-typed fields only, stopping at a generic child's
-[faces](#g-face)). The assembly's **[boundary](#g-boundary)** is declared by two further methods, one per
+[faces](#g-face)). The assembly's **boundary** is declared by two further methods, one per
 direction. **`input_connections(::A)`** is an ordered collection of pairs, face
 name => internal endpoint path — or a tuple of paths for an input face routed to
 several internal endpoints (fan-out through the boundary)
@@ -5681,7 +5681,7 @@ error at declaration time, [§8.5][s8-5]). `Δt_base`, `h` and `n` appear in no
 declaration — they are deployment decisions fixed at `Simulation` construction
 (the three sources for `Δt_base`, [§12.1][s12-1]). The declaration belongs to the
 [assembly](#g-assembly) type, not to the child instance: a sample time is a design ratio
-or a modeled [device](#g-device)'s intrinsic rate ([§8.5][s8-5]), never a per-instance value.
+or a modeled device's intrinsic rate ([§8.5][s8-5]), never a per-instance value.
 The FlightCore-`Subsampled`-style instance wrapper is rejected in row 42.
 
 ### 11.8 Computed connections and generic boundaries
@@ -5731,7 +5731,7 @@ separator. Computed entries mix freely with hand-written ones in either
 declaration. `resolve` and `input_faces` are build-pipeline primitives needed
 anyway, and `input_passthrough` is a thin composition. That is what keeps the
 helper sugar rather than machinery. There is no `rename` hook,
-because the [boundary](#g-boundary) declarations are ordinary code (map over
+because the boundary declarations are ordinary code (map over
 the pairs). Normative signatures for both primitives are in [§13.3][s13-3].
 Every error stays first-class: an `except` face the [assembly](#g-assembly)
 then fails to wire is an ordinary unconnected input; a face both wired and
@@ -5801,7 +5801,7 @@ input_connections(s::Systems) = (
 Adding an actuator channel is then one edit: the new pair simultaneously
 creates the wire and removes the face from the input face surface. The two
 declarations cannot drift, because neither holds the shared names — both are
-[projections](#g-projection) of the authored list, so the drift class is removed rather than
+projections of the authored list, so the drift class is removed rather than
 detected. Every misspelling stays loud: a mistyped destination is an
 unknown-face error with the child's face list in hand, whether the wire or
 the `except` entry meets it first. One honest asymmetry: a pair *omitted*
@@ -5844,7 +5844,7 @@ results carried past failures are violation lists from pure checks.
 
 Three ordering constraints are forced by settled decisions: [face](#g-face)
 derivation is **bottom-up** (an [assembly](#g-assembly)'s
-[boundary](#g-boundary) connections evaluate against child
+boundary connections evaluate against child
 [contracts](#g-contract), [§11.8][s11-8]); the unconnected-input obligation
 check and cross-level two-producers detection are **global** — decidable only
 at the root, after every assembly's wires and faces are in hand ([§6.1][s6-1]);
@@ -6036,7 +6036,7 @@ accepts the artifact directly, and `Simulation(world; …)` is *defined as*
 test targeted, the build a [face](#g-face)-provenance table was printed from:
 that artifact is the one deployed, never an assumed-equal reconstruction.
 
-**Why.** Computed [boundary](#g-boundary)-connection bodies are ordinary user
+**Why.** Computed boundary-connection bodies are ordinary user
 code re-evaluated on every build, so equality between two builds of the same
 world is an assumption the factorization removes.
 
@@ -6145,7 +6145,7 @@ absent from the hand-down — [§5.2][s5-2]); wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
 topological order. **`w` threads through the probe in stage order.** It follows
 the one-hop law of [§5.2][s5-2]. If the [component](#g-component) defines an
-`h_xu`, the `h_x` probe's second return [slot](#g-slot) enters that stage's
+`h_xu`, the `h_x` probe's second return slot enters that stage's
 probe [bundle](#g-bundle) (the NamedTuple of zero-copy views a component
 function receives). Otherwise it enters the downstream bundles. The `w` that
 survives the last output stage enters the `f`, guard and handler probes. So
@@ -6265,7 +6265,7 @@ special cases; the [§5.6][s5-6] tracer activation follows it identically. "Trac
 activation" names the *global* set-tracer (row 12) — a whole-model run at the
 tracer scalar, an activation like any other. The cycle classifier ([§5.6][s5-6])
 is the other variant (row 12), the schedule-free per-member local
-[trace](#g-trace), which runs in
+trace, which runs in
 Stratum B's failure path and is not an activation at all.
 
 **Lazy, with an opt-in exhaustive mode.** Non-nominal activations run at first
@@ -6319,7 +6319,7 @@ requests for the same activation must never expose partially populated cache
 state. The mechanism is unspecified — a guard around insertion suffices, paid at
 service time and never on the hot path — and since an activation is a pure
 function of build and scalar, the worst benign race is duplicated work; torn
-state is excluded by [contract](#g-contract), not by luck.
+state is excluded by contract, not by luck.
 
 ### 12.5 The always-on conformance check
 
@@ -6513,7 +6513,7 @@ gating compiles to `(idx − Φ) % D == 0` inside the specialized *[boundary](#g
 the interior bodies holding no discrete entries to test ([§8.5][s8-5]).
 
 **Cells are stored per element type, not per cell.** The [signal table](#g-signal-table) is one
-contiguous [buffer](#g-buffer) per element type — the construction pointed at
+contiguous buffer per element type — the construction pointed at
 signals rather than state ([§7.1][s7-1]) — and a cell address is a build-time
 offset into it, carried
 in an entry *field* with the [port](#g-port) type as the address's own parameter; gathers
@@ -6687,7 +6687,7 @@ policy that fits it.
   [assembly](#g-assembly) has five unwired inputs; a renamed [port](#g-port)
   breaks three wires. **These passes collect:** each returns its full violation
   list.
-- **User-code evaluation** — the [boundary](#g-boundary)-connection bodies, run
+- **User-code evaluation** — the boundary-connection bodies, run
   in [Stratum](#g-stratum) A (one of the build's three phases: structure,
   schedule, activation); the stage-1 [probes](#g-probe) in B; the probe chain in
   C. When user code throws there is no meaningful rest-of-collection. A failed
@@ -6803,7 +6803,7 @@ place:
 - **firing-budget exhaustion** ([§8.6][s8-6]) — an event that has spent its
   `firing_budget` at a boundary, its further edges there dropped;
 - **forgiven-debt re-anchor** ([§8.7][s8-7]) — the pacer abandoning accumulated debt
-  and re-anchoring its [schedule](#g-schedule);
+  and re-anchoring its schedule;
 - **the write-surface and entry violations** ([§9.3][s9-3]), all at staging — the
   [drain](#g-drain) checks nothing: `OutOfClaimEntry` (an
   enumerated surface's binding drift — no position in
@@ -6843,7 +6843,7 @@ below without defining them. All three are normative in the forms given here:
   unambiguous because [face](#g-face) names may contain dots, never slashes
   ([§11.6][s11-6]).
 
-**Enforcing the generic-[boundary](#g-boundary) rule is the one non-obvious duty
+**Enforcing the generic-boundary rule is the one non-obvious duty
 in `resolve`** ([§6.1][s6-1]). The walk follows *declared field types* alongside
 instances, and a segment that traverses **past** a generically-held field — one
 whose declared type is non-concrete — is a diagnostic even though the concrete
@@ -6897,7 +6897,7 @@ field in the loop state recording where in the compiled schedule execution is.
 The cursor records three facts. The first is the component path, as a schedule
 index. The second is which function is running: `h_x`, `h_xu`, `f`, `g`, a
 [guard](#g-guard), a handler, or `project`. The third is the boundary phase:
-integration stage *k*, event round *r*, localization [probe](#g-probe) at trial time, or
+integration stage *k*, event round *r*, localization probe at trial time, or
 tick. Maintaining it costs one cheap store per dispatch on a single-tasked
 executor: no allocation, no exception frames. And it covers every user-code
 surface uniformly, including the forgettable ones: [RHS](#g-flow) evaluations at
@@ -6967,7 +6967,7 @@ diverged. Run later, the NaN has already propagated: it reaches an innocent
 downstream component through the ordinary signal path and surfaces as that
 component's lookup-table `DomainError`, or as an `InexactError` in its
 conversion. That is the error-locality inversion ([§11.4][s11-4]), designed out of the
-build [tier](#g-tier) and quietly reintroduced at runtime. One `isfinite` pass over a
+build tier and quietly reintroduced at runtime. One `isfinite` pass over a
 flat [buffer](#g-buffer) is cheap enough that placement, not cost, decides.
 
 *Scope: `ẋ` does not participate* (row 157). A nonfinite derivative
@@ -7104,7 +7104,7 @@ model-detected channel specified here meets it at [§10.4][s10-4] and nowhere el
 
 **The [boundary](#g-boundary) is all-or-nothing outside the sim task.** That is
 why a `StepError` cannot break [§10.4][s10-4]. [Sweeps](#g-sweep) write into
-table [buffers](#g-buffer), and integration intermediates live in
+table buffers, and integration intermediates live in
 framework-owned integrator buffers, never in a [component](#g-component)'s
 `workspace` as [§7.3][s7-3] defines it. The only externally visible act is
 [snapshot](#g-snapshot) publication at the very end of the sequence. A boundary
@@ -7155,7 +7155,7 @@ sees half a boundary.
 ### 13.7 Tooling consequences: provenance and the component library
 
 Termination chains are the second structural customer of computed
-[boundary](#g-boundary) connections, after generic-boundary
+boundary connections, after generic-boundary
 [contracts](#g-contract). Computed connections are therefore prominent in this
 section, and two commitments follow: a library and an idiom.
 
@@ -7437,7 +7437,7 @@ meaningless because the first sweep overwrites it. Unexported stays unpokeable
 for init exactly as it does for the GUI ([§9.7][s9-7], [§15.4][s15-4]).
 
 **The locality law** here is the one [§6.1][s6-1] states for connections, now in
-its third instance — child connections, computed [boundary](#g-boundary)
+its third instance — child connections, computed boundary
 connections, conditions. Each level speaks its own fields, its declared
 children's names, and its own faces; delegation runs by dispatch at every
 genericity [seam](#g-seam); deep `at` paths are legitimate exactly where deep
@@ -7776,7 +7776,7 @@ so the check is one comparison and runs before any evaluation, not merely
 before any write. Pre-write means all-or-nothing: a rejected init leaves
 the sim exactly as it was, the same posture as failed trim.
 
-**The [probe](#g-probe)-value barrier is structural.** The `probe_value`
+**The [probe](#g-probe-value)-value barrier is structural.** The `probe_value`
 synthesis ([§12.3][s12-3]; zero/false/first-enum/`T()`) exists so build-time
 probes can exercise code
 with fabricated inputs; a fabricated zero is a fine probe input and a
@@ -7859,7 +7859,7 @@ against today's `c172.jl`:
   tweaking. An author who wants a documented `@kwdef` struct keeps it privately
   and converts.
 - **`TrimParameters` stays a plain user struct** the framework never sees;
-  the assignment is the pure `trim_condition(ac, params, d)` [fragment](#g-fragment)-tree
+  the assignment is the pure `trim_condition(ac, params, d)` fragment-tree
   function ([§14.2][s14-2]), applied per iteration by the compiled plan ([§14.4][s14-4]).
 - **The read side is declared, then compiled**: `reads(name = get_state(path,
   field) | get_deriv(path, field) | get_output(path, field) | get_slot([face](#g-face)) |
@@ -7872,7 +7872,7 @@ against today's `c172.jl`:
   locality scopes ([§6.1][s6-1]). An equilibrium equation crossing a generic seam reads
   a face. A [component](#g-component)'s private intermediates are not addressable at all ([§5.2][s5-2],
   [§14.4][s14-4]); a trim evaluation needing one is a signal the component should
-  export it. A derivative wanted across a [contract](#g-contract) [boundary](#g-boundary) takes the same
+  export it. A derivative wanted across a [contract](#g-contract) boundary takes the same
   remedy: publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step
   2's one-line binding, made contract). That leaves `get_deriv` scoped to owned
   concrete subtrees. The compiled reader (the gather twin, [§14.4][s14-4]) fills a
@@ -7967,7 +7967,7 @@ sharpen the case ([§14.7][s14-7]): they are a convergence test no external
 package spells natively. That is precisely why the *service*, not the backend,
 applies it.
 
-The backend [contract](#g-contract) is a **pinned signature**, value-passed —
+The backend contract is a **pinned signature**, value-passed —
 one required method per backend. That one method is the [seam](#g-seam):
 
 ```julia
@@ -8044,7 +8044,7 @@ mysterious residuals.
 
 #### Scratch stores, stated without type luck
 
-Every `trim!` invocation instantiates a fresh working [store](#g-store) set:
+Every `trim!` invocation instantiates a fresh working store set:
 `x` backing, `m` and discrete-`x` stores, [slot](#g-slot) and
 [signal tables](#g-signal-table), derivative [buffer](#g-buffer). The set is
 built from the [activation](#g-activation)'s *layout* (a re-run of Stratum C at
@@ -8514,7 +8514,7 @@ is read first as what today's code does, then as what this design makes of it.
 
 #### `PistonEngine`: the continuous side
 
-The current engine (piston.jl:310-449) carries a mode enum with three [flow](#g-flow)
+The current engine (piston.jl:310-449) carries a mode enum with three flow
 regimes, four table lookups, two embedded continuous PI compensators, boolean
 transitions and an argument-threaded `fuel_available`. The points below place
 each of those features under the decoder interfaces.
@@ -8579,7 +8579,7 @@ codebase's grain.
 
 One level above the compensators, today's `c172x_ctl.jl` runs on two idioms
 the [stores](#g-store)-and-[views](#g-view) rules deliberately remove. The first is per-tick gain
-scheduling by mutation: `assign!` writes `Ref`-[cell](#g-cell) parameters from
+scheduling by mutation: `assign!` writes `Ref`-cell parameters from
 EAS/altitude lookups every 50 Hz tick, LQR matrix sets included. The second is
 mode-transition resets: `f_init!` plus a bumpless-transfer latch, hand-ordered
 *before* the same tick's `f_periodic!`. Both survive as dataflow.
@@ -8632,7 +8632,7 @@ continuous-reset contract too.
 ### 15.3 Torture test for the §9 staging shapes: filter, joystick and GUI
 
 This case study is the exercise that selected per-[device](#g-device) [cells](#g-staging-cell)
-([§9.4][s9-4]) and produced the [§9.7][s9-7] [contracts](#g-contract). Setup (the
+([§9.4][s9-4]) and produced the [§9.7][s9-7] contracts. Setup (the
 `sketch_io.jl` listing): a first-order filter with root inputs `u_cmd` and `τ`;
 a fictitious 100 Hz single-axis joystick streaming a slow ramp onto `u_cmd`
 (complete writer); a 60 Hz GUI with sliders for both [slots](#g-slot) (sparse
@@ -8747,7 +8747,7 @@ answer:
   ordinary in-model [component](#g-component) wherever wanted; only the wall-clock
   pump stays outside;
 - the cockpit component's claimed jobs are covered where they belong: struct
-  [assembly](#g-assembly) in-model downstream of scalar faces, curves as mapping
+  assembly in-model downstream of scalar faces, curves as mapping
   data, widget arbitration by [§9.7][s9-7] plus exclusivity, and the stateful
   residue (accumulators, capture-on-engage) in the avionics;
 - the routing convenience a command bundle bought in FlightCore's
@@ -8770,7 +8770,7 @@ The demo line by line:
 - `Simulation(world; algorithm = RK4(), h = 0.02, n = 1, t_end = 1000)` — `n`
   binds `Δt_base = n·h` ([§8.5][s8-5]; default 1: base [tick](#g-tick) every step). The entire
   build pipeline runs here: [class](#g-class) resolution, path validation, face derivation
-  (computed [boundary](#g-boundary) connections expanded, printable), two-producers/unconnected checks,
+  (computed boundary connections expanded, printable), two-producers/unconnected checks,
   topological sort, [probe](#g-probe) passes, rate compilation, flat layout, [slot](#g-slot) table.
 - `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services ([§14][s14];
   trim is its own service, `trim!(sim, problem; baseline, ...)`, whose commit
@@ -8884,13 +8884,13 @@ and `υ_c` $= \int_{t_{k-1}}^{t_k} f^{c} \, dt$ from zero,
 `υ_c_sc` $= \int_{t_{k-1}}^{t_k} R^{c_{k-1}}_{c} f^{c} \, dt$ with the rotation
 anchored at the interval
 start — exactly the forms the differencing bullets below recover from the
-cumulative [stores](#g-store), term by term. The reset is periodic, not
+cumulative stores, term by term. The reset is periodic, not
 condition-triggered, so events are the wrong [tier](#g-tier); and the reset is a
 discrete-tier write into continuous state, exactly the operation this design
 forbids (`g` writes only its own `x`; handlers are the sole resetters of
 continuous state, and they are [guard](#g-guard)-driven).
 Integrate-and-dump falls squarely into the crack between the classes:
-tightly-coupled continuous and periodic dynamics in one physical [device](#g-device).
+tightly-coupled continuous and periodic dynamics in one physical device.
 
 #### The idiom: integrate-and-difference
 
@@ -9016,7 +9016,7 @@ in their re-sweeps, so `g` and external readers see the settled boundary.
 User observation, recorded as a documentation
 obligation: the clean implementation leans on the author *knowing* that "sampling
 at `t_k`" means post-integration, post-[projection](#g-projection), stage-1-fresh state. That
-knowledge must be part of the framework's taught [contract](#g-contract) — [§8.5][s8-5]/[§8.6][s8-6] semantics
+knowledge must be part of the framework's taught contract — [§8.5][s8-5]/[§8.6][s8-6] semantics
 stated in [component](#g-component)-author documentation with this IMU as the [worked](#g-worked) example — not
 internal lore. The failure mode of not knowing it is instructive: an author who
 distrusts the [sweep](#g-sweep) order adds a defensive one-[tick](#g-tick) delay or re-derives the
@@ -9112,7 +9112,7 @@ default omits both. Declarations are ordinary functions of the instance
 ([§11.5][s11-5]), which is what makes this the honest version of Simulink's
 checkbox. One fixed policy governs the face: a rising edge resets to the
 declared `init_x` values. The implementation is internal — an ordinary
-[guard](#g-guard)/handler event, the continuous-reset [contract](#g-contract) in
+[guard](#g-guard)/handler event, the continuous-reset contract in
 its [worked](#g-worked) instance ([Appendix A][sA]).
 
 Falling-edge consumers wire a NOT gate (the Bool gates, [§13.7][s13-7]).
@@ -9170,7 +9170,7 @@ prefix of the [selector](#g-selector) family already settles the question
 ([§14.4][s14-4]). Whether the [condition](#g-condition) algebra ships behind a
 submodule is the packaging question.
 
-The audit is a full-surface [sweep](#g-sweep) (per user, 2026-08-01). Every API
+The audit is a full-surface sweep (per user, 2026-08-01). Every API
 method name is either specific enough to export, or gets renamed, or is left
 unexported — and for extension-only surface, *unexported* is the preferred
 disposition. Extension-only surface has three parts:

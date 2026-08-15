@@ -162,7 +162,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 | run metadata | g-run-metadata | 1 | B | the trace header's deployment block |
 | trace | g-trace | 29 | B | the primary record: drained, device-tagged batches per frame |
 | trace header | g-trace-header | 13 | B | the trace's preamble: initial stores, slot values, schemas, deployment |
-| trace record | g-trace-record | 1 | B | the retained form of a drained batch |
+| trace record | g-trace-record | 0 | — | the retained form of a drained batch |
 | what-if register | g-what-if-register | 2 | A | replaying a trace against the same structure with changed parameters |
 
 ## D.8 Stopped-sim services and the condition algebra
