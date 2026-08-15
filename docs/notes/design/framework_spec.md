@@ -125,6 +125,22 @@
 
 # Part I — Foundations
 
+Part I fixes what the framework *is*, before any of it is spelled. [§1][s1] states
+the purpose and the ground rules the rest of the document is answerable to. [§2][s2]
+gives the formalism: the class of systems in scope, the two event-detection
+policies, and the exclusions taken deliberately. [§3][s3] and [§4][s4] introduce the two
+objects every later part manipulates. [§3][s3] gives the component taxonomy, two leaf
+classes and the assembly that composes them; [§4][s4] gives the port, the addressable
+unit through which components exchange immutable values. [§5][s5] is the load-bearing
+chapter: two output stages per component, what each stage may see, and how those
+signatures alone yield a static evaluation schedule. [§6][s6] lifts composition from a
+single component to a hierarchy of them. [§7][s7] fixes where data lives, on both
+tiers and outside them both.
+
+Part I assumes nothing from later parts. It cites them for spellings only: how
+an author writes a declaration is [§8][s8], when each declared fact is checked is [§9][s9],
+and what runs at a step boundary is [§10][s10].
+
 ## 1. Purpose and method
 
 This document specifies a modeling and simulation framework intended to
@@ -1603,6 +1619,23 @@ commit.
 ---
 
 # Part II — Authoring and build
+
+Part II covers everything that happens before a simulation runs: an author
+declares a model, and the build turns that declaration into an executable
+artifact. [§8][s8] is the declaration layer. It fixes the closed inventory of
+well-known functions a component defines, the visibility each declaration
+carries, and the shapes an assembly adds on top: children, paths, faces, rate
+scopes and computed connections. [§9][s9] is the build pipeline that consumes them.
+It fixes the three ordering strata, the `Build` artifact they produce, the probe
+that runs every user function once against real values, activations at other
+scalar types, the conformance check the probe leaves permanently in place, and
+the compiled executor the loop will dispatch through.
+
+Part II assumes Part I throughout. The taxonomy of [§3][s3] decides what may be
+declared, the contracts of [§4][s4] are what a declaration fixes, and the two-stage
+split of [§5.2][s5-2] is what makes feedthrough structural rather than annotated. [§7][s7]
+fixes the homes the declared state occupies. Nothing here runs: the executor
+built in [§9.7][s9-7] is not dispatched until [§10][s10].
 
 ## 8. The declaration layer: components and assemblies
 
@@ -3580,6 +3613,23 @@ continue meaningfully re-runs `init!`.
 ---
 
 # Part III — Execution
+
+Part III specifies the running simulation. [§10][s10] owns time: the loop the framework
+writes rather than delegates, the stepper seam integration is delegated across,
+the localization machinery that finds crossing instants inside a step, the
+multi-rate tick lattice, the event iteration at each boundary, and real-time
+pacing. [§11][s11] is the data plane between the loop and everything outside it.
+Outbound it fixes snapshot publication; inbound it fixes root input slots,
+per-device staging and the drain; alongside both it fixes the device authoring
+contract and the input trace that makes a session replayable. [§12][s12] is the
+orchestration around them: the control plane, the wait primitives and thread
+budget, the shutdown protocol, the five run states, and replay.
+
+Part III assumes the schedule rather than deriving it. The boundary sequence it
+dispatches is fixed in [§5.3][s5-3], the executor it dispatches through is built in
+[§9.7][s9-7], and the root input slots the periphery writes into are declared through
+`input_connections` in [§8.6][s8-6]. What Part III adds is timing, concurrency and
+orchestration around machinery the earlier parts already settled.
 
 ## 10. Time and execution
 
@@ -6661,6 +6711,22 @@ synthetic playback device staging the recorded batches, and replay ending
 
 # Part IV — Failure and services
 
+Part IV covers what happens when things go wrong, and what a stopped simulation
+can be asked to do. [§13][s13] is the error discipline. It fixes which failures are
+collected and which fail fast, the diagnostic value both produce, the single
+runtime catch site and the execution cursor that locates a failure inside a
+frame, and why graceful termination is model state rather than an exception.
+[§14][s14] is the stopped-sim services. [§14.1][s14-1]–[§14.6][s14-6] build the condition — a
+path-addressed overlay on the declared defaults — and apply it through boundary
+zero. Applying one is the initialization service; [§14.7][s14-7]–[§14.10][s14-10] build trim and
+linearization on that same foundation.
+
+Part IV assumes both earlier parts. [§9.1][s9-1] already fixed when each check runs, so
+[§13][s13] fixes only how a failure is reported once it happens. [§8.6][s8-6] supplies the
+paths a condition addresses, [§9.4][s9-4] supplies the activations trim and
+linearization run on, and [§10.6][s10-6] supplies the macro-sequence boundary zero
+re-runs with an empty integrate.
+
 ## 13. Error discipline
 
 [§8.4][s8-4] fixed what must be caught and where; [§9][s9] fixed when each fact is checked.
@@ -8465,6 +8531,22 @@ zero rows suffice.
 
 # Part V — Grounding
 
+Part V grounds the design and marks what it leaves open. [§15][s15] is five case
+studies, each starting from code that exists today: the `Vehicle`
+transliteration that validated [§5][s5], torture tests aimed at the [§5.2][s5-2] interfaces
+and at the [§11][s11] staging shapes, the full C172X demo read as a load test on the
+periphery, and the strapdown IMU challenge to the [§3][s3] class split. [§16][s16] records
+the three axes still to be settled, the migration of FlightPhysics and
+FlightApps among them. Appendices A–D follow: the taught-contract index, the
+API synopsis, the diagnostic kind set, and the glossary.
+
+Part V assumes the whole specification and norms almost none of it. [Appendix C][sC]
+is the exception, since its kind set is made normative. The case studies are
+evidence rather than rules, so where a measurement here and a rule earlier
+disagree, the rule wins. They keep their worked comparisons at full resolution,
+which is the one place the rationale-belongs-in-the-decision-log rule is
+relaxed.
+
 ## 15. Case studies
 
 ### 15.1 `Vehicle` today → this framework
@@ -9061,11 +9143,11 @@ persistence.
 
 What follows is an outline for FlightPhysics/FlightApps, not a specification.
 The table carries one row per item: the item, the disposition recorded for it,
-the section owning the machinery it touches, and the governing decision row. A
+the section owning the machinery it touches, and the governing decision entry. A
 dash means the outline names the item and records nothing further. Items whose
 disposition exceeds a cell are expanded below the table.
 
-| item | disposition | section | decision row |
+| item | disposition | section | decision |
 |---|---|---|---|
 | The [walked](#g-walked)-leaf parametrization pass | the `Ranged` rewrite targets the walk rule wherever `Ranged` survives, at ports and parameters | [§8.2][s8-2] | — |
 | The `KinData`-style output splits | — | — | — |
@@ -10905,6 +10987,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [s14-7]: #147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals
 [s14-8]: #148-the-trim-service-solver-seam-scratch-stores-commit-and-report
 [s14-9]: #149-mounting-problems-as-relocatable-values
+[s15]: #15-case-studies
 [s15-1]: #151-vehicle-today--this-framework
 [s15-2]: #152-torture-tests-for-the-52-interfaces-pistonengine-and-the-fcs-pid-cascade
 [s15-3]: #153-torture-test-for-the-11-staging-shapes-filter-joystick-and-gui
@@ -10918,6 +11001,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [s3-1]: #31-continuous-component-the-hybrid-primitive
 [s3-2]: #32-periodic-discrete-component
 [s3-3]: #33-assembly
+[s4]: #4-ports-and-signals
 [s4-1]: #41-immutable-value-semantics
 [s4-2]: #42-consumers-see-ports-not-stages
 [s4-3]: #43-table-mechanics-and-port-granularity
@@ -10929,6 +11013,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [s5-4]: #54-artificial-loops-and-the-escape-hatch
 [s5-5]: #55-algebraic-loop-policy-reject-at-build-time
 [s5-6]: #56-diagnostics-feedthrough-tracing
+[s6]: #6-composition-connections-aggregation-and-hierarchy
 [s6-1]: #61-connections-and-hierarchy
 [s6-2]: #62-aggregation-explicit-summing-junctions
 [s7]: #7-state-and-data-representation
