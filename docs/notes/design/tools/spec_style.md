@@ -41,6 +41,9 @@ in pedagogy is not.
   sections; glossary links are inline (`[drain](#g-drain)`) because glossary
   anchor ids are names, never renumbered, so the indirection would buy
   nothing. Not a defect; do not flag or convert.
+- **The wrap target is 80 columns of *rendered* text**, link markup collapsed.
+  A source line carrying citations runs longer than 80 and is not a defect:
+  `[contract](#g-contract)` is 24 source characters for 8 rendered ones.
 
 ## Section template
 
@@ -64,20 +67,20 @@ would destroy the signal. *Why* holds constructive rationale only.
 - **Constructive rationale stays** (why the rule is shaped as it is — what
   makes it believable and memorable). It lives under *Why*.
 - **Adversarial rationale goes** (why alternative X loses). It lives in
-  `framework_decisions.md`, cited as "(row N)". Before deleting an inline
-  argument, verify the row carries it; enrich the row first if the inline
+  `framework_decisions.md`, cited as "(D-nnn)". Before deleting an inline
+  argument, verify the entry carries it; enrich the entry first if the inline
   version is richer (Phase 2 procedure).
 - **Case-study measurements are exempt** (ch. 15, the grounding charter): a
   torture test's worked comparison — the concrete, measured cost of a losing
   candidate — is evidence, not litigation, and stays at full resolution.
   Verdict-only prose (a sentence whose content is "and therefore X loses")
-  still reduces to its row. Every exempt comparative passage must cite its
-  row: the log stays the decision of record, the case study its evidence.
+  still reduces to its entry. Every exempt comparative passage must cite its
+  entry: the log stays the decision of record, the case study its evidence.
 
 ## Content preservation
 
 Style edits never change what the spec norms. Every Phase 3 section rewrite
 follows the claim-inventory procedure (plan, P3.2): extract normative claims
-before, verify each survives after, diff row citations and glossary links.
+before, verify each survives after, diff decision citations and glossary links.
 When a sentence resists rewriting because its meaning is unclear, that is a
 finding, not an obstacle — flag it for discussion instead of guessing.
