@@ -179,6 +179,17 @@ In particular, P4.2's "§8–10 ↔ §11–12" below describes the move itself, 
 citation to be updated. The corpus (spec plus the eight companions) and
 `tools/gloss_table.md` are fully swept.*
 
+*P4.3 applied 2026-08-15 (`8ddf5643`..`493f602d`). Each Part now opens with a
+roadmap. **No cross-section moves survived**: a fresh survey of all 81 section
+openings found Phase 3 had already absorbed them, and the one candidate — §9.6,
+which announces itself as an aside inside the build pipeline — was left in place
+rather than pay another renumbering sweep for a grounding aside. The Phase 3
+triage files were untracked and are gone, so that survey, not the original flag
+list, is the record. Two things were fixed that the phase did not ask for: the
+appendices were lifted out of Part V into their own back matter, since an index,
+an API synopsis, a kind set and a glossary are not grounding; and the trim-commit
+account was deduplicated between §14.5 and §14.8.*
+
 **P4.1 The part swap.** Move Part III (Authoring and build) before Part II
 (Execution). Stopped-sim services *stay* after Execution: §14.5 defines
 boundary zero in terms of §8.6's boundary machinery, and the services'
