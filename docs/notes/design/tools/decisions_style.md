@@ -18,7 +18,8 @@ history lives in git.
 **Status.** ratified
 
 **Position.** The current decision, stated in one or two sentences, citations
-bare (§5.2, D-037).
+bare (§5.2, D-037). Where the entry bundles parallel rulings, a headline
+sentence and then one bullet per ruling.
 
 **Spec.** §a.b, §c.d
 
@@ -47,9 +48,11 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
   it. Nothing else; no dates.
 - **Position.** The headline ruling, one or two sentences. Everything else goes
   to Rationale — a finding's narrative, its discovery story and its dead ends
-  are Rationale, not Position. Where an entry genuinely bundles parallel rulings
-  with no distinct headline, content preservation wins and Position holds the
-  full chain — see the Pass C queue.
+  are Rationale, not Position. Where an entry bundles parallel rulings, the
+  headline sentence is followed by a bulleted list, one ruling per bullet: the
+  rulings stay in the ruling field, and the reader gets a headline instead of a
+  semicolon chain. No provenance — which review round or finding raised a
+  decision belongs to this file's git history, not to the Position.
 - **Spec.** The sections where the decided mechanism lives, sorted and
   deduplicated. Omit the field entirely if there are none.
 - **Rationale.** The recorded reasoning and any adjudication narrative. Where
@@ -86,56 +89,38 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
    the spec rather than the log gets flagged, not dropped.
 6. **The battery is the acceptance test.** `check_refs.jl`, `check_rows.jl`,
    `check_glossary.jl --strict`, and `linkify.jl` as a no-op on re-run.
+7. **A prose rewrite is audited, not trusted.** `audit_fragments.jl [rev]`
+   compares every entry's multiset of code spans, inline math, citations and
+   named identifiers against a git revision — losing one is fatal. Rewording an
+   entry is licensed by that check, not by care.
 
-## Pass C queue — per-entry prose rewrite
+## Pass C — per-entry prose rewrite, closed 2026-08-15
 
-Pass A converted the table to entries structurally; Pass C is the optional
-prose pass. From the Pass A findings adjudication (45/45 closed, 2026-08-14),
-sized against the log 2026-08-15.
+Pass A converted the table to entries structurally; Pass C was the optional
+prose pass over the queue drawn from the Pass A findings adjudication. Items
+1–3 are done:
 
-**Sequencing: after Phase 4 of the spec rewrite, not before.** Phase 4's
-renumber sweep rewrites the `§` citations inside these same entries, so doing
-prose first means reviewing them twice.
+1. **No-headline bundle** — the fourteen entries whose Positions were semicolon
+   chains (D-045, D-048, D-050, D-056, D-058, D-059, D-062, D-067–D-072, D-113)
+   now open with a headline sentence over an enumerated chain, 5–38 words of
+   headline against the old 86-word mean. The Position field rule above was
+   rewritten to bless that shape rather than the chain.
+2. **Provenance prefixes** — D-131 and D-135–D-140 no longer open with
+   "Round-4 gaps finding 5, …". Where the prefix carried a substantive clause
+   ("amending D-052", "closing D-133's §13.2 deferral", D-140's
+   unchanged-sections scope) that clause survives as part of the ruling.
+3. **Bare `D.n` glossary citations** — nine tokens in D-131, D-149 and D-177,
+   plus D-149's Spec field `[Appendix D][sD].8`, which was a `§D.8` that
+   `linkify.jl` had mangled for want of the `§`. All now validate and link.
 
-**Prerequisite: rebuild the content-preservation audit.** Pass A's
-`audit_fragments.jl` — a per-entry token-multiset comparison catching a dropped
-citation, code span or named diagnostic — was deleted with the scratch
-directory. Any batch claiming to preserve content needs it back first (~60
-lines, about half the work of `sweep_rows.jl`).
-
-Items 1–3 are ~21 distinct entries, one working session including the audit
-rebuild. Items 1 and 2 are conveniently clustered — D-067–D-072 and
-D-135–D-140 are each contiguous runs.
-
-1. **No-headline bundle** — 14 entries: D-045, D-048, D-050, D-056, D-058,
-   D-059, D-062, D-067–D-072, and D-113's five-kinds-in-one-entry structure.
-   1,208 Position words between them, mean 86 against a corpus mean of 61; the
-   worst are D-113 (143 words, 8 semicolons) and D-071 (132, 9). The work is to
-   extract a one-sentence headline and move the semicolon chain into Rationale,
-   every citation and code span preserved. **Note the tension:** the Position
-   field rule above currently blesses these chains. Moving the chain to
-   Rationale honours it; if this item lands, revisit that clause so the guide
-   and the log agree.
-2. **Provenance prefixes** in Positions — 7 entries: D-131 and D-135–D-140,
-   each opening "Round-4 gaps finding 5, amending D-052: …". **Ruled
-   2026-08-15: delete the prefix outright**, not relocate it to Rationale. The
-   Position keeps only the ruling; where the prefix also carries a substantive
-   clause ("amending D-052", "closing D-133's §13.2 deferral"), that clause
-   survives — it states what the decision does, not where it came from. The
-   round provenance stays recoverable from this file's git history.
-3. **Bare `D.n` glossary citations** — 9 tokens across 4 entries (D-131 and
-   neighbours), spelled `D.3`/`D.6`/`D.8` rather than `§D.3`. A real defect,
-   not cosmetics: `check_refs.jl` only recognises the `§D.n` form, so these
-   nine are unvalidated and unlinked. Small enough to fold into Phase 4's
-   mechanical sweeps instead of running it here.
-
-**Removed from the queue (2026-08-15): "terse early entries as expansion
-candidates."** Measured at 71 entries — 37% of the log — whose Rationale reads
-`Recorded only through the rejections below.` They read that way because the
-original table rows recorded nothing else; the reasoning survives only as the
-rejections. Expanding them means sourcing rationale that was never written, out
-of the cited spec sections (which state mechanism, not reasoning) or the git
-history of `framework_design.md` — historical reconstruction, not prose work,
-and in tension with standing rule 1, since writing a rationale into an old
-entry today is retrofitting. If ever revisited, first survey which entries have
-a real documented source; do not expand wholesale.
+**Item 4, "terse early entries as expansion candidates", was removed from the
+queue rather than done (2026-08-15).** Measured at 71 entries — 37% of the log
+— whose Rationale reads `Recorded only through the rejections below.` They read
+that way because the original table rows recorded nothing else; the reasoning
+survives only as the rejections. Expanding them means sourcing rationale that
+was never written, out of the cited spec sections (which state mechanism, not
+reasoning) or the git history of `framework_design.md` — historical
+reconstruction, not prose work, and in tension with standing rule 1, since
+writing a rationale into an old entry today is retrofitting. If ever revisited,
+first survey which entries have a real documented source; do not expand
+wholesale.
