@@ -220,7 +220,7 @@ in `check_glossary.jl`), gloss recorded for completeness only.
 ## Application record (regenerated at the gloss ratification sitting, 2026-08-15)
 
 179 inline gloss applications standing in the body (chapters 1-16): Part I 27,
-Part II 60, Part III 34, Part IV 52, Part V 6. 64 of the 81 class-A terms are
+Part II 34, Part III 60, Part IV 52, Part V 6. 64 of the 81 class-A terms are
 applied at least once.
 
 An *application* is a gloss parenthetical or appositive (comma, dash or colon)
@@ -233,67 +233,67 @@ Appendix D grouping above.
 |---|---|
 | abstract entry | §13.7 |
 | auto-published port | §7.1, §14.4 |
-| class | §11.2, §11.5, §12.1 |
+| class | §8.2, §8.5, §9.1 |
 | function family | §5.2 |
-| generic holding | §11.5 |
-| rate scope | §12.2 |
-| schema authority | §11.3, §13.7 |
-| stage function | §4.1, §4.3, §4.4, §11.1 |
-| workspace | §7.5, §11.2, §12.1, §14.1 |
-| bundle | §5.3, §7.3, §8.5, §8.6, §10.5, §12.3, §13.2, §15.5 |
-| field handle | §7.5, §9.2 |
-| staging cell | §10.7, §14.8 |
+| generic holding | §8.5 |
+| rate scope | §9.2 |
+| schema authority | §8.3, §13.7 |
+| stage function | §4.1, §4.3, §4.4, §8.1 |
+| workspace | §7.5, §8.2, §9.1, §14.1 |
+| bundle | §5.3, §7.3, §10.5, §10.6, §12.5, §9.3, §13.2, §15.5 |
+| field handle | §7.5, §11.2 |
+| staging cell | §12.7, §14.8 |
 | value-level constructor | §14.1 |
-| frame | §9.1 |
-| anchor | §12.1 |
-| bound schedule | §8.5, §12.1, §12.2 |
-| boundary-detected | §2.2, §8.4, §10.5, §11.2, §16 |
+| frame | §11.1 |
+| anchor | §9.1 |
+| bound schedule | §10.5, §9.1, §9.2 |
+| boundary-detected | §2.2, §10.4, §12.5, §8.2, §16 |
 | `Δt_base` | §5.5 |
-| due | §12.7 |
-| edge semantics | §8.6, §14.5 |
+| due | §9.7 |
+| edge semantics | §10.6, §14.5 |
 | firing budget | §5.3 |
-| harmonic grid | §8.4, §14.5, §14.8 |
-| interpolant | §8.4 |
-| localized | §8.2, §8.4, §10.7, §11.2, §13.5 |
-| pacing | §8.1, §8.5, §10.7 |
-| phase (`Φ`) | §8.5 |
-| prior | §8.4, §8.6, §14.5 |
-| quiescence | §5.3, §8.4, §8.5, §8.6 |
-| activation | §5.6, §6.1, §6.2, §7.3, §11.2, §11.3, §12.7, §13.7, §14.3, §14.8, §14.10 |
-| chunking | §11.1 |
-| executor | §5.2, §7.1, §11.1, §11.5, §12.5, §13.4 |
-| leaf walk | §11.2 |
+| harmonic grid | §10.4, §14.5, §14.8 |
+| interpolant | §10.4 |
+| localized | §10.2, §10.4, §12.7, §8.2, §13.5 |
+| pacing | §10.1, §10.5, §12.7 |
+| phase (`Φ`) | §10.5 |
+| prior | §10.4, §10.6, §14.5 |
+| quiescence | §5.3, §10.4, §10.5, §10.6 |
+| activation | §5.6, §6.1, §6.2, §7.3, §8.2, §8.3, §9.7, §13.7, §14.3, §14.8, §14.10 |
+| chunking | §8.1 |
+| executor | §5.2, §7.1, §8.1, §8.5, §9.5, §13.4 |
+| leaf walk | §8.2 |
 | lens | §14.3 |
 | nominal | §6.1 |
-| stratum | §5.6, §6.1, §11.2, §11.5, §13.1, §13.2, §13.3, §14.3 |
-| calling task | §9.1, §9.2, §9.3, §9.6, §10.6 |
-| coalescing | §9.4 |
-| control plane | §10.4 |
-| diagnostic cell | §10.4, §13.2 |
-| drain | §8.4, §9.4, §9.5, §9.7, §14, §15.3 |
-| framework status | §8.7, §10.2 |
+| stratum | §5.6, §6.1, §8.2, §8.5, §13.1, §13.2, §13.3, §14.3 |
+| calling task | §11.1, §11.2, §11.3, §11.6, §12.6 |
+| coalescing | §11.4 |
+| control plane | §12.4 |
+| diagnostic cell | §12.4, §13.2 |
+| drain | §10.4, §11.4, §11.5, §11.7, §14, §15.3 |
+| framework status | §10.7, §12.2 |
 | greedy claim | §15.4 |
-| harness cell | §9.3, §9.4, §10.6 |
-| peek | §9.2, §15.4 |
-| scenario component | §10.5 |
-| selector | §9.2, §14.7, §14.10 |
+| harness cell | §11.3, §11.4, §12.6 |
+| peek | §11.2, §15.4 |
+| scenario component | §12.5 |
+| selector | §11.2, §14.7, §14.10 |
 | stage-on-interaction | §14.5 |
-| unattended run | §7.5, §9.8, §10.4, §13.4 |
-| write surface | §9.3, §11.6 |
-| decimation | §9.8 |
-| frame ordinal | §10.7 |
-| what-if register | §9.5, §10.7 |
-| boundary zero | §8.4, §8.5, §10.4, §10.6, §10.7, §13.4, §14.4, §14.6, §14.8, §14.9, §14.10, §16 |
+| unattended run | §7.5, §11.8, §12.4, §13.4 |
+| write surface | §11.3, §8.6 |
+| decimation | §11.8 |
+| frame ordinal | §12.7 |
+| what-if register | §11.5, §12.7 |
+| boundary zero | §10.4, §10.5, §12.4, §12.6, §12.7, §13.4, §14.4, §14.6, §14.8, §14.9, §14.10, §16 |
 | capture | §14 |
-| condition | §11.2, §13.3, §13.5, §14.4, §14.5 |
-| mounting | §11.5, §14.4 |
+| condition | §8.2, §13.3, §13.5, §14.4, §14.5 |
+| mounting | §8.5, §14.4 |
 | slot totality | §14 |
 | taps | §14.4, §14.10 |
-| did-you-mean | §5.2, §9.2, §10.7, §11.3, §11.4, §11.5, §12.1, §13.1, §13.2, §13.3, §14.3, §14.10 |
-| error locality | §11.1 |
+| did-you-mean | §5.2, §11.2, §12.7, §8.3, §8.4, §8.5, §9.1, §13.1, §13.2, §13.3, §14.3, §14.10 |
+| error locality | §8.1 |
 | execution cursor | §13.4 |
 | feedthrough tracer | §7.2 |
-| guarded addition | §4.3, §7.5, §9.3, §10.2 |
+| guarded addition | §4.3, §7.5, §11.3, §12.2 |
 | recorded, not built | §14.7, §14.9, §14.10 |
 
 The seventeen class-A terms with no application anywhere in the body — each
