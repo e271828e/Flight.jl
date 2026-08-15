@@ -3690,21 +3690,21 @@ walkthroughs' self-references; no settled decision changes, only text brought
 into line with decisions already recorded.
 
 **Spec.** [§5.3][s5-3], [§6.2][s6-2], [§7][s7], [§7.1][s7-1], [§7.5][s7-5], [§11.4][s11-4], [§11.7][s11-7], [§12][s12], [§12.6][s12-6], [§9.5][s9-5], [§13.4][s13-4],
-[§14][s14], [§14.6][s14-6], [§15.4][s15-4], [§16][s16], [Appendix B][sB], D.3, D.6, D.8
+[§14][s14], [§14.6][s14-6], [§15.4][s15-4], [§16][s16], [Appendix B][sB], [§D.3][sD-3], [§D.6][sD-6], [§D.8][sD-8]
 
 **Rationale.** [§16][s16]'s GUI bullet lists orphan display among the settled
 semantics, not the deleted claim-transition policy ([D-047][d-047], [D-106][d-106]); [§11.7][s11-7]'s
 closing constraint bakes port resolution *and* the liveness verdict at run
-start, matching its own mid-text, [§15.4][s15-4] and D.6; three [D-122][d-122] stragglers renamed
+start, matching its own mid-text, [§15.4][s15-4] and [§D.6][sD-6]; three [D-122][d-122] stragglers renamed
 ([§9.5][s9-5]'s probe-derived *predicate* form, [Appendix B][sB]'s bundle footnote *function
 family*, [Appendix B][sB]'s `Simulation` entry *unattended run*); two [D-121][d-121] slot
 slips reworded ([§14.6][s14-6] "the one initialized datum without declared defaults",
 [§11.4][s11-4]'s scatter "position → slot cell"), the claims themselves intact; chapter
 9's opener roadmaps only chapter 9, leaving [§12][s12]'s own opener the sole roadmap
 for chapter 10; `project`'s two schedule positions cited to [§5.3][s5-3], where the
-rule actually lives, from [§7.5][s7-5], [§9.5][s9-5] and D.3, with a one-clause back-reference
+rule actually lives, from [§7.5][s7-5], [§9.5][s9-5] and [§D.3][sD-3], with a one-clause back-reference
 added at [§7.1][s7-1]'s write-back bullet; [§12.6][s12-6] says *five* states, agreeing with its
-own enumeration and with [§13.4][s13-4], [§14][s14]'s legality tables and D.8; and the two
+own enumeration and with [§13.4][s13-4], [§14][s14]'s legality tables and [§D.8][sD-8]; and the two
 walkthroughs' six self-references, mis-resolved to unrelated spec chapters by
 the phase-4 linkify pass, now point at their own headings (the stray [§6.2][s6-2],
 which matches no walkthrough heading, retargeted to the walkthrough's [§6][s6], token
@@ -3725,7 +3725,7 @@ advisory.
   a [§7][s7] of its own — the ambiguity is real, only the author can settle it, and
   the check would fail on correct text.
 - *[§12.6][s12-6]'s "four phases, the last terminal in two flavours" grouping:*
-  defensible but it re-describes what [§13.4][s13-4], [§14][s14] and D.8 all count as five
+  defensible but it re-describes what [§13.4][s13-4], [§14][s14] and [§D.8][sD-8] all count as five
   statuses.
 
 ### D-132 — Treat operator interrupt (Ctrl-C) as a control-plane stop, not a failure
@@ -4867,10 +4867,10 @@ a complete world over virgin stores — `init!`, trim setup, trim commit** — o
 class, one mechanism, one `UninitializedSlots` kind, collected and
 declaration-ordered; the governing principle replaces the enumeration.
 
-**Spec.** [§11.3][s11-3], [§9.3][s9-3], [§14.6][s14-6], [§14.8][s14-8], [Appendix B][sB], [Appendix D][sD].8
+**Spec.** [§11.3][s11-3], [§9.3][s9-3], [§14.6][s14-6], [§14.8][s14-8], [Appendix B][sB], [§D.8][sD-8]
 
 **Rationale.** A round-5 kernel dry-run finding (finding 4; [§11.3][s11-3], [§9.3][s9-3],
-Appendices B and D.8 swept), amending [D-068][d-068]'s two-site placement. Coverage is a
+[Appendix B][sB] and [§D.8][sD-8] swept), amending [D-068][d-068]'s two-site placement. Coverage is a
 **plan-level fact** — the check compares the resolved plan's slot coverage
 against the `Build`'s `input_faces`, both resolution-time data — so the setup
 check costs one comparison and runs *before the first evaluation*, not merely
@@ -5974,7 +5974,7 @@ single-inheritance slot being vacant (no domain hierarchies compete for it) and
 a binding's sidedness being its **public contract**, not the [§8.3][s8-3]-hidden
 implementation class a component's tier is.
 
-**Spec.** [§11.3][s11-3], [§11.6][s11-6], [§8.1][s8-1], [§8.3][s8-3], [§8.5][s8-5], Appendices A/B/C, glossary D.6
+**Spec.** [§11.3][s11-3], [§11.6][s11-6], [§8.1][s8-1], [§8.3][s8-3], [§8.5][s8-5], Appendices A/B/C, glossary [§D.6][sD-6]
 
 **Rationale.** Binding sides are **declared by Bool traits** with framework
 defaults on the root — `is_input`/`is_output` false, `is_greedy` false, the
@@ -6851,3 +6851,6 @@ besides, specified in full by [§11.8][s11-8]" is qualified to admit those handl
 [sB]: framework_spec.md#appendix-b-api-synopsis-the-entry-points
 [sC]: framework_spec.md#appendix-c-the-diagnostic-kind-set
 [sD]: framework_spec.md#appendix-d-glossary
+[sD-3]: framework_spec.md#d3-evaluation-and-scheduling
+[sD-6]: framework_spec.md#d6-runtime-periphery
+[sD-8]: framework_spec.md#d8-stopped-sim-services-and-the-condition-algebra
