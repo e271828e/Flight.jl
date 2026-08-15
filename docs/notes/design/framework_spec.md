@@ -6049,7 +6049,7 @@ concurrently** — true by construction once buffers are single-owner ([§12.4][
 is shared. The one mutable thing on the artifact is the lazily populated
 [activation](#g-activation) cache, whose insertion [§12.4][s12-4] makes torn-state-free.
 The `Build` is the
-inspectable [contract](#g-contract) of the instantiation [§11.8][s11-8] gestures at — wire list, face
+inspectable contract of the instantiation [§11.8][s11-8] gestures at — wire list, face
 table, [schedule](#g-schedule), root [slots](#g-slot) as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
 `attach!` validates [device](#g-device) [bindings](#g-binding) against it. Build living only inside the
@@ -8362,7 +8362,7 @@ frozen, side by side here:
 **A pure query, and the shape of `capture`.** Linearization is the first
 service with no commit and no [boundary zero](#g-boundary-zero) (the
 initialization boundary: the ordinary macro-sequence with an empty integrate).
-It works on scratch [buffers](#g-buffer) only, and nothing it computes becomes
+It works on scratch buffers only, and nothing it computes becomes
 authoritative. Today's restore-the-trim dance — re-`assign!` after
 `FiniteDiff` dirtied the model — has no successor. The default operating point
 is the sim's current committed state, taken through
@@ -8424,7 +8424,7 @@ evaluation of $\Phi$ integrates one period, then runs the [due](#g-due)
 - **Forward sensitivities** through the in-house RK steppers, for free — a
   payoff of owning the loop ([§8.1][s8-1]).
 
-The honest [boundary](#g-boundary): $\Phi$ is differentiable only where the
+The honest boundary: $\Phi$ is differentiable only where the
 event pattern is locally constant. Exactness across a firing needs saltation
 corrections. The scope is therefore event-quiescent operating points, which
 trim points already are — [guards](#g-guard) at commit see to that
@@ -8589,7 +8589,7 @@ inert parameters, reads the scheduling variables as inputs, and publishes one
 gain bundle per compensator; compensators consume gains as `u`. What mutation
 hid, ports expose. Gain trajectories become observable in log, [trace](#g-trace) and
 [replay](#g-replay); the `Ref` writes were invisible to all three. The [feedthrough](#g-feedthrough)
-graph carries the dependency. Linearization holds unseeded gain [slots](#g-slot)
+graph carries the dependency. Linearization holds unseeded gain slots
 constant with zero special-casing ([§14.10][s14-10]). One-shot design-time gains
 (`robot2d`'s controller synthesis at init) are construction-time parameters or
 stopped-sim service outputs — not a runtime write path.
