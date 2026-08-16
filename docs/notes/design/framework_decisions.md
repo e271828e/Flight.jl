@@ -5568,6 +5568,20 @@ made the original `T`-form look fragile. [D-079][d-079]'s two conceded losses
 ("schema-visible participation, whole-leaf stripping detection — tooling
 niceties") are re-valued as the point.
 
+Annotation (post-[D-173][d-173] re-examination, 2026-08-16): with `init_z` fused into
+`init_x`, the discrete tier also declares `init_x`, and the one-argument ruling
+was re-examined and holds — the discrete form stays plain by the same tier rule
+as `output_types`, and [§7.1][s7-1]'s ground is fusion-independent. The criterion's
+sharpest form, recorded so the next re-examination starts here: a `T` belongs
+in a signature exactly where the declaration's non-nominal behavior is
+underdetermined by its nominal restriction — by the per-leaf pin/walk choice on
+output contracts (this entry), by the tolerant/demands-frozen choice on input
+contracts ([D-167][d-167]), by vocabulary freedom on workspace ([D-077][d-077], which no walk
+rule could cover) — and nowhere else: [§7.1][s7-1]'s walk being total, a two-argument
+`init_x`'s output at any `T` is fully recoverable from its one-argument
+restriction, so its `T` would carry no information, only ceremony on values and
+a new forgotten-`T` class caught only at activation build.
+
 **Rejected.**
 - *Plain declaration + leaf walk on the output side ([D-079][d-079]'s design):*
   writer-honest — nothing to forget, no lurk — but reader-opaque, and
