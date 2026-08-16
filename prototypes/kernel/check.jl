@@ -153,6 +153,42 @@ h_x(::OneArgDecl, (; t)) = (a = 1.0,)
     @test_throws BuildError build(one(OneArgDecl()))
 end
 
+# The constant-branch idiom (D-166): a literal `Float64` returned into a
+# declared-`T` port is a lawful arrival, embedded as a zero-partial.
+struct ConstantBranch end
+input_types(::ConstantBranch, ::Type{T}) where {T <: Real} = (in = T,)
+output_types(::ConstantBranch, ::Type{T}) where {T <: Real} = (out = T, vec = SVector{2,T})
+h_xu(::ConstantBranch, (; u)) = (out = u.in > 0 ? u.in : 0.0, vec = SVector(0.0, 1.0))
+
+# A `Dual` arriving at a deliberately pinned leaf: the one honest cause, and the
+# one that earns the didactic hint.
+struct PinnedGetsDual end
+output_types(::PinnedGetsDual, ::Type{T}) where {T <: Real} = (frozen = Float64,)
+h_x(::PinnedGetsDual, (; t)) = (frozen = t,)
+
+@testset "embed-accept keeps the constant branch legal (D-166)" begin
+    one(c) = ModelSpec([ComponentSpec(:c, c)])
+    # Both ports return literal `Float64`s at a `Dual` activation — the scalar
+    # through a branch not taken, the `SVector` wholesale.
+    sim = build(one(ConstantBranch()), D8)
+    init!(sim)
+    # What the table holds is the cell's type, the constant embedded into it.
+    @test port(sim, :c, :out) isa D8
+    @test port(sim, :c, :vec) isa SVector{2,D8}
+    @test ForwardDiff.value(port(sim, :c, :vec)[2]) == 1.0
+
+    # The converse is not accepted: a `Dual` at a pinned leaf is an error, with
+    # the hint that names the one honest cause.
+    err = try
+        build(one(PinnedGetsDual()), D8)
+        nothing
+    catch e
+        e
+    end
+    @test err isa BuildError
+    @test occursin("participates in differentiation", err.msg)
+end
+
 # A deliberately pinned leaf (D-166): `frozen` is declared `Float64` rather than
 # `T`, so it must not follow the activation scalar.
 struct PinnedLeaf end

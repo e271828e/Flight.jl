@@ -18,7 +18,7 @@ from its own feedthrough structure, integrates, and does it without allocating.
 | declaration layer (two registers, D-166/D-167), the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
 | per-eltype cell store with offsets in entry fields | §9.7, D-162 | `src/store.jl` |
 | entries, chunked unrolled walk, phase bodies in both arities | §9.7 | `src/executor.jl` |
-| probe, feedthrough graph, algebraic-loop rejection, layout | §9.3, §5.3, §5.5 | `src/build.jl` |
+| probe, feedthrough graph, algebraic-loop rejection, layout, embed-accept | §9.3, §5.3, §5.5, D-166 | `src/build.jl` |
 | `Simulation`, RHS evaluation, RK4, `phase_bodies` | §10.2, §10.3, §9.7 | `src/sim.jl` |
 | the coverage set: `Plant`, `Gain`, `Sum` | §5.2, §6.2 | `src/library.jl` |
 

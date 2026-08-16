@@ -76,8 +76,8 @@ function probe_stage1(spec::ModelSpec, decls::Vector{Decls}, ::Type{T}) where {T
         y = h_x(cs.comp, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T))
         y isa NamedTuple ||
             throw(BuildError("$(cs.path): h_x must return a NamedTuple of port values, got $(typeof(y))"))
-        _check_ports(cs.path, "h_x", y, d.outs)
-        y
+        _check_ports(cs.path, "h_x", y, d.outs, T)
+        _embed_ports(y, d.outs, T)
     end
 end
 
@@ -92,14 +92,54 @@ function _bundle_values(bn, d::Decls, u, y_x, ::Type{T}; y = NamedTuple()) where
     NamedTuple{bn}(vals)
 end
 
-function _check_ports(path, stage, y::NamedTuple, outs::NamedTuple)
+function _check_ports(path, stage, y::NamedTuple, outs::NamedTuple, ::Type{T}) where {T}
     for (name, v) in pairs(y)
         haskey(outs, name) ||
             throw(BuildError("$path: $stage returns `$name`, which `output_types` does not declare"))
-        typeof(v) === outs[name] ||
-            throw(BuildError("$path: $stage returns `$name`::$(typeof(v)), declared $(outs[name])"))
+        _accepts(outs[name], typeof(v), T) ||
+            throw(BuildError("$path: $stage returns `$name`::$(typeof(v)), declared $(outs[name])" *
+                             _pin_hint(outs[name], typeof(v), T)))
     end
 end
+
+# --- embed-accept (D-166) -----------------------------------------------------
+# A declared-`T` leaf accepts exactly two arrivals: the activation scalar, and a
+# `Float64` **embedded as a zero-partial** — which is what keeps the
+# constant-branch idiom (`flow > 0 ? f(x) : 0.0`) legal as written at a `Dual`
+# activation. Every other leaf — a deliberately pinned `Float64`, an `Int`, a
+# `Bool` — is matched exactly, so an observed `Dual` at a pinned leaf is an
+# error with a hint rather than a silent narrowing.
+
+"""Is a value of type `V` a lawful arrival at a cell declared `P`, at activation `T`?"""
+function _accepts(::Type{P}, ::Type{V}, ::Type{T}) where {P,V,T}
+    P === V && return true
+    if P <: Real
+        return V <: Real && P === T && (V === T || V === Float64)
+    elseif P <: StaticArray
+        return V <: StaticArray && size(P) === size(V) && _accepts(eltype(P), eltype(V), T)
+    else
+        P.name === V.name || return false
+        fieldcount(P) === fieldcount(V) || return false
+        return all(_accepts(FP, FV, T) for (FP, FV) in zip(fieldtypes(P), fieldtypes(V)))
+    end
+end
+
+# The one honest cause of a `Dual` at a leaf declared `Float64`, per D-166.
+_pin_hint(::Type{P}, ::Type{V}, ::Type{T}) where {P,V,T} =
+    T === Float64 || P === T ? "" :
+    " — if this leaf participates in differentiation, declare it `T`"
+
+"""
+What the cell will hold: an accepted `Float64` arrival stored into the
+activation buffer *is* a zero-partial, so the probe hands downstream the
+embedded value rather than the literal the stage returned. Without this the
+probe's product types diverge from the ones the runtime gather produces.
+"""
+_embed(::Type{P}, v, ::Type{T}) where {P,T} =
+    typeof(v) === P ? v : reconstruct(P, T[T(l) for l in _leaf_values(v)], 0)
+
+_embed_ports(y::NamedTuple, outs::NamedTuple, ::Type{T}) where {T} =
+    NamedTuple{keys(y)}(map(n -> _embed(outs[n], y[n], T), keys(y)))
 
 # --- 3. the feedthrough graph and the stage-2 schedule -------------------------
 
@@ -255,13 +295,14 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
         has_stage(h_xu, cs.comp) || continue
         bn = bundle_names(h_xu, cs.comp, tuple(keys(s1)...))
         u = NamedTuple{tuple(keys(d.ins)...)}(tuple(
-            (_probe_input(spec, layout, products, cs, face, d.ins[face]) for face in keys(d.ins))...))
+            (_probe_input(spec, layout, products, cs, face, d.ins[face], T) for face in keys(d.ins))...))
         y2 = h_xu(cs.comp, _bundle_values(bn, d, u, s1, T))
         y2 isa NamedTuple ||
             throw(BuildError("$(cs.path): h_xu must return a NamedTuple, got $(typeof(y2))"))
-        _check_ports(cs.path, "h_xu", y2, d.outs)
+        _check_ports(cs.path, "h_xu", y2, d.outs, T)
         isempty(intersect(keys(s1), keys(y2))) ||
             throw(BuildError("$(cs.path): $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
+        y2 = _embed_ports(y2, d.outs, T)
         products[ci] = merge(s1, y2)
 
         yx_g, out_g, in_g = addr_group(cs.path, keys(s1)), addr_group(cs.path, keys(y2)), in_group(cs, d)
@@ -286,7 +327,7 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
             throw(BuildError("$(cs.path) declares `init_x` but defines no `f`"))
         bn = bundle_names(f, cs.comp, tuple(keys(stage1[ci])...))
         u = NamedTuple{tuple(keys(d.ins)...)}(tuple(
-            (_probe_input(spec, layout, products, cs, face, d.ins[face]) for face in keys(d.ins))...))
+            (_probe_input(spec, layout, products, cs, face, d.ins[face], T) for face in keys(d.ins))...))
         ẋ = f(cs.comp, _bundle_values(bn, d, u, stage1[ci], T; y = products[ci]))
         _check_derivative(cs.path, ẋ, d.x)
 
@@ -306,15 +347,21 @@ end
 # A probed input value: the upstream product where wired, the synthesized slot
 # value at a root. Stage-2 probing runs in topological order, so upstream
 # products exist by construction.
-function _probe_input(spec, layout, products, cs, face, P)
+#
+# The entry is a *bound*, read permissively (D-167): a `T` entry is tolerant of
+# both lawful arrivals, a pinned `Float64` entry demands a frozen one. The value
+# passed on is the producer's, unembedded — the consumer gathers the producer's
+# cell at runtime, so the cell's type is what its bundle carries.
+function _probe_input(spec, layout, products, cs, face, P, ::Type{T}) where {T}
     for (f, (ppath, pport)) in cs.conns
         f === face || continue
         pi = index_of(spec, ppath)
         haskey(products[pi], pport) ||
             throw(BuildError("$(cs.path).$face reads $ppath.$pport, which no stage of $ppath produces"))
         v = products[pi][pport]
-        typeof(v) === P ||
-            throw(BuildError("$(cs.path).$face declared $P, wired to $ppath.$pport::$(typeof(v))"))
+        _accepts(P, typeof(v), T) ||
+            throw(BuildError("$(cs.path).$face declared $P, wired to $ppath.$pport::$(typeof(v))" *
+                             _pin_hint(P, typeof(v), T)))
         return v
     end
     probe_value(P)
