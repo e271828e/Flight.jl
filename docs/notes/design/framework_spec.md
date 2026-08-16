@@ -352,9 +352,10 @@ wire, log or panel sees it. The scheduler does see it — the [feedthrough](#g-f
 stage membership change ([§9.1][s9-1]).
 
 **Visibility.** Which ports exist at all is a declaration-layer decision: the output
-[contract](#g-contract) *is* the public interface. Stage-function results outside that contract
-never enter the table at all. They ride the stage's `w` return down to the component's
-own later functions, private by construction ([§5.2][s5-2], [§8.3][s8-3]). A presentational
+[contract](#g-contract) *is* the public interface. There are no private
+intermediates: a value a later function needs is a declared port like any
+other, and a stage result outside the contract is a build error
+([§5.2][s5-2], [§8.3][s8-3]). A presentational
 *unlisted* flag — skipped in logs and GUI but still connectable — is closed ([D-016][d-016]).
 
 ### 4.3 Table mechanics and port granularity
@@ -388,9 +389,8 @@ capture — gathers views from cells.
 
 **The aggregate `y` is a merge semantically and virtual physically.**
 Semantically, a component's `y` is the merge of its stage products
-(`merge(y_x, y_xu)`, the same on either [tier](#g-tier)). It carries declared ports only;
-a stage's private intermediates ride its `w` return rather than the table
-([§5.2][s5-2]). Physically no such object exists: `y` is reconstructed per call from
+(`merge(y_x, y_xu)`, the same on either [tier](#g-tier)). It carries declared ports only.
+Physically no such object exists: `y` is reconstructed per call from
 cells — field loads, register-level, zero cost for isbits — and never stored as
 an object.
 
@@ -536,25 +536,25 @@ in the design:
 ```julia
 # continuous component — maximal legal view set of each bundle in comments
 y_x      = h_x(comp, args)          # x, m, t [, ws] — no-feedthrough stage
-y_xu     = h_xu(comp, args)         # x, m, u, y_x, w, t [, ws]
-ẋ        = f(comp, args)            # x, m, y, u, w, t [, ws]
+y_xu     = h_xu(comp, args)         # x, m, u, y_x, t [, ws]
+ẋ        = f(comp, args)            # x, m, y, u, t [, ws]
 
 # discrete component — same stage names, its own closed bundle sets
 y_x      = h_x(comp, args)          # x, t, Δt [, ws]
-y_xu     = h_xu(comp, args)         # x, u, y_x, w, t, Δt [, ws]
-x⁺       = g(comp, args)            # x, y, u, w, t, Δt [, ws]
+y_xu     = h_xu(comp, args)         # x, u, y_x, t, Δt [, ws]
+x⁺       = g(comp, args)            # x, y, u, t, Δt [, ws]
 
-# every output stage returns y or (y, w) — the return and one-hop laws below
+# every output stage returns its port NamedTuple — the return law below
 
 # event system (continuous side only) — same fresh table, same state views:
-σ        = guard(comp, args)        # x, m, y, u, w, t [, ws] — Bool or scalar sign value (§2.1)
-(; x, m) = handler(comp, args)      # x, m, y, u, w, t [, ws] — keys by the return law below (§9.5)
+σ        = guard(comp, args)        # x, m, y, u, t [, ws] — Bool or scalar sign value (§2.1)
+(; x, m) = handler(comp, args)      # x, m, y, u, t [, ws] — keys by the return law below (§9.5)
 x⁺       = project(comp, x)         # manifold projection; positional (below)
 ```
 
 The laws that govern that surface follow: how a function receives its
-arguments, which names it receives, what an output stage returns, how far a
-private intermediate travels, and what a handler returns.
+arguments, which names it receives, what an output stage returns, and what a
+handler returns.
 
 #### The hand-off: one component, one bundle
 
@@ -585,7 +585,6 @@ bundle **iff the corresponding store or fact exists for that component**.
 | `u` | the [function family](#g-function-family) (which bundle fields a given function may legally receive) may see inputs **and** the component declares `input_types` |
 | `y` | the component produces any table [cell](#g-cell) at all (`output_types` ∪ auto-published) |
 | `y_x` | stage-1 [ports](#g-port) exist |
-| `w` | the stage that hands it down returned one (the one-hop law below) |
 | `t` | always |
 | `Δt` | the component is on the discrete [tier](#g-tier) |
 
@@ -627,66 +626,17 @@ because a stateless component legitimately writes `h_xu` while owning neither
 
 #### The stage return law
 
-**Rule.** An output stage returns either its port NamedTuple alone, `y`, or the
-pair `(y, w)`.
+**Rule.** An output stage returns its port NamedTuple, `y`, and nothing else.
 
-`y` scatters into the component's declared cells as always. `w` is a NamedTuple
-of **private intermediates** — `isbits` leaves, no cell, no name in any
-[contract](#g-contract), nothing to wire, list or filter ([§8.3][s8-3]). A
-`nothing` in either slot is a probe error: the pair is a
-`Tuple{NamedTuple, NamedTuple}` and padding forms do not exist, for the reason
-the handler return law gives below.
+`y` scatters into the component's declared cells as always, and every value a
+later function needs is one of those cells ([§8.3][s8-3]). Stages are
+discovered by method existence, and stage membership is a partition of the
+declared ports.
 
-An empty `y = (;)` *is* legal, so the **port-less stage** — one whose entire
-product is `w` — falls out of the general law instead of needing a rule of its
-own. Stages are discovered by method existence, and stage membership is a
-partition of the declared ports that may perfectly well be empty. What is not
-legal is a stage that produces neither ports nor `w`: a bare `(;)` computes
-nothing any consumer can read, and is a `DeadStage` build error at the probe
-([§9.3][s9-3]) — the inert-component check in the stage register
+An empty `y = (;)` is a `DeadStage` build error at the probe
+([§9.3][s9-3]): a stage returning nothing at all computes nothing any consumer
+can read. That is the inert-component check in the stage register
 ([§8.1][s8-1]).
-
-#### The one-hop law
-
-**Rule.** `w` travels exactly one hop, to the next function that could want it,
-and no further.
-
-`h_x`'s `w` flows to `h_xu` if the component defines one, and otherwise to the
-downstream set — `f`, [guards](#g-guard) and handlers. `h_xu`'s `w` flows to
-the downstream set. The discrete tier mirrors it exactly (`h_x` → `h_xu` →
-`g`), and that is the last time it is said.
-
-**Nothing flows implicitly past its hop.** Forwarding a stage-1 intermediate
-through stage 2 is an explicit re-return, `(y, (; w..., extra))`.
-
-**Why.** The re-return costs a line and says in the source that the value
-crosses; a silent pass-through on a bare `y` was rejected ([D-165][d-165]).
-
-```julia
-# one hop, on a component defining both stages
-h_x(c::Foo,  (; x))       = (y, w)   # w is produced here
-h_xu(c::Foo, (; x, u, w)) = y        # it arrives here, and stops
-f(c::Foo,    (; x, u))    = ẋ        # no w key: h_xu returned a bare y
-
-# the same stage, forwarding across the hop — f, guards and handlers see it now
-h_xu(c::Foo, (; x, u, w)) = (y, (; w..., extra))
-```
-
-Presence in a bundle follows the producing stage's return under the bundle law:
-a bare-`y` producer hands down no `w` key at all, so a consumer destructuring
-one meets the [§13.2][s13-2] framing diagnostic naming its legal field set,
-exactly as for an undeclared store.
-
-`w` is never persisted. The executor hands it down as an ordinary SSA value
-**inside one fused pass** — a step fuses the [sweep](#g-sweep) with `f`, an
-event round fuses the sweep with its guards and fired handlers ([§10.6][s10-6]).
-So freshness is a property of the construction rather than a rule anyone can
-violate, and round fusion is thereby a design constraint on the executor, not
-an optimization it may decline ([§9.7][s9-7]).
-
-`w`'s types are probe-observed, and [§8.3][s8-3] states the conformance
-regime that governs them. The handler return law below is untouched by any of
-this — handlers *receive* `w` and return stores.
 
 #### The handler return law
 
@@ -714,8 +664,6 @@ The views themselves are unchanged in meaning:
   `m` from the mode [stores](#g-store); on the discrete tier `x` from its store;
 - own published signals — `y`, gathered from own table cells (the declared
   ports, [§8.2][s8-2]);
-- own private intermediates — `w`, handed down by the producing stage rather
-  than gathered from anywhere, the one bundle field with no home at all;
 - inputs — `u`, gathered from foreign cells through the wiring's name binding;
 - the clock — `t`, and `Δt` (see [§10.5][s10-5]);
 - scratch — `ws` ([§7.3][s7-3]).
@@ -763,16 +711,10 @@ carries no `u`, so "no feedthrough" cannot be violated by construction. That str
 guarantee is what `h_x` [ports](#g-port) contribute to the [schedule](#g-schedule): they
 break would-be loops.
 
-`h_x` exists when the [component](#g-component) has state-derived ports, or shared
-state-derived intermediates to hand down its `w` return ([§5.2][s5-2]); otherwise it is
-simply absent. A stage that would produce neither is the `DeadStage` error, an empty
+`h_x` exists when the [component](#g-component) has state-derived ports, including
+any state-derived intermediate a later function reads ([§5.2][s5-2]); otherwise it is
+simply absent. A stage that would produce none is the `DeadStage` error, an empty
 stage being unwritable on purpose.
-
-Guidance rather than law: when the component also defines `h_xu`, a `w`-only `h_x`
-earns nothing. Fold the intermediates into `h_xu`, which runs exactly once per
-[sweep](#g-sweep) just as `h_x` does. The port-less `h_x` earns its keep where there is
-no `h_xu` at all, its no-`u` bundle being the honest spelling of "these intermediates do
-not depend on inputs".
 
 **Rule.** A declared output that matches a state or mode field by name and type, and
 that no stage produces, is auto-published by the framework from the state stores at
@@ -781,9 +723,9 @@ plus `init_m` on the continuous tier — and the publication position is `h_x` o
 tier. Publication is driven by the public [contract](#g-contract) ([D-016][d-016]).
 
 **`h_xu` receives all wired inputs plus `y_x`** — its own stage-1 ports, auto-published
-names excluded ([D-169][d-169]). With them it
-receives stage 1's `w`, so shared intermediates are computed once, not re-derived,
-whether or not they are interface. It receives the [state views](#g-view) too.
+names excluded ([D-169][d-169]). A shared
+intermediate is therefore computed once and read, not re-derived: stage 1 declares
+it as a port and stage 2 finds it in `y_x`. It receives the [state views](#g-view) too.
 Conservatively, every stage-2 output is presumed dependent on every wired input.
 
 **`f` and `g` run after the sweep**, when the full [signal table](#g-signal-table) is
@@ -925,9 +867,7 @@ cross-couple through a neighbor: port-level acyclic, stage-level cyclic. The tra
   **one struct-valued bundle port**, a `StrutGeometry`-shaped value, not N loose
   ports. The bundle type is then contract — a real cost, but a bounded and honest
   one. No visibility register is added for the orphaned intermediates: [D-034][d-034] and [D-055][d-055]
-  (`unlisted`, `Private(T)`) stay closed. The `w` channel ([§5.2][s5-2]) is no exit
-  either: it hands values between one component's own functions, so there is
-  nothing for a wire to carry ([D-165][d-165]).
+  (`unlisted`, `Private(T)`) stay closed.
 
 The build diagnostic offers both exits explicitly: "cycle through `systems/aero` is
 artificial at port level — split the component, or narrow the neighbor's contract".
@@ -2216,8 +2156,6 @@ alone is what the [component test rig](#g-component-test-rig)
 **Rule.** Visibility is decided by *where the value goes*:
 
 - a field declared in `output_types` is public;
-- a field returned in `w`, the optional second slot of an output stage's
-  return, is private *by construction*;
 - a field returned in `y` — a stage's own published signals — and declared
   nowhere is a build error;
 - a component with no `output_types()` method has no outputs.
@@ -2226,14 +2164,13 @@ That is the same move as class-by-declaration-shape.
 [Ports](#g-port) in the [contract](#g-contract) are connectable, GUI-listed,
 [snapshot](#g-snapshot)-carried and log-exported. The table is public
 throughout, every [cell](#g-cell) a declared port or an auto-published one, so
-nothing anywhere needs a presentation filter. Private intermediates are not
-filtered — they are simply not there. `w` is handed from stage to consumer as a
-value (the one-hop law, [§5.2][s5-2]), with no cell, no name in a contract and
-nothing for a wire, a listing or a log to reach.
+nothing anywhere needs a presentation filter. Visibility is binary, with no
+third register between the two: a value a later function reads travels as a
+declared port like any other ([§5.2][s5-2]).
 
-The inspection path for an intermediate is **promotion**: one line in
-`output_types` makes it public, checked and visible everywhere at once
-([D-165][d-165]). FlightCore is the precedent, where an intermediate was inspected by
+The inspection path for an intermediate is therefore **declaration**: one line
+in `output_types` makes it public, checked and visible everywhere at once
+([D-194][d-194]). FlightCore is the precedent, where an intermediate was inspected by
 putting it in the `Model` output and no other way. Publicity is never implicit:
 even the minimal [component](#g-component) writes
 `output_types(::LowPassFilter, ::Type{T}) where {T <: Real} = (x = T,)`, one
@@ -2253,42 +2190,9 @@ line, in exchange for "public" always meaning someone wrote it down.
   walkthrough holds: a declared `P` missing from the taken branch's return
   fails at probe; missing from an *untaken* branch, it fails loudly at that
   branch's first execution via the always-on check.
-- **`w`'s regime is probe-observed, and that is sound precisely because `w` is
-  not a cell.** A cell needs a fixed type per [activation](#g-activation) (a
-  re-run of Stratum C at a given scalar type), which only a declaration can
-  supply. A value flowing between two functions in one fused pass has no type
-  contract to violate, and mixed branches are handled exactly by promotion. So
-  the probe takes `w` as it finds it: it checks that the second return
-  position is a `NamedTuple` at all, and it checks the *consumer's*
-  reads against the observed field set. A destructured name that is not there
-  fails inside the framing diagnostic ([§13.2][s13-2]) with did-you-mean from
-  the actual fields. That is weaker than a declaration-backed message: it can
-  say "`f` of `Foo` reads `w.q_dny`; the producing stage returned `q_dyn`" but
-  cannot say which spelling was intended. It is located, name-shaped, and costs
-  no declaration.
 - **Branch-shape rule**: stage returns must have the same `NamedTuple` shape on
   every branch. Julia's type-stability discipline already demands that for
   performance; the framework merely makes it a stated rule with a good error.
-  `w` is inside the rule: a stage whose `w` changes shape between branches is
-  as broken as one whose `y` does.
-- **The always-on check covers `w` at the nominal activation only.** Beside the
-  `y` test ([§9.5][s9-5]) sits one baked `isa` against the type the *nominal
-  probe observed*. It folds to nothing while the stage is stable, and it
-  converts the unintended-branch-divergence class — which otherwise announces
-  itself only as an allocation in somebody's benchmark — into a loud located
-  field-naming error at the divergent branch's first execution. The blame text
-  says what it honestly knows: "expected what the nominal probe observed". This
-  complements the canary ([§7.5][s7-5]): the canary detects, this localizes.
-  **Non-nominal activations run no `w` check at all**, and deliberately. There
-  is no declaration to anchor a branch-independent expectation, and no store
-  whose typing the check would be protecting. A strict probe-observed
-  expectation would also fire on the legal constant-branch idiom — the
-  one-probe-point argument, which is exactly what kills observation authority
-  for cells. Correctness needs no guard there: a `Float64` in `w`
-  under a `Dual` activation is an honest zero-partial constant by the embedding
-  guarantee ([§9.5][s9-5]), and its downstream promotion is exact. Walking
-  the nominal observation to synthesize non-nominal expectations was rejected
-  ([D-165][d-165]).
 - **[Schema authority](#g-schema-authority) is total over the table**
   (declarations define structure; evaluation only checks conformance): every
   *cell* traces to an authored declaration, the always-on check's expected type
@@ -2296,9 +2200,8 @@ line, in exchange for "public" always meaning someone wrote it down.
   new cells. Protection against silently dropped partials rests on the
   embedding guarantee — promotion is airtight, so an observed `Float64` is a
   true constant, [§9.5][s9-5]. Probe-observed expected types remain rejected
-  *for cells* ([D-034][d-034], [D-055][d-055], [D-165][d-165]), and that rejection does not reach `w`, which
-  declares nothing and types nothing.
-- **What this rules out** ([D-016][d-016], [D-034][d-034], [D-055][d-055], [D-165][d-165]): the `unlisted` flag
+  ([D-034][d-034], [D-055][d-055], [D-194][d-194]).
+- **What this rules out** ([D-016][d-016], [D-034][d-034], [D-055][d-055], [D-194][d-194]): the `unlisted` flag
   ([§4.2][s4-2]) and its satellite-function representation; identity
   publication by default ([§7.4][s7-4] step 4); **probe-observed private
   cells**; the `Private(T)` fallback; and the opt-in variant with a
@@ -2319,22 +2222,14 @@ the traces.
    first-execution error naming the declared [port](#g-port).
 4. **Type mismatch** (a `Float64` fraction wired into a `Bool` input): wiring-time
    error naming both endpoints and both [faces](#g-face).
-5. **Typo'd return field**, in its two [registers](#g-register). A typo'd *port*
-   (`P_shft = …` for a declared `P_shaft`) keeps the full strength of the
-   declaration: a probe error with [did-you-mean](#g-did-you-mean) (the offending name plus the
+5. **Typo'd return field** (`P_shft = …` for a declared `P_shaft`): a probe
+   error with [did-you-mean](#g-did-you-mean) (the offending name plus the
    list-in-hand it should have matched) against `output_types`, plus the
    unproduced-`P_shaft` error with both the stage-product and state-field lists
-   in hand. A typo *inside* `w` (`q_dny` where the consumer reads `q_dyn`) has
-   no declaration to be checked against. It surfaces one hop later, at the
-   consumer, as the framing diagnostic ([§13.2][s13-2]). That diagnostic
-   carries the producing stage's observed field set: "`f` of `Foo` reads
-   `w.q_dyn`; the stage returned `q_dny`". It is weaker than a
-   declaration-backed error, since the framework cannot know which of the two
-   spellings was meant. Even so, it is located at the pair of lines that
-   disagree, and it is still name-shaped. That is the price of the private
-   channel, paid where no interface is at stake. The remedy for an intermediate
-   worth stronger checking is the one [§8.3][s8-3] names: declare it an
-   output.
+   in hand. Every returned field is a declared port, so this one
+   register is the whole case — an intermediate a later function reads is
+   declared like any other output and typo'd like any other output
+   ([§8.3][s8-3]).
 
 ### 8.5 Assembly declaration: type-based, class by declaration shape
 
@@ -2890,8 +2785,7 @@ Stratum B is the single evaluation-feeds-structure step. It computes the
   They are well-founded, the no-[feedthrough](#g-feedthrough) stage taking no
   inputs.
 - [Ports](#g-port) are classified over `output_types` alone: stage-1,
-  auto-published, and the stage-2 remainder. A stage's `w` classifies nothing,
-  being no part of the contract ([§8.3][s8-3]).
+  auto-published, and the stage-2 remainder ([§8.3][s8-3]).
 - The feedthrough graph is built from the wires carrying stage-2 ports, and a
   topological order over it follows. [§5.5][s5-5] cycle rejection applies.
 
@@ -2910,9 +2804,8 @@ The stratum holds everything type-shaped:
   [pinned](#g-walked).
 - The `init_x`-derived state type is [walked](#g-walked) by the leaf-walk rule
   ([§8.2][s8-2]).
-- The probe chain runs in topological order, threading each stage's `w` to its
-  one-hop consumers ([§5.2][s5-2], [§9.3][s9-3]), and observed is compared
-  against declared.
+- The probe chain runs in topological order ([§9.3][s9-3]), and observed is
+  compared against declared.
 - The flat `x` [buffer](#g-buffer) and the table are laid out.
 
 The nominal `Float64` activation runs at build. Other activations re-run *only
@@ -3097,20 +2990,12 @@ remains the completeness backstop.
 auto-published name is a framework write, never a probe product, so it is
 absent from the hand-down — [§5.2][s5-2]); wired inputs from
 upstream products, real values available because the stage-2 chain is probed in
-topological order. **`w` threads through the probe in stage order.** It follows
-the one-hop law of [§5.2][s5-2]. If the [component](#g-component) defines an
-`h_xu`, the `h_x` probe's second return position enters that stage's
-probe [bundle](#g-bundle) (the NamedTuple of zero-copy views a component
-function receives). Otherwise it enters the downstream bundles. The `w` that
-survives the last output stage enters the `f`, guard and handler probes. So
-every consumer is probed against the same value it will receive at run time.
-Three checks ride the same pass. The first is the return's shape: a stage
-returning something other than a `NamedTuple` or a `NamedTuple` pair fails
-here, `nothing` in either slot included. The second checks the consumer's `w`
-reads against the observed field set — the [did-you-mean](#g-did-you-mean) of
-[§8.3][s8-3], delivered through the [§13.2][s13-2] framing diagnostic. The
-third is the dead-stage rule: a stage returning bare `(;)`, neither
-[ports](#g-port) nor `w`, is `DeadStage`, fail-fast.
+topological order, so every consumer is probed against the same value it will
+receive at run time.
+Two checks ride the same pass. The first is the return's shape: a stage
+returning something other than a `NamedTuple` fails here. The second is the
+dead-stage rule: a stage returning bare `(;)` produces
+no [ports](#g-port) at all, and is `DeadStage`, fail-fast.
 The [bundle law](#g-bundle)'s two remaining fields ([§5.2][s5-2]): `t` is
 probe-scoped `0.0` — deployment binds no clock and `t₀` post-dates even
 deployment ([§14.5][s14-5]), so like `Δt` below it is a fabricated, probe-scoped
@@ -3355,26 +3240,6 @@ stage, and the check above holds the freeze to its word at every activation.
 Stripping mid-expression at a leaf still declared `T` remains legal and remains
 unseen, as the sharp tool it is.
 
-**`w` is checked at the nominal activation, and nowhere else.** A stage that
-returns the `(y, w)` pair ([§5.2][s5-2]) gets a second baked `isa` beside the first,
-against the type the **nominal probe observed** — no declaration exists to draw
-an expectation from, and none is wanted, `w` being a value in flight rather
-than a cell to type. It folds exactly as its sibling does when the stage is
-stable. When it does not fold it earns its nanoseconds: the branch that quietly
-returns a `w` of a different shape is otherwise invisible until it shows up as
-an allocation in someone's benchmark. Here it is a located error naming the
-offending field at that branch's first execution. The message cites its
-authority honestly — expected *what the nominal probe observed*, not what
-anybody declared. Under **non-nominal activations the `w` test is
-absent**: with no declaration there is no branch-independent anchor, there is
-no cell whose typing the check would protect, and a probe-observed expectation
-would reject the constant-branch idiom that [§8.2][s8-2] keeps legal on the
-output side. Nothing is lost in correctness — a `Float64` arriving in `w` under
-a `Dual` activation is a true zero-partial constant by the embedding guarantee
-above, and promotion at its first use with a `Dual` operand is exact. The
-reasoning is the private-by-construction argument of [§8.3][s8-3], recorded in
-[D-165][d-165].
-
 **Uniform across all probed functions.** `f` checks against `X`'s own shape at
 the activation's `T` ([§7.1][s7-1]: a scalar leaf expects a `T`, an `SArray`
 leaf the same `SArray` at `T`). Its predicate is "every field scatters into its
@@ -3505,15 +3370,12 @@ due set is **arity selection, not an index trick** ([D-147][d-147], [D-185][d-18
 `t*` iteration runs the zero-arg arities, whose compiled bodies contain no
 discrete entries ([§10.5][s10-5]).
 
-Across passes these bodies communicate only through the stores and the table,
-so the [seams](#g-seam) between passes cost nothing — no values cross them.
-**Within** a pass one kind of value does: a stage's `w` ([§5.2][s5-2]) is
-handed to its one-hop consumers as an ordinary SSA argument, across block and
-chunk seams alike, never through storage. That is what makes the fusion a
-design constraint rather than an optimization: a step's sweep and its `f`
-block compile into one pass, and an event round's sweep, its guards and its
-fired handlers into another ([§10.6][s10-6]), because that is the scope over
-which a private intermediate is fresh by construction. Two doors this
+These bodies communicate only through the stores and the table. No value
+crosses a [seam](#g-seam) — not between passes, not between the blocks of one
+pass, not between chunks — so the seams cost nothing, and the executor's
+decomposition stays free: fusing a step's sweep with its `f` block, or an
+event round's sweep with its guards and fired handlers ([§10.6][s10-6]), is an
+optimization it may take or decline ([D-194][d-194]). Two doors this
 structure opens for free, recorded not committed: deterministic parallel
 evaluation of the order-free blocks (disjoint writes, and no floating-point
 reductions to reorder — [§6.2][s6-2] made every sum an ordered junction
@@ -7649,10 +7511,10 @@ value describing the read the compiled gather will perform. The prefix names
 that action, and it keeps five short common nouns out of the namespace user
 declarations share with domain code.
 
-There is no selector for a [component](#g-component)'s private intermediates,
-and there cannot be one: they are values in flight, not [cells](#g-cell)
-anything could address ([§5.2][s5-2]). So a reader that wants one is asking the
-producing component to declare it an output ([§8.3][s8-3]). `get_face`
+There is no selector for a value a [component](#g-component) computes without
+declaring it, and there cannot be one: only [cells](#g-cell) are addressable
+([§5.2][s5-2]). So a reader that wants one is asking the producing component to
+declare it an output ([§8.3][s8-3]). `get_face`
 addresses a root-exported output [face](#g-face) — the *integration* register
 ([§11.2][s11-2]).
 
@@ -7691,7 +7553,7 @@ property:
   [slot](#g-slot) faces ([§14.9][s14-9]), the read side mirroring the write
   side. So an equilibrium equation reaching behind a generically-held child
   binds the curated face register instead of a path the locality law forbids. A
-  service evaluation needing a private intermediate has one remedy, and it is
+  service evaluation needing an undeclared intermediate has one remedy, and it is
   the same at every register: the component exports it ([§14.7][s14-7]).
 - **Diagnostic readers admit the whole family, within the source rule.**
   Output-[device](#g-device) bindings, GUI panels and log inspection take deep
@@ -7933,7 +7795,8 @@ against today's `c172.jl`:
   (validated against the root face lists). The path [selectors](#g-selector) (the closed
   family of deferred reads resolving against a source) reach only through the
   locality scopes ([§6.1][s6-1]). An equilibrium equation crossing a generic seam reads
-  a face. A [component](#g-component)'s private intermediates are not addressable at all ([§5.2][s5-2],
+  a face. A value a [component](#g-component) computes without declaring it is not
+  addressable at all ([§5.2][s5-2],
   [§14.4][s14-4]); a trim evaluation needing one is a signal the component should
   export it. A derivative wanted across a [contract](#g-contract) boundary takes the same
   remedy: publish it as an ordinary output port computed in `h_xu` ([§7.4][s7-4] step
@@ -9504,12 +9367,12 @@ destructure less at will):
 | function | bundle fields |
 |---|---|
 | `h_x` (continuous) | `x, m, t [, ws]` |
-| `h_xu` (continuous) | `x, m, u, y_x, w, t [, ws]` |
-| `f` | `x, m, y, u, w, t [, ws]` |
+| `h_xu` (continuous) | `x, m, u, y_x, t [, ws]` |
+| `f` | `x, m, y, u, t [, ws]` |
 | `h_x` (discrete) | `x, t, Δt [, ws]` |
-| `h_xu` (discrete) | `x, u, y_x, w, t, Δt [, ws]` |
-| `g` | `x, y, u, w, t, Δt [, ws]` |
-| guard / handler | `x, m, y, u, w, t [, ws]` |
+| `h_xu` (discrete) | `x, u, y_x, t, Δt [, ws]` |
+| `g` | `x, y, u, t, Δt [, ws]` |
+| guard / handler | `x, m, y, u, t [, ws]` |
 | `project` | positional `(comp, x)` — no bundle |
 
 Table footnotes, from the bundle law ([§5.2][s5-2]) — the sets above are maximal, and
@@ -9518,10 +9381,8 @@ family may see inputs **and** the component declares `input_types`; `y` iff the
 component produces any table cell (`output_types` ∪
 auto-published); `x`/`m`/`ws` iff declared; `y_x` iff the stage-1
 *return* is non-empty (auto-published names excluded — [§5.2][s5-2], [D-169][d-169]);
-`w` iff the stage handing it down returned one (the one-hop law, [§5.2][s5-2]);
 `Δt` on the discrete tier only. Returns: a stage returns a NamedTuple of
-port values, or the pair `(y, w)` adding its private intermediates
-([§4.3][s4-3], [§5.2][s5-2]); `f` returns the layout image of `X` ([§7.1][s7-1]); a **handler
+port values ([§4.3][s4-3], [§5.2][s5-2]); `f` returns the layout image of `X` ([§7.1][s7-1]); a **handler
 returns `(; x, m)` with each key present iff that store exists and the handler
 updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` partial).
 
@@ -9849,7 +9710,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `ProducedByTwoStages` | component path, port name, both stage names | [§4.3][s4-3], [§8.3][s8-3] | build (collected) |
 | `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | [§8.3][s8-3] | build (collected) |
 | `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types`) | [§8.3][s8-3], [§8.4][s8-4] w5 | build (fail-fast) |
-| `DeadStage` | component path, stage — a stage method returning bare `(;)`, producing neither ports nor `w` | [§5.2][s5-2], [§9.3][s9-3] | build (fail-fast) at probe |
+| `DeadStage` | component path, stage — a stage method returning bare `(;)`, producing no ports | [§5.2][s5-2], [§9.3][s9-3] | build (fail-fast) at probe |
 | `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed — order-insensitive, the return having been canonicalized first), simulation time | [§9.5][s9-5] | build (fail-fast) at probe; **runtime** as a `StepError` species |
 | `GuardForm` | component path, event name, observed probe return type, both admissible forms | [§9.5][s9-5] | build (fail-fast) |
 | `BundleFieldError` | component path, function family, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function family) | [§5.2][s5-2], [§13.2][s13-2] | build (fail-fast) at probe; **runtime** thereafter |
@@ -9965,8 +9826,8 @@ requirements, read permissively — what each entry *allows* to arrive) and
 `output_types` (its public ports, read literally — what each cell *carries*).
 Both take the two-argument `T`-form on the continuous tier and the plain form on
 the discrete one. Declared in
-`output_types` = public, returned in `w` = private by construction, returned in
-`y` and declared nowhere = build error ([§8.2][s8-2], [§8.3][s8-3]). Not to be
+`output_types` = public, returned in `y` and declared nowhere = build error
+([§8.2][s8-2], [§8.3][s8-3]). Not to be
 confused with the other contracts this spec names — the device authoring
 contract ([§11.6][s11-6]), the stepper seam's backend contract ([§10.2][s10-2]), the
 staging contract ([§11.7][s11-7]), the step-boundary contract ([§10.6][s10-6]) and the
@@ -10127,14 +9988,6 @@ which [§14.1][s14-1] condition math queries the environment before any sweep ex
 <a id="g-view"></a>**view** — a zero-copy reconstruction of a store handed to a function through
 its bundle; it materializes in the caller's frame for the duration of the call
 and is value-identical on re-materialization within a sweep ([§7.1][s7-1], [§5.2][s5-2]).
-
-<a id="g-w"></a>**`w` (private intermediates)** — the optional second slot of an output stage's
-return, `(y, w)`: an `isbits`-leaf NamedTuple of values the component computes
-for its own later use. Private by construction — no cell, no contract entry,
-nothing to wire, list, filter or address — travelling exactly one hop by the law
-([§5.2][s5-2]), SSA-passed within a fused pass, probe-observed in type and
-checked at the nominal activation only ([§8.3][s8-3], [§9.5][s9-5]). The inspection path
-for one is promotion to a declared output.
 
 ### D.3 Evaluation and scheduling
 
@@ -10925,7 +10778,6 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-158]: framework_decisions.md#d-158--pin-the-backend-seam-to-one-required-solve-signature
 [d-162]: framework_decisions.md#d-162--adopt-per-eltype-homogeneous-cell-stores-over-per-instance
 [d-164]: framework_decisions.md#d-164--reject-components-that-declare-nothing-and-define-no-stage
-[d-165]: framework_decisions.md#d-165--split-output-stage-returns-into-public-y-and-private-w
 [d-166]: framework_decisions.md#d-166--mandate-typet-output-signatures-on-continuous-producers
 [d-167]: framework_decisions.md#d-167--mandate-typet-input-signatures-under-the-permissive-reading
 [d-168]: framework_decisions.md#d-168--root-slot-fan-out-tolerance-combines-by-meet-not-agreement
@@ -10946,6 +10798,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-191]: framework_decisions.md#d-191--defer-not-consume-the-edge-on-a-blocked-event
 [d-192]: framework_decisions.md#d-192--let-the-greedy-claim-empty-the-harness-remainder
 [d-193]: framework_decisions.md#d-193--keep-per-writer-liveness-on-one-timestamp-plus-task-state
+[d-194]: framework_decisions.md#d-194--retire-the-w-channel-intermediates-are-declared-ports
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop

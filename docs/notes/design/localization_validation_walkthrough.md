@@ -49,7 +49,7 @@ evaluation context (tₙ's quiescence) against its value at a θ = 0 trial evalu
 | guard input | at θ = 0, comes from | consistent with the prior's context? |
 |---|---|---|
 | `x` | xₙ, written into the state buffer | yes — x̂(0) = xₙ exactly (Hermite endpoint) |
-| `y`, `w`, `ws` | recomputed by the interior sweep from xₙ | yes, *if* the sweep's other inputs match |
+| `y`, `ws` | recomputed by the interior sweep from xₙ | yes, *if* the sweep's other inputs match |
 | `m` | current mode stores | yes — handlers only run at boundaries, and priors are sampled at quiescence, after the last one |
 | discrete cells | the signal table, ZOH-held | yes — interior sweeps exclude discrete entries, so the cells still hold the frame's values |
 | `t` | computed: t = tₙ (indexed grid time, never accumulated) | yes |

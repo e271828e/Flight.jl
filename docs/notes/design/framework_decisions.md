@@ -189,7 +189,7 @@ were derived.
 | [D-162][d-162] | Adopt per-eltype homogeneous cell stores over per-instance | ratified |
 | [D-163][d-163] | Ban `==` for separately-compiled float comparisons | ratified |
 | [D-164][d-164] | Reject components that declare nothing and define no stage | ratified |
-| [D-165][d-165] | Split output-stage returns into public `y` and private `w` | ratified |
+| [D-165][d-165] | Split output-stage returns into public `y` and private `w` | superseded → [D-194][d-194] |
 | [D-166][d-166] | Mandate `Type{T}` output signatures on continuous producers | ratified |
 | [D-167][d-167] | Mandate `Type{T}` input signatures under the permissive reading | ratified |
 | [D-168][d-168] | Root-slot fan-out tolerance combines by meet, not agreement | ratified |
@@ -218,6 +218,7 @@ were derived.
 | [D-191][d-191] | Defer, not consume, the edge on a blocked event | ratified |
 | [D-192][d-192] | Let the greedy claim empty the harness remainder | ratified |
 | [D-193][d-193] | Keep per-writer liveness on one timestamp plus task state | ratified |
+| [D-194][d-194] | Retire the `w` channel: intermediates are declared ports | ratified |
 
 ### D-001 — Hybrid causal formalism with two-tier events and projection
 
@@ -5415,7 +5416,7 @@ the shadowing is what bites).
 
 ### D-165 — Split output-stage returns into public `y` and private `w`
 
-**Status.** ratified
+**Status.** superseded → [D-194][d-194]
 
 **Position.** Every output stage returns either `y::NamedTuple` (ports only) or
 `(y, w)::Tuple{NamedTuple, NamedTuple}`; a `nothing` in either slot is a probe
@@ -6623,6 +6624,83 @@ besides, specified in full by [§11.8][s11-8]" is qualified to admit those handl
   last-staged (the case [§12.2][s12-2]'s loose 2 s threshold exists to tolerate), and it
   grows the cell [§11.8][s11-8] deliberately keeps minimal.
 
+### D-194 — Retire the `w` channel: intermediates are declared ports
+
+**Status.** ratified
+
+**Position.** The private `w` channel is deleted on both tiers. Every output
+stage returns its port NamedTuple alone, and a cross-stage intermediate is an
+ordinary declared port, reaching its consumers through the existing views.
+
+- The `(y, w)` return form, the one-hop law, the explicit re-return idiom and
+  the `w` bundle field are retired; stage returns are `y`, period.
+- An intermediate a later function needs is declared in `output_types` and
+  read where the bundle law already delivers it: stage-1 products through
+  `y_x`, everything through `y` in `f`, `g`, guards and handlers.
+- Round fusion ceases to be a design constraint on the executor ([§9.7][s9-7]):
+  passes communicate only through the table and the stores, no value crosses
+  a phase-body or chunk seam, and the phase-body arities carry the tick index
+  alone.
+- `w`'s nominal-only conformance carve-out is retired with it: promoted
+  intermediates carry declared types ([D-166][d-166]), embed-accept keeps the
+  constant-branch idiom legal, and the [§9.5][s9-5] check covers them at every
+  activation.
+- `DeadStage`'s ground simplifies: a stage returning `(;)` produces no ports
+  and is dead ([§9.3][s9-3]).
+- Visibility stays binary and [D-034][d-034]/[D-055][d-055] stay closed: no `Private` register
+  is added, the enclosing assembly's faces remain the scoping surface ([§8.6][s8-6]),
+  the [§4.3][s4-3] granularity guideline (one struct-valued bundle port) remains the
+  mitigation, and [D-034][d-034]'s `Private(T)` fallback-on-record remains the door.
+- The workspace and the handler return law are untouched: `ws` is the
+  mutable-scratch channel ([§7.3][s7-3]), handlers return stores ([D-090][d-090]).
+
+**Spec.** [§4.2][s4-2], [§4.3][s4-3], [§5.2][s5-2], [§5.3][s5-3], [§5.4][s5-4], [§8.3][s8-3], [§9.1][s9-1], [§9.3][s9-3], [§9.5][s9-5], [§9.7][s9-7],
+[Appendix B][sB], [Appendix C][sC], [Appendix D][sD]
+
+**Rationale.** `w` served two needs, and each is served better without it.
+Recomputation avoidance is the table's existing job: evaluating the RHS means
+running the sweep ([§5.3][s5-3]), so `f` always reads cells its own sweep just wrote,
+and a stage-1 product reaches stage 2 as `y_x` — freshness by the same
+ordering that makes the table sound everywhere. Privacy had no demonstrated
+customer: the FlightCore lineage record is that intermediates were only ever
+inspected by inclusion in the model output, which [D-165][d-165] itself recorded as the
+promote-to-output inspection path.
+
+What [D-165][d-165] could not see, and the kernel prototype's increment-3 design work
+surfaced, is where the SSA hand-off lands: the one-hop pairs span phase
+bodies, so `w` must thread through the [§9.7][s9-7] roster's call signatures and every
+chunk seam between producer and consumer, round fusion hardens from
+optimization into obligation, and under [§10.5][s10-5]'s gating a not-due producer
+forces `Union`-shaped slots into the boundary walk's collections. That is
+framework-special handling concentrated in the executor's hottest structure,
+purchased for a conformance check that runs at the nominal activation only —
+probe-observed types having no anchor off-nominal. A declared port rides
+machinery that already exists, is already measured, and is checked at every
+activation.
+
+Simulink is corroborating precedent: S-Functions share expensive intermediates
+through engine-ordered work vectors (`DWork` written in `mdlOutputs`, read in
+`mdlDerivatives`, fresh at every minor step by call order — the same
+sweep-precedes-`f` argument), and block diagrams publish every intermediate as
+a subsystem-scoped signal. No private inter-method channel exists there.
+
+**Rejected.**
+- *Keep `w` (the [D-165][d-165] position):* the threading cost above; a whole second
+  dataflow vocabulary (return law, hop law, bundle-presence rule,
+  probe-observed conformance regime) for values the table can carry.
+- *Auxiliary stateless leaf as the mechanism (assembly refactor):* forced
+  decomposition taxes the common case, and with `y` withheld from `f` a
+  component's own state-derived intermediate would round-trip through
+  external wiring to reach its own `f`. Remains available as an ordinary
+  modeling choice.
+- *Cells with probe-observed types (declaration-free):* [D-165][d-165]'s type-sourcing
+  objection stands unweakened — the probe observes one branch, so the cell
+  type detonates branch-dependently at non-nominal activations.
+- *`Private{P}`-tagged output entries:* re-litigated here and kept closed;
+  [D-034][d-034]'s no-demonstrated-customer ground and the load-bearing binary
+  visibility rule survive, [D-055][d-055]'s "first wrapper type" ground has expired
+  ([D-185][d-185]'s `Relative`/`Absolute`), and the fallback stays on record.
+
 <!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
 [d-001]: #d-001--hybrid-causal-formalism-with-two-tier-events-and-projection
 [d-002]: #d-002--adopt-the-causal-port-based-paradigm
@@ -6817,6 +6895,7 @@ besides, specified in full by [§11.8][s11-8]" is qualified to admit those handl
 [d-191]: #d-191--defer-not-consume-the-edge-on-a-blocked-event
 [d-192]: #d-192--let-the-greedy-claim-empty-the-harness-remainder
 [d-193]: #d-193--keep-per-writer-liveness-on-one-timestamp-plus-task-state
+[d-194]: #d-194--retire-the-w-channel-intermediates-are-declared-ports
 [s10-1]: framework_spec.md#101-loop-ownership-the-framework-owns-the-simulation-loop
 [s10-2]: framework_spec.md#102-the-stepper-seam
 [s10-3]: framework_spec.md#103-signal-table-consistency-is-a-boundary-property

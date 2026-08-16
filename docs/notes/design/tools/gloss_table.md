@@ -55,7 +55,6 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | summing junction | g-summing-junction | 2 | B | a library component doing N-to-1 aggregation through explicit wires |
 | value-level constructor | g-value-level-constructor | 4 | A | the plain exported function building a field handle from the component and input values |
 | view | g-view | 4 | B | a zero-copy reconstruction of a store handed through the bundle |
-| `w` (private intermediates) | g-w | 0 | — | the optional private second slot of a stage's return |
 
 ## D.3 Evaluation and scheduling
 

@@ -45,11 +45,10 @@ context wants.
 
 | Term | Uses | Notes |
 |---|---|---|
-| one-hop law | 5 | §5.2; never defined in glossary prose |
 | handler return law | 3 | §5.2; never defined in glossary prose |
 
-Both are §5.2 hand-off laws, siblings of the bundle law (bucket B). Settled
-the third way: each got its own `####` sub-heading in §5.2, and the body cites
+It is a §5.2 hand-off law, sibling of the bundle law (bucket B). Settled
+the third way: it got its own `####` sub-heading in §5.2, and the body cites
 the section rather than a glossary anchor.
 
 ## D. Low-frequency coinages — inline gloss only
