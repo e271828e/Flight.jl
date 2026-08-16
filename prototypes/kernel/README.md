@@ -15,7 +15,7 @@ from its own feedthrough structure, integrates, and does it without allocating.
 | piece | spec | file |
 | --- | --- | --- |
 | leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer, the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
+| declaration layer (two registers, D-166/D-167), the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
 | per-eltype cell store with offsets in entry fields | §9.7, D-162 | `src/store.jl` |
 | entries, chunked unrolled walk, phase bodies in both arities | §9.7 | `src/executor.jl` |
 | probe, feedthrough graph, algebraic-loop rejection, layout | §9.3, §5.3, §5.5 | `src/build.jl` |

@@ -18,8 +18,8 @@ end
 Plant(; ω = 2.0, ζ = 0.1, q₀ = SVector(0.0, 0.0)) = Plant(ω, ζ, q₀)
 
 init_x(c::Plant) = (q = c.q₀,)
-input_types(::Plant) = (u = Float64,)
-output_types(::Plant) = (y = Float64, power = Float64)
+input_types(::Plant, ::Type{T}) where {T <: Real} = (u = T,)
+output_types(::Plant, ::Type{T}) where {T <: Real} = (y = T, power = T)
 
 h_x(::Plant, (; x)) = (y = x.q[1],)
 h_xu(::Plant, (; x, u)) = (power = u.u * x.q[2],)
@@ -38,8 +38,8 @@ struct Gain
     k::Float64
 end
 
-input_types(::Gain) = (e = Float64,)
-output_types(::Gain) = (out = Float64,)
+input_types(::Gain, ::Type{T}) where {T <: Real} = (e = T,)
+output_types(::Gain, ::Type{T}) where {T <: Real} = (out = T,)
 
 h_xu(c::Gain, (; u)) = (out = c.k * u.e,)
 
@@ -54,8 +54,8 @@ end
 
 Sum(; sa = 1.0, sb = -1.0) = Sum(sa, sb)
 
-input_types(::Sum) = (a = Float64, b = Float64)
-output_types(::Sum) = (e = Float64,)
+input_types(::Sum, ::Type{T}) where {T <: Real} = (a = T, b = T)
+output_types(::Sum, ::Type{T}) where {T <: Real} = (e = T,)
 
 h_xu(c::Sum, (; u)) = (e = c.sa * u.a + c.sb * u.b,)
 

@@ -124,11 +124,11 @@ end
 # would dispatch on the untouched global and silently see the fallback
 # declarations instead.
 struct Undeclared end
-output_types(::Undeclared) = (a = Float64,)
+output_types(::Undeclared, ::Type{T}) where {T <: Real} = (a = T,)
 h_x(::Undeclared, (; t)) = (a = 1.0, b = 2.0)
 
 struct Unproduced end
-output_types(::Unproduced) = (a = Float64, b = Float64)
+output_types(::Unproduced, ::Type{T}) where {T <: Real} = (a = T, b = T)
 h_x(::Unproduced, (; t)) = (a = 1.0,)
 
 struct BadDerivative end
@@ -138,10 +138,17 @@ f(::BadDerivative, (; x)) = (q = 0.0,)
 struct NoFlow end
 init_x(::NoFlow) = (q = 1.0,)
 
+# The whole-signature forgotten-`T`: the retired one-argument form, which the
+# `::Any` fallback would otherwise swallow into a component declaring nothing.
+struct OneArgDecl end
+output_types(::OneArgDecl) = (a = Float64,)
+h_x(::OneArgDecl, (; t)) = (a = 1.0,)
+
 @testset "the probe rejects malformed components (§9.3)" begin
     one(c) = ModelSpec([ComponentSpec(:c, c)])
     @test_throws BuildError build(one(Undeclared()))
     @test_throws BuildError build(one(Unproduced()))
     @test_throws BuildError build(one(BadDerivative()))
     @test_throws BuildError build(one(NoFlow()))
+    @test_throws BuildError build(one(OneArgDecl()))
 end

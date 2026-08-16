@@ -35,16 +35,31 @@ Base.showerror(io::IO, e::BuildError) = print(io, "BuildError: ", e.msg)
 # --- 1. declarations at the activation scalar ---------------------------------
 
 struct Decls
-    x::NamedTuple          # initial state values, retyped
-    ins::NamedTuple        # face => type, retyped
-    outs::NamedTuple       # port => type, retyped
+    x::NamedTuple          # initial state values, walked to the activation scalar
+    ins::NamedTuple        # face => type, evaluated at the activation scalar
+    outs::NamedTuple       # port => type, evaluated at the activation scalar
 end
 
+# The two registers split by D-166's criterion: `init_x` is by value at nominal
+# `Float64` and its types are *walked*; `input_types`/`output_types` are
+# functions of the activation scalar and are *evaluated*. There is no
+# output-side leaf walk — the cell types at an activation are literally what the
+# declaration returns at that `T`.
 function declarations(cs::ComponentSpec, ::Type{T}) where {T}
     c = cs.comp
-    Decls(retype_value(T, init_x(c)),
-          NamedTuple{keys(input_types(c))}(map(P -> retype(T, P), values(input_types(c)))),
-          NamedTuple{keys(output_types(c))}(map(P -> retype(T, P), values(output_types(c)))))
+    _reject_one_arg(cs, output_types, "output_types")
+    _reject_one_arg(cs, input_types, "input_types")
+    Decls(retype_value(T, init_x(c)), input_types(c, T), output_types(c, T))
+end
+
+# The whole-signature forgotten-`T`. D-166 calls this class extinct because the
+# tier is read off the declaration shape; on a single-tier prototype the `::Any`
+# fallback would swallow it instead, and the component would declare nothing.
+function _reject_one_arg(cs::ComponentSpec, fn, name)
+    hasmethod(fn, Tuple{typeof(cs.comp)}) &&
+        throw(BuildError("$(cs.path): `$name` is declared in the one-argument (discrete-tier) " *
+                         "form; a continuous component declares " *
+                         "`$name(::C, ::Type{T}) where {T <: Real}` (D-166/D-167)"))
 end
 
 # --- 2. probing ---------------------------------------------------------------
@@ -198,9 +213,9 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
 
     addr_group(path, names) =
         NamedTuple{tuple(names...)}(tuple((layout.addr[(path, n)] for n in names)...))
-    in_group(cs) =
-        NamedTuple{tuple(keys(declarations(cs, T).ins)...)}(
-            tuple((input_addr(spec, layout, cs, face) for face in keys(input_types(cs.comp)))...))
+    in_group(cs, d) =
+        NamedTuple{tuple(keys(d.ins)...)}(
+            tuple((input_addr(spec, layout, cs, face) for face in keys(d.ins))...))
 
     hx_entries, hxu_entries, rhs_entries = Any[], Any[], Any[]
     products = NamedTuple[NamedTuple() for _ in spec.comps]   # probe products, per component
@@ -230,7 +245,7 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
             throw(BuildError("$(cs.path): $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
         products[ci] = merge(s1, y2)
 
-        yx_g, out_g, in_g = addr_group(cs.path, keys(s1)), addr_group(cs.path, keys(y2)), in_group(cs)
+        yx_g, out_g, in_g = addr_group(cs.path, keys(s1)), addr_group(cs.path, keys(y2)), in_group(cs, d)
         push!(hxu_entries, StageEntry{typeof(h_xu),typeof(cs.comp),typeof(d.x),bn,
                                       typeof(in_g),typeof(yx_g),typeof(out_g),typeof(clock)}(
             h_xu, cs.comp, in_g, yx_g, out_g, x_offs[ci], clock))
@@ -256,7 +271,7 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
         ẋ = f(cs.comp, _bundle_values(bn, d, u, stage1[ci], T; y = products[ci]))
         _check_derivative(cs.path, ẋ, d.x)
 
-        y_g, in_g = addr_group(cs.path, keys(d.outs)), in_group(cs)
+        y_g, in_g = addr_group(cs.path, keys(d.outs)), in_group(cs, d)
         push!(rhs_entries, RHSEntry{typeof(cs.comp),typeof(d.x),bn,typeof(in_g),typeof(y_g),typeof(clock)}(
             cs.comp, in_g, y_g, x_offs[ci], clock))
     end
