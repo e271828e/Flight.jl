@@ -66,14 +66,14 @@ end
     init!(sim)
     run!(sim, 2.0, 1e-3)
 
-    # Tolerance, never `==` (row 163): RK4 truncation dominates at ~1e-12 here.
+    # Tolerance, never `==` (D-163): RK4 truncation dominates at ~1e-12 here.
     @test state(sim, :plant).q ≈ exact(2.0) rtol = 1e-8
     @test port(sim, :plant, :y) ≈ exact(2.0)[1] rtol = 1e-8
     # the table is consistent at the boundary: `power` is a fresh decode
     @test port(sim, :plant, :power) ≈ port(sim, :ctl, :out) * exact(2.0)[2] rtol = 1e-8
 end
 
-@testset "the phase-body roster is fixed and total (§12.7)" begin
+@testset "the phase-body roster is fixed and total (§9.7)" begin
     sim = build(feedback_model())
     b = phase_bodies(sim)
     @test keys(b) === (:sweep_hx, :sweep_hxu, :rhs, :ticks)
@@ -104,7 +104,7 @@ end
     @test ForwardDiff.value(port(sim, :plant, :y)) != 0.0
 end
 
-@testset "instances of one component type share one compiled body (row 162)" begin
+@testset "instances of one component type share one compiled body (D-162)" begin
     # Two independent loops: eight components, still one entry type per stage
     # per component type — the store's addressing keeps offsets in fields.
     two = ModelSpec(vcat(feedback_model().comps,
@@ -119,9 +119,10 @@ end
 end
 
 # Malformed components for the probe tests. Defined at top level, not inside the
-# testset: methods added inside a top-level block are invisible to functions
-# called from that same block (world age), and `build` would silently see the
-# fallback declarations instead.
+# testset: a declaration written in a local scope binds a *new local function*
+# of that name rather than adding a method to the global one (D-164), so `build`
+# would dispatch on the untouched global and silently see the fallback
+# declarations instead.
 struct Undeclared end
 output_types(::Undeclared) = (a = Float64,)
 h_x(::Undeclared, (; t)) = (a = 1.0, b = 2.0)
@@ -137,7 +138,7 @@ f(::BadDerivative, (; x)) = (q = 0.0,)
 struct NoFlow end
 init_x(::NoFlow) = (q = 1.0,)
 
-@testset "the probe rejects malformed components (§12.3)" begin
+@testset "the probe rejects malformed components (§9.3)" begin
     one(c) = ModelSpec([ComponentSpec(:c, c)])
     @test_throws BuildError build(one(Undeclared()))
     @test_throws BuildError build(one(Unproduced()))

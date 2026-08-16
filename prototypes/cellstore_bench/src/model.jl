@@ -1,6 +1,6 @@
 # The synthetic component set and the model-spec generator.
 #
-# Deliberately not the real declaration layer (§11.2): declarations here take
+# Deliberately not the real declaration layer (§8.2): declarations here take
 # the activation scalar `T` explicitly instead of being walked out of nominal
 # `Float64` declarations, because the walk is not what this bench measures.
 # Everything else is faithful: stage functions take state and input views and
@@ -21,7 +21,7 @@ end
 # --- component types ----------------------------------------------------------
 # Declarations: `input_types(c, T)`, `output_types(c, T)`, `init_x(c, T)`.
 # Stage function: `h_xu(c, x, u)` — the interior continuous stage, the body the
-# `sweep_hxu()` measurement (§12.7) runs.
+# `sweep_hxu()` measurement (§9.7) runs.
 
 """Root source: no inputs, drives the chain. One instance per model."""
 struct Source
@@ -65,7 +65,7 @@ init_x(::Junction, ::Type{T}) where {T} = NamedTuple()
 """
 The workhorse: the component type replicated `N` times to scale the model.
 Mixed port shapes on both faces and a ~20-op body, in the size class of the
-2026-07 compile-cost anchors (§12.7).
+2026-07 compile-cost anchors (§9.7).
 """
 struct Workhorse
     k::Float64
@@ -90,7 +90,7 @@ init_x(::Workhorse, ::Type{T}) where {T} =
 end
 
 # --- model spec ---------------------------------------------------------------
-# Plain printable data, in the spirit of §12.2's `Build`: what the store layout
+# Plain printable data, in the spirit of §9.2's `Build`: what the store layout
 # and the schedule are compiled *from*. Components are listed in topological
 # order; an input names its producer by component position and port name.
 

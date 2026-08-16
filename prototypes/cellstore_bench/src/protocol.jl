@@ -1,5 +1,5 @@
 # The candidate-agnostic half of the executor: entry shape, chunked unrolled
-# walk, sweep construction (§12.7). A candidate supplies only its store and its
+# walk, sweep construction (§9.7). A candidate supplies only its store and its
 # cell *addressing*; everything else here is shared, so the measurement isolates
 # the one axis under test.
 #
@@ -27,7 +27,7 @@ abstract type Candidate end
 One schedule entry: one component's interior `h_xu` stage. Carries what selects
 code (component type, port names, address token types) in type parameters and
 what is plain data (the state offset, and whatever the address tokens hold) in
-fields — §12.7's rule.
+fields — §9.7's rule.
 """
 struct Entry{Comp,XT,IN,ON,IA<:Tuple,OA<:Tuple}
     comp::Comp
@@ -77,7 +77,7 @@ end
 """
 A chunk: a statically typed tuple of entries behind a non-inlined function
 barrier, bound over the store and state buffer. Chunk size is the executor's
-only representation freedom (§12.7) and is held equal across candidates.
+only representation freedom (§9.7) and is held equal across candidates.
 """
 struct Chunk{E<:Tuple,S,X}
     entries::E
@@ -93,7 +93,7 @@ end
     _walk(Base.tail(t), store, xbuf)
 end
 
-"""The zero-arg interior variant of `sweep_hxu` (§12.7) — what gate 1 measures."""
+"""The zero-arg interior variant of `sweep_hxu` (§9.7) — what gate 1 measures."""
 struct Sweep{C<:Tuple}
     chunks::C
 end
@@ -108,7 +108,7 @@ end
 
 # --- construction -------------------------------------------------------------
 # Type-opaque: entries are built into an untyped buffer and splatted once per
-# chunk. The compiled tuple's only consumer is the unrolled walk (§12.7).
+# chunk. The compiled tuple's only consumer is the unrolled walk (§9.7).
 
 """
     build_sweep(C, spec, T; chunk_size = 16)
@@ -157,7 +157,7 @@ difference between measuring the representation and measuring BenchmarkTools.
 Base.@constprop :none @noinline invoke_sweep(s::Sweep) = s()
 
 # --- snapshot capture (gate 3) ------------------------------------------------
-# §9.2 publishes by copying the table out; the store's shape prices that copy.
+# §11.2 publishes by copying the table out; the store's shape prices that copy.
 # Flat naming (`path_port`) rather than the real nested-by-path shape — enough
 # to price the gathers, which is all this gate asks.
 

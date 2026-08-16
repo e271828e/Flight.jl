@@ -1,5 +1,5 @@
 # The signal table: per-eltype homogeneous cell stores with build-time offsets
-# (row 162, §12.7). Cells are flattened by the §7.1 leaf walk into one
+# (D-162, §9.7). Cells are flattened by the §7.1 leaf walk into one
 # contiguous buffer per element type; an address carries the port type as its
 # parameter and the offset as an ordinary field, so instances of one component
 # type share one compiled body.

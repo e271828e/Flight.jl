@@ -79,7 +79,7 @@ function feedback_model(; k = 4.0, ω = 2.0, ζ = 0.1, q₀ = SVector(0.0, 0.0),
         ComponentSpec(:plant, Plant(; ω, ζ, q₀), [:u => (:ctl, :out)]),
         ComponentSpec(:ctl, Gain(k), [:e => (:sum, :e)]),
         # `sum.a` is deliberately unwired: it is a root slot, its initial value
-        # synthesized by `probe_value` and written by `set_slot!` (§12.3, §9.3).
+        # synthesized by `probe_value` and written by `set_slot!` (§9.3, §11.3).
         ComponentSpec(:sum, Sum(), [:b => (:plant, feedback_port)]),
     ])
 end

@@ -1,4 +1,4 @@
-# The build pipeline (§12.2, §12.3, §5.5). Plain printable data in, a compiled
+# The build pipeline (§9.2, §9.3, §5.5). Plain printable data in, a compiled
 # executor out. Three jobs, in order, because each needs the previous one's
 # answer:
 #
@@ -132,7 +132,7 @@ end
 # --- 4. cell layout -----------------------------------------------------------
 # Every declared port gets a cell; so does every unwired input face, which is a
 # root slot — the one terminal with no producer, its initial value synthesized
-# by `probe_value` (§12.3).
+# by `probe_value` (§9.3).
 
 struct Layout
     addr::Dict{Tuple{Symbol,Symbol},Any}     # (path, port|face) => CellAddr
@@ -236,7 +236,7 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
             h_xu, cs.comp, in_g, yx_g, out_g, x_offs[ci], clock))
     end
 
-    # Completeness of the declaration set (§11.2), for every component and not
+    # Completeness of the declaration set (§8.2), for every component and not
     # only the stateful ones: an unproduced port would otherwise own a cell that
     # no stage ever writes, and read as a silent zero forever.
     for (ci, cs) in enumerate(spec.comps)

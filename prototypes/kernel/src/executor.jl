@@ -1,4 +1,4 @@
-# The compiled executor (§12.7): schedule entries carrying what selects code in
+# The compiled executor (§9.7): schedule entries carrying what selects code in
 # type parameters and what is plain data in fields, gathered into chunked
 # statically-typed tuples behind non-inlined barriers, traversed by a
 # compile-time-unrolled walk.
@@ -85,10 +85,11 @@ end
 end
 
 """
-A phase body. Both arities off one entry list (§12.7): the zero-arg call is the
+A phase body. Both arities off one entry list (§9.7): the zero-arg call is the
 *interior* variant, which is what RK stage evaluations and guard probes run and
 what `@ballocated(body()) == 0` measures; the one-arg call is the *boundary*
-variant, which gates discrete entries by modulo against the tick index.
+variant, which gates discrete entries by `(idx - Φ) % D` against the passed
+tick index (D-185).
 Increment 2 has no discrete entries, so the two coincide — the arity exists so
 increment 3 fills the boundary variant rather than restructuring this.
 """

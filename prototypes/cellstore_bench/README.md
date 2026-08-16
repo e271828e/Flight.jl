@@ -2,10 +2,10 @@
 
 Increment 1 of the kernel prototype. Settles the one representation question
 the spec deliberately left open: **how the signal table's cells are stored and
-addressed** by the compiled executor (§12.7). Everything else on the path is
+addressed** by the compiled executor (§9.7). Everything else on the path is
 already decided and is held fixed here — flat state backing with compile-time
 offsets (§7.1), scatter/gather as the whole protocol (§4.3), a concretely-typed
-entry tuple traversed by a chunked unrolled walk (§12.7).
+entry tuple traversed by a chunked unrolled walk (§9.7).
 
 ## The two candidates
 
@@ -32,13 +32,13 @@ identical for both. A candidate supplies only `build_store`, `cell_addr`,
 ## Gates, in order
 
 1. **`@ballocated(sweep()) == 0`** — mandatory. `sweep()` is the zero-arg
-   interior variant of `sweep_hxu` (§12.7). A candidate that cannot pass is out
+   interior variant of `sweep_hxu` (§9.7). A candidate that cannot pass is out
    whatever else it does.
 2. **Compile cost vs. N identical instances** — the discriminating measurement.
    A flat curve for C2 means the code sharing is real; a slope in the class of
    C1's means it is not, and C2's whole argument goes with it.
 3. **Tiebreakers** — sweep runtime, and snapshot-capture cost and allocation
-   (§9.2 publishes by copying out of the store, so the store's shape prices it).
+   (§11.2 publishes by copying out of the store, so the store's shape prices it).
 
 The decision row is written after the numbers, not before. Permission to
 discard the whole prototype is reserved.
@@ -73,13 +73,13 @@ Apple Silicon, Julia 1.12.6, chunk 16, one cold process per point. Raw data in
 - On `Dual8` the *ratio* narrows (3.5× at N = 200) but the shape is the point:
   C2 saturates near 9 s from N ≈ 50 — bounded by chunk-type count, not by model
   size — while C1 keeps climbing. C2's nominal and Dual activations for a
-  C172X-scale model both land in single-digit seconds, which makes §12.7's
+  C172X-scale model both land in single-digit seconds, which makes §9.7's
   mitigation ladder optional rather than load-bearing.
 - **Gate 3** follows: C2's per-entry cost is flat (~7.1 ns nominal, ~48 ns
   Dual); C1's degrades with model size (5.0 → 48.9 ns nominal) as 400+ distinct
   bodies and a pointer chase per gather bite. Snapshot runtime ties.
 
-Recorded as decision row 162; §12.7 amended.
+Recorded as D-162; §9.7 amended.
 
 ## The model
 
@@ -91,9 +91,12 @@ carry — a scalar, an `SVector{3}`, and a custom isbits struct (`Pose3`) — an
 `Workhorse`'s body is ~20 ops, the size class of the 2026-07 compile-cost
 anchors.
 
-Deliberate simplification: declarations take the activation scalar `T`
-explicitly instead of being walked out of nominal `Float64` declarations
-(§11.2). The walk is not what this bench measures.
+Simplification at the time of writing: declarations take the activation scalar
+`T` explicitly instead of being walked out of nominal `Float64` declarations
+(§8.2). The walk was not what this bench measures — and D-166/D-167 have since
+mandated the `T` signature on continuous producers and consumers anyway, which
+makes the shortcut the spec form. The bench stays frozen at the numbers D-162
+cites either way.
 
 ## Files
 

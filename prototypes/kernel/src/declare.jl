@@ -1,10 +1,10 @@
-# The declaration layer (§11.1, §11.2): a plain-Julia trait layer. Declarations
+# The declaration layer (§8.1, §8.2): a plain-Julia trait layer. Declarations
 # are ordinary functions of the *instance*, written at concrete `Float64`; the
 # framework's activation walk (§7.2) retypes them. No macros, no stage tags.
 #
-# Increment 2 covers the continuous tier only. Modes, `init_z`, `local_types`,
-# `workspace` and `events` are declaration entries this file deliberately does
-# not have yet.
+# Increment 2 covers the continuous tier only. Modes (`init_m`), `workspace`
+# and `events` are declaration entries this file deliberately does not have
+# yet.
 
 # --- what an author declares --------------------------------------------------
 
@@ -16,8 +16,8 @@ input_types(::Any) = NamedTuple()
 
 """
 Output ports: name => concrete type. One declaration for both stages — there
-are no stage tags anywhere (§11.2); which stage produces a port is *discovered*
-by the build probe (§12.3), and the declaration is what the probe checks
+are no stage tags anywhere (§8.2); which stage produces a port is *discovered*
+by the build probe (§9.3), and the declaration is what the probe checks
 against.
 """
 output_types(::Any) = NamedTuple()
@@ -59,7 +59,7 @@ function bundle_names(fn, c, stage1_ports::Tuple)
     tuple(names...)
 end
 
-# --- probe values (§12.3) -----------------------------------------------------
+# --- probe values (§9.3) -----------------------------------------------------
 # Root slots are the one terminal with no producer; the build synthesizes their
 # values here. Overridable per type — that is the seam a constrained type uses
 # to state a valid default.

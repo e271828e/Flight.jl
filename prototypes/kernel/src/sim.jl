@@ -1,5 +1,5 @@
-# The simulation object, the stepper seam (§8.2) and the phase-body accessor
-# (§12.7). The framework owns the loop; the one delegated operation is "advance
+# The simulation object, the stepper seam (§10.2) and the phase-body accessor
+# (§9.7). The framework owns the loop; the one delegated operation is "advance
 # the continuous state from `t` by `h`".
 
 struct Simulation{T,S,B,CL}
@@ -45,14 +45,14 @@ fresh table. Leaves `ẋbuf` holding the derivative of whatever `xbuf` holds.
     nothing
 end
 
-"""The boundary sweep: restores signal-table consistency at an accepted step (§8.3)."""
+"""The boundary sweep: restores signal-table consistency at an accepted step (§10.3)."""
 @inline function boundary_sweep!(sim::Simulation, tick::Int)
     sim.bodies.sweep_hx(tick)
     sim.bodies.sweep_hxu(tick)
     nothing
 end
 
-# --- the stepper (§8.2): in-house fixed-step RK4 over the flat buffer ---------
+# --- the stepper (§10.2): in-house fixed-step RK4 over the flat buffer ---------
 # One-step method, arbitrary `h`, zero allocation. The seam is never entered
 # empty: with no continuous state the step degenerates to advancing `t`.
 

@@ -17,7 +17,7 @@ const CANDIDATES = Dict("C1" => C1, "C2" => C2)
 
 # The two activations of interest (§7.2): the nominal one, and the 8-partial
 # `Dual` that linearization and trim run through — the instruction multiplier
-# §12.7's anchors put at ~20×.
+# §9.7's anchors put at ~20×.
 const SCALARS = Dict("Float64" => Float64,
                      "Dual8" => ForwardDiff.Dual{Nothing,Float64,8})
 

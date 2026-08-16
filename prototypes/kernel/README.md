@@ -3,7 +3,7 @@
 The walking skeleton for the framework in `docs/notes/design/framework_spec.md`,
 built to keepable standards and grown one increment at a time. Increment 1 (the
 cell-store representation bench) lives in `../cellstore_bench` and stays frozen
-there — decision row 162 cites its numbers.
+there — D-162 cites its numbers.
 
 **Increment 2 — the continuous tier walks.** A model builds, schedules itself
 from its own feedthrough structure, integrates, and does it without allocating.
@@ -15,11 +15,11 @@ from its own feedthrough structure, integrates, and does it without allocating.
 | piece | spec | file |
 | --- | --- | --- |
 | leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer, the bundle law, `probe_value` | §5.2, §11.2, §12.3 | `src/declare.jl` |
-| per-eltype cell store with offsets in entry fields | §12.7, row 162 | `src/store.jl` |
-| entries, chunked unrolled walk, phase bodies in both arities | §12.7 | `src/executor.jl` |
-| probe, feedthrough graph, algebraic-loop rejection, layout | §12.3, §5.3, §5.5 | `src/build.jl` |
-| `Simulation`, RHS evaluation, RK4, `phase_bodies` | §8.2, §8.3, §12.7 | `src/sim.jl` |
+| declaration layer, the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
+| per-eltype cell store with offsets in entry fields | §9.7, D-162 | `src/store.jl` |
+| entries, chunked unrolled walk, phase bodies in both arities | §9.7 | `src/executor.jl` |
+| probe, feedthrough graph, algebraic-loop rejection, layout | §9.3, §5.3, §5.5 | `src/build.jl` |
+| `Simulation`, RHS evaluation, RK4, `phase_bodies` | §10.2, §10.3, §9.7 | `src/sim.jl` |
 | the coverage set: `Plant`, `Gain`, `Sum` | §5.2, §6.2 | `src/library.jl` |
 
 Three properties the tests pin down, each of which is a spec claim rather than a
@@ -42,16 +42,18 @@ programming convenience:
   branching.
 
 Correctness is checked against an analytically integrated closed loop (matrix
-exponential), with a tolerance — never `==` (row 163).
+exponential), with a tolerance — never `==` (D-163).
 
 ## What is deliberately absent
 
 Increment 3 and beyond: the discrete tier (its own `x` store, `g`, the
-tick-gated `h_x`/`h_xu`, modes,
-workspace), multi-rate tick scheduling and the boundary sweep's gating (the
-one-arg phase-body arity exists and is exercised, but gates nothing yet), events
+tick-gated `h_x`/`h_xu`, modes (`init_m`),
+workspace), the `w` channel threading private intermediates one hop (D-165),
+multi-rate tick scheduling off the two-register `sample_times` declaration and
+the boundary sweep's `(idx - Φ) % D` gating (D-185; the one-arg phase-body
+arity exists and is exercised, but gates nothing yet), events
 (guards, handlers, `project`, localization), hierarchy and assemblies, computed
-connections, auto-published ports, §12.5's always-on conformance check, §13.2's
+connections, auto-published ports, §9.5's always-on conformance check, §13.2's
 diagnostic framing (build errors here are a plain `BuildError` with a good
 message, not the structured carrier), and the entire runtime periphery.
 
@@ -66,9 +68,10 @@ nothing at all and proceeds silently. Ordinary top-level definitions — the
 script, module and notebook-cell cases — are unaffected. `check.jl` defines its
 malformed test components at top level for exactly this reason.
 
-This is the local-scope sibling of the `using Flight` trap §11.1 already
-documents, and §11.1's shadowing check does not reach it: there is no
+This is the local-scope sibling of the `using Flight` trap §8.1 already
+documents, and §8.1's shadowing check does not reach it: there is no
 parent-module binding to compare against, because the shadow is a local binding
-that disappears with its block. Recorded as row 164 with a candidate mitigation
-(reject a component that declares nothing and defines no stage — an inert
-component cannot be intentional), not built here.
+that disappears with its block. Ratified as D-164: a component that declares
+nothing and defines no stage is a build error — an inert component cannot be
+intentional — spec'd as the inert-component check in §8.1's stage register,
+raised as `DeadStage` at the probe (§9.3). Not built here.
