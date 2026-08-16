@@ -161,6 +161,7 @@ function cell_layout(spec::ModelSpec, decls::Vector{Decls}, ::Type{T}) where {T}
     off = 0
     for (cs, d) in zip(spec.comps, decls)
         for (port, P) in pairs(d.outs)
+            _check_cell_eltype(cs.path, "port", port, P, T)
             addr[(cs.path, port)] = CellAddr{P}(off)
             off += nleaves(P)
         end
@@ -169,12 +170,30 @@ function cell_layout(spec::ModelSpec, decls::Vector{Decls}, ::Type{T}) where {T}
         wired = Set(first(p) for p in cs.conns)
         for (face, P) in pairs(d.ins)
             face in wired && continue
+            _check_cell_eltype(cs.path, "root slot", face, P, T)
             addr[(cs.path, face)] = CellAddr{P}(off)
             off += nleaves(P)
             push!(slots, (cs.path, face, probe_value(P)))
         end
     end
     Layout(addr, slots, off)
+end
+
+# Every cell leaf must be the activation scalar, because this increment builds
+# the per-eltype store (D-162) at exactly one eltype: a continuous, all-walking
+# model needs no other. So a pinned `Float64` leaf (D-166's schema-visible
+# freezing) under a non-nominal activation, and a discrete `Int`/`Bool` leaf,
+# both have nowhere of their own to live. Rejecting is the point: `flatten!`
+# would otherwise convert the value into the `T` buffer and the declared pin
+# would be silently promoted to a zero-partial `Dual`. Lifted in increment 3,
+# where the discrete tier's cells force the second store anyway.
+function _check_cell_eltype(path, kind, name, ::Type{P}, ::Type{T}) where {P,T}
+    for L in leaf_types(P)
+        L === T && continue
+        throw(BuildError("$path: $kind `$name` declares a $L leaf at activation $T — " *
+                         "pinned and off-scalar leaves need their own store, which this " *
+                         "increment does not build (D-166, §9.7)"))
+    end
 end
 
 """Address of the cell feeding `face` on `cs`: the wired producer's, or its own root slot."""

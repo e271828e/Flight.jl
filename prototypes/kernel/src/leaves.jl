@@ -17,6 +17,17 @@ nleaves(::Type{<:Real}) = 1
 nleaves(::Type{P}) where {P<:StaticArray} = length(P) * nleaves(eltype(P))
 nleaves(::Type{P}) where {P} = sum(nleaves, fieldtypes(P); init = 0)
 
+"""
+    leaf_types(P)
+
+The element type of each leaf a value of type `P` occupies, in flat order.
+Layout-time only — the shape counterpart of `nleaves`, used to check a declared
+cell against the store it has to live in.
+"""
+leaf_types(::Type{P}) where {P<:Real} = Type[P]
+leaf_types(::Type{P}) where {P<:StaticArray} = repeat(leaf_types(eltype(P)), length(P))
+leaf_types(::Type{P}) where {P} = reduce(vcat, (leaf_types(FT) for FT in fieldtypes(P)); init = Type[])
+
 # --- expression builders (compile time) --------------------------------------
 
 # Returns (expr, next_base): `expr` reconstructs a `P` from `buf` starting at

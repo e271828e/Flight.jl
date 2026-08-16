@@ -152,3 +152,26 @@ h_x(::OneArgDecl, (; t)) = (a = 1.0,)
     @test_throws BuildError build(one(NoFlow()))
     @test_throws BuildError build(one(OneArgDecl()))
 end
+
+# A deliberately pinned leaf (D-166): `frozen` is declared `Float64` rather than
+# `T`, so it must not follow the activation scalar.
+struct PinnedLeaf end
+output_types(::PinnedLeaf, ::Type{T}) where {T <: Real} = (a = T, frozen = Float64)
+h_x(::PinnedLeaf, (; t)) = (a = t, frozen = 2.0)
+
+@testset "a pinned leaf is refused, not silently promoted (D-166)" begin
+    one(c) = ModelSpec([ComponentSpec(:c, c)])
+    # Nominally the pin and the activation scalar coincide, so it builds.
+    @test build(one(PinnedLeaf())) isa Simulation
+    # Off nominal it needs its own store, which this increment does not build.
+    # The point of the check is that this is an error rather than a `Float64`
+    # quietly flattened into the `Dual` buffer as a zero-partial.
+    err = try
+        build(one(PinnedLeaf()), D8)
+        nothing
+    catch e
+        e
+    end
+    @test err isa BuildError
+    @test occursin("frozen", err.msg) && occursin("own store", err.msg)
+end

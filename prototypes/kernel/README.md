@@ -57,6 +57,15 @@ connections, auto-published ports, §9.5's always-on conformance check, §13.2's
 diagnostic framing (build errors here are a plain `BuildError` with a good
 message, not the structured carrier), and the entire runtime periphery.
 
+**One absence is a refusal rather than a silence.** The per-eltype store (D-162)
+is built here at exactly one eltype, because a continuous, all-walking model
+needs no other. So a deliberately pinned `Float64` leaf (D-166) has nowhere of
+its own to live once the activation moves off nominal, and neither would a
+discrete `Int`/`Bool` cell. Taking it silently would flatten the pinned value
+into the `Dual` buffer and promote it to a zero-partial — a declared intent
+quietly ignored — so the layout rejects it by name instead. Increment 3 lifts
+the restriction, the discrete tier's cells forcing the second store anyway.
+
 ## Authoring caveat found while building this
 
 Declarations written in a **local scope** never reach the framework. Inside a
