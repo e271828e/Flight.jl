@@ -1,6 +1,6 @@
-#Runnable demo of the §16 condition algebra (framework_design.md v0.17):
+#Runnable demo of the §14 condition algebra (framework_spec.md):
 #fragment/at/merge/override lazy trees, flattening with provenance, the
-#duplicate-leaf error, and §16.9 mounting — a TrimProblem relocated whole by
+#duplicate-leaf error, and §14.9 mounting — a TrimProblem relocated whole by
 #at(prefix, problem). Written as the inspection aid for the mounting
 #semantics: every step prints the tree or the flattened entry list.
 #
@@ -9,19 +9,25 @@
 #   julia docs/notes/design/condition_demo.jl
 #
 #The node structs and the resolution pass are miniature but semantically
-#faithful implementations of §16.2/§16.3/§16.6; the one stand-in is slot
+#faithful implementations of §14.2/§14.3/§14.6; the one stand-in is slot
 #resolution, which here uses the demo rule «root slot = mount prefix with
 #slashes → dots, then the face name» ("throttle" at "wing" → "wing.throttle",
-#§16.9's own example) in place of the Build's export-chain walk.
+#§14.9's own example) in place of the Build's export-chain walk.
+#
+#NOT COVERED BY THE CHECK BATTERY: tools/check_refs.jl and tools/linkify.jl
+#scan the COMPANIONS .md roster only, so every § here is hand-verified.
+#Re-verify by hand after any spec renumbering. Last verified 2026-08-16.
 
 module ConditionDemo
 
-######################## The algebra (§16.2, §16.6) ############################
+######################## The algebra (§14.2, §14.6) ############################
 
-struct Fragment{X<:NamedTuple, M<:NamedTuple, Z<:NamedTuple, S<:NamedTuple}
-    x::X; m::M; z::Z; slots::S      #self-vocabulary payloads; no paths
+#x is the fused state store — continuous and discrete leaves alike (D-173);
+#there is no separate z payload, z being the shift operator only
+struct Fragment{X<:NamedTuple, M<:NamedTuple, S<:NamedTuple}
+    x::X; m::M; slots::S            #self-vocabulary payloads; no paths
 end
-fragment(; x = (;), m = (;), z = (;), slots = (;)) = Fragment(x, m, z, slots)
+fragment(; x = (;), m = (;), slots = (;)) = Fragment(x, m, slots)
 
 struct Scoped{N}                    #at(prefix, node): stores, never applies
     prefix::String
@@ -34,18 +40,18 @@ struct Merged{T<:Tuple}             #merge(ns...): collects; order = diagnostics
 end
 merge(nodes...) = Merged(nodes)
 
-struct Override{B, P}               #override(base, patch): ordered, asymmetric (§16.6)
+struct Override{B, P}               #override(base, patch): ordered, asymmetric (§14.6)
     base::B
     patch::P
 end
 override(base, patch) = Override(base, patch)
 override(base, patch, rest...) = override(Override(base, patch), rest...)
 
-######################## Resolution: flatten → validate (§16.3) ################
+######################## Resolution: flatten → validate (§14.3) ################
 
 struct Entry
     path::String                    #component path from the resolution root
-    store::Symbol                   #:x, :m, :z, or :slot
+    store::Symbol                   #:x, :m, or :slot
     field::Symbol                   #state/mode field, or face name for :slot
     value::Any
     provenance::String
@@ -73,12 +79,12 @@ function check_collisions(entries)
     entries
 end
 
-#flattening is the only place path strings are concatenated (§16.3)
+#flattening is the only place path strings are concatenated (§14.3)
 join_path(prefix, p) = isempty(prefix) ? p : prefix * "/" * p
 
 function flatten!(out, f::Fragment, path, prov)
     prov *= "fragment"
-    for store in (:x, :m, :z)
+    for store in (:x, :m)
         for (field, value) in pairs(getfield(f, store))
             push!(out, Entry(path, store, field, value, prov))
         end
@@ -98,7 +104,7 @@ function flatten!(out, m::Merged, path, prov)
 end
 
 #each override side is a layer: collision-checked independently; a leaf present
-#in both takes the patch's value, provenance recording both sources (§16.6)
+#in both takes the patch's value, provenance recording both sources (§14.6)
 function flatten!(out, o::Override, path, prov)
     base = Entry[]; flatten!(base, o.base, path, prov * "base → ")
     check_collisions(base)
@@ -121,13 +127,13 @@ function flatten!(out, o::Override, path, prov)
     end
 end
 
-function resolve(node)      #the §16.3 flatten + the validation batch's collision check
+function resolve(node)      #the §14.3 flatten + the validation batch's collision check
     out = Entry[]
     flatten!(out, node, "", "")
     check_collisions(out)
 end
 
-#demo stand-in for the Build's export-chain walk from the mount point (§16.9);
+#demo stand-in for the Build's export-chain walk from the mount point (§14.9);
 #the real resolution errors if the face never surfaces at the root
 root_slot(e::Entry) = isempty(e.path) ? String(e.field) :
     replace(e.path, "/" => ".") * "." * String(e.field)
@@ -136,7 +142,7 @@ root_slot(e::Entry) = isempty(e.path) ? String(e.field) :
 
 function label(f::Fragment)
     parts = String[]
-    for store in (:x, :m, :z, :slots)
+    for store in (:x, :m, :slots)
         nt = getfield(f, store)
         isempty(nt) || push!(parts, "$store = $nt")
     end
@@ -190,7 +196,7 @@ struct C172XSystems; pwp::PWP; aero::Aero; end
 struct Cessna172X; sys::C172XSystems; end
 struct SimpleWorld; lead::Cessna172X; wing::Cessna172X; end
 
-#fragment functions (§16.2): shipped beside the component, dispatched on it,
+#fragment functions (§14.2): shipped beside the component, dispatched on it,
 #composed by pull — each level speaks its own fields, children and faces
 condition(eng::PistonEngine; n_eng) =
     fragment(x = (ω = n_eng * eng.ω_rated,), m = (phase = :running,))
@@ -199,12 +205,12 @@ condition(sys::C172XSystems; n_eng, α_a, β_a) = merge(
     at("pwp/engine", condition(sys.pwp.engine; n_eng)),
     at("aero",       fragment(x = (α_filt = α_a, β_filt = β_a))))
 
-#aircraft-shipped baseline (§16.6): full slot coverage, one authoritative home
+#aircraft-shipped baseline (§14.6): full slot coverage, one authoritative home
 ready_for_taxi(ac::Cessna172X) = merge(
     at("sys", condition(ac.sys; n_eng = 0.25, α_a = 0.0, β_a = 0.0)),
     fragment(slots = (throttle = 0.0, elevator = 0.0, mixture = 0.5)))
 
-######################## TrimProblem (§16.7, §16.9) ############################
+######################## TrimProblem (§14.7, §14.9) ############################
 
 struct TrimProblem{G, C, R, F}
     guess::G; lower::G; upper::G    #same-shaped Float64 NamedTuples
@@ -218,7 +224,8 @@ struct Output; path::String; field::Symbol; end
 deriv(path, field) = Deriv(path, field)
 output(path, field) = Output(path, field)
 
-#at lifts to problems in five lines (§16.9, verbatim):
+#at lifts to problems in five lines (§14.9's lift, less the tolerances field
+#this toy problem does not model):
 at(prefix::AbstractString, p::TrimProblem) = TrimProblem(
     p.guess, p.lower, p.upper,                 #path-free: pass through
     d -> at(prefix, p.condition(d)),           #post-compose: wrap each returned tree
@@ -236,7 +243,7 @@ function print_reads(reads::NamedTuple, prefix = "")
 end
 
 #level flight, toy spelling: α tied to θ inside the condition — the analytic
-#elimination of §16.7 surviving as plain user math
+#elimination of §14.7 surviving as plain user math
 trim_problem(ac::Cessna172X) = TrimProblem(
     (throttle = 0.5,  θ = 0.05, n_eng = 0.7),
     (throttle = 0.0,  θ = -0.3, n_eng = 0.4),
@@ -256,7 +263,7 @@ function main()
     ac = Cessna172X(C172XSystems(PWP(engine), Aero()))
     world = SimpleWorld(ac, ac)
 
-    banner("0. Instances carry no paths (§13.6)")
+    banner("0. Instances carry no paths (§8.6)")
     println("  world.lead === world.wing: ", world.lead === world.wing,
             "   — value-identical siblings; only declaration names address them")
 
@@ -279,7 +286,7 @@ function main()
     warm = override(taxi, fragment(slots = (throttle = 0.3, mixture = 0.8)))
     print_entries(resolve(warm))
 
-    banner("5. A TrimProblem is an implicitly specified condition (§16.9)")
+    banner("5. A TrimProblem is an implicitly specified condition (§14.9)")
     p = trim_problem(ac)
     println("  guess = ", p.guess, "\n")
     println("  condition(guess):")
@@ -296,7 +303,7 @@ function main()
     println("\n  note the slot: face \"throttle\", authored at the aircraft,")
     println("  resolves from the mount point → root slot \"wing.throttle\"")
 
-    banner("7. Commit = override(baseline, at(mount, condition(d*))) (§16.9)")
+    banner("7. Commit = override(baseline, at(mount, condition(d*))) (§14.9)")
     baseline = merge(
         at("lead", ready_for_taxi(world.lead)),
         at("wing", ready_for_taxi(world.wing)),

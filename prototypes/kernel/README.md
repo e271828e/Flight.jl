@@ -46,16 +46,26 @@ exponential), with a tolerance — never `==` (D-163).
 
 ## What is deliberately absent
 
-Increment 3 and beyond: the discrete tier (its own `x` store, `g`, the
-tick-gated `h_x`/`h_xu`, modes (`init_m`),
-workspace), the `w` channel threading private intermediates one hop (D-165),
-multi-rate tick scheduling off the two-register `sample_times` declaration and
-the boundary sweep's `(idx - Φ) % D` gating (D-185; the one-arg phase-body
-arity exists and is exercised, but gates nothing yet), events
-(guards, handlers, `project`, localization), hierarchy and assemblies, computed
-connections, auto-published ports, §9.5's always-on conformance check, §13.2's
-diagnostic framing (build errors here are a plain `BuildError` with a good
-message, not the structured carrier), and the entire runtime periphery.
+**Increment 3 — the discrete tier at one rate:** its own `x` and `m` stores
+(§7.3), `g`, `h_x`/`h_xu` in their discrete arities with `Δt`, `workspace`, the
+`w` channel threading private intermediates one hop (D-165), and the static
+interior/boundary sweep split (§10.5) — the interior variant walking continuous
+entries *only*, so the ZOH holds mid-step by compile-time absence rather than a
+runtime gate. Every discrete component sits at `D = 1, Φ = 0` there.
+
+**Increment 4 — multi-rate:** the harmonic grid, the two-register `sample_times`
+declaration (`Relative` composing affinely down the tree, `Absolute` severing
+and re-seeding), its compilation to one `(D, Φ)` pair per component, the
+`Relative(1)` default, rate scopes (§8.7) and the boundary sweep's
+`(idx - Φ) % D` gate (D-185; the one-arg phase-body arity exists and is
+exercised, but gates nothing yet). At `D = 1, Φ = 0` the gate is identically
+true, so increment 4 must leave increment 3's tests passing unchanged.
+
+Beyond those: events (guards, handlers, `project`, localization), hierarchy and
+assemblies, computed connections, auto-published ports, §9.5's always-on
+conformance check, §13.2's diagnostic framing (build errors here are a plain
+`BuildError` with a good message, not the structured carrier), and the entire
+runtime periphery.
 
 **One absence is a refusal rather than a silence.** The per-eltype store (D-162)
 is built here at exactly one eltype, because a continuous, all-walking model
@@ -65,6 +75,11 @@ discrete `Int`/`Bool` cell. Taking it silently would flatten the pinned value
 into the `Dual` buffer and promote it to a zero-partial — a declared intent
 quietly ignored — so the layout rejects it by name instead. Increment 3 lifts
 the restriction, the discrete tier's cells forcing the second store anyway.
+The bench that settled the representation (D-162) measured exactly one buffer,
+so increment 3 is also where the *plural* in "per-eltype stores" first gets
+exercised: the store bundle must keep `Chunk`'s store parameter one type per
+model, since chunk-type count — not model size — is what bounds the compile
+curve D-162 blessed.
 
 ## Authoring caveat found while building this
 

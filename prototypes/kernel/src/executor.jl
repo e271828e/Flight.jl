@@ -86,12 +86,16 @@ end
 
 """
 A phase body. Both arities off one entry list (§9.7): the zero-arg call is the
-*interior* variant, which is what RK stage evaluations and guard probes run and
-what `@ballocated(body()) == 0` measures; the one-arg call is the *boundary*
-variant, which gates discrete entries by `(idx - Φ) % D` against the passed
-tick index (D-185).
-Increment 2 has no discrete entries, so the two coincide — the arity exists so
-increment 3 fills the boundary variant rather than restructuring this.
+*interior* variant, which is what RK stage evaluations and guard trial
+evaluations run and what `@ballocated(body()) == 0` measures; the one-arg call
+is the *boundary* variant, which takes the tick index.
+
+Increment 2 has no discrete entries, so the two coincide and share one chunk
+tuple. Increment 3 splits them statically (§10.5): the interior variant walks
+continuous entries *only* — the ZOH holding by compile-time absence, the hot
+path carrying no gating test — so this needs two chunk tuples built from one
+entry list, not one tuple read two ways. Increment 4 then adds the
+`(idx - Φ) % D` gate on the boundary variant (D-185).
 """
 struct PhaseBody{C<:Tuple}
     chunks::C
