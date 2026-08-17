@@ -28,6 +28,17 @@ leaf_types(::Type{P}) where {P<:Real} = Type[P]
 leaf_types(::Type{P}) where {P<:StaticArray} = repeat(leaf_types(eltype(P)), length(P))
 leaf_types(::Type{P}) where {P} = reduce(vcat, (leaf_types(FT) for FT in fieldtypes(P)); init = Type[])
 
+"""
+    leaf_eltype(P)
+
+The element type shared by every leaf of `P`. The compile-time selector the
+store bundle dispatches on; meaningful only for leaf-homogeneous `P`, which
+layout has already checked via `leaf_types`.
+"""
+leaf_eltype(::Type{P}) where {P<:Real} = P
+leaf_eltype(::Type{P}) where {P<:StaticArray} = leaf_eltype(eltype(P))
+leaf_eltype(::Type{P}) where {P} = leaf_eltype(fieldtype(P, 1))
+
 # --- expression builders (compile time) --------------------------------------
 
 # Returns (expr, next_base): `expr` reconstructs a `P` from `buf` starting at

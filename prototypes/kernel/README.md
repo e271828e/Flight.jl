@@ -46,12 +46,15 @@ exponential), with a tolerance — never `==` (D-163).
 
 ## What is deliberately absent
 
-**Increment 3 — the discrete tier at one rate:** its own `x` and `m` stores
-(§7.3), `g`, `h_x`/`h_xu` in their discrete arities with `Δt`, `workspace`, the
-`w` channel threading private intermediates one hop (D-165), and the static
-interior/boundary sweep split (§10.5) — the interior variant walking continuous
-entries *only*, so the ZOH holds mid-step by compile-time absence rather than a
-runtime gate. Every discrete component sits at `D = 1, Φ = 0` there.
+**Increment 3 — the discrete tier at one rate**, in progress: the store bundle
+above is its first piece. Still absent are tier classification off declaration
+shape, discrete `x` and mode `m` stores (§7.3), `g`, `h_x`/`h_xu` in their
+discrete arities with `Δt`, `workspace`, and the static interior/boundary sweep
+split (§10.5) — the interior variant walking continuous entries *only*, so the
+ZOH holds mid-step by compile-time absence rather than a runtime gate. Every
+discrete component sits at `D = 1, Φ = 0` there. Intermediates a later function
+reads are ordinary declared ports: the `w` channel was retired with D-194, so
+there is nothing to thread between stages.
 
 **Increment 4 — multi-rate:** the harmonic grid, the two-register `sample_times`
 declaration (`Relative` composing affinely down the tree, `Absolute` severing
@@ -67,19 +70,23 @@ conformance check, §13.2's diagnostic framing (build errors here are a plain
 `BuildError` with a good message, not the structured carrier), and the entire
 runtime periphery.
 
-**One absence is a refusal rather than a silence.** The per-eltype store (D-162)
-is built here at exactly one eltype, because a continuous, all-walking model
-needs no other. So a deliberately pinned `Float64` leaf (D-166) has nowhere of
-its own to live once the activation moves off nominal, and neither would a
-discrete `Int`/`Bool` cell. Taking it silently would flatten the pinned value
-into the `Dual` buffer and promote it to a zero-partial — a declared intent
-quietly ignored — so the layout rejects it by name instead. Increment 3 lifts
-the restriction, the discrete tier's cells forcing the second store anyway.
-The bench that settled the representation (D-162) measured exactly one buffer,
-so increment 3 is also where the *plural* in "per-eltype stores" first gets
-exercised: the store bundle must keep `Chunk`'s store parameter one type per
-model, since chunk-type count — not model size — is what bounds the compile
-curve D-162 blessed.
+**The store bundle is in, and with it the *plural* in "per-eltype stores".**
+The bench that settled the representation (D-162) measured exactly one buffer;
+`StoreBundle` now holds one `CellStore` per leaf element type, keyed by the
+eltype's name. Selection is static — an address carries its port type, whose
+leaf eltype names the buffer at compile time — so a deliberately pinned
+`Float64` leaf (D-166) keeps a buffer of its own beside the `Dual` one instead
+of being flattened into it as a zero-partial, which is what increment 2 had to
+refuse by name. The bundle is one concrete type per model, keeping `Chunk`'s
+store parameter single: chunk-type count, not model size, is what bounds the
+compile curve D-162 blessed.
+
+**One absence here is a refusal rather than a silence.** A cell must be
+leaf-homogeneous. Mixed-leaf cells are legal in the design — a pinned `Float64`
+beside `T` fields inside one declared struct — but their addresses need a
+cursor per eltype, and this increment lays out one offset per cell. The layout
+rejects them by name rather than mislaying them; multi-cursor addressing is a
+scope cut, not doctrine.
 
 ## Authoring caveat found while building this
 

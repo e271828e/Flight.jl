@@ -3,10 +3,6 @@
 # contiguous buffer per element type; an address carries the port type as its
 # parameter and the offset as an ordinary field, so instances of one component
 # type share one compiled body.
-#
-# Increment 2 is continuous-only, so one buffer at the activation scalar covers
-# the whole table. The discrete tier's `Int`/`Bool` cells are the same
-# construction at another eltype.
 
 struct CellAddr{P}
     off::Int
@@ -18,6 +14,35 @@ end
 
 @inline gather(s::CellStore, a::CellAddr{P}) where {P} = reconstruct(P, s.buf, a.off)
 @inline scatter!(s::CellStore, a::CellAddr{P}, v) where {P} = flatten!(s.buf, a.off, v)
+
+"""
+The store bundle: one homogeneous `CellStore` per element type present in the
+model's cells, keyed by the eltype's name — the *plural* in §9.7's "per-eltype
+stores". One concrete bundle type per model, so `Chunk`'s store parameter stays
+a single type: chunk-type count, not model size, is what bounds the compile
+curve D-162 measured. Selection is static — the address's port type names its
+leaf eltype at compile time, so a gather touches exactly one buffer with no
+runtime lookup — and an address's offset is relative to its own eltype's buffer.
+"""
+struct StoreBundle{NT<:NamedTuple}
+    stores::NT
+end
+
+@generated function gather(b::StoreBundle, a::CellAddr{P}) where {P}
+    key = QuoteNode(Symbol(leaf_eltype(P)))
+    quote
+        $(Expr(:meta, :inline))
+        gather(getfield(b.stores, $key), a)
+    end
+end
+
+@generated function scatter!(b::StoreBundle, a::CellAddr{P}, v) where {P}
+    key = QuoteNode(Symbol(leaf_eltype(P)))
+    quote
+        $(Expr(:meta, :inline))
+        scatter!(getfield(b.stores, $key), a, v)
+    end
+end
 
 # Address groups are NamedTuples — `face => address` — so the name binding the
 # wiring established is carried in the type and the gather reassembles the

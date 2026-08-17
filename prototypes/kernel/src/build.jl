@@ -192,48 +192,50 @@ end
 struct Layout
     addr::Dict{Tuple{Symbol,Symbol},Any}     # (path, port|face) => CellAddr
     slots::Vector{Tuple{Symbol,Symbol,Any}}  # root slots, with their probe values
-    nleaf::Int
+    sizes::Vector{Pair{DataType,Int}}        # leaf eltype => buffer length, name-sorted
 end
 
 function cell_layout(spec::ModelSpec, decls::Vector{Decls}, ::Type{T}) where {T}
     addr = Dict{Tuple{Symbol,Symbol},Any}()
     slots = Tuple{Symbol,Symbol,Any}[]
-    off = 0
+    offs = Dict{DataType,Int}()
+    function place!(path, kind, name, P)
+        L = _cell_leaf_eltype(path, kind, name, P)
+        off = get(offs, L, 0)
+        addr[(path, name)] = CellAddr{P}(off)
+        offs[L] = off + nleaves(P)
+    end
     for (cs, d) in zip(spec.comps, decls)
         for (port, P) in pairs(d.outs)
-            _check_cell_eltype(cs.path, "port", port, P, T)
-            addr[(cs.path, port)] = CellAddr{P}(off)
-            off += nleaves(P)
+            place!(cs.path, "port", port, P)
         end
     end
     for (cs, d) in zip(spec.comps, decls)
         wired = Set(first(p) for p in cs.conns)
         for (face, P) in pairs(d.ins)
             face in wired && continue
-            _check_cell_eltype(cs.path, "root slot", face, P, T)
-            addr[(cs.path, face)] = CellAddr{P}(off)
-            off += nleaves(P)
+            place!(cs.path, "root slot", face, P)
             push!(slots, (cs.path, face, probe_value(P)))
         end
     end
-    Layout(addr, slots, off)
+    sizes = sort!([L => n for (L, n) in offs]; by = p -> string(first(p)))
+    Layout(addr, slots, sizes)
 end
 
-# Every cell leaf must be the activation scalar, because this increment builds
-# the per-eltype store (D-162) at exactly one eltype: a continuous, all-walking
-# model needs no other. So a pinned `Float64` leaf (D-166's schema-visible
-# freezing) under a non-nominal activation, and a discrete `Int`/`Bool` leaf,
-# both have nowhere of their own to live. Rejecting is the point: `flatten!`
-# would otherwise convert the value into the `T` buffer and the declared pin
-# would be silently promoted to a zero-partial `Dual`. Lifted in increment 3,
-# where the discrete tier's cells force the second store anyway.
-function _check_cell_eltype(path, kind, name, ::Type{P}, ::Type{T}) where {P,T}
-    for L in leaf_types(P)
-        L === T && continue
-        throw(BuildError("$path: $kind `$name` declares a $L leaf at activation $T — " *
-                         "pinned and off-scalar leaves need their own store, which this " *
-                         "increment does not build (D-166, §9.7)"))
-    end
+# A cell lives whole in the buffer of its single leaf eltype, so an address is
+# one offset. A mixed-leaf cell — legal in the design via pinning inside a
+# declared struct (D-166) — needs multi-cursor addressing, which this increment
+# deliberately does not build. Rejecting by name keeps the restriction a scope
+# cut rather than a silent mislayout.
+function _cell_leaf_eltype(path, kind, name, ::Type{P}) where {P}
+    Ls = leaf_types(P)
+    isempty(Ls) &&
+        throw(BuildError("$path: $kind `$name` declares $P, which has no leaves"))
+    all(L -> L === Ls[1], Ls) ||
+        throw(BuildError("$path: $kind `$name` declares $P, a mixed-leaf cell — this " *
+                         "increment lays out leaf-homogeneous cells only (multi-cursor " *
+                         "addressing not built)"))
+    Ls[1]
 end
 
 """Address of the cell feeding `face` on `cs`: the wired producer's, or its own root slot."""
@@ -255,7 +257,8 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
     order = schedule_stage2(spec, stage1)
     layout = cell_layout(spec, decls, T)
 
-    store = CellStore(zeros(T, layout.nleaf))
+    store = StoreBundle(NamedTuple{tuple((Symbol(L) for (L, _) in layout.sizes)...)}(
+        tuple((CellStore(zeros(L, n)) for (L, n) in layout.sizes)...)))
     xbuf = T[]
     x_offs = Int[]
     for d in decls

@@ -1,4 +1,5 @@
-# Acceptance tests for increment 2: the continuous-tier walking skeleton.
+# Acceptance tests for the kernel prototype: the continuous-tier walking
+# skeleton (increment 2) and the pieces of increment 3 landed so far.
 #
 #   julia --project=. check.jl
 
@@ -195,19 +196,40 @@ struct PinnedLeaf end
 output_types(::PinnedLeaf, ::Type{T}) where {T <: Real} = (a = T, frozen = Float64)
 h_x(::PinnedLeaf, (; t)) = (a = t, frozen = 2.0)
 
-@testset "a pinned leaf is refused, not silently promoted (D-166)" begin
+@testset "a pinned leaf lives in its own store (D-166, D-162)" begin
     one(c) = ModelSpec([ComponentSpec(:c, c)])
-    # Nominally the pin and the activation scalar coincide, so it builds.
-    @test build(one(PinnedLeaf())) isa Simulation
-    # Off nominal it needs its own store, which this increment does not build.
-    # The point of the check is that this is an error rather than a `Float64`
-    # quietly flattened into the `Dual` buffer as a zero-partial.
+    # Nominally the pin and the activation scalar coincide: one buffer.
+    sim = build(one(PinnedLeaf()))
+    @test keys(sim.store.stores) === (Symbol(Float64),)
+    # Off nominal the pin keeps a `Float64` buffer of its own beside the `Dual`
+    # one, rather than being flattened into it as a zero-partial.
+    sim = build(one(PinnedLeaf()), D8)
+    @test Set(keys(sim.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
+    init!(sim)
+    @test port(sim, :c, :a) isa D8
+    @test port(sim, :c, :frozen) isa Float64
+    @test port(sim, :c, :frozen) == 2.0    # a stored constant, not a computed product
+end
+
+# A mixed-leaf cell: legal in the design (a pinned leaf inside a declared
+# struct), but its layout needs multi-cursor addressing this increment does not
+# build — a named refusal, not a mislayout.
+struct TaggedValue{T}
+    v::T
+    n::Int
+end
+struct MixedCell end
+output_types(::MixedCell, ::Type{T}) where {T <: Real} = (out = TaggedValue{T},)
+h_x(::MixedCell, (; t)) = (out = TaggedValue(t, 1),)
+
+@testset "a mixed-leaf cell is refused by name" begin
+    one(c) = ModelSpec([ComponentSpec(:c, c)])
     err = try
-        build(one(PinnedLeaf()), D8)
+        build(one(MixedCell()))
         nothing
     catch e
         e
     end
     @test err isa BuildError
-    @test occursin("frozen", err.msg) && occursin("own store", err.msg)
+    @test occursin("mixed-leaf", err.msg) && occursin("out", err.msg)
 end
