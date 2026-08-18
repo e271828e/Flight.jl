@@ -15,6 +15,11 @@ include("src/library.jl")
 
 const D8 = ForwardDiff.Dual{Nothing,Float64,8}
 
+# The entries a phase body walks, per variant (§10.5): the boundary variant is
+# the full list, the interior one the continuous entries alone.
+walked(body, variant = :boundary) =
+    [e for c in getfield(body, variant) for e in c.entries]
+
 @testset "the activation walk (§7.2)" begin
     @test retype(D8, Float64) === D8
     @test retype(D8, SVector{3,Float64}) === SVector{3,D8}
@@ -26,20 +31,20 @@ end
 @testset "the bundle law (§5.2)" begin
     # A name appears iff the store or fact exists: the stateless gain sees no
     # `x`, the no-feedthrough stage sees no `u`, `t` is always there.
-    @test bundle_names(h_x, Plant(), ()) === (:x, :t)
-    @test bundle_names(h_xu, Plant(), (:y,)) === (:x, :u, :y_x, :t)
-    @test bundle_names(f, Plant(), (:y,)) === (:x, :u, :y, :t)
-    @test bundle_names(h_xu, Gain(1.0), ()) === (:u, :t)
+    @test bundle_names(h_x, Plant(), CONTINUOUS, ()) === (:x, :t)
+    @test bundle_names(h_xu, Plant(), CONTINUOUS, (:y,)) === (:x, :u, :y_x, :t)
+    @test bundle_names(f, Plant(), CONTINUOUS, (:y,)) === (:x, :u, :y, :t)
+    @test bundle_names(h_xu, Gain(1.0), CONTINUOUS, ()) === (:u, :t)
 end
 
 @testset "the schedule follows the feedthrough graph (§5.3)" begin
     sim = build(feedback_model())
     # sum first (both its inputs are loop-breaking), then ctl, then plant
     paths = [e.comp isa Sum ? :sum : e.comp isa Gain ? :ctl : :plant
-             for c in sim.bodies.sweep_hxu.chunks for e in c.entries]
+             for e in walked(sim.bodies.sweep_hxu)]
     @test paths == [:sum, :ctl, :plant]
-    @test length([e for c in sim.bodies.sweep_hx.chunks for e in c.entries]) == 1
-    @test length([e for c in sim.bodies.rhs.chunks for e in c.entries]) == 1
+    @test length(walked(sim.bodies.sweep_hx)) == 1
+    @test length(walked(sim.bodies.rhs)) == 1
 end
 
 @testset "an algebraic loop is a build error (§5.5)" begin
@@ -113,10 +118,21 @@ end
                           ComponentSpec(:ctl2, Gain(3.0), [:e => (:sum2, :e)]),
                           ComponentSpec(:sum2, Sum(), [:b => (:plant2, :y)])]))
     sim = build(two)
-    types(body) = unique(typeof(e) for c in body.chunks for e in c.entries)
+    types(body) = unique(typeof(e) for e in walked(body))
     @test length(types(sim.bodies.sweep_hx)) == 1     # two Plants, one h_x body
     @test length(types(sim.bodies.sweep_hxu)) == 3    # Plant, Gain, Sum
     @test length(types(sim.bodies.rhs)) == 1
+
+    # The discrete tier keeps the property: a state store is a `Ref` whose
+    # *type* every instance of a component type shares, so the store lives in a
+    # field and two counters still compile to one `g` body.
+    counters = build(ModelSpec([ComponentSpec(:c1, TickCounter()),
+                                ComponentSpec(:c2, TickCounter())]); Δt = 0.1)
+    @test length(walked(counters.bodies.ticks)) == 2
+    @test length(types(counters.bodies.ticks)) == 1
+    @test length(types(counters.bodies.sweep_hx)) == 1
+    # And one bundle type per model, whatever the eltype count (D-162).
+    @test counters.store isa StoreBundle
 end
 
 # Malformed components for the probe tests. Defined at top level, not inside the
@@ -139,11 +155,7 @@ f(::BadDerivative, (; x)) = (q = 0.0,)
 struct NoFlow end
 init_x(::NoFlow) = (q = 1.0,)
 
-# The whole-signature forgotten-`T`: the retired one-argument form, which the
-# `::Any` fallback would otherwise swallow into a component declaring nothing.
-struct OneArgDecl end
-output_types(::OneArgDecl) = (a = Float64,)
-h_x(::OneArgDecl, (; t)) = (a = 1.0,)
+struct Inert end
 
 @testset "the probe rejects malformed components (§9.3)" begin
     one(c) = ModelSpec([ComponentSpec(:c, c)])
@@ -151,7 +163,230 @@ h_x(::OneArgDecl, (; t)) = (a = 1.0,)
     @test_throws BuildError build(one(Unproduced()))
     @test_throws BuildError build(one(BadDerivative()))
     @test_throws BuildError build(one(NoFlow()))
-    @test_throws BuildError build(one(OneArgDecl()))
+end
+
+# --- tier classification (§8.2) -----------------------------------------------
+# Tier is read off the declaration shape. These components are the shapes the
+# classifier has to separate, plus the four ways a declaration set can disagree.
+
+struct DiscreteCounter end                 # stateful discrete: `g` decides
+init_x(::DiscreteCounter) = (n = 0,)
+output_types(::DiscreteCounter) = (n = Int,)
+h_x(::DiscreteCounter, (; x)) = (n = x.n,)
+g(::DiscreteCounter, (; x)) = (n = x.n + 1,)
+
+struct DiscreteMap end                     # stateless discrete: the arity decides
+input_types(::DiscreteMap) = (a = Int,)
+output_types(::DiscreteMap) = (b = Int,)
+h_xu(::DiscreteMap, (; u)) = (b = 2u.a,)
+
+struct BothUpdates end                     # `f` and `g` on one component
+init_x(::BothUpdates) = (q = 1.0,)
+output_types(::BothUpdates, ::Type{T}) where {T <: Real} = (a = T,)
+h_x(::BothUpdates, (; x)) = (a = x.q,)
+f(::BothUpdates, (; x)) = (q = 0.0,)
+g(::BothUpdates, (; x)) = (q = x.q,)
+
+struct WrongArity end                      # `g` beside a two-argument contract
+init_x(::WrongArity) = (n = 0,)
+output_types(::WrongArity, ::Type{T}) where {T <: Real} = (a = T,)
+h_x(::WrongArity, (; x)) = (a = 1.0,)
+g(::WrongArity, (; x)) = (n = x.n,)
+
+struct ModesOnDiscrete end                 # `init_m` is continuous-only
+init_x(::ModesOnDiscrete) = (n = 0,)
+init_m(::ModesOnDiscrete) = (phase = :idle,)
+output_types(::ModesOnDiscrete) = (a = Int,)
+h_x(::ModesOnDiscrete, (; x)) = (a = x.n,)
+g(::ModesOnDiscrete, (; x)) = (n = x.n,)
+
+struct BothArities end                     # a member of both contract families
+output_types(::BothArities, ::Type{T}) where {T <: Real} = (a = T,)
+output_types(::BothArities) = (a = Float64,)
+h_x(::BothArities, (; t)) = (a = 1.0,)
+
+@testset "tier is read off the declaration shape (§8.2)" begin
+    one(c) = ComponentSpec(:c, c)
+    # The two deciders: the update law for a stateful leaf, the contract arity
+    # for a stateless one.
+    @test classify_tier(one(Plant())) === CONTINUOUS
+    @test classify_tier(one(Gain(1.0))) === CONTINUOUS
+    @test classify_tier(one(DiscreteCounter())) === DISCRETE
+    @test classify_tier(one(DiscreteMap())) === DISCRETE
+
+    # The discrete bundle sets: `Δt` is a discrete-tier fact, `m` a continuous
+    # one, both under the shared state letter (D-173).
+    @test bundle_names(h_x, DiscreteCounter(), DISCRETE, ()) === (:x, :t, :Δt)
+    @test bundle_names(g, DiscreteCounter(), DISCRETE, (:n,)) === (:x, :y, :t, :Δt)
+    @test bundle_names(h_xu, DiscreteMap(), DISCRETE, ()) === (:u, :t, :Δt)
+
+    # Disagreement names the offending declaration and the tier the rest announce.
+    for (c, offender) in ((BothUpdates(), "g"), (WrongArity(), "output_types"),
+                          (ModesOnDiscrete(), "init_m"), (BothArities(), "output_types"))
+        err = try
+            classify_tier(one(c))
+            nothing
+        catch e
+            e
+        end
+        @test err isa BuildError
+        @test occursin(offender, err.msg)
+    end
+
+    # A component that declares nothing and defines no stage cannot be
+    # intentional (D-164); a store with no update law is the §8.2 sibling.
+    @test_throws BuildError classify_tier(one(Inert()))
+    @test_throws BuildError classify_tier(one(NoFlow()))
+
+    # A discrete tier needs its base tick period before the executor exists:
+    # `Δt` is entry-field data, not a run-time argument (§9.7).
+    err = try
+        build(ModelSpec([one(DiscreteCounter())]))
+        nothing
+    catch e
+        e
+    end
+    @test err isa BuildError && occursin("Δt", err.msg)
+    @test build(ModelSpec([one(DiscreteCounter())]); Δt = 0.1) isa Simulation
+end
+
+# --- the discrete tier at one rate (§10.5) ------------------------------------
+
+@testset "the sampled loop matches the exact ZOH discretization" begin
+    # The reference is the hybrid system solved exactly: over each interval the
+    # plant is linear with a *constant* input, so its transition is
+    # `q[k+1] = Ad q[k] + Bd s[k]` with `Ad = exp(A Δt)`, and the controller
+    # advances by its own recursion. Nothing here matches unless the hold is
+    # real — a mid-step re-run of `ctl` would move `u` inside the interval and
+    # break the closed form.
+    kI, ω, ζ, Δt, r, N = 3.0, 2.0, 0.1, 0.02, 0.7, 100
+    A = SMatrix{2,2}(0.0, -ω^2, 1.0, -2ζ * ω)
+    B = SVector(0.0, 1.0)
+    Ad = exp(A * Δt)
+    Bd = A \ ((Ad - I) * B)
+
+    q, s = SVector(0.0, 0.0), 0.0
+    for _ in 1:N
+        q, s = Ad * q + Bd * s, s + kI * Δt * (r - q[1])
+    end
+    s_next = s + kI * Δt * (r - q[1])   # the update boundary N itself performs
+
+    sim = build(sampled_loop(; kI, ω, ζ); Δt)
+    set_slot!(sim, :sum, :a, r)
+    init!(sim)
+    run!(sim, N * Δt, Δt)
+
+    # The tolerance is RK4's, not the semantics': the reference integrates
+    # exactly where the loop takes one RK4 step per sample, which at `ωΔt` this
+    # size leaves ~1e-8 relative. A violated hold moves `u` mid-interval and
+    # costs ~1e-3, so the margin still separates the two by orders of magnitude.
+    @test state(sim, :plant).q ≈ q rtol = 1e-6
+    # The cell holds `s[N]` — the output stage ran at this boundary — while the
+    # store already holds `s[N+1]`. That gap *is* the sampled-data ordering:
+    # output stages before updates, within one boundary (§10.5).
+    @test port(sim, :ctl, :u) ≈ s rtol = 1e-6
+    @test state(sim, :ctl).s ≈ s_next rtol = 1e-6
+end
+
+@testset "the ZOH holds by compile-time absence (§10.5)" begin
+    sim = build(sampled_loop(); Δt = 0.02)
+    set_slot!(sim, :sum, :a, 1.0)      # excite the loop, or nothing moves at all
+    init!(sim)
+
+    # Structural: the interior variants carry continuous entries only, so there
+    # is no gating test on the hot path — the hold is not implemented, it is
+    # the absence of any way to change the cell.
+    @test length(walked(sim.bodies.sweep_hx, :interior)) == 1        # plant only
+    @test length(walked(sim.bodies.sweep_hx)) == 2                   # plus ctl
+    @test isempty(walked(sim.bodies.ticks, :interior))
+    @test length(walked(sim.bodies.ticks)) == 1
+
+    # Semantic: a step is made of interior evaluations, so the discrete cell
+    # cannot move across one, while the continuous table does. Run a few
+    # boundaries first — the loop starts at rest with `u` held at zero, so the
+    # very first interval moves nothing at all.
+    run!(sim, 0.1, 0.02)
+    u₀, y₀ = port(sim, :ctl, :u), port(sim, :plant, :y)
+    @test u₀ != 0.0
+    step!(sim, 0.02)
+    @test port(sim, :ctl, :u) == u₀        # untouched: never gathered, never written
+    @test port(sim, :plant, :y) != y₀
+end
+
+@testset "discrete state and modes live outside the buffer (§7.3)" begin
+    sim = build(ModelSpec([ComponentSpec(:counter, TickCounter()),
+                           ComponentSpec(:moded, ModedSource())]); Δt = 0.1)
+    # The flat buffer is continuous state only; the counter's `Int` is in its
+    # own store, and no store mirrors another.
+    @test isempty(sim.xbuf)
+    @test state(sim, :counter) === (n = 0,)
+    @test modes(sim, :moded) === (phase = :idle,)
+
+    # `Int` and `Bool` cells force their own buffers — the plural in
+    # "per-eltype stores", first exercised here.
+    @test Set(keys(sim.store.stores)) == Set([Symbol(Int), Symbol(Bool), Symbol(Float64)])
+
+    init!(sim)
+    @test state(sim, :counter) === (n = 1,)      # boundary zero is a tick
+    @test port(sim, :counter, :n) === 0          # the cell holds what it published
+    @test port(sim, :counter, :even) === true
+    run!(sim, 0.5, 0.1)
+    # Six boundaries: zero, then one per step. The store leads the cell by one,
+    # the update having run after the output stage at each of them.
+    @test state(sim, :counter) === (n = 6,)
+    @test port(sim, :counter, :n) === 5
+end
+
+@testset "the workspace is scratch, on both tiers (§7.3)" begin
+    sim = build(ModelSpec([ComponentSpec(:sm, Smoother(0.5),
+                                         [:a => (:src, :out), :b => (:src, :out)]),
+                           ComponentSpec(:src, ModedSource()),
+                           ComponentSpec(:wg, WorkGain(2.0), [:in => (:src, :out)])]);
+                Δt = 0.1)
+    init!(sim)
+    @test port(sim, :wg, :out) == 0.0            # 2 × the idle-phase constant
+    run!(sim, 0.3, 0.1)
+    @test state(sim, :sm).v isa SVector{2,Float64}
+
+    # Allocation is what the idiom is for: in-place math on scratch, an isbits
+    # snapshot into the store, and nothing on the measured path.
+    b = phase_bodies(sim)
+    for name in keys(b)
+        body = b[name]
+        body(); body(1)
+        @test @ballocated($body()) == 0
+        @test @ballocated($body(1)) == 0
+    end
+end
+
+# A `g` that widens its own store: the discrete world is pinned, so this is an
+# error rather than a silent conversion at the store assignment.
+struct WidenedUpdate end
+init_x(::WidenedUpdate) = (n = 0,)
+output_types(::WidenedUpdate) = (n = Int,)
+h_x(::WidenedUpdate, (; x)) = (n = x.n,)
+g(::WidenedUpdate, (; x)) = (n = x.n + 0.5,)
+
+@testset "a discrete successor is the store's own type (§7.3)" begin
+    one(c) = ModelSpec([ComponentSpec(:c, c)])
+    @test_throws BuildError build(one(WidenedUpdate()); Δt = 0.1)
+end
+
+@testset "the discrete tier is frozen at a non-nominal activation (§7.2)" begin
+    # The plant's input is declared `T` and wired to a discrete `Float64` cell:
+    # a lawful arrival, embedded as a zero-partial. `ctl`'s stages do not run
+    # at all, and its cell holds what the probe wrote — which is exactly what a
+    # tick at `t₀⁻` would have produced.
+    sim = build(sampled_loop(); Δt = 0.02)
+    simd = build(sampled_loop(), D8; Δt = 0.02)
+    @test isempty(walked(simd.bodies.ticks))
+    @test length(walked(simd.bodies.sweep_hx)) == 1          # plant only; ctl frozen
+    @test port(simd, :ctl, :u) isa Float64
+
+    init!(simd)
+    run!(simd, D8(0.04), D8(0.02))
+    @test state(simd, :plant).q isa SVector{2,D8}
+    @test port(simd, :ctl, :u) == 0.0                        # held, never recomputed
 end
 
 # The constant-branch idiom (D-166): a literal `Float64` returned into a

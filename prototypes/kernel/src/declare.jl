@@ -2,9 +2,8 @@
 # are ordinary functions of the *instance*, written at concrete `Float64`; the
 # framework's activation walk (§7.2) retypes them. No macros, no stage tags.
 #
-# Increment 2 covers the continuous tier only. Modes (`init_m`), `workspace`
-# and `events` are declaration entries this file deliberately does not have
-# yet.
+# Both tiers live here. `events` is the one declaration entry this file
+# deliberately does not have yet.
 
 # --- what an author declares --------------------------------------------------
 
@@ -17,9 +16,27 @@ no pinned state leaf, so there is no choice for a `T` to record.
 init_x(::Any) = NamedTuple()
 
 """
-Input faces: name => type, **as a function of the activation scalar** (D-167).
-Entries are read permissively — they state per leaf what the consumer allows:
-`T` is tolerant, a literal `Float64` demands a frozen arrival.
+Modes, **by value**, continuous-only: the event system is continuous-side only,
+so declaring `init_m` announces the continuous tier (§8.2). Mode stores are
+written by handlers; nothing else may.
+"""
+init_m(::Any) = NamedTuple()
+
+"""
+Mutable scratch, instantiated by the framework and arriving as the bundle's
+`ws` field (§7.3). Declaration *is* allocation, and the arity splits the tiers:
+`workspace(::C, ::Type{T})` continuous — sizes from the instance, eltypes from
+the activation — against plain `workspace(::C)` on the discrete tier. No
+fallback: absence is how a component declares no scratch.
+"""
+function workspace end
+
+"""
+Input faces: name => type, **as a function of the activation scalar** (D-167)
+on the continuous tier; plain `input_types(::C)` on the discrete tier, where
+the declared types are pinned. Entries are read permissively — they state per
+leaf what the consumer allows: `T` is tolerant, a literal `Float64` demands a
+frozen arrival.
 """
 input_types(::Any, ::Type{T}) where {T <: Real} = NamedTuple()
 
@@ -48,8 +65,32 @@ output_types(::Any, ::Type{T}) where {T <: Real} = NamedTuple()
 function h_x end
 function h_xu end
 function f end
+function g end
 
 has_stage(fn, c) = hasmethod(fn, Tuple{typeof(c),NamedTuple})
+
+"""
+Is `fn` declared *for this component* in the arity `extra` names, as against
+matching a framework fallback? `hasmethod` cannot tell the two apart, so the
+matched method's own signature is what answers: a fallback carries `Any` in the
+component position.
+"""
+_declares(fn, c, extra...) =
+    hasmethod(fn, Tuple{typeof(c),extra...}) &&
+    Base.unwrap_unionall(which(fn, Tuple{typeof(c),extra...}).sig).parameters[2] !== Any
+
+# --- tiers (§8.2) -------------------------------------------------------------
+# A tier is never announced; it is read off the declaration shape. The enum is
+# the build's internal answer, not an authoring surface.
+
+@enum Tier CONTINUOUS DISCRETE
+
+tier_word(t::Tier) = t === CONTINUOUS ? "continuous" : "discrete"
+
+"""The tier form of `fn`'s arity: two-argument continuous, plain discrete."""
+declared_at(fn, c, t::Tier) =
+    t === CONTINUOUS ? (_declares(fn, c, Type{Float64}) ? fn(c, Float64) : NamedTuple()) :
+                       (_declares(fn, c) ? fn(c) : NamedTuple())
 
 # --- the bundle law (§5.2) ----------------------------------------------------
 # A name appears in a component's bundle iff the corresponding store or fact
@@ -58,27 +99,37 @@ has_stage(fn, c) = hasmethod(fn, Tuple{typeof(c),NamedTuple})
 # destructuring rather than reading a filler.
 
 """
-Bundle field names for `fn` on component `c`, given its discovered stage-1
-ports.
+Bundle field names for `fn` on component `c` at tier `t`, given its discovered
+stage-1 ports.
 
 The by-type declarations are asked at nominal `Float64`: presence is a property
 of the declaration's key set, which is fixed by the declaration and cannot vary
 with the activation scalar, so the bundle shape is the same at every activation.
+
+The per-function, per-tier name sets are closed: `m` is continuous-only and
+`Δt` discrete-only, both under the shared state letter (D-173).
 """
-function bundle_names(fn, c, stage1_ports::Tuple)
+function bundle_names(fn, c, t::Tier, stage1_ports::Tuple)
+    update = t === CONTINUOUS ? f : g
     names = Symbol[]
     !isempty(init_x(c)) && push!(names, :x)
-    if fn === h_xu || fn === f
-        !isempty(input_types(c, Float64)) && push!(names, :u)
+    t === CONTINUOUS && !isempty(init_m(c)) && push!(names, :m)
+    if fn === h_xu || fn === update
+        !isempty(declared_at(input_types, c, t)) && push!(names, :u)
     end
     if fn === h_xu
         !isempty(stage1_ports) && push!(names, :y_x)
-    elseif fn === f
-        !isempty(output_types(c, Float64)) && push!(names, :y)
+    elseif fn === update
+        !isempty(declared_at(output_types, c, t)) && push!(names, :y)
     end
+    _declares_workspace(c, t) && push!(names, :ws)
     push!(names, :t)
+    t === DISCRETE && push!(names, :Δt)
     tuple(names...)
 end
+
+_declares_workspace(c, t::Tier) =
+    t === CONTINUOUS ? _declares(workspace, c, Type{Float64}) : _declares(workspace, c)
 
 # --- probe values (§9.3) -----------------------------------------------------
 # Root slots are the one terminal with no producer; the build synthesizes their

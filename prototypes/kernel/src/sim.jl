@@ -10,13 +10,17 @@ struct Simulation{T,S,B,CL}
     bodies::B
     layout::Layout
     spec::ModelSpec
+    Δt::Float64                   # the base tick period; 0.0 with no discrete tier
+    xstores::Vector{Any}          # discrete state stores, by component index
+    mstores::Vector{Any}          # mode stores, by component index
     work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄
 end
 
-function Simulation(store, xbuf, ẋbuf, clock, bodies, layout, spec, ::Type{T}) where {T}
+function Simulation(store, xbuf, ẋbuf, clock, bodies, layout, spec, Δt, xstores, mstores,
+                    ::Type{T}) where {T}
     work = ntuple(_ -> zeros(T, length(xbuf)), 5)
     Simulation{T,typeof(store),typeof(bodies),typeof(clock)}(
-        store, xbuf, ẋbuf, clock, bodies, layout, spec, work)
+        store, xbuf, ẋbuf, clock, bodies, layout, spec, Δt, xstores, mstores, work)
 end
 
 """
@@ -45,10 +49,17 @@ fresh table. Leaves `ẋbuf` holding the derivative of whatever `xbuf` holds.
     nothing
 end
 
-"""The boundary sweep: restores signal-table consistency at an accepted step (§10.3)."""
-@inline function boundary_sweep!(sim::Simulation, tick::Int)
+"""
+The boundary macro-sequence (§10.3, §10.6 in miniature): the boundary sweep
+restores signal-table consistency, then the due updates run. Output stages
+before updates, so a discrete component's cells carry `y[k]` computed from
+`x[k]` while `g` produces `x[k+1]` — the sampled-data recursion, ordered by
+construction rather than by convention.
+"""
+@inline function boundary!(sim::Simulation, tick::Int)
     sim.bodies.sweep_hx(tick)
     sim.bodies.sweep_hxu(tick)
+    sim.bodies.ticks(tick)
     nothing
 end
 
@@ -87,20 +98,35 @@ end
     end
 end
 
-"""Initialize: state at its declared values, table consistent, clock at `t₀`."""
+"""
+Initialize: state at its declared values, table consistent, clock at `t₀`.
+
+Boundary zero is an ordinary boundary with an empty integrate (§10.5, §14.5):
+everything at `Φ = 0` is due, which at one rate is everything, so the discrete
+tier takes its first tick here.
+"""
 function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.t = t₀
-    boundary_sweep!(sim, 0)
+    boundary!(sim, 0)
     nothing
 end
 
-"""Advance to `t_end` in steps of `h`, restoring table consistency at each boundary."""
+"""
+Advance to `t_end` in steps of `h`, running the macro-sequence at each boundary.
+
+With a discrete tier every step boundary is a tick, so `h` must be the base tick
+period: the harmonic grid at one rate, `Δt_base = h` (§10.5). Increment 4 lifts
+this to `Δt_base = n·h` with the gate.
+"""
 function run!(sim::Simulation{T}, t_end::T, h::T) where {T}
+    sim.Δt == 0.0 || h ≈ sim.Δt ||
+        throw(ArgumentError("this model ticks at Δt = $(sim.Δt); step it at that period, " *
+                            "not $h (§10.5)"))
     tick = 0
     while sim.clock.t < t_end - eps(t_end)
         step!(sim, min(h, t_end - sim.clock.t))
         tick += 1
-        boundary_sweep!(sim, tick)
+        boundary!(sim, tick)
     end
     nothing
 end
@@ -116,12 +142,21 @@ function set_slot!(sim::Simulation, path::Symbol, face::Symbol, v)
     nothing
 end
 
+"""
+State at `path`, from whichever home owns it: the flat buffer on the continuous
+tier, the component's own store on the discrete one (§7.3).
+"""
 function state(sim::Simulation{T}, path::Symbol) where {T}
     ci = index_of(sim.spec, path)
-    d = declarations(sim.spec.comps[ci], T)
+    sim.xstores[ci] === nothing || return sim.xstores[ci][]
+    _tier(i) = classify_tier(sim.spec.comps[i])
+    _decls(i) = declarations(sim.spec.comps[i], _tier(i), T)
     off = 0
     for i in 1:(ci-1)
-        off += nleaves(typeof(declarations(sim.spec.comps[i], T).x))
+        _tier(i) === CONTINUOUS && (off += nleaves(typeof(_decls(i).x)))
     end
-    reconstruct(typeof(d.x), sim.xbuf, off)
+    reconstruct(typeof(_decls(ci).x), sim.xbuf, off)
 end
+
+"""Modes at `path` (§7.3). Read-only here: handlers are the event system."""
+modes(sim::Simulation, path::Symbol) = sim.mstores[index_of(sim.spec, path)][]

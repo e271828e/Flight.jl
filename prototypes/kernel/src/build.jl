@@ -40,26 +40,63 @@ struct Decls
     outs::NamedTuple       # port => type, evaluated at the activation scalar
 end
 
-# The two registers split by D-166's criterion: `init_x` is by value at nominal
-# `Float64` and its types are *walked*; `input_types`/`output_types` are
-# functions of the activation scalar and are *evaluated*. There is no
+# The two registers split by D-166's criterion: `init_x` is by value and, on the
+# continuous tier, its types are *walked*; `input_types`/`output_types` are
+# functions of the activation scalar there and are *evaluated*. There is no
 # output-side leaf walk — the cell types at an activation are literally what the
-# declaration returns at that `T`.
-function declarations(cs::ComponentSpec, ::Type{T}) where {T}
+# declaration returns at that `T`. On the discrete tier the plain forms declare
+# the pinned world, so nothing walks and nothing is evaluated at `T`.
+function declarations(cs::ComponentSpec, t::Tier, ::Type{T}) where {T}
     c = cs.comp
-    _reject_one_arg(cs, output_types, "output_types")
-    _reject_one_arg(cs, input_types, "input_types")
-    Decls(retype_value(T, init_x(c)), input_types(c, T), output_types(c, T))
+    t === CONTINUOUS ?
+        Decls(retype_value(T, init_x(c)), input_types(c, T), output_types(c, T)) :
+        Decls(init_x(c), declared_at(input_types, c, t), declared_at(output_types, c, t))
 end
 
-# The whole-signature forgotten-`T`. D-166 calls this class extinct because the
-# tier is read off the declaration shape; on a single-tier prototype the `::Any`
-# fallback would swallow it instead, and the component would declare nothing.
-function _reject_one_arg(cs::ComponentSpec, fn, name)
-    hasmethod(fn, Tuple{typeof(cs.comp)}) &&
-        throw(BuildError("$(cs.path): `$name` is declared in the one-argument (discrete-tier) " *
-                         "form; a continuous component declares " *
-                         "`$name(::C, ::Type{T}) where {T <: Real}` (D-166/D-167)"))
+# --- tier classification (§8.2) -----------------------------------------------
+# Tier is read off the declaration shape, never announced. For a **stateful**
+# leaf the update law carries it — `f` continuous, `g` discrete, the stage names
+# being shared (D-173). A **stateless** leaf has no update law, so its contract
+# arities decide, `output_types` being mandatory and therefore the decider: the
+# two-argument forms declare cells at the activation scalar, the plain forms the
+# pinned discrete world (D-166/D-167). Every other tier-implying declaration
+# must then agree, and disagreement names the offending one.
+
+"""The tier `cs` announces, or a `BuildError` naming what disagrees."""
+function classify_tier(cs::ComponentSpec)
+    c = cs.comp
+    votes = Tuple{Symbol,Tier}[]
+    has_stage(f, c) && push!(votes, (:f, CONTINUOUS))
+    has_stage(g, c) && push!(votes, (:g, DISCRETE))
+    !isempty(init_m(c)) && push!(votes, (:init_m, CONTINUOUS))
+    for (name, fn) in ((:output_types, output_types), (:input_types, input_types),
+                       (:workspace, workspace))
+        _declares(fn, c, Type{Float64}) && push!(votes, (name, CONTINUOUS))
+        _declares(fn, c) && push!(votes, (name, DISCRETE))
+    end
+
+    # The decider, by §8.2's two cases.
+    if !isempty(init_x(c))
+        i = findfirst(v -> first(v) === :f || first(v) === :g, votes)
+        i === nothing &&
+            throw(BuildError("$(cs.path) declares `init_x` but defines neither `f` nor `g` — " *
+                             "a store needs its update (§8.2)"))
+    else
+        i = findfirst(v -> first(v) === :output_types, votes)
+        i === nothing &&
+            throw(BuildError("$(cs.path) declares no `output_types` and owns no state — a " *
+                             "component that declares nothing and defines no stage cannot be " *
+                             "intentional (§8.2, D-164)"))
+    end
+
+    t = last(votes[i])
+    for (name, vt) in votes
+        vt === t ||
+            throw(BuildError("$(cs.path): `$name` is declared in the $(tier_word(vt))-tier " *
+                             "form, but this component's other declarations announce the " *
+                             "$(tier_word(t)) tier (§8.2)"))
+    end
+    t
 end
 
 # --- 2. probing ---------------------------------------------------------------
@@ -69,11 +106,12 @@ Probe `h_x` for every component: no wiring is needed, so this runs first and
 tells the rest of the build which ports are stage-1 — the ones that carry no
 dependence on inputs and therefore break loops (§5.3).
 """
-function probe_stage1(spec::ModelSpec, decls::Vector{Decls}, ::Type{T}) where {T}
-    map(zip(spec.comps, decls)) do (cs, d)
+function probe_stage1(spec::ModelSpec, decls::Vector{Decls}, tiers::Vector{Tier},
+                      wss::Vector, mstores::Vector, Δt::Float64, ::Type{T}) where {T}
+    map(zip(spec.comps, decls, tiers, wss, mstores)) do (cs, d, t, ws, m)
         has_stage(h_x, cs.comp) || return NamedTuple()
-        bn = bundle_names(h_x, cs.comp, ())
-        y = h_x(cs.comp, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T))
+        bn = bundle_names(h_x, cs.comp, t, ())
+        y = h_x(cs.comp, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T; ws, m, Δt))
         y isa NamedTuple ||
             throw(BuildError("$(cs.path): h_x must return a NamedTuple of port values, got $(typeof(y))"))
         _check_ports(cs.path, "h_x", y, d.outs, T)
@@ -81,13 +119,17 @@ function probe_stage1(spec::ModelSpec, decls::Vector{Decls}, ::Type{T}) where {T
     end
 end
 
-function _bundle_values(bn, d::Decls, u, y_x, ::Type{T}; y = NamedTuple()) where {T}
+function _bundle_values(bn, d::Decls, u, y_x, ::Type{T}; y = NamedTuple(), ws = nothing,
+                        m = nothing, Δt = 0.0) where {T}
     vals = map(bn) do n
         n === :x   ? d.x :
+        n === :m   ? m[] :
         n === :u   ? u :
         n === :y_x ? y_x :
         n === :y   ? y :
-        n === :t   ? zero(T) : error("no probe source for $n")
+        n === :ws  ? ws :
+        n === :t   ? zero(T) :
+        n === :Δt  ? Δt : error("no probe source for $n")
     end
     NamedTuple{bn}(vals)
 end
@@ -251,19 +293,48 @@ end
 
 # --- 5. the whole build -------------------------------------------------------
 
-function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where {T}
-    decls = [declarations(cs, T) for cs in spec.comps]
-    stage1 = probe_stage1(spec, decls, T)
+function build(spec::ModelSpec, ::Type{T} = Float64;
+               chunk_size::Int = 16, Δt::Union{Nothing,Float64} = nothing) where {T}
+    tiers = [classify_tier(cs) for cs in spec.comps]
+    decls = [declarations(cs, t, T) for (cs, t) in zip(spec.comps, tiers)]
+
+    # `Δt` is bundle data carried in entry fields (§9.7), so the sample period
+    # is fixed before the executor exists. Here one call binds deployment and
+    # compilation together; in the design they are separate strata, and every
+    # component sits at `D = 1, Φ = 0` until increment 4 brings the grid.
+    if any(t -> t === DISCRETE, tiers) && Δt === nothing
+        throw(BuildError("this model has discrete components; `build` needs the base tick " *
+                         "period, as `build(spec; Δt = …)` (§10.5)"))
+    end
+    Δt_base = something(Δt, 0.0)
+    Δt_base >= 0 || throw(BuildError("Δt must be positive, got $Δt_base"))
+
+    # Three homes for state, and no store mirrors another (§7.3): the flat
+    # buffer for continuous `x`, one store per discrete `x`, one per mode set.
+    # A store's *type* is shared by every instance of a component type, so
+    # instances still compile to one body; only the reference varies.
+    xstores = Any[t === DISCRETE && !isempty(d.x) ? Ref(d.x) : nothing
+                  for (d, t) in zip(decls, tiers)]
+    mstores = Any[isempty(init_m(cs.comp)) ? nothing : Ref(init_m(cs.comp))
+                  for cs in spec.comps]
+    # Declaration by allocation (§7.3, D-077): sizes from the instance, eltypes
+    # from the activation. Called once per activation, per component.
+    wss = Any[_declares_workspace(cs.comp, t) ?
+              (t === CONTINUOUS ? workspace(cs.comp, T) : workspace(cs.comp)) : nothing
+              for (cs, t) in zip(spec.comps, tiers)]
+
+    stage1 = probe_stage1(spec, decls, tiers, wss, mstores, Δt_base, T)
     order = schedule_stage2(spec, stage1)
     layout = cell_layout(spec, decls, T)
 
     store = StoreBundle(NamedTuple{tuple((Symbol(L) for (L, _) in layout.sizes)...)}(
         tuple((CellStore(zeros(L, n)) for (L, n) in layout.sizes)...)))
+
     xbuf = T[]
     x_offs = Int[]
-    for d in decls
+    for (d, t) in zip(decls, tiers)
         push!(x_offs, length(xbuf))
-        append!(xbuf, T[T(l) for l in _leaf_values(d.x)])
+        t === CONTINUOUS && append!(xbuf, T[T(l) for l in _leaf_values(d.x)])
     end
     ẋbuf = zeros(T, length(xbuf))
     clock = Clock(zero(T))
@@ -279,27 +350,47 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
         NamedTuple{tuple(keys(d.ins)...)}(
             tuple((input_addr(spec, layout, cs, face) for face in keys(d.ins))...))
 
-    hx_entries, hxu_entries, rhs_entries = Any[], Any[], Any[]
+    hx_entries, hxu_entries, rhs_entries, tick_entries = Any[], Any[], Any[], Any[]
+    hx_tiers, hxu_tiers, rhs_tiers, tick_tiers = Tier[], Tier[], Tier[], Tier[]
     products = NamedTuple[NamedTuple() for _ in spec.comps]   # probe products, per component
+
+    # A discrete component's stages never run at a non-nominal activation: its
+    # cells are frozen `Float64` constants with zero partials, holding what the
+    # probe wrote, which is exactly what a tick at `t₀⁻` would have produced
+    # (§7.2, §10.5; `frozen_discrete_walkthrough.md`).
+    frozen(ci) = tiers[ci] === DISCRETE && T !== Float64
+
+    # A frozen component's inputs are *synthesized*, not read from the upstream
+    # product. Its stages never run at this activation, so it never gathers the
+    # `Dual` cell its pinned input declaration would otherwise have to refuse —
+    # the dependence through it is temporal, not instantaneous. Its own cells
+    # then hold pinned constants, which downstream continuous consumers embed as
+    # zero-partials. (The design carries the *nominal* activation's cell
+    # contents across instead of synthesizing them: §9.4's activation story,
+    # which this increment does not build.)
+    in_values(ci, cs, d) = NamedTuple{tuple(keys(d.ins)...)}(tuple(
+        (frozen(ci) ? probe_value(d.ins[face]) :
+         _probe_input(spec, layout, products, cs, face, d.ins[face], T)
+         for face in keys(d.ins))...))
 
     for (ci, cs) in enumerate(spec.comps)
         d, s1 = decls[ci], stage1[ci]
         products[ci] = s1
-        has_stage(h_x, cs.comp) || continue
-        bn = bundle_names(h_x, cs.comp, ())
-        push!(hx_entries, StageEntry{typeof(h_x),typeof(cs.comp),typeof(d.x),bn,
-                                     typeof(NamedTuple()),typeof(NamedTuple()),
-                                     typeof(addr_group(cs.path, keys(s1))),typeof(clock)}(
-            h_x, cs.comp, NamedTuple(), NamedTuple(), addr_group(cs.path, keys(s1)), x_offs[ci], clock))
+        (has_stage(h_x, cs.comp) && !frozen(ci)) || continue
+        bn = bundle_names(h_x, cs.comp, tiers[ci], ())
+        push!(hx_entries, StageEntry{typeof(d.x),bn}(
+            h_x, cs.comp, NamedTuple(), NamedTuple(), addr_group(cs.path, keys(s1)),
+            x_offs[ci], clock, xstores[ci], mstores[ci], wss[ci], Δt_base))
+        push!(hx_tiers, tiers[ci])
     end
 
     for ci in order
         cs, d, s1 = spec.comps[ci], decls[ci], stage1[ci]
         has_stage(h_xu, cs.comp) || continue
-        bn = bundle_names(h_xu, cs.comp, tuple(keys(s1)...))
-        u = NamedTuple{tuple(keys(d.ins)...)}(tuple(
-            (_probe_input(spec, layout, products, cs, face, d.ins[face], T) for face in keys(d.ins))...))
-        y2 = h_xu(cs.comp, _bundle_values(bn, d, u, s1, T))
+        bn = bundle_names(h_xu, cs.comp, tiers[ci], tuple(keys(s1)...))
+        u = in_values(ci, cs, d)
+        y2 = h_xu(cs.comp, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
+                                          Δt = Δt_base))
         y2 isa NamedTuple ||
             throw(BuildError("$(cs.path): h_xu must return a NamedTuple, got $(typeof(y2))"))
         _check_ports(cs.path, "h_xu", y2, d.outs, T)
@@ -307,11 +398,13 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
             throw(BuildError("$(cs.path): $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
         y2 = _embed_ports(y2, d.outs, T)
         products[ci] = merge(s1, y2)
+        frozen(ci) && continue
 
         yx_g, out_g, in_g = addr_group(cs.path, keys(s1)), addr_group(cs.path, keys(y2)), in_group(cs, d)
-        push!(hxu_entries, StageEntry{typeof(h_xu),typeof(cs.comp),typeof(d.x),bn,
-                                      typeof(in_g),typeof(yx_g),typeof(out_g),typeof(clock)}(
-            h_xu, cs.comp, in_g, yx_g, out_g, x_offs[ci], clock))
+        push!(hxu_entries, StageEntry{typeof(d.x),bn}(
+            h_xu, cs.comp, in_g, yx_g, out_g, x_offs[ci], clock,
+            xstores[ci], mstores[ci], wss[ci], Δt_base))
+        push!(hxu_tiers, tiers[ci])
     end
 
     # Completeness of the declaration set (§8.2), for every component and not
@@ -323,28 +416,41 @@ function build(spec::ModelSpec, ::Type{T} = Float64; chunk_size::Int = 16) where
             throw(BuildError("$(cs.path): declared port(s) $(join(missing_ports, ", ")) produced by no stage"))
     end
 
+    # The update law, one block per tier: `f` into the flat derivative buffer,
+    # `g` into the component's own store. Both read the complete fresh table.
     for (ci, cs) in enumerate(spec.comps)
-        d = decls[ci]
+        d, t = decls[ci], tiers[ci]
         isempty(d.x) && continue
-        has_stage(f, cs.comp) ||
-            throw(BuildError("$(cs.path) declares `init_x` but defines no `f`"))
-        bn = bundle_names(f, cs.comp, tuple(keys(stage1[ci])...))
-        u = NamedTuple{tuple(keys(d.ins)...)}(tuple(
-            (_probe_input(spec, layout, products, cs, face, d.ins[face], T) for face in keys(d.ins))...))
-        ẋ = f(cs.comp, _bundle_values(bn, d, u, stage1[ci], T; y = products[ci]))
-        _check_derivative(cs.path, ẋ, d.x)
-
+        update = t === CONTINUOUS ? f : g
+        bn = bundle_names(update, cs.comp, t, tuple(keys(stage1[ci])...))
+        u = in_values(ci, cs, d)
+        vals = _bundle_values(bn, d, u, stage1[ci], T; y = products[ci], ws = wss[ci],
+                              m = mstores[ci], Δt = Δt_base)
         y_g, in_g = addr_group(cs.path, keys(d.outs)), in_group(cs, d)
-        push!(rhs_entries, RHSEntry{typeof(cs.comp),typeof(d.x),bn,typeof(in_g),typeof(y_g),typeof(clock)}(
-            cs.comp, in_g, y_g, x_offs[ci], clock))
+
+        if t === CONTINUOUS
+            ẋ = f(cs.comp, vals)
+            _check_derivative(cs.path, ẋ, d.x)
+            push!(rhs_entries, RHSEntry{typeof(d.x),bn}(
+                cs.comp, in_g, y_g, x_offs[ci], clock, mstores[ci], wss[ci]))
+            push!(rhs_tiers, t)
+        else
+            x⁺ = g(cs.comp, vals)
+            _check_update(cs.path, x⁺, d.x)
+            frozen(ci) && continue
+            push!(tick_entries, UpdateEntry{bn}(
+                cs.comp, in_g, y_g, clock, xstores[ci], wss[ci], Δt_base))
+            push!(tick_tiers, t)
+        end
     end
 
-    bodies = (sweep_hx = chunked_body(hx_entries, store, xbuf, ẋbuf, clock; chunk_size),
-              sweep_hxu = chunked_body(hxu_entries, store, xbuf, ẋbuf, clock; chunk_size),
-              rhs = chunked_body(rhs_entries, store, xbuf, ẋbuf, clock; chunk_size),
-              ticks = chunked_body(Any[], store, xbuf, ẋbuf, clock; chunk_size))
+    body(es, ts) = chunked_body(es, ts, store, xbuf, ẋbuf, clock; chunk_size)
+    bodies = (sweep_hx = body(hx_entries, hx_tiers),
+              sweep_hxu = body(hxu_entries, hxu_tiers),
+              rhs = body(rhs_entries, rhs_tiers),
+              ticks = body(tick_entries, tick_tiers))
 
-    Simulation(store, xbuf, ẋbuf, clock, bodies, layout, spec, T)
+    Simulation(store, xbuf, ẋbuf, clock, bodies, layout, spec, Δt_base, xstores, mstores, T)
 end
 
 # A probed input value: the upstream product where wired, the synthesized slot
@@ -382,4 +488,16 @@ function _check_derivative(path, ẋ, x::NamedTuple)
         nleaves(typeof(ẋ[k])) == nleaves(typeof(x[k])) ||
             throw(BuildError("$path: derivative field `$k` is $(typeof(ẋ[k])), state field is $(typeof(x[k]))"))
     end
+end
+
+# §7.3: a discrete store is overwritten wholesale with what `g` returns, so the
+# successor must be the store's own type exactly. The discrete world is pinned —
+# no walk, no embedding — which makes the store assignment type-stable and the
+# ban on arithmetic over stores enforceable by construction.
+function _check_update(path, x⁺, x::NamedTuple)
+    x⁺ isa NamedTuple ||
+        throw(BuildError("$path: g must return a NamedTuple shaped like `init_x`, got $(typeof(x⁺))"))
+    typeof(x⁺) === typeof(x) ||
+        throw(BuildError("$path: g returns $(typeof(x⁺)), state store is $(typeof(x)) — a " *
+                         "discrete successor is the store's own type exactly (§7.3)"))
 end

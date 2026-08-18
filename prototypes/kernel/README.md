@@ -8,6 +8,12 @@ there — D-162 cites its numbers.
 **Increment 2 — the continuous tier walks.** A model builds, schedules itself
 from its own feedthrough structure, integrates, and does it without allocating.
 
+**Increment 3 — the discrete tier, at one rate.** Both tiers now share the
+model: tier is read off the declaration shape, discrete state and modes live in
+their own stores, `g` runs at boundaries after the output stages, and the ZOH
+holds mid-step because the interior sweep has no discrete entries to gate.
+Every discrete component sits at `D = 1, Φ = 0`; the grid is increment 4.
+
     julia --project=. check.jl
 
 ## What is real here
@@ -15,14 +21,14 @@ from its own feedthrough structure, integrates, and does it without allocating.
 | piece | spec | file |
 | --- | --- | --- |
 | leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer (two registers, D-166/D-167), the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
-| per-eltype cell store with offsets in entry fields | §9.7, D-162 | `src/store.jl` |
-| entries, chunked unrolled walk, phase bodies in both arities | §9.7 | `src/executor.jl` |
-| probe, feedthrough graph, algebraic-loop rejection, layout, embed-accept | §9.3, §5.3, §5.5, D-166 | `src/build.jl` |
-| `Simulation`, RHS evaluation, RK4, `phase_bodies` | §10.2, §10.3, §9.7 | `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum` | §5.2, §6.2 | `src/library.jl` |
+| declaration layer, both tiers' arities, the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
+| per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
+| entries, chunked unrolled walk, the interior/boundary split | §9.7, §10.5 | `src/executor.jl` |
+| tier classification, probe, feedthrough graph, layout, embed-accept | §8.2, §9.3, §5.3, D-166 | `src/build.jl` |
+| `Simulation`, RK4, the boundary macro-sequence, `phase_bodies` | §10.2, §10.3, §9.7 | `src/sim.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource` | §5.2, §6.2, §7.3 | `src/library.jl` |
 
-Three properties the tests pin down, each of which is a spec claim rather than a
+The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
 
 - **The schedule is derived, not authored.** Stage-1 (`h_x`) ports carry no
@@ -36,25 +42,39 @@ programming convenience:
   flat `ẋ` block is then safe by construction. A forgotten field is impossible,
   not merely detectable.
 - **The phase-body roster is fixed and total.** `phase_bodies(sim)` always
-  returns all four bodies. This model has no discrete components, so `ticks` is
-  empty — it compiles to a no-op, and its `@ballocated` assertion passes
-  vacuously, which is the point: consumers iterate the roster with no per-model
-  branching.
+  returns all four bodies. A model with no discrete components still gets
+  `ticks`, empty — it compiles to a no-op, and its `@ballocated` assertion
+  passes vacuously, which is the point: consumers iterate the roster with no
+  per-model branching.
+- **Tier is read off the declaration shape, never announced.** For a stateful
+  leaf the update law carries it (`f` continuous, `g` discrete); for a
+  stateless one the contract arity does. Every other tier-implying declaration
+  must agree, and disagreement names the offending one — `g` beside a
+  two-argument `output_types`, `init_m` on a discrete leaf, both arities of one
+  contract.
+- **The ZOH is not implemented.** It is the absence of any way to change a
+  discrete cell mid-step: the interior sweep is compiled from continuous
+  entries alone, so the hot path carries no gating test, and a discrete cell
+  cannot move across a step because nothing in that walk writes it.
 
-Correctness is checked against an analytically integrated closed loop (matrix
-exponential), with a tolerance — never `==` (D-163).
+**The store bundle is in, and with it the *plural* in "per-eltype stores".**
+The bench that settled the representation (D-162) measured exactly one buffer;
+`StoreBundle` now holds one `CellStore` per leaf element type, keyed by the
+eltype's name. Selection is static — an address carries its port type, whose
+leaf eltype names the buffer at compile time — so a deliberately pinned
+`Float64` leaf (D-166) keeps a buffer of its own beside the `Dual` one instead
+of being flattened into it as a zero-partial, which is what increment 2 had to
+refuse by name. The bundle is one concrete type per model, keeping `Chunk`'s
+store parameter single: chunk-type count, not model size, is what bounds the
+compile curve D-162 blessed.
+
+Correctness is checked against analytically integrated references — the
+continuous loop by matrix exponential, the sampled loop by its exact ZOH
+discretization `q[k+1] = Ad q[k] + Bd s[k]` — with a tolerance, never `==`
+(D-163). The sampled-data reference is the sharp one: it only matches if the
+hold is real *and* output stages run before updates within a boundary.
 
 ## What is deliberately absent
-
-**Increment 3 — the discrete tier at one rate**, in progress: the store bundle
-above is its first piece. Still absent are tier classification off declaration
-shape, discrete `x` and mode `m` stores (§7.3), `g`, `h_x`/`h_xu` in their
-discrete arities with `Δt`, `workspace`, and the static interior/boundary sweep
-split (§10.5) — the interior variant walking continuous entries *only*, so the
-ZOH holds mid-step by compile-time absence rather than a runtime gate. Every
-discrete component sits at `D = 1, Φ = 0` there. Intermediates a later function
-reads are ordinary declared ports: the `w` channel was retired with D-194, so
-there is nothing to thread between stages.
 
 **Increment 4 — multi-rate:** the harmonic grid, the two-register `sample_times`
 declaration (`Relative` composing affinely down the tree, `Absolute` severing
@@ -70,16 +90,13 @@ conformance check, §13.2's diagnostic framing (build errors here are a plain
 `BuildError` with a good message, not the structured carrier), and the entire
 runtime periphery.
 
-**The store bundle is in, and with it the *plural* in "per-eltype stores".**
-The bench that settled the representation (D-162) measured exactly one buffer;
-`StoreBundle` now holds one `CellStore` per leaf element type, keyed by the
-eltype's name. Selection is static — an address carries its port type, whose
-leaf eltype names the buffer at compile time — so a deliberately pinned
-`Float64` leaf (D-166) keeps a buffer of its own beside the `Dual` one instead
-of being flattened into it as a zero-partial, which is what increment 2 had to
-refuse by name. The bundle is one concrete type per model, keeping `Chunk`'s
-store parameter single: chunk-type count, not model size, is what bounds the
-compile curve D-162 blessed.
+**Two seams are collapsed rather than missing.** `build(spec; Δt)` stands in for
+the deployment-binding stratum: `Δt` is entry-field data, so it must be fixed
+before the executor exists, but in the design it arrives at binding time and the
+`Build` artifact itself is deployment-free. And a frozen discrete component's
+inputs are *synthesized* here, where the design carries the nominal activation's
+cell contents across to the non-nominal one (§9.4). Both matter only in that a
+reader should not mistake the prototype's shape for the spec's.
 
 **One absence here is a refusal rather than a silence.** A cell must be
 leaf-homogeneous. Mixed-leaf cells are legal in the design — a pinned `Float64`

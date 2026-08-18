@@ -4,54 +4,103 @@
 # compile-time-unrolled walk.
 
 # --- entries ------------------------------------------------------------------
-# Two kinds on the continuous tier: a stage entry writes cells, an RHS entry
-# writes the flat `ẋ` buffer. Both build their §5.2 bundle the same way, from
-# `BN` — the bundle name set the law fixed at build time.
+# Three kinds, by where the product goes: a stage entry writes cells (both
+# tiers — the stage names are shared, D-173), an RHS entry writes the flat `ẋ`
+# buffer, an update entry writes its own discrete state store. All build their
+# §5.2 bundle the same way, from `BN` — the bundle name set the law fixed at
+# build time.
+#
+# What selects code sits in type parameters, what varies per instance in fields
+# (§9.7): the state store is a `Ref` whose *type* is shared by every instance of
+# a component type, so two instances still compile to one body.
 
-struct StageEntry{F,Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,OA<:NamedTuple,CL}
+struct StageEntry{F,Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,OA<:NamedTuple,CL,XS,MS,WS}
     fn::F
     comp::Comp
     inputs::IA      # input face => cell address (the wiring's name binding)
     yx::YA          # own stage-1 port => cell address
     outs::OA        # port this entry writes => cell address
-    x_off::Int
+    x_off::Int      # continuous state offset into the flat buffer
     clock::CL
+    xstore::XS      # discrete state store, or nothing on the continuous tier
+    mstore::MS      # mode store, or nothing
+    ws::WS          # workspace, or nothing
+    Δt::Float64     # sample period; unused on the continuous tier
 end
 
-struct RHSEntry{Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,CL}
+struct RHSEntry{Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,CL,MS,WS}
     comp::Comp
     inputs::IA
     y::YA           # every own port — `f` reads the complete fresh table (§5.3)
     x_off::Int
     clock::CL
+    mstore::MS
+    ws::WS
 end
 
-# One bundle-expression builder, two @generated entry points. Absent names are
+struct UpdateEntry{Comp,BN,IA<:NamedTuple,YA<:NamedTuple,CL,XS,WS}
+    comp::Comp
+    inputs::IA
+    y::YA           # every own port — `g` reads the complete fresh table too
+    clock::CL
+    xstore::XS      # written by this entry, and by nothing else
+    ws::WS
+    Δt::Float64
+end
+
+# Outer constructors: only `XT`/`BN` cannot be inferred from the arguments.
+StageEntry{XT,BN}(fn, comp, inputs, yx, outs, x_off, clock, xstore, mstore, ws, Δt) where {XT,BN} =
+    StageEntry{typeof(fn),typeof(comp),XT,BN,typeof(inputs),typeof(yx),typeof(outs),
+               typeof(clock),typeof(xstore),typeof(mstore),typeof(ws)}(
+        fn, comp, inputs, yx, outs, x_off, clock, xstore, mstore, ws, Δt)
+
+RHSEntry{XT,BN}(comp, inputs, y, x_off, clock, mstore, ws) where {XT,BN} =
+    RHSEntry{typeof(comp),XT,BN,typeof(inputs),typeof(y),typeof(clock),
+             typeof(mstore),typeof(ws)}(comp, inputs, y, x_off, clock, mstore, ws)
+
+UpdateEntry{BN}(comp, inputs, y, clock, xstore, ws, Δt) where {BN} =
+    UpdateEntry{typeof(comp),BN,typeof(inputs),typeof(y),typeof(clock),
+                typeof(xstore),typeof(ws)}(comp, inputs, y, clock, xstore, ws, Δt)
+
+# One bundle-expression builder, three @generated entry points. Absent names are
 # absent, never `nothing`-filled: a body destructuring what it does not own
-# fails at the destructuring (§5.2).
-function _bundle_expr(BN, XT)
+# fails at the destructuring (§5.2). `x` reads from the flat buffer on the
+# continuous tier and from the component's own store on the discrete one — the
+# shared state letter (D-173), two homes.
+function _bundle_expr(BN, XT, XS)
     args = map(BN) do n
-        n === :x   ? :(reconstruct($XT, xbuf, e.x_off)) :
+        n === :x   ? (XS === Nothing ? :(reconstruct($XT, xbuf, e.x_off)) : :(e.xstore[])) :
+        n === :m   ? :(e.mstore[]) :
         n === :u   ? :(gather_group(e.inputs, store)) :
         n === :y_x ? :(gather_group(e.yx, store)) :
         n === :y   ? :(gather_group(e.y, store)) :
+        n === :ws  ? :(e.ws) :
         n === :t   ? :(e.clock.t) :
+        n === :Δt  ? :(e.Δt) :
         error("no source for bundle field $n")
     end
     :(NamedTuple{$BN}(($(args...),)))
 end
 
-@generated function make_bundle(e::StageEntry{F,Comp,XT,BN}, store, xbuf) where {F,Comp,XT,BN}
+@generated function make_bundle(e::StageEntry{F,Comp,XT,BN,IA,YA,OA,CL,XS}, store,
+                                xbuf) where {F,Comp,XT,BN,IA,YA,OA,CL,XS}
     quote
         $(Expr(:meta, :inline))
-        $(_bundle_expr(BN, XT))
+        $(_bundle_expr(BN, XT, XS))
     end
 end
 
 @generated function make_bundle(e::RHSEntry{Comp,XT,BN}, store, xbuf) where {Comp,XT,BN}
     quote
         $(Expr(:meta, :inline))
-        $(_bundle_expr(BN, XT))
+        $(_bundle_expr(BN, XT, Nothing))
+    end
+end
+
+@generated function make_bundle(e::UpdateEntry{Comp,BN}, store, xbuf) where {Comp,BN}
+    quote
+        $(Expr(:meta, :inline))
+        $(_bundle_expr(BN, Nothing, Ref))
     end
 end
 
@@ -63,6 +112,13 @@ end
 @inline function run!(e::RHSEntry, store, xbuf, ẋbuf)
     ẋ = f(e.comp, make_bundle(e, store, xbuf))
     flatten!(ẋbuf, e.x_off, ẋ)      # shape conformance established at probe time
+    nothing
+end
+
+# The jump map: `g` reads the fresh table and writes only its own store, which
+# is what makes the update block order-free with disjoint writes (§9.7).
+@inline function run!(e::UpdateEntry, store, xbuf, ẋbuf)
+    e.xstore[] = g(e.comp, make_bundle(e, store, xbuf))
     nothing
 end
 
@@ -85,24 +141,25 @@ end
 end
 
 """
-A phase body. Both arities off one entry list (§9.7): the zero-arg call is the
-*interior* variant, which is what RK stage evaluations and guard trial
-evaluations run and what `@ballocated(body()) == 0` measures; the one-arg call
-is the *boundary* variant, which takes the tick index.
+A phase body: **two chunk tuples compiled from one entry list** (§9.7, §10.5).
 
-Increment 2 has no discrete entries, so the two coincide and share one chunk
-tuple. Increment 3 splits them statically (§10.5): the interior variant walks
-continuous entries *only* — the ZOH holding by compile-time absence, the hot
-path carrying no gating test — so this needs two chunk tuples built from one
-entry list, not one tuple read two ways. Increment 4 then adds the
-`(idx - Φ) % D` gate on the boundary variant (D-185).
+The zero-arg call is the *interior* variant, walking continuous entries only —
+what RK stage evaluations and guard trial evaluations run, and what
+`@ballocated(body()) == 0` measures. The ZOH therefore holds mid-step **by
+construction**: discrete entries are not gated out at runtime, they are absent
+from the compiled walk, and the hot path carries no gating test at all.
+
+The one-arg call is the *boundary* variant, walking the full list. It takes the
+tick index, which at `D = 1, Φ = 0` selects everything; increment 4 adds the
+`(idx - Φ) % D` gate that makes the index mean something (D-185).
 """
-struct PhaseBody{C<:Tuple}
-    chunks::C
+struct PhaseBody{I<:Tuple,B<:Tuple}
+    interior::I
+    boundary::B
 end
 
-@inline (b::PhaseBody)() = _walkchunks(b.chunks)
-@inline (b::PhaseBody)(tick::Int) = _walkchunks(b.chunks)
+@inline (b::PhaseBody)() = _walkchunks(b.interior)
+@inline (b::PhaseBody)(tick::Int) = _walkchunks(b.boundary)
 
 @inline _walkchunks(::Tuple{}) = nothing
 @inline function _walkchunks(t::Tuple)
@@ -112,11 +169,11 @@ end
 
 # Construction is type-opaque: entries are built into untyped buffers and
 # splatted once per chunk; the compiled tuple's only consumer is the walk.
-function chunked_body(entries::Vector, store, xbuf, ẋbuf, clock; chunk_size::Int = 16)
-    chunks = Any[]
-    for lo in 1:chunk_size:length(entries)
-        hi = min(lo + chunk_size - 1, length(entries))
-        push!(chunks, Chunk(tuple(entries[lo:hi]...), store, xbuf, ẋbuf, clock))
-    end
-    PhaseBody(tuple(chunks...))
+function chunked_body(entries::Vector, tiers::Vector{Tier}, store, xbuf, ẋbuf, clock;
+                      chunk_size::Int = 16)
+    chunks(es) = tuple((Chunk(tuple(es[lo:min(lo + chunk_size - 1, length(es))]...),
+                              store, xbuf, ẋbuf, clock)
+                        for lo in 1:chunk_size:length(es))...)
+    PhaseBody(chunks([e for (e, t) in zip(entries, tiers) if t === CONTINUOUS]),
+              chunks(entries))
 end
