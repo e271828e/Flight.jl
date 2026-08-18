@@ -12,7 +12,8 @@ from its own feedthrough structure, integrates, and does it without allocating.
 model: tier is read off the declaration shape, discrete state and modes live in
 their own stores, `g` runs at boundaries after the output stages, and the ZOH
 holds mid-step because the interior sweep has no discrete entries to gate.
-Every discrete component sits at `D = 1, Φ = 0`; the grid is increment 4.
+Every discrete component sits at `D = 1, Φ = 0`; the grid arrives in
+increment 5, after assemblies.
 
     julia --project=. check.jl
 
@@ -76,34 +77,48 @@ hold is real *and* output stages run before updates within a boundary.
 
 ## What is deliberately absent
 
-**Increment 4 — multi-rate:** the harmonic grid, the two-register `sample_times`
+**Increment 4 — hierarchy and assemblies:** `AbstractComponent` and class by
+declaration shape (`child_connections` the assembly marker, any leaf
+declaration a primitive's, §8.5), children as component-typed struct fields
+with field names as path segments, wiring derived from
+`child_connections`/`input_connections`/`output_connections` (§8.6), and a
+flatten pass feeding the executor unchanged — assemblies are virtual for
+execution (§10.5). Retires the first two stand-ins below.
+
+**Increment 5 — multi-rate:** the harmonic grid, the two-register `sample_times`
 declaration (`Relative` composing affinely down the tree, `Absolute` severing
 and re-seeding), its compilation to one `(D, Φ)` pair per component, the
 `Relative(1)` default, rate scopes (§8.7) and the boundary sweep's
 `(idx - Φ) % D` gate (D-185; the one-arg phase-body arity exists and is
 exercised, but gates nothing yet). At `D = 1, Φ = 0` the gate is identically
-true, so increment 4 must leave increment 3's tests passing unchanged.
+true, so both increments must leave increment 3's tests passing — unchanged in
+semantics, restated over increment 4's entry surface.
 
-Beyond those: events (guards, handlers, `project`, localization), hierarchy and
-assemblies, computed connections, auto-published ports, §9.5's always-on
-conformance check, §13.2's diagnostic framing (build errors here are a plain
-`BuildError` with a good message, not the structured carrier), and the entire
-runtime periphery.
+Beyond those: events (guards, handlers, `project`, localization), computed
+connections, auto-published ports, §9.5's always-on conformance check, §13.2's
+diagnostic framing (build errors here are a plain `BuildError` with a good
+message, not the structured carrier), and the entire runtime periphery.
 
-**Two seams are collapsed rather than missing.** `build(spec; Δt)` stands in for
-the deployment-binding stratum: `Δt` is entry-field data, so it must be fixed
-before the executor exists, but in the design it arrives at binding time and the
-`Build` artifact itself is deployment-free. And a frozen discrete component's
-inputs are *synthesized* here, where the design carries the nominal activation's
-cell contents across to the non-nominal one (§9.4). Both matter only in that a
-reader should not mistake the prototype's shape for the spec's.
+## Stand-ins: where the prototype's shape is not the spec's
 
-**One absence here is a refusal rather than a silence.** A cell must be
-leaf-homogeneous. Mixed-leaf cells are legal in the design — a pinned `Float64`
-beside `T` fields inside one declared struct — but their addresses need a
-cursor per eltype, and this increment lays out one offset per cell. The layout
-rejects them by name rather than mislaying them; multi-cursor addressing is a
-scope cut, not doctrine.
+**Rule: nothing deviates silently.** Every construct a reader could mistake
+for the design's is accounted for in exactly one of three places: the "what is
+real" table, the absence list above, or a row here naming the spec shape it
+replaces. The table is transactional — an increment that introduces a stand-in
+adds its row in the same commit, and one that retires a stand-in deletes it. A
+deviation in none of the three places is a defect in this file, not a liberty
+the prototype has. `prototypes/` sits outside the design tools' checked
+rosters, so no battery enforces this section: the diff review is the
+enforcement.
+
+| the stand-in | the spec's shape | retired by |
+| --- | --- | --- |
+| `ModelSpec`/`ComponentSpec`: the build's input is a flat vector of (path, instance, wires) records, wiring carried as spec data | `build(world)` takes the root component instance; wiring is *derived* from `child_connections`/`input_connections`/`output_connections` methods, and paths are hierarchical (§8.5, §8.6, §9.2) | increment 4 |
+| an unwired input face silently becomes a root slot | an unconnected input is a build error; the one terminus legitimately fed by no component is the root assembly's own input face (§6.1, §11.3) | increment 4 |
+| the strata are collapsed into one call: `build(spec, T; Δt)` binds deployment before the executor exists (`Δt` is entry-field data) and returns a `Simulation` directly, `h` and `t_end` arriving at `run!` | three strata, then deployment binding at `Simulation(world; …)` construction; one deployment-free `Build` backs many `Simulation`s (§9.1, §9.2) | increment 5, in part |
+| an activation is a whole rebuild: `build(spec, T)` re-runs classification, scheduling and probing at `T` | the nominal `Float64` activation runs at build; a non-nominal activation re-runs Stratum C only (§9.1, §9.4) | unscheduled |
+| a frozen discrete component's inputs are synthesized (`probe_value`) | the nominal activation's cell contents are carried across to the non-nominal one (§9.4) | unscheduled |
+| mixed-leaf cells are refused by name | legal via pinning inside a declared struct (D-166); their addresses need a cursor per eltype where this layout has one offset per cell — a scope cut, not doctrine | unscheduled |
 
 ## Authoring caveat found while building this
 

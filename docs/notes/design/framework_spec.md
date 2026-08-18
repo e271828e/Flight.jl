@@ -2316,7 +2316,7 @@ output_connections(g::Group) = g.outputs
 
 world = Group(
     (; plant = Plant(), ctrl = PID(kp = 2.0)),
-    (("ctrl/u", "plant/u"), ("plant/y", "ctrl/y")),
+    ("ctrl/u" => "plant/u", "plant/y" => "ctrl/y"),
     (;),
     (;),
 )
