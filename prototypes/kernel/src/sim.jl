@@ -9,18 +9,18 @@ struct Simulation{T,S,B,CL}
     clock::CL
     bodies::B
     layout::Layout
-    spec::ModelSpec
+    flat::Flat
     Δt::Float64                   # the base tick period; 0.0 with no discrete tier
     xstores::Vector{Any}          # discrete state stores, by component index
     mstores::Vector{Any}          # mode stores, by component index
     work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄
 end
 
-function Simulation(store, xbuf, ẋbuf, clock, bodies, layout, spec, Δt, xstores, mstores,
+function Simulation(store, xbuf, ẋbuf, clock, bodies, layout, flat, Δt, xstores, mstores,
                     ::Type{T}) where {T}
     work = ntuple(_ -> zeros(T, length(xbuf)), 5)
     Simulation{T,typeof(store),typeof(bodies),typeof(clock)}(
-        store, xbuf, ẋbuf, clock, bodies, layout, spec, Δt, xstores, mstores, work)
+        store, xbuf, ẋbuf, clock, bodies, layout, flat, Δt, xstores, mstores, work)
 end
 
 """
@@ -115,7 +115,7 @@ end
 Advance to `t_end` in steps of `h`, running the macro-sequence at each boundary.
 
 With a discrete tier every step boundary is a tick, so `h` must be the base tick
-period: the harmonic grid at one rate, `Δt_base = h` (§10.5). Increment 4 lifts
+period: the harmonic grid at one rate, `Δt_base = h` (§10.5). Increment 5 lifts
 this to `Δt_base = n·h` with the gate.
 """
 function run!(sim::Simulation{T}, t_end::T, h::T) where {T}
@@ -133,12 +133,18 @@ end
 
 # --- reading and writing the table outside the loop ---------------------------
 # Path-addressed, dictionary-driven, deliberately off the measured path: these
-# are boundary-time operations, never called from inside a phase body.
+# are boundary-time operations, never called from inside a phase body. Paths are
+# §8.6's canonical strings, and an assembly's own path addresses its faces —
+# which resolve to the cells they derive from.
 
-port(sim::Simulation, path::Symbol, name::Symbol) = gather(sim.store, sim.layout.addr[(path, name)])
+port(sim::Simulation, path::String, name::Symbol) = gather(sim.store, sim.layout.addr[(path, name)])
 
-function set_slot!(sim::Simulation, path::Symbol, face::Symbol, v)
-    scatter!(sim.store, sim.layout.addr[(path, face)], v)
+"""
+Write a root slot, by the root input face's name (§11.3): the write surface is
+the root's own faces, the one terminal fed by no component.
+"""
+function set_slot!(sim::Simulation, face::AbstractString, v)
+    scatter!(sim.store, sim.layout.addr[("", Symbol(face))], v)
     nothing
 end
 
@@ -146,11 +152,11 @@ end
 State at `path`, from whichever home owns it: the flat buffer on the continuous
 tier, the component's own store on the discrete one (§7.3).
 """
-function state(sim::Simulation{T}, path::Symbol) where {T}
-    ci = index_of(sim.spec, path)
+function state(sim::Simulation{T}, path::String) where {T}
+    ci = index_of(sim.flat, path)
     sim.xstores[ci] === nothing || return sim.xstores[ci][]
-    _tier(i) = classify_tier(sim.spec.comps[i])
-    _decls(i) = declarations(sim.spec.comps[i], _tier(i), T)
+    _tier(i) = classify_tier(sim.flat.paths[i], sim.flat.comps[i])
+    _decls(i) = declarations(sim.flat.comps[i], _tier(i), T)
     off = 0
     for i in 1:(ci-1)
         _tier(i) === CONTINUOUS && (off += nleaves(typeof(_decls(i).x)))
@@ -159,4 +165,4 @@ function state(sim::Simulation{T}, path::Symbol) where {T}
 end
 
 """Modes at `path` (§7.3). Read-only here: handlers are the event system."""
-modes(sim::Simulation, path::Symbol) = sim.mstores[index_of(sim.spec, path)][]
+modes(sim::Simulation, path::String) = sim.mstores[index_of(sim.flat, path)][]

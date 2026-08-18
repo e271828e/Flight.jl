@@ -15,6 +15,15 @@ holds mid-step because the interior sweep has no discrete entries to gate.
 Every discrete component sits at `D = 1, Φ = 0`; the grid arrives in
 increment 5, after assemblies.
 
+**Increment 4 — hierarchy and assemblies.** `build` takes the root component
+instance. Class is read off declaration shape, children are struct fields and
+container elements, and the three connection declarations resolve against
+slash-separated paths into flat primitives with one producer per input.
+Assemblies are virtual for execution: what reaches the executor is exactly what
+increment 3 already ran. The whole-tree obligation model replaces the silent
+unwired face — an input fed by nothing is a build error, and the root
+assembly's own input faces are the slots.
+
     julia --project=. check.jl
 
 ## What is real here
@@ -22,12 +31,13 @@ increment 5, after assemblies.
 | piece | spec | file |
 | --- | --- | --- |
 | leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer, both tiers' arities, the bundle law, `probe_value` | §5.2, §8.2, §9.3 | `src/declare.jl` |
+| declaration layer, both tiers' arities, the bundle law, `probe_value`, `AbstractComponent` and the three connection declarations | §5.2, §8.2, §8.6, §9.3 | `src/declare.jl` |
+| class by declaration shape, children and containers, paths and the reach rule, endpoint and face resolution, the flatten pass with the obligation model | §8.5, §8.6, §6.1, §9.1 | `src/assembly.jl` |
 | per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
 | entries, chunked unrolled walk, the interior/boundary split | §9.7, §10.5 | `src/executor.jl` |
 | tier classification, probe, feedthrough graph, layout, embed-accept | §8.2, §9.3, §5.3, D-166 | `src/build.jl` |
-| `Simulation`, RK4, the boundary macro-sequence, `phase_bodies` | §10.2, §10.3, §9.7 | `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource` | §5.2, §6.2, §7.3 | `src/library.jl` |
+| `Simulation`, RK4, the boundary macro-sequence, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §9.7, §11.3 | `src/sim.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, plus `Group` and the named `SampledLoop`/`Vehicle` pair | §5.2, §6.2, §7.3, §8.5 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
@@ -57,6 +67,27 @@ programming convenience:
   discrete cell mid-step: the interior sweep is compiled from continuous
   entries alone, so the hot path carries no gating test, and a discrete cell
   cannot move across a step because nothing in that walk writes it.
+- **A path reaches exactly as far as the declaration knows.** The reach rule is
+  about the declaring type's knowledge, not the instance's: the same
+  `"inner/sum/a"` against the same `SampledLoop` value resolves when the field
+  is declared `::SampledLoop` and is a build error when it is declared `::L`,
+  because deep-routing into a generically held child hard-codes one
+  implementation. Immediate children are never deep, which is what lets a
+  container's elements be addressed by their own parent while an ancestor sees
+  only faces.
+- **Being fed is a whole-tree obligation, not a per-declaration one.** An unfed
+  child input inside one assembly is merely awaiting a claim from above — a
+  sibling wire, an ancestor's deep route, or an `input_connections` entry
+  handing it up a level. The error fires at the root, for the chain that never
+  terminates; the one legitimate terminus is a root input face, which is a
+  slot. The one-producer rule spans levels the same way, so an ancestor's route
+  onto an input a sub-assembly already wires is caught where the two claims
+  meet, with both entries named.
+- **A face is derived, never declared.** It owns no cell: it resolves — through
+  as many levels of re-export as there are — to its ultimate internal endpoint,
+  and takes that endpoint's type and tier. `Vehicle`'s `y` and `cmd` are one
+  assembly's faces sourced from the two tiers, and at a `Dual` activation `y`
+  walks while `cmd` stays pinned, with nothing anywhere declaring either.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -77,27 +108,22 @@ hold is real *and* output stages run before updates within a boundary.
 
 ## What is deliberately absent
 
-**Increment 4 — hierarchy and assemblies:** `AbstractComponent` and class by
-declaration shape (`child_connections` the assembly marker, any leaf
-declaration a primitive's, §8.5), children as component-typed struct fields
-with field names as path segments, wiring derived from
-`child_connections`/`input_connections`/`output_connections` (§8.6), and a
-flatten pass feeding the executor unchanged — assemblies are virtual for
-execution (§10.5). Retires the first two stand-ins below.
-
 **Increment 5 — multi-rate:** the harmonic grid, the two-register `sample_times`
 declaration (`Relative` composing affinely down the tree, `Absolute` severing
 and re-seeding), its compilation to one `(D, Φ)` pair per component, the
 `Relative(1)` default, rate scopes (§8.7) and the boundary sweep's
 `(idx - Φ) % D` gate (D-185; the one-arg phase-body arity exists and is
 exercised, but gates nothing yet). At `D = 1, Φ = 0` the gate is identically
-true, so both increments must leave increment 3's tests passing — unchanged in
-semantics, restated over increment 4's entry surface.
+true, so it must leave increment 3's tests passing — as increment 4 did,
+restating them unchanged in semantics over the new entry surface.
 
 Beyond those: events (guards, handlers, `project`, localization), computed
-connections, auto-published ports, §9.5's always-on conformance check, §13.2's
-diagnostic framing (build errors here are a plain `BuildError` with a good
-message, not the structured carrier), and the entire runtime periphery.
+connections and the §8.8 helpers (`input_passthrough` and the generic-holding
+sugar), visibility enforcement (§8.3), did-you-mean suggestion lists (an error
+names the offender plainly), auto-published ports, §9.5's always-on conformance
+check, §13.2's diagnostic framing (build errors here are a plain `BuildError`
+with a good message, not the structured carrier), and the entire runtime
+periphery.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 
@@ -113,8 +139,7 @@ enforcement.
 
 | the stand-in | the spec's shape | retired by |
 | --- | --- | --- |
-| `ModelSpec`/`ComponentSpec`: the build's input is a flat vector of (path, instance, wires) records, wiring carried as spec data | `build(world)` takes the root component instance; wiring is *derived* from `child_connections`/`input_connections`/`output_connections` methods, and paths are hierarchical (§8.5, §8.6, §9.2) | increment 4 |
-| an unwired input face silently becomes a root slot | an unconnected input is a build error; the one terminus legitimately fed by no component is the root assembly's own input face (§6.1, §11.3) | increment 4 |
+| a `Tuple` field whose elements are all components is inert parameter data | it is a container child like the `NamedTuple` form, path-named `"field/1"…"field/N"` (§8.5) — the `NamedTuple` case carries the whole container rule here, and the index segments buy nothing it does not | unscheduled |
 | the strata are collapsed into one call: `build(spec, T; Δt)` binds deployment before the executor exists (`Δt` is entry-field data) and returns a `Simulation` directly, `h` and `t_end` arriving at `run!` | three strata, then deployment binding at `Simulation(world; …)` construction; one deployment-free `Build` backs many `Simulation`s (§9.1, §9.2) | increment 5, in part |
 | an activation is a whole rebuild: `build(spec, T)` re-runs classification, scheduling and probing at `T` | the nominal `Float64` activation runs at build; a non-nominal activation re-runs Stratum C only (§9.1, §9.4) | unscheduled |
 | a frozen discrete component's inputs are synthesized (`probe_value`) | the nominal activation's cell contents are carried across to the non-nominal one (§9.4) | unscheduled |
@@ -127,7 +152,7 @@ Declarations written in a **local scope** never reach the framework. Inside a
 a method to the global `h_x`: it binds a *new local function* of that name.
 Calls inside the block see it and look fine; the global generic function the
 build dispatches on is untouched, so `build` sees a component that declares
-nothing at all and proceeds silently. Ordinary top-level definitions — the
+nothing at all. Ordinary top-level definitions — the
 script, module and notebook-cell cases — are unaffected. `check.jl` defines its
 malformed test components at top level for exactly this reason.
 
@@ -137,4 +162,7 @@ parent-module binding to compare against, because the shadow is a local binding
 that disappears with its block. Ratified as D-164: a component that declares
 nothing and defines no stage is a build error — an inert component cannot be
 intentional — spec'd as the inert-component check in §8.1's stage register,
-raised as `DeadStage` at the probe (§9.3). Not built here.
+raised as `DeadStage` at the probe (§9.3). Increment 4 catches the case where
+the trap lands, one stratum earlier and under the other rule: a component that
+declares nothing has no *class* to read either (§8.5), so the build names both
+families rather than reaching the probe at all. `DeadStage` itself is not built.

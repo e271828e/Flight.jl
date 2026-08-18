@@ -5,6 +5,22 @@
 # Both tiers live here. `events` is the one declaration entry this file
 # deliberately does not have yet.
 
+# --- the one root type (§8.5) -------------------------------------------------
+# There is no `AbstractAssembly`: primitives and assemblies share one root, so a
+# slot declared `E <: AbstractEngine` accepts either, and class is read off
+# declaration shape (`src/assembly.jl`).
+
+abstract type AbstractComponent end
+
+"""
+The build's own failure: a plain message naming the path or the entry at fault.
+§13.2's structured carrier is deliberately absent.
+"""
+struct BuildError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::BuildError) = print(io, "BuildError: ", e.msg)
+
 # --- what an author declares --------------------------------------------------
 
 """
@@ -52,6 +68,33 @@ which stage produces a port is *discovered* by the build probe (§9.3), and the
 declaration is what the probe checks against.
 """
 output_types(::Any, ::Type{T}) where {T <: Real} = NamedTuple()
+
+# --- what an assembly declares (§8.6) -----------------------------------------
+# All three are ordered collections of `Pair`s of strings, and every arrow reads
+# along the signal flow. Direction is declared by the method, never inferred: the
+# resolved endpoints only cross-check it.
+
+"""
+Wires: `"src/path/port" => "dst/path/port"`, strictly child endpoint => child
+endpoint, relative to the declaring assembly.
+
+**Mandatory even when empty**, because defining it *is* the assembly class
+marker (§8.5) — which is why it has no fallback to match.
+"""
+function child_connections end
+
+"""
+The boundary, inward: face name => internal endpoint path, or a tuple of paths
+for an input face fanning out through the boundary. Absence declares no input
+face.
+"""
+input_connections(::Any) = ()
+
+"""
+The boundary, outward: internal source path => face name, so that its pairs, like
+every other pair in the three declarations, read along the flow.
+"""
+output_connections(::Any) = ()
 
 # --- what an author defines (the §5.2 signatures) -----------------------------
 # Every stage takes the component and exactly one NamedTuple bundle of views,

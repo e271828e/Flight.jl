@@ -150,7 +150,7 @@ construction**: discrete entries are not gated out at runtime, they are absent
 from the compiled walk, and the hot path carries no gating test at all.
 
 The one-arg call is the *boundary* variant, walking the full list. It takes the
-tick index, which at `D = 1, Φ = 0` selects everything; increment 4 adds the
+tick index, which at `D = 1, Φ = 0` selects everything; increment 5 adds the
 `(idx - Φ) % D` gate that makes the index mean something (D-185).
 """
 struct PhaseBody{I<:Tuple,B<:Tuple}
