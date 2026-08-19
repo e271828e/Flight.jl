@@ -26,8 +26,7 @@ end
 Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
 cross-validated sources — explicit (a `Rational` or `Period`/`Hz` value), the
 `n·h` product (the default path), or GCD derivation over the anchors' constraint
-pool, requested as `Δt_base = :derive` (the request's spelling is this
-prototype's — see the README's stand-ins) and permitted only with every discrete
+pool, requested as `Δt_base = :derive` and permitted only with every discrete
 component anchored. The convenience form is *defined as* `Simulation(build(root,
 T); …)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ`
 are entry data, and one `Build` backs many `Simulation`s.

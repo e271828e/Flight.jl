@@ -2824,8 +2824,10 @@ instantiates the tick schedule. Nothing in A–C depends on it.
   derived as `Δt_base/h` and validated an integer ≥ 1;
 - the `n·h` product when only `n` is given, today's rule, with the default
   `n = 1`;
-- **derivation**, permitted only when every discrete component is anchored —
-  that is, with anchor 0 unpopulated.
+- **derivation**, requested explicitly as `Δt_base = :derive` — never entered
+  by default, so the `n·h` path stays what silence means — and permitted only
+  when every discrete component is anchored, that is, with anchor 0
+  unpopulated.
 
 **Why.** Under that restriction `Δt_base` is pure bookkeeping that no
 component's period depends on. An unanchored component's period is
@@ -9431,7 +9433,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   | `algorithm` | `RK4()` | the stepper; `RK4` is the default | [§10.2][s10-2] |
   | `h` | — | required: a domain rate is not a framework default | [§10.2][s10-2] |
   | `n` | `1` | absent the `Δt_base` keyword, the `n·h` product is the base tick period (the default path); given it, `n` is instead derived and validated an integer ≥ 1 | [§9.1][s9-1] |
-  | `Δt_base` | `nothing` | the base tick period as a `Rational`, `Period` or `Hz` value; one of three binding sources | [§9.1][s9-1] |
+  | `Δt_base` | `nothing` | the base tick period as a `Rational`, `Period` or `Hz` value, or `:derive` to request GCD derivation (all-anchored models only); one of three binding sources | [§9.1][s9-1] |
   | `t_end` | `Inf` | the run's end time — a **default**, overridable per run at `run!` | [§13.5][s13-5], [§12.6][s12-6] |
   | `stop_on` | `()` | root-exported `Bool` output faces, OR-combined — a **default**, overridable per run at `run!` | [§13.5][s13-5], [§12.6][s12-6] |
   | `localization_tol` | `1e-6` | the root-finder's relative bracket-width convergence test (`localization_tol · h`) | [§10.4][s10-4] |

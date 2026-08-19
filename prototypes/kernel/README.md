@@ -168,7 +168,6 @@ enforcement.
 | --- | --- | --- |
 | a `Tuple` field whose elements are all components is inert parameter data | it is a container child like the `NamedTuple` form, path-named `"field/1"…"field/N"` (§8.5) — the `NamedTuple` case carries the whole container rule here, and the index segments buy nothing it does not | unscheduled |
 | an activation is a whole rebuild: `build(spec, T)` re-runs classification, scheduling and probing at `T` | the nominal `Float64` activation runs at build; a non-nominal activation re-runs Stratum C only (§9.1, §9.4) | unscheduled |
-| GCD derivation of `Δt_base` is requested as `Δt_base = :derive` | the spec fixes the three binding sources and derivation's all-anchored precondition, but not how a deployment *asks* for derivation over the default `n·h` path (§9.1, §15.4 — its keyword table admits only quantity values) | when the spec settles the spelling |
 | a frozen discrete component's inputs are synthesized (`probe_value`) | the nominal activation's cell contents are carried across to the non-nominal one (§9.4) | unscheduled |
 | mixed-leaf cells are refused by name | legal via pinning inside a declared struct (D-166); their addresses need a cursor per eltype where this layout has one offset per cell — a scope cut, not doctrine | unscheduled |
 
