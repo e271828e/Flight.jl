@@ -1,6 +1,6 @@
-# The simulation object, the stepper seam (§10.2) and the phase-body accessor
-# (§9.7). The framework owns the loop; the one delegated operation is "advance
-# the continuous state from `t` by `h`".
+# The simulation object with its deployment binding (§9.1, §9.2), the stepper
+# seam (§10.2) and the phase-body accessor (§9.7). The framework owns the loop;
+# the one delegated operation is "advance the continuous state from `t` by `h`".
 
 struct Simulation{T,S,B,CL}
     store::S
@@ -10,18 +10,40 @@ struct Simulation{T,S,B,CL}
     bodies::B
     layout::Layout
     flat::Flat
-    Δt::Float64                   # the base tick period; 0.0 with no discrete tier
+    h::Float64                    # the continuous step, bound at deployment
+    n::Int                        # steps per base tick: Δt_base = n·h (§10.5)
+    Δt_base::Float64
+    sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
     xstores::Vector{Any}          # discrete state stores, by component index
     mstores::Vector{Any}          # mode stores, by component index
     work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄
 end
 
-function Simulation(store, xbuf, ẋbuf, clock, bodies, layout, flat, Δt, xstores, mstores,
-                    ::Type{T}) where {T}
-    work = ntuple(_ -> zeros(T, length(xbuf)), 5)
-    Simulation{T,typeof(store),typeof(bodies),typeof(clock)}(
-        store, xbuf, ẋbuf, clock, bodies, layout, flat, Δt, xstores, mstores, work)
+"""
+    Simulation(build::Build; h, n = 1, Δt_base = nothing, chunk_size = 16)
+    Simulation(root, T = Float64; …)
+
+Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
+cross-validated sources — explicit (a `Rational` or `Period`/`Hz` value), the
+`n·h` product (the default path), or GCD derivation over the anchors' constraint
+pool, requested as `Δt_base = :derive` (the request's spelling is this
+prototype's — see the README's stand-ins) and permitted only with every discrete
+component anchored. The convenience form is *defined as* `Simulation(build(root,
+T); …)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ`
+are entry data, and one `Build` backs many `Simulation`s.
+"""
+function Simulation(b::Build{T}; h = nothing, n = nothing, Δt_base = nothing,
+                    chunk_size::Int = 16) where {T}
+    bound = bind_schedule(b, h, n, Δt_base)
+    c = compile(b, bound.D, bound.Φ, bound.Δt; chunk_size)
+    work = ntuple(_ -> zeros(T, length(c.xbuf)), 5)
+    Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock)}(
+        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, b.layout, b.flat,
+        bound.h, bound.n, bound.Δt_base, bound.sched, c.xstores, c.mstores, work)
 end
+
+Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
+    Simulation(build(root, T); kw...)
 
 """
     phase_bodies(sim)
@@ -50,16 +72,29 @@ fresh table. Leaves `ẋbuf` holding the derivative of whatever `xbuf` holds.
 end
 
 """
-The boundary macro-sequence (§10.3, §10.6 in miniature): the boundary sweep
-restores signal-table consistency, then the due updates run. Output stages
-before updates, so a discrete component's cells carry `y[k]` computed from
-`x[k]` while `g` produces `x[k+1]` — the sampled-data recursion, ordered by
-construction rather than by convention.
+The boundary macro-sequence at a base tick (§10.3, §10.6 in miniature): the
+boundary sweep restores signal-table consistency with the due set gated off
+`tick`, then the due updates run. Output stages before updates, so a discrete
+component's cells carry `y[k]` computed from `x[k]` while `g` produces `x[k+1]`
+— the sampled-data recursion, ordered by construction rather than by convention.
 """
 @inline function boundary!(sim::Simulation, tick::Int)
     sim.bodies.sweep_hx(tick)
     sim.bodies.sweep_hxu(tick)
     sim.bodies.ticks(tick)
+    nothing
+end
+
+"""
+The macro-sequence at a step boundary that is *not* a base tick: the tick
+counter has not advanced, so the due set is empty — and emptiness is arity
+selection, never a sentinel index failing every gate (§10.5, D-185). The
+zero-arg interior bodies are exactly the boundary walk with every discrete
+entry gated out, so consistency is restored and nothing discrete can move.
+"""
+@inline function offtick_boundary!(sim::Simulation)
+    sim.bodies.sweep_hx()
+    sim.bodies.sweep_hxu()
     nothing
 end
 
@@ -102,31 +137,31 @@ end
 Initialize: state at its declared values, table consistent, clock at `t₀`.
 
 Boundary zero is an ordinary boundary with an empty integrate (§10.5, §14.5):
-everything at `Φ = 0` is due, which at one rate is everything, so the discrete
-tier takes its first tick here.
+the gate at index 0 admits exactly the components with `Φ = 0`, implemented by
+nothing. An offset component holds its probe-populated cells until its first
+tick at `Φ·Δt_base`.
 """
 function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.t = t₀
+    sim.clock.step = 0
     boundary!(sim, 0)
     nothing
 end
 
 """
-Advance to `t_end` in steps of `h`, running the macro-sequence at each boundary.
-
-With a discrete tier every step boundary is a tick, so `h` must be the base tick
-period: the harmonic grid at one rate, `Δt_base = h` (§10.5). Increment 5 lifts
-this to `Δt_base = n·h` with the gate.
+Advance to `t_end` in steps of the deployment's `h`, one boundary per step
+(§10.3): a base tick every `n` steps, where the gate reads the tick index, and
+the empty-due-set boundary in between. The grid is driven by the step counter,
+so `t_end` is taken to the nearest step boundary; partial advance is the
+periphery's (§12.6) and absent here.
 """
-function run!(sim::Simulation{T}, t_end::T, h::T) where {T}
-    sim.Δt == 0.0 || h ≈ sim.Δt ||
-        throw(ArgumentError("this model ticks at Δt = $(sim.Δt); step it at that period, " *
-                            "not $h (§10.5)"))
-    tick = 0
-    while sim.clock.t < t_end - eps(t_end)
-        step!(sim, min(h, t_end - sim.clock.t))
-        tick += 1
-        boundary!(sim, tick)
+function run!(sim::Simulation{T}, t_end::Real) where {T}
+    h = T(sim.h)
+    target = round(Int, Float64(t_end) / sim.h)
+    while sim.clock.step < target
+        step!(sim, h)
+        s = (sim.clock.step += 1)
+        s % sim.n == 0 ? boundary!(sim, s ÷ sim.n) : offtick_boundary!(sim)
     end
     nothing
 end

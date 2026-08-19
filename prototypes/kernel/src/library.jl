@@ -159,16 +159,20 @@ The type parameters carry the children's concrete types, so specialization is
 unchanged; what is given up against a named type is dispatch, which exploratory
 composition does not want.
 """
-struct Group{C <: NamedTuple, W, I, O} <: AbstractComponent
+struct Group{C <: NamedTuple, W, I, O, R <: NamedTuple} <: AbstractComponent
     children::C      # component-typed elements → children by the container rule
     wires::W         # inert parameter data
     inputs::I
     outputs::O
+    rates::R         # the ad-hoc rate scope; container elements are keyed `var"children/key"` (§8.7)
 end
+
+Group(children, wires, inputs, outputs) = Group(children, wires, inputs, outputs, (;))
 
 child_connections(g::Group) = g.wires
 input_connections(g::Group) = g.inputs
 output_connections(g::Group) = g.outputs
+sample_times(g::Group) = g.rates
 
 # --- the reference models -----------------------------------------------------
 
@@ -229,20 +233,27 @@ end
 """
 The sampled loop as a *named* assembly, holding its three children in concretely
 declared fields — so an ancestor may deep-route into them (§6.1).
+
+`ctl_rate` is §10.5's exposed-multiplier idiom: a deployment preference surfaces
+as a constructor parameter, the declaration stays the assembly's own
+`sample_times`, and the component type stays rate-agnostic — `ctl` reads its
+period from its bundle's `Δt` and nowhere else.
 """
 struct SampledLoop <: AbstractComponent
     plant::Plant
     ctl::DiscreteIntegrator
     sum::Sum
+    ctl_rate::Relative           # inert parameter data, read by `sample_times`
 end
 
-SampledLoop(; kI = 3.0, ω = 2.0, ζ = 0.1) =
-    SampledLoop(Plant(; ω, ζ), DiscreteIntegrator(kI), Sum())
+SampledLoop(; kI = 3.0, ω = 2.0, ζ = 0.1, ctl_rate = Relative(1)) =
+    SampledLoop(Plant(; ω, ζ), DiscreteIntegrator(kI), Sum(), ctl_rate)
 
 child_connections(::SampledLoop) =
     ("ctl/u" => "plant/u", "sum/e" => "ctl/e", "plant/y" => "sum/b")
 input_connections(::SampledLoop) = ("ref" => "sum/a",)
 output_connections(::SampledLoop) = ("plant/y" => "y", "ctl/u" => "cmd")
+sample_times(l::SampledLoop) = (ctl = l.ctl_rate,)
 
 """
     Vehicle(; k, kI, ω, ζ)
@@ -267,3 +278,64 @@ child_connections(::Vehicle) = ("trim/out" => "loop/ref",)
 input_connections(::Vehicle) = ("ref" => "trim/e",)
 output_connections(::Vehicle) =
     ("loop/y" => "y", "loop/cmd" => "cmd", "loop/plant/power" => "power")
+
+# --- the multi-rate coverage set (§10.5) ----------------------------------------
+
+"""
+Zero-order hold: a stateless discrete pass-through. Its one cell takes a fresh
+sample at its own ticks and holds in between, so the tick pattern and the
+deterministic aging of a stagger are directly observable through cell reads.
+"""
+struct ZOH <: AbstractComponent end
+
+input_types(::ZOH) = (in = Float64,)
+output_types(::ZOH) = (out = Float64,)
+h_xu(::ZOH, (; u)) = (out = u.in,)
+
+"""Affine clock publisher: continuous, stateless, stage 1 — `out = c₀ + t`."""
+struct Ramp <: AbstractComponent
+    c₀::Float64
+end
+
+output_types(::Ramp, ::Type{T}) where {T <: Real} = (out = T,)
+h_x(c::Ramp, (; t)) = (out = c.c₀ + t,)
+
+"""
+The rate scope of the spec's worked example (§9.2, §10.5): `inner` at the scope
+base, `outer` staggered at `Relative(5, 2)`. `outer` samples a signal handed in
+through the `g` face, so what it reads between that producer's ticks is the ZOH
+aging the example computes.
+"""
+struct FCS <: AbstractComponent
+    inner::ZOH
+    outer::ZOH
+end
+
+child_connections(::FCS) = ()
+input_connections(::FCS) = ("in" => "inner/in", "g" => "outer/in")
+output_connections(::FCS) = ("inner/out" => "y_inner", "outer/out" => "y_outer")
+sample_times(::FCS) = (inner = Relative(1), outer = Relative(5, 2))
+
+"""
+    MultiRate()
+
+The §9.2 worked example: three discrete components under two scopes, `fcs` on
+the root grid and `gnss` anchored at `Hz(50)`. Deployed at `Δt_base = 2 ms` the
+compiled pairs are inner `(1, 0)`, outer `(5, 2)`, gnss `(10, 0)`, and one
+hyperperiod is `lcm(Dᵢ) = 10` base ticks. The ramp source makes every sample
+carry its own acquisition time, so the chart's dots — and the stagger's aging —
+are readable off the cells.
+"""
+struct MultiRate <: AbstractComponent
+    src::Ramp
+    fcs::FCS
+    gnss::ZOH
+end
+
+MultiRate(; c₀ = 1.0) = MultiRate(Ramp(c₀), FCS(ZOH(), ZOH()), ZOH())
+
+child_connections(::MultiRate) =
+    ("src/out" => "fcs/in", "src/out" => "gnss/in", "gnss/out" => "fcs/g")
+output_connections(::MultiRate) =
+    ("fcs/y_inner" => "inner", "fcs/y_outer" => "outer", "gnss/out" => "gnss")
+sample_times(::MultiRate) = (fcs = Relative(1), gnss = Absolute(Hz(50)))

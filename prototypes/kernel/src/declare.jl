@@ -96,6 +96,72 @@ every other pair in the three declarations, read along the flow.
 """
 output_connections(::Any) = ()
 
+# --- rate scopes (§8.7, §10.5) --------------------------------------------------
+# The two registers of the sample-time declaration, and the wrappers are the
+# whole value vocabulary — a bare integer or bare quantity in a `sample_times`
+# entry is a declaration error. They are plain data carriers (D-185): range
+# validation is Stratum A's, with path attribution, in the fold. The one
+# constructor-side refusal is floats, because it is a normalization failure
+# rather than a range check: grid derivation is GCD arithmetic, ill-defined over
+# floats, so every period and offset is an exact `Rational{Int}` and a float
+# argument throws the teaching error naming the exact spelling.
+
+"""
+A quantity value for `Absolute` and for the `Δt_base` deployment keyword:
+`Period(1//50)` or `Hz(50)` — a spelling choice, both normalized to the exact
+rational period at construction (§10.5).
+"""
+struct Period
+    T::Rational{Int}
+    Period(T::Union{Integer,Rational{<:Integer}}) = new(Rational{Int}(T))
+    Period(::AbstractFloat) =
+        throw(BuildError("a period is an exact Rational — write `Period(1//50)`, not a " *
+                         "float: grid derivation is GCD arithmetic (§10.5)"))
+end
+
+Hz(f::Union{Integer,Rational{<:Integer}}) = Period(1 // f)
+Hz(::AbstractFloat) =
+    throw(BuildError("a frequency is an exact Rational — write `Hz(1//2)` for 0.5 Hz, not " *
+                     "a float: grid derivation is GCD arithmetic (§10.5)"))
+
+period(q::Period) = q.T
+
+"""
+`Relative(K, φ = 0)`: every `K`-th tick of the enclosing scope, starting from
+its `φ`-th — scope ticks as the unit system, composing affinely down the tree
+(§10.5). `K = 1` admits no stagger; same-rate siblings stagger one level down.
+"""
+struct Relative
+    K::Int
+    φ::Int
+end
+Relative(K::Integer) = Relative(K, 0)
+
+"""
+`Absolute(q, τ = 0)`: tick instants `t = τ + k·period(q)`, in exact rational
+seconds — an anchor, severing its child from the enclosing scope's grid; the
+final divisor does not exist until deployment binds `Δt_base` (§10.5, §9.1).
+"""
+struct Absolute
+    T::Rational{Int}
+    τ::Rational{Int}
+    Absolute(q::Period, τ::Union{Integer,Rational{<:Integer}} = 0) = new(q.T, Rational{Int}(τ))
+    Absolute(::Period, ::AbstractFloat) =
+        throw(BuildError("an offset is an exact Rational — write `Absolute(Hz(50), 1//500)`, " *
+                         "not a float: grid derivation is GCD arithmetic (§10.5)"))
+    Absolute(::Real, τ...) =
+        throw(BuildError("`Absolute` takes a quantity value: `Period(1//50)` or `Hz(50)` (§10.5)"))
+end
+
+"""
+Rate scope (§8.7): immediate child name => `Relative` or `Absolute`. Optional,
+and so is any key — an unlisted discrete child defaults to `Relative(1)`, so
+only multiplied, phased or anchored children appear. The declaration belongs to
+the assembly type; a deployment-preference multiplier is exposed as a
+constructor parameter and read off the instance here (§10.5).
+"""
+sample_times(::Any) = (;)
+
 # --- what an author defines (the §5.2 signatures) -----------------------------
 # Every stage takes the component and exactly one NamedTuple bundle of views,
 # destructured by name: `h_xu(c::Plant, (; x, u)) = ...`. The framework's call

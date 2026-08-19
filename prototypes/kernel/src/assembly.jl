@@ -229,6 +229,9 @@ struct Flat
     conns::Vector{Vector{Pair{Symbol,Tuple{String,Symbol}}}}   # face => (producer path, port)
     slots::Vector{Symbol}                                      # root input faces, in order
     faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}   # (path, face) => producer
+    triples::Vector{NTuple{3,Int}}      # per component: (anchor, m, c), anchor 0 the base grid
+    anchors::Vector{NTuple{2,Rational{Int}}}   # anchors 1…K: the exact (T, τ) pairs
+    aprov::Vector{String}               # per anchor, the declaring scope and key
 end
 
 function index_of(flat::Flat, path::String)
@@ -244,14 +247,92 @@ struct _Walk
     claims::Dict{Tuple{String,Symbol},String}                  # who claimed it, for the message
     slots::Vector{Symbol}
     faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}
+    triples::Vector{NTuple{3,Int}}
+    anchors::Vector{NTuple{2,Rational{Int}}}
+    aprov::Vector{String}
+end
+
+# --- the sample-time fold (§8.7, §9.1, §10.5) -----------------------------------
+# Nested rate declarations compile to one `(anchor, m, c)` triple per component,
+# folding down the tree beside the wiring walk: the root scope seeds
+# `(A₀, 1, 0)`, `Relative(K, φ)` under a scope at `(a, mₛ, cₛ)` steps to
+# `(a, K·mₛ, cₛ + φ·mₛ)`, and `Absolute` severs and re-seeds a fresh anchor at
+# `(Aₖ, 1, 0)` — a nested anchor simply severs again. Anchor 0 is the base grid,
+# symbolic until deployment binds `Δt_base`: final divisors for anchored entries
+# do not exist until then (§9.1). The canonical residue `c < m` holds within each
+# anchor's subtree by the affine law's one-line induction.
+
+"""
+Validate a scope's `sample_times` against §10.5's constraints, with path
+attribution (§9.1, §13.1): wrapper-typed values only, `K ≥ 1`, `0 ≤ φ < K`,
+`T > 0`, `0 ≤ τ < T`, and every key naming an immediate child.
+"""
+function _check_sample_times(path::String, st, kids)
+    st isa NamedTuple ||
+        throw(BuildError("$(_at(path)): `sample_times` must return a NamedTuple of child " *
+                         "name => `Relative`/`Absolute` entries (§8.7)"))
+    for (k, v) in pairs(st)
+        entry = "`sample_times` at $(_at(path)), key `$k`"
+        v isa Relative || v isa Absolute ||
+            throw(BuildError("$entry: $(repr(v)) — the wrappers are the whole value " *
+                             "vocabulary; a bare integer or bare quantity is a declaration " *
+                             "error (§8.7)"))
+        if v isa Relative
+            v.K ≥ 1 || throw(BuildError("$entry: K = $(v.K), and K ≥ 1 (§10.5)"))
+            0 ≤ v.φ < v.K || throw(BuildError("$entry: φ = $(v.φ), and 0 ≤ φ < K (§10.5)"))
+        else
+            v.T > 0 || throw(BuildError("$entry: period $(v.T), and T > 0 (§10.5)"))
+            0 ≤ v.τ < v.T || throw(BuildError("$entry: offset $(v.τ), and 0 ≤ τ < T (§10.5)"))
+        end
+        any(seg == String(k) || startswith(seg, String(k) * "/") for (seg, _) in kids) ||
+            throw(BuildError("$entry: names no immediate child of $(_at(path)) — keys are " *
+                             "immediate child names only; a deep key would edit another " *
+                             "type's design from outside (§8.7)" *
+                             (isempty(kids) ? "" :
+                              "; its children are $(join((first(p) for p in kids), ", "))")))
+    end
+    nothing
+end
+
+# The entry scheduling child segment `seg`, or `nothing` for the `Relative(1)`
+# default. Exact match first; a bare container field name applies one
+# declaration to every element (§8.7).
+function _rate_entry(st, seg::String)
+    for (k, v) in pairs(st)
+        String(k) == seg && return (k, v)
+    end
+    for (k, v) in pairs(st)
+        startswith(seg, String(k) * "/") && return (k, v)
+    end
+    nothing
+end
+
+"""
+The child's scope triple, and whether an explicit key declared it. The unlisted
+child continues at the enclosing triple — the `Relative(1)` default is the
+affine law at `(K, φ) = (1, 0)`, implemented by nothing.
+"""
+function _child_scope(w::_Walk, path::String, st, seg::String, scope::NTuple{3,Int})
+    hit = _rate_entry(st, seg)
+    hit === nothing && return scope, false
+    (k, v) = hit
+    if v isa Relative
+        (a, m, c) = scope
+        (a, v.K * m, c + v.φ * m), true
+    else
+        push!(w.anchors, (v.T, v.τ))
+        push!(w.aprov, "`sample_times` at $(_at(path)), key `$k`")
+        (length(w.anchors), 1, 0), true
+    end
 end
 
 """
     flatten(root)
 
 The tree walk of Stratum A (§9.1): components collected by path, classes read,
-wiring resolved to absolute leaf terminals, the one-producer-per-input and
-whole-tree obligation rules enforced.
+wiring resolved to absolute leaf terminals, sample times folded to `(anchor, m,
+c)` triples, the one-producer-per-input and whole-tree obligation rules
+enforced.
 """
 function flatten(root)
     classify("", root) === PRIMITIVE &&
@@ -259,8 +340,9 @@ function flatten(root)
                          "whose input faces are the root slots (§9.1)"))
     w = _Walk(String[], Any[], Dict{Tuple{String,Symbol},Tuple{String,Symbol}}(),
               Dict{Tuple{String,Symbol},String}(), Symbol[],
-              Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[])
-    _walk!(w, "", root)
+              Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[],
+              NTuple{3,Int}[], NTuple{2,Rational{Int}}[], String[])
+    _walk!(w, "", root, (0, 1, 0))          # the root scope: anchor 0, the base grid itself
 
     # The obligation model (§6.1): an input is fed by a wire in some ancestor's
     # `child_connections` or by an `input_connections` chain handing it up level
@@ -278,18 +360,31 @@ function flatten(root)
         end
         push!(conns, cs)
     end
-    Flat(w.paths, w.comps, conns, w.slots, w.faces)
+    Flat(w.paths, w.comps, conns, w.slots, w.faces, w.triples, w.anchors, w.aprov)
 end
 
-function _walk!(w::_Walk, path::String, comp)
+function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
     if classify(path, comp) === PRIMITIVE
         push!(w.paths, path)
         push!(w.comps, comp)
+        push!(w.triples, scope)
         return nothing
     end
     _check_face_names(path, comp)
-    for (seg, kid) in children(path, comp)
-        _walk!(w, _join(path, seg), kid)
+    st = sample_times(comp)
+    kids = children(path, comp)
+    _check_sample_times(path, st, kids)
+    for (seg, kid) in kids
+        kidpath = _join(path, seg)
+        kscope, keyed = _child_scope(w, path, st, seg, scope)
+        # A key on a continuous child is the Δt-on-continuous error at
+        # declaration time (§8.7): keys name discrete or scope children only.
+        keyed && classify(kidpath, kid) === PRIMITIVE &&
+            classify_tier(kidpath, kid) === CONTINUOUS &&
+            throw(BuildError("`sample_times` at $(_at(path)) schedules `$seg`, a continuous " *
+                             "component — a sample time is a discrete-tier fact; keys name " *
+                             "discrete or scope children (§8.7, §10.5)"))
+        _walk!(w, kidpath, kid, kscope)
     end
 
     for pair in child_connections(comp)

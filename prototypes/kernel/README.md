@@ -24,6 +24,15 @@ increment 3 already ran. The whole-tree obligation model replaces the silent
 unwired face — an input fed by nothing is a build error, and the root
 assembly's own input faces are the slots.
 
+**Increment 5 — the multi-rate grid.** The two-register `sample_times`
+declaration folds to one `(anchor, m, c)` triple per component in Stratum A;
+deployment binding — now a real seam, `Simulation(build(root); h, n, Δt_base)`
+— resolves the triples to `(D, Φ, Δt)` by exact GCD arithmetic and compiles the
+executor behind it, one deployment-free `Build` backing many `Simulation`s. The
+boundary sweep gates discrete entries by `(idx − Φ) % D`, and a step boundary
+that is not a base tick runs the zero-arg bodies: an empty due set is arity
+selection, never a sentinel index failing every gate (D-185).
+
     julia --project=. check.jl
 
 ## What is real here
@@ -31,13 +40,13 @@ assembly's own input faces are the slots.
 | piece | spec | file |
 | --- | --- | --- |
 | leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer, both tiers' arities, the bundle law, `probe_value`, `AbstractComponent` and the three connection declarations | §5.2, §8.2, §8.6, §9.3 | `src/declare.jl` |
-| class by declaration shape, children and containers, paths and the reach rule, endpoint and face resolution, the flatten pass with the obligation model | §8.5, §8.6, §6.1, §9.1 | `src/assembly.jl` |
+| declaration layer, both tiers' arities, the bundle law, `probe_value`, `AbstractComponent`, the three connection declarations, and the two rate registers (`Relative`/`Absolute` over `Period`/`Hz`, plain data carriers) with `sample_times` | §5.2, §8.2, §8.6, §8.7, §9.3, D-185 | `src/declare.jl` |
+| class by declaration shape, children and containers, paths and the reach rule, endpoint and face resolution, the flatten pass with the obligation model and the sample-time fold to `(anchor, m, c)` triples | §8.5, §8.6, §6.1, §9.1 | `src/assembly.jl` |
 | per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
-| entries, chunked unrolled walk, the interior/boundary split | §9.7, §10.5 | `src/executor.jl` |
-| tier classification, probe, feedthrough graph, layout, embed-accept | §8.2, §9.3, §5.3, D-166 | `src/build.jl` |
-| `Simulation`, RK4, the boundary macro-sequence, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §9.7, §11.3 | `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, plus `Group` and the named `SampledLoop`/`Vehicle` pair | §5.2, §6.2, §7.3, §8.5 | `src/library.jl` |
+| entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries | §9.7, §10.5 | `src/executor.jl` |
+| tier classification, probe, feedthrough graph, layout, embed-accept, the `Build` artifact, deployment binding (three cross-validated `Δt_base` sources, the GCD constraint pool, per-anchor division pairs) and per-deployment entry compilation | §8.2, §9.3, §5.3, §9.1, §9.2, D-166 | `src/build.jl` |
+| `Simulation` with its deployment constructor and bound schedule, RK4, the boundary macro-sequence at ticks and off ticks, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §9.7, §11.3 | `src/sim.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.5 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
@@ -89,6 +98,24 @@ programming convenience:
   and takes that endpoint's type and tier. `Vehicle`'s `y` and `cmd` are one
   assembly's faces sourced from the two tiers, and at a `Dual` activation `y`
   walks while `cmd` stays pinned, with nothing anywhere declaring either.
+- **An anchored divisor does not exist until `Δt_base` binds.** The `Build`
+  carries `(anchor, m, c)` triples against exact rational anchors, and the same
+  `Build` lands `MultiRate`'s gnss at `D = 10` or `D = 5` depending on the
+  deployment keywords — with nothing writable shared between the two
+  `Simulation`s, because each materializes its own stores and buffers. The
+  worked example compiles to exactly §9.2's table.
+- **Due-ness is one subtraction and one remainder, at boundaries only.** The
+  interior walk is untouched by increment 5 — no index reaches it — and a step
+  boundary that is not a base tick runs the zero-arg bodies, which *are* the
+  boundary walk with every discrete entry gated out. The multi-rate sampled
+  loop only matches its exact discretization at `Δt_ctl = D·Δt_base = 4h` if
+  the gate admits the controller at exactly its own ticks, the hold spans the
+  sub-ticks, and the bundle's `Δt` is the compiled schedule's — one test, three
+  ways to fail it.
+- **A cell holds what the build probe populated until a sweep first writes it.**
+  Entry compilation seeds every cell from the probe products, so an offset
+  component's pre-first-tick reads and a frozen component's pinned cells are
+  the same story (§10.5, §9.3) rather than a lucky zero.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -109,22 +136,21 @@ hold is real *and* output stages run before updates within a boundary.
 
 ## What is deliberately absent
 
-**Increment 5 — multi-rate:** the harmonic grid, the two-register `sample_times`
-declaration (`Relative` composing affinely down the tree, `Absolute` severing
-and re-seeding), its compilation to one `(D, Φ)` pair per component, the
-`Relative(1)` default, rate scopes (§8.7) and the boundary sweep's
-`(idx - Φ) % D` gate (D-185; the one-arg phase-body arity exists and is
-exercised, but gates nothing yet). At `D = 1, Φ = 0` the gate is identically
-true, so it must leave increment 3's tests passing — as increment 4 did,
-restating them unchanged in semantics over the new entry surface.
+**D-187's grid diagnostics:** the bound schedule here is plain data on the
+`Simulation` (path, `D`, `Φ`, `Δt`), not the named printable artifact — no
+hyperperiod-chart `show`-form, no anchor/provenance columns carried through, no
+leave-one-out refinement factors or prime attribution, no nearest-non-refining
+offset suggestions, no `GridUtilization` advisory. The refusal messages name
+the offending anchor and the pool's GCD, and stop there.
 
-Beyond those: events (guards, handlers, `project`, localization), computed
+Beyond that: events (guards, handlers, `project`, localization), computed
 connections and the §8.8 helpers (`input_passthrough` and the generic-holding
 sugar), visibility enforcement (§8.3), did-you-mean suggestion lists (an error
 names the offender plainly), auto-published ports, §9.5's always-on conformance
 check, §13.2's diagnostic framing (build errors here are a plain `BuildError`
-with a good message, not the structured carrier), and the entire runtime
-periphery.
+with a good message, not the structured carrier), partial advance and the
+per-run overrides (§12.6 — `run!(sim, t_end)` takes `t_end` to the nearest step
+boundary), and the entire runtime periphery.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 
@@ -141,8 +167,8 @@ enforcement.
 | the stand-in | the spec's shape | retired by |
 | --- | --- | --- |
 | a `Tuple` field whose elements are all components is inert parameter data | it is a container child like the `NamedTuple` form, path-named `"field/1"…"field/N"` (§8.5) — the `NamedTuple` case carries the whole container rule here, and the index segments buy nothing it does not | unscheduled |
-| the strata are collapsed into one call: `build(spec, T; Δt)` binds deployment before the executor exists (`Δt` is entry-field data) and returns a `Simulation` directly, `h` and `t_end` arriving at `run!` | three strata, then deployment binding at `Simulation(world; …)` construction; one deployment-free `Build` backs many `Simulation`s (§9.1, §9.2) | increment 5, in part |
 | an activation is a whole rebuild: `build(spec, T)` re-runs classification, scheduling and probing at `T` | the nominal `Float64` activation runs at build; a non-nominal activation re-runs Stratum C only (§9.1, §9.4) | unscheduled |
+| GCD derivation of `Δt_base` is requested as `Δt_base = :derive` | the spec fixes the three binding sources and derivation's all-anchored precondition, but not how a deployment *asks* for derivation over the default `n·h` path (§9.1, §15.4 — its keyword table admits only quantity values) | when the spec settles the spelling |
 | a frozen discrete component's inputs are synthesized (`probe_value`) | the nominal activation's cell contents are carried across to the non-nominal one (§9.4) | unscheduled |
 | mixed-leaf cells are refused by name | legal via pinning inside a declared struct (D-166); their addresses need a cursor per eltype where this layout has one offset per cell — a scope cut, not doctrine | unscheduled |
 

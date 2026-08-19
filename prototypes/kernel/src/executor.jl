@@ -122,6 +122,30 @@ end
     nothing
 end
 
+# --- the gate (§10.5, D-185) ----------------------------------------------------
+# The boundary sweep walks the full list with *discrete* entries gated by
+# `(idx − Φ) % D == 0`. The gate is a wrapper only discrete entries wear, so a
+# continuous entry pays nothing at a boundary, and the interior walk — compiled
+# from continuous entries alone — never meets an index at all: an empty due set
+# is arity selection, never a sentinel index failing every gate (D-185).
+
+struct Gated{E}
+    e::E
+    D::Int
+    Φ::Int
+end
+
+@inline run_at!(e, store, xbuf, ẋbuf, tick::Int) = run!(e, store, xbuf, ẋbuf)
+
+@inline function run_at!(g::Gated, store, xbuf, ẋbuf, tick::Int)
+    # Under the canonical residue 0 ≤ Φ < D, truncated rem is never 0 on the
+    # negative pre-first-tick differences, so one subtraction and one remainder
+    # are the whole admission test — and boundary zero's "everything with Φ = 0"
+    # is this same gate at index 0, implemented by nothing (§10.5).
+    (tick - g.Φ) % g.D == 0 && run!(g.e, store, xbuf, ẋbuf)
+    nothing
+end
+
 # --- the walk -----------------------------------------------------------------
 
 struct Chunk{E<:Tuple,S,X,CL}
@@ -133,11 +157,18 @@ struct Chunk{E<:Tuple,S,X,CL}
 end
 
 @noinline (c::Chunk)() = _walk(c.entries, c.store, c.xbuf, c.ẋbuf)
+@noinline (c::Chunk)(tick::Int) = _walk_at(c.entries, c.store, c.xbuf, c.ẋbuf, tick)
 
 @inline _walk(::Tuple{}, store, xbuf, ẋbuf) = nothing
 @inline function _walk(t::Tuple, store, xbuf, ẋbuf)
     run!(t[1], store, xbuf, ẋbuf)
     _walk(Base.tail(t), store, xbuf, ẋbuf)
+end
+
+@inline _walk_at(::Tuple{}, store, xbuf, ẋbuf, tick::Int) = nothing
+@inline function _walk_at(t::Tuple, store, xbuf, ẋbuf, tick::Int)
+    run_at!(t[1], store, xbuf, ẋbuf, tick)
+    _walk_at(Base.tail(t), store, xbuf, ẋbuf, tick)
 end
 
 """
@@ -149,9 +180,9 @@ what RK stage evaluations and guard trial evaluations run, and what
 construction**: discrete entries are not gated out at runtime, they are absent
 from the compiled walk, and the hot path carries no gating test at all.
 
-The one-arg call is the *boundary* variant, walking the full list. It takes the
-tick index, which at `D = 1, Φ = 0` selects everything; increment 5 adds the
-`(idx - Φ) % D` gate that makes the index mean something (D-185).
+The one-arg call is the *boundary* variant, walking the full list with each
+discrete entry gated by `(tick - Φ) % D` against the index it takes (§10.5,
+D-185).
 """
 struct PhaseBody{I<:Tuple,B<:Tuple}
     interior::I
@@ -159,7 +190,7 @@ struct PhaseBody{I<:Tuple,B<:Tuple}
 end
 
 @inline (b::PhaseBody)() = _walkchunks(b.interior)
-@inline (b::PhaseBody)(tick::Int) = _walkchunks(b.boundary)
+@inline (b::PhaseBody)(tick::Int) = _walkchunks(b.boundary, tick)
 
 @inline _walkchunks(::Tuple{}) = nothing
 @inline function _walkchunks(t::Tuple)
@@ -167,13 +198,23 @@ end
     _walkchunks(Base.tail(t))
 end
 
+@inline _walkchunks(::Tuple{}, tick::Int) = nothing
+@inline function _walkchunks(t::Tuple, tick::Int)
+    t[1](tick)
+    _walkchunks(Base.tail(t), tick)
+end
+
 # Construction is type-opaque: entries are built into untyped buffers and
 # splatted once per chunk; the compiled tuple's only consumer is the walk.
-function chunked_body(entries::Vector, tiers::Vector{Tier}, store, xbuf, ẋbuf, clock;
+# `gates` runs parallel to `entries`: `nothing` for a continuous entry, the
+# compiled `(D, Φ)` pair for a discrete one — which is also what selects the
+# interior subset, discreteness being a build-time fact (§10.5, D-147).
+function chunked_body(entries::Vector, gates::Vector, store, xbuf, ẋbuf, clock;
                       chunk_size::Int = 16)
     chunks(es) = tuple((Chunk(tuple(es[lo:min(lo + chunk_size - 1, length(es))]...),
                               store, xbuf, ẋbuf, clock)
                         for lo in 1:chunk_size:length(es))...)
-    PhaseBody(chunks([e for (e, t) in zip(entries, tiers) if t === CONTINUOUS]),
-              chunks(entries))
+    PhaseBody(chunks([e for (e, gt) in zip(entries, gates) if gt === nothing]),
+              chunks([gt === nothing ? e : Gated(e, gt[1], gt[2])
+                      for (e, gt) in zip(entries, gates)]))
 end

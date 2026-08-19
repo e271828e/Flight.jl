@@ -1,6 +1,6 @@
 # Acceptance tests for the kernel prototype: the continuous-tier walking
-# skeleton (increment 2), the discrete tier at one rate (increment 3) and the
-# hierarchy (increment 4).
+# skeleton (increment 2), the discrete tier at one rate (increment 3), the
+# hierarchy (increment 4) and the multi-rate grid (increment 5).
 #
 #   julia --project=. check.jl
 
@@ -18,9 +18,13 @@ include("src/library.jl")
 const D8 = ForwardDiff.Dual{Nothing,Float64,8}
 
 # The entries a phase body walks, per variant (§10.5): the boundary variant is
-# the full list, the interior one the continuous entries alone.
+# the full list — its discrete entries wearing their `Gated` wrapper, unwrapped
+# here — the interior one the continuous entries alone.
 walked(body, variant = :boundary) =
-    [e for c in getfield(body, variant) for e in c.entries]
+    [e isa Gated ? e.e : e for c in getfield(body, variant) for e in c.entries]
+
+# The gated entries of a body's boundary variant.
+gated(body) = count(e isa Gated for c in body.boundary for e in c.entries)
 
 # A model of one component, wrapped in the assembly every model's root must be.
 single(c) = Group((; c = c), (), (), ())
@@ -52,7 +56,7 @@ end
 end
 
 @testset "the schedule follows the feedthrough graph (§5.3)" begin
-    sim = build(feedback_model())
+    sim = Simulation(feedback_model(); h = 1//1000)
     # sum first (both its inputs are loop-breaking), then ctl, then plant
     paths = [e.comp isa Sum ? :sum : e.comp isa Gain ? :ctl : :plant
              for e in walked(sim.bodies.sweep_hxu)]
@@ -62,6 +66,7 @@ end
 end
 
 @testset "an algebraic loop is a build error (§5.5)" begin
+    # `build` alone: rejection needs no deployment, which is the strata split.
     err = failure(() -> build(feedback_model(feedback_port = "power")))
     @test err isa BuildError
     @test occursin("algebraic loop", err.msg)
@@ -76,10 +81,10 @@ end
     Acl = A - B * k * SVector(1.0, 0.0)'
     exact(t) = exp(Acl * t) * (Acl \ (B * k * r)) - Acl \ (B * k * r)
 
-    sim = build(feedback_model(; k, ω, ζ))
+    sim = Simulation(feedback_model(; k, ω, ζ); h = 1//1000)
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, 2.0, 1e-3)
+    run!(sim, 2.0)
 
     # Tolerance, never `==` (D-163): RK4 truncation dominates at ~1e-12 here.
     @test state(sim, "children/plant").q ≈ exact(2.0) rtol = 1e-8
@@ -90,7 +95,7 @@ end
 end
 
 @testset "the phase-body roster is fixed and total (§9.7)" begin
-    sim = build(feedback_model())
+    sim = Simulation(feedback_model(); h = 1//100)
     b = phase_bodies(sim)
     @test keys(b) === (:sweep_hx, :sweep_hxu, :rhs, :ticks)
     @test b.ticks() === nothing            # empty body: legal, a no-op
@@ -104,7 +109,7 @@ end
 end
 
 @testset "gate 1: stepping does not allocate (§7.5)" begin
-    sim = build(feedback_model())
+    sim = Simulation(feedback_model(); h = 1//1000)
     init!(sim)
     step!(sim, 1e-3)
     @test @ballocated(step!($sim, 1e-3)) == 0
@@ -112,10 +117,10 @@ end
 end
 
 @testset "the whole continuous path is generic over the scalar (§7.2)" begin
-    sim = build(feedback_model(), D8)
+    sim = Simulation(feedback_model(), D8; h = 1//1000)
     set_slot!(sim, "ref", D8(0.7))
     init!(sim)
-    run!(sim, D8(0.05), D8(1e-3))
+    run!(sim, 0.05)
     @test state(sim, "children/plant").q isa SVector{2,D8}
     @test ForwardDiff.value(port(sim, "children/plant", :y)) != 0.0
 end
@@ -126,7 +131,7 @@ end
     # keeps offsets in fields. The root's one face fans out to both.
     two = Group((; a = feedback_model(), b = feedback_model(k = 3.0)), (),
                 ("ref" => ("children/a/ref", "children/b/ref"),), ())
-    sim = build(two)
+    sim = Simulation(two; h = 1//100)
     types(body) = unique(typeof(e) for e in walked(body))
     @test length(types(sim.bodies.sweep_hx)) == 1     # two Plants, one h_x body
     @test length(types(sim.bodies.sweep_hxu)) == 3    # Plant, Gain, Sum
@@ -135,7 +140,8 @@ end
     # The discrete tier keeps the property: a state store is a `Ref` whose
     # *type* every instance of a component type shares, so the store lives in a
     # field and two counters still compile to one `g` body.
-    counters = build(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ()); Δt = 0.1)
+    counters = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ());
+                          h = 1//10)
     @test length(walked(counters.bodies.ticks)) == 2
     @test length(types(counters.bodies.ticks)) == 1
     @test length(types(counters.bodies.sweep_hx)) == 1
@@ -228,13 +234,14 @@ end
 child_connections(::EmptyRoster) = ()
 
 @testset "container children are path-named `field/key` (§8.5)" begin
-    sim = build(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ()); Δt = 0.1)
+    sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ());
+                     h = 1//10)
     @test sim.flat.paths == ["children/c1", "children/c2"]
     @test state(sim, "children/c2") === (n = 0,)
 
     # An empty container contributes zero children, and is not an error.
-    sim = build(EmptyRoster((;), ModedSource()))
-    @test sim.flat.paths == ["src"]
+    b = build(EmptyRoster((;), ModedSource()))
+    @test b.flat.paths == ["src"]
 
     # A container mixing components with anything else is one, by name.
     err = failure(() -> build(single(MixedContainer((a = Gain(1.0), b = 2.0)))))
@@ -264,14 +271,14 @@ output_connections(::GenericHold) = ("inner/plant/y" => "y",)
 @testset "a path stops at the first generically held child (§6.1)" begin
     # Two levels down into declared structure, bypassing the sub-assembly's own
     # face: legal, and the routed input is fed exactly once.
-    sim = build(ConcreteHold(SampledLoop()); Δt = 0.02)
+    sim = Simulation(ConcreteHold(SampledLoop()); h = 1//50)
     set_slot!(sim, "ref", 1.0)
     init!(sim)
     @test port(sim, "", :y) === port(sim, "inner/plant", :y)
 
     # The identical paths against the identical instance, held generically: the
     # concrete child would resolve them, and the declaration may not.
-    err = failure(() -> build(GenericHold(SampledLoop()); Δt = 0.02))
+    err = failure(() -> build(GenericHold(SampledLoop())))
     @test err isa BuildError
     @test occursin("generically", err.msg) && occursin("inner", err.msg)
 end
@@ -302,12 +309,12 @@ input_connections(::PastReach) = ("ref" => "mid/inner/sum/a",)
 output_connections(::PastReach) = ("mid/inner/plant/y" => "y",)
 
 @testset "a route may end at a generic child's face, never go past it (§6.1, §13.3)" begin
-    sim = build(FaceReach(MidHold(SampledLoop())); Δt = 0.02)
+    sim = Simulation(FaceReach(MidHold(SampledLoop())); h = 1//50)
     set_slot!(sim, "ref", 1.0)
     init!(sim)
     @test port(sim, "", :y) === port(sim, "mid/inner/plant", :y)
 
-    err = failure(() -> build(PastReach(MidHold(SampledLoop())); Δt = 0.02))
+    err = failure(() -> build(PastReach(MidHold(SampledLoop()))))
     @test err isa BuildError
     @test occursin("generically", err.msg) && occursin("mid/inner", err.msg)
 end
@@ -383,20 +390,21 @@ child_connections(::DoubleFedSibling) = ("src/out" => "loop/sum/b",)
     @test err isa BuildError
     @test occursin("fed by nothing", err.msg) && occursin("g", err.msg)
 
-    err = failure(() -> build(DoubleFed(SampledLoop(), ModedSource()); Δt = 0.02))
+    err = failure(() -> build(DoubleFed(SampledLoop(), ModedSource())))
     @test err isa BuildError
     @test occursin("fed twice", err.msg) && occursin("loop/sum", err.msg)
 
     # The same rule one level down: the sub-assembly's own wire against the
     # ancestor's deep route, and the message names both entries.
-    err = failure(() -> build(DoubleFedSibling(SampledLoop(), ModedSource()); Δt = 0.02))
+    err = failure(() -> build(DoubleFedSibling(SampledLoop(), ModedSource())))
     @test err isa BuildError
     @test occursin("child_connections at `loop`", err.msg) &&
           occursin("child_connections at the root component", err.msg)
 
     # The one legitimate terminus: the root's own input faces are the slots,
     # synthesized by `probe_value` and written by face name (§11.3).
-    sim = build(Group((; c = Gain(2.0)), (), ("in" => "children/c/e",), ()))
+    sim = Simulation(Group((; c = Gain(2.0)), (), ("in" => "children/c/e",), ());
+                     h = 1//100)
     @test sim.flat.slots == [:in]
     init!(sim)
     @test port(sim, "children/c", :out) == 0.0        # the synthesized value
@@ -476,11 +484,14 @@ h_x(::BothArities, (; t)) = (a = 1.0,)
     # A store with no update law is §8.2's sibling of the classless component.
     @test_throws BuildError classify_tier("c", NoFlow())
 
-    # A discrete tier needs its base tick period before the executor exists:
-    # `Δt` is entry-field data, not a run-time argument (§9.7).
-    err = failure(() -> build(single(DiscreteCounter())))
-    @test err isa BuildError && occursin("Δt", err.msg)
-    @test build(single(DiscreteCounter()); Δt = 0.1) isa Simulation
+    # The base tick period is deployment's, not the build's: the same `Build`
+    # deploys at any admissible grid, and the executor cannot exist before one
+    # binds because `Δt`, `D` and `Φ` are entry-field data (§9.1, §9.7).
+    b = build(single(DiscreteCounter()))
+    @test b isa Build
+    err = failure(() -> Simulation(b))
+    @test err isa BuildError && occursin("h", err.msg)
+    @test Simulation(b; h = 1//10) isa Simulation
 end
 
 # --- the discrete tier at one rate (§10.5) ------------------------------------
@@ -504,10 +515,10 @@ end
     end
     s_next = s + kI * Δt * (r - q[1])   # the update boundary N itself performs
 
-    sim = build(sampled_loop(; kI, ω, ζ); Δt)
+    sim = Simulation(sampled_loop(; kI, ω, ζ); h = 1//50)   # h = Δt: one rate, n = 1
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, N * Δt, Δt)
+    run!(sim, N * Δt)
 
     # The tolerance is RK4's, not the semantics': the reference integrates
     # exactly where the loop takes one RK4 step per sample, which at `ωΔt` this
@@ -522,7 +533,7 @@ end
 end
 
 @testset "the ZOH holds by compile-time absence (§10.5)" begin
-    sim = build(sampled_loop(); Δt = 0.02)
+    sim = Simulation(sampled_loop(); h = 1//50)
     set_slot!(sim, "ref", 1.0)         # excite the loop, or nothing moves at all
     init!(sim)
 
@@ -538,7 +549,7 @@ end
     # cannot move across one, while the continuous table does. Run a few
     # boundaries first — the loop starts at rest with `u` held at zero, so the
     # very first interval moves nothing at all.
-    run!(sim, 0.1, 0.02)
+    run!(sim, 0.1)
     u₀, y₀ = port(sim, "children/ctl", :u), port(sim, "children/plant", :y)
     @test u₀ != 0.0
     step!(sim, 0.02)
@@ -547,8 +558,8 @@ end
 end
 
 @testset "discrete state and modes live outside the buffer (§7.3)" begin
-    sim = build(Group((; counter = TickCounter(), moded = ModedSource()), (), (), ());
-                Δt = 0.1)
+    sim = Simulation(Group((; counter = TickCounter(), moded = ModedSource()), (), (), ());
+                     h = 1//10)
     # The flat buffer is continuous state only; the counter's `Int` is in its
     # own store, and no store mirrors another.
     @test isempty(sim.xbuf)
@@ -563,7 +574,7 @@ end
     @test state(sim, "children/counter") === (n = 1,)   # boundary zero is a tick
     @test port(sim, "children/counter", :n) === 0       # the cell holds what it published
     @test port(sim, "children/counter", :even) === true
-    run!(sim, 0.5, 0.1)
+    run!(sim, 0.5)
     # Six boundaries: zero, then one per step. The store leads the cell by one,
     # the update having run after the output stage at each of them.
     @test state(sim, "children/counter") === (n = 6,)
@@ -571,14 +582,14 @@ end
 end
 
 @testset "the workspace is scratch, on both tiers (§7.3)" begin
-    sim = build(Group((; sm = Smoother(0.5), src = ModedSource(), wg = WorkGain(2.0)),
-                      ("children/src/out" => "children/sm/a",
-                       "children/src/out" => "children/sm/b",
-                       "children/src/out" => "children/wg/in"), (), ());
-                Δt = 0.1)
+    sim = Simulation(Group((; sm = Smoother(0.5), src = ModedSource(), wg = WorkGain(2.0)),
+                           ("children/src/out" => "children/sm/a",
+                            "children/src/out" => "children/sm/b",
+                            "children/src/out" => "children/wg/in"), (), ());
+                     h = 1//10)
     init!(sim)
     @test port(sim, "children/wg", :out) == 0.0      # 2 × the idle-phase constant
-    run!(sim, 0.3, 0.1)
+    run!(sim, 0.3)
     @test state(sim, "children/sm").v isa SVector{2,Float64}
 
     # Allocation is what the idiom is for: in-place math on scratch, an isbits
@@ -601,7 +612,7 @@ h_x(::WidenedUpdate, (; x)) = (n = x.n,)
 g(::WidenedUpdate, (; x)) = (n = x.n + 0.5,)
 
 @testset "a discrete successor is the store's own type (§7.3)" begin
-    @test_throws BuildError build(single(WidenedUpdate()); Δt = 0.1)
+    @test_throws BuildError build(single(WidenedUpdate()))
 end
 
 @testset "the discrete tier is frozen at a non-nominal activation (§7.2)" begin
@@ -609,14 +620,13 @@ end
     # a lawful arrival, embedded as a zero-partial. `ctl`'s stages do not run
     # at all, and its cell holds what the probe wrote — which is exactly what a
     # tick at `t₀⁻` would have produced.
-    sim = build(sampled_loop(); Δt = 0.02)
-    simd = build(sampled_loop(), D8; Δt = 0.02)
+    simd = Simulation(sampled_loop(), D8; h = 1//50)
     @test isempty(walked(simd.bodies.ticks))
     @test length(walked(simd.bodies.sweep_hx)) == 1          # plant only; ctl frozen
     @test port(simd, "children/ctl", :u) isa Float64
 
     init!(simd)
-    run!(simd, D8(0.04), D8(0.02))
+    run!(simd, 0.04)
     @test state(simd, "children/plant").q isa SVector{2,D8}
     @test port(simd, "children/ctl", :u) == 0.0              # held, never recomputed
 end
@@ -636,20 +646,20 @@ end
         q, s = Ad * q + Bd * s, s + kI * Δt * (k * r - q[1])
     end
 
-    sim = build(Vehicle(; k, kI, ω, ζ); Δt)
+    sim = Simulation(Vehicle(; k, kI, ω, ζ); h = 1//50)
     @test sim.flat.paths == ["loop/plant", "loop/ctl", "loop/sum", "trim"]
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, N * Δt, Δt)
+    run!(sim, N * Δt)
     @test state(sim, "loop/plant").q ≈ q rtol = 1e-6
     @test port(sim, "loop", :cmd) ≈ s rtol = 1e-6
 end
 
 @testset "a face's type and tier are its internal endpoint's (§8.6)" begin
-    sim = build(Vehicle(); Δt = 0.02)
+    sim = Simulation(Vehicle(); h = 1//50)
     set_slot!(sim, "ref", 1.0)
     init!(sim)
-    run!(sim, 0.1, 0.02)
+    run!(sim, 0.1)
     # A face is its endpoint: no cell of its own, at any level of re-export.
     @test port(sim, "loop", :y) === port(sim, "loop/plant", :y)
     @test port(sim, "", :y) === port(sim, "loop/plant", :y)
@@ -659,7 +669,7 @@ end
 
     # Tier-neutral, and the tiers are *derived*: at a non-nominal activation the
     # continuous-sourced face walks while the discrete-sourced one stays pinned.
-    simd = build(Vehicle(), D8; Δt = 0.02)
+    simd = Simulation(Vehicle(), D8; h = 1//50)
     @test port(simd, "", :y) isa D8
     @test port(simd, "", :cmd) isa Float64
 end
@@ -680,7 +690,8 @@ h_x(::PinnedGetsDual, (; t)) = (frozen = t,)
 @testset "embed-accept keeps the constant branch legal (D-166)" begin
     # Both ports return literal `Float64`s at a `Dual` activation — the scalar
     # through a branch not taken, the `SVector` wholesale.
-    sim = build(Group((; c = ConstantBranch()), (), ("in" => "children/c/in",), ()), D8)
+    sim = Simulation(Group((; c = ConstantBranch()), (), ("in" => "children/c/in",), ()),
+                     D8; h = 1//100)
     init!(sim)
     # What the table holds is the cell's type, the constant embedded into it.
     @test port(sim, "children/c", :out) isa D8
@@ -702,11 +713,11 @@ h_x(::PinnedLeaf, (; t)) = (a = t, frozen = 2.0)
 
 @testset "a pinned leaf lives in its own store (D-166, D-162)" begin
     # Nominally the pin and the activation scalar coincide: one buffer.
-    sim = build(single(PinnedLeaf()))
+    sim = Simulation(single(PinnedLeaf()); h = 1//100)
     @test keys(sim.store.stores) === (Symbol(Float64),)
     # Off nominal the pin keeps a `Float64` buffer of its own beside the `Dual`
     # one, rather than being flattened into it as a zero-partial.
-    sim = build(single(PinnedLeaf()), D8)
+    sim = Simulation(single(PinnedLeaf()), D8; h = 1//100)
     @test Set(keys(sim.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
     init!(sim)
     @test port(sim, "children/c", :a) isa D8
@@ -729,4 +740,243 @@ h_x(::MixedCell, (; t)) = (out = TaggedValue(t, 1),)
     err = failure(() -> build(single(MixedCell())))
     @test err isa BuildError
     @test occursin("mixed-leaf", err.msg) && occursin("out", err.msg)
+end
+
+# --- multi-rate: the two registers (§8.7, §10.5, D-185) -------------------------
+
+@testset "the wrappers are plain data over exact rationals (D-185)" begin
+    # `Period` and `Hz` are one quantity, two spellings, normalized at
+    # construction; floats are refused with the exact spelling named.
+    @test period(Hz(50)) === 1//50
+    @test period(Period(1//50)) === 1//50
+    @test period(Hz(1//2)) === 2//1
+    @test occursin("Period(1//50)", failure(() -> Period(0.02)).msg)
+    @test occursin("Hz(1//2)", failure(() -> Hz(0.5)).msg)
+    @test occursin("Rational", failure(() -> Absolute(Hz(50), 0.001)).msg)
+    @test occursin("quantity", failure(() -> Absolute(1//50)).msg)
+
+    # Plain data carriers: no range checks of their own — those are Stratum A's,
+    # with path attribution, at the fold.
+    @test Relative(5) === Relative(5, 0)
+    @test Relative(0).K == 0
+    @test Absolute(Period(0)).T == 0
+end
+
+@testset "the fold validates with path attribution (§8.7, §9.1)" begin
+    rated(rates) = Group((; c = TickCounter()), (), (), (), rates)
+
+    err = failure(() -> build(rated((; var"children/c" = 2))))
+    @test err isa BuildError
+    @test occursin("whole value vocabulary", err.msg) && occursin("children/c", err.msg)
+
+    for (rates, fragment) in (((; var"children/c" = Relative(0)),      "K ≥ 1"),
+                              ((; var"children/c" = Relative(2, 2)),   "0 ≤ φ < K"),
+                              ((; var"children/c" = Absolute(Period(0))),        "T > 0"),
+                              ((; var"children/c" = Absolute(Hz(50), 1//40)),    "0 ≤ τ < T"))
+        err = failure(() -> build(rated(rates)))
+        @test err isa BuildError && occursin(fragment, err.msg)
+    end
+
+    # A key names an immediate child, and nothing else: a stray name and a deep
+    # key meet the same rule.
+    err = failure(() -> build(rated((; nav = Relative(2)))))
+    @test err isa BuildError && occursin("immediate child", err.msg)
+    err = failure(() -> build(rated((; var"children/c/x" = Relative(2)))))
+    @test err isa BuildError && occursin("immediate child", err.msg)
+
+    # A key on a continuous child is the Δt-on-continuous error at declaration
+    # time: keys name discrete or scope children (§8.7).
+    err = failure(() -> build(Group((; c = Gain(1.0)), (), ("in" => "children/c/e",), (),
+                                    (; var"children/c" = Relative(2)))))
+    @test err isa BuildError && occursin("continuous", err.msg)
+
+    # A bare container field name applies one declaration to every element.
+    sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), (),
+                           (; children = Relative(2, 1))); h = 1//10)
+    @test length(sim.sched) == 2
+    @test all(e.D == 2 && e.Φ == 1 for e in sim.sched)
+end
+
+# --- multi-rate: the fold and the bound schedule (§9.1, §9.2, §10.5) ------------
+
+@testset "the worked example compiles to the spec's pairs (§9.2)" begin
+    # Three discrete components under two scopes, deployed at Δt_base = 2 ms:
+    # inner (1, 0), outer (5, 2), gnss (10, 0) — §9.2's table, exactly.
+    sim = Simulation(MultiRate(); h = 1//500)
+    @test sim.n == 1 && sim.Δt_base == 0.002
+    @test [(e.path, e.D, e.Φ) for e in sim.sched] ==
+          [("fcs/inner", 1, 0), ("fcs/outer", 5, 2), ("gnss", 10, 0)]
+    @test [e.Δt for e in sim.sched] ≈ [0.002, 0.01, 0.02]
+
+    # The gate is structural: the interior variants carry no discrete entry, the
+    # boundary variants gate every one of them, and nothing else.
+    @test isempty(walked(sim.bodies.sweep_hxu, :interior))
+    @test gated(sim.bodies.sweep_hxu) == 3
+    @test gated(sim.bodies.sweep_hx) == 0            # the ramp is continuous
+end
+
+@testset "the hyperperiod chart is readable off the cells (§10.5)" begin
+    # The ramp makes every sample carry its acquisition time (1 + t), so each
+    # cell says when its owner last ticked — the chart's dots, and the
+    # deterministic aging of the stagger, in the spec's own numbers.
+    sim = Simulation(MultiRate(); h = 1//500)
+    init!(sim)                                       # boundary zero: Φ = 0 is due
+    @test port(sim, "fcs/inner", :out) == 1.0
+    @test port(sim, "gnss", :out) == 1.0
+
+    run!(sim, 2 * 0.002)                             # base tick 2: outer's first tick
+    @test port(sim, "fcs/inner", :out) ≈ 1.004       # fresh at every tick
+    @test port(sim, "fcs/outer", :out) == 1.0        # gnss's k = 0 sample: two ticks old
+    run!(sim, 7 * 0.002)                             # base tick 7
+    @test port(sim, "fcs/outer", :out) == 1.0        # the same sample, seven ticks old
+    @test port(sim, "gnss", :out) == 1.0             # gnss itself holds until k = 10
+    run!(sim, 10 * 0.002)
+    @test port(sim, "gnss", :out) ≈ 1.02             # its second tick
+    run!(sim, 12 * 0.002)
+    @test port(sim, "fcs/outer", :out) ≈ 1.02        # re-aged two ticks at k = 12
+end
+
+@testset "relative scopes compose affinely; anchors sever (§10.5, §9.1)" begin
+    # Under a scope at Relative(2, 1): D = K·Dₛ, Φ = Φₛ + φ·Dₛ.
+    inner_g = Group((; a = TickCounter(), b = TickCounter()), (), (), (),
+                    (; var"children/a" = Relative(1), var"children/b" = Relative(5, 2)))
+    sim = Simulation(Group((; f = inner_g), (), (), (),
+                           (; var"children/f" = Relative(2, 1))); h = 1//100)
+    @test [(e.D, e.Φ) for e in sim.sched] == [(2, 1), (10, 5)]
+
+    # Neither has Φ = 0, so boundary zero admits neither; over base ticks 1…10,
+    # `a` ticks at the odd indices and `b` at 5 alone.
+    init!(sim)
+    @test state(sim, "children/f/children/a") === (n = 0,)
+    run!(sim, 10 * 0.01)
+    @test state(sim, "children/f/children/a") === (n = 5,)
+    @test state(sim, "children/f/children/b") === (n = 1,)
+
+    # An anchor severs: a relative child of an anchored subtree composes against
+    # the anchor, not the enclosing grid — D = 3·D₁ with D₁ = (1//50)/(1//500).
+    gps = Group((; rx = TickCounter()), (), (), (),
+                (; var"children/rx" = Relative(3)))
+    sim = Simulation(Group((; gps = gps), (), (), (),
+                           (; var"children/gps" = Absolute(Hz(50)))); h = 1//500)
+    @test [(e.D, e.Φ) for e in sim.sched] == [(30, 0)]
+end
+
+# --- multi-rate: deployment binding (§9.1, §9.2) --------------------------------
+
+@testset "one Build backs many Simulations; Δt_base has three sources (§9.1)" begin
+    b = build(MultiRate())
+
+    # The n·h product (the default path), an explicit n, the explicit keyword
+    # (Rational or quantity): the anchored divisor is deployment's, not the
+    # build's — the same Build lands gnss at D = 10 or D = 5.
+    s1 = Simulation(b; h = 1//500)
+    s2 = Simulation(b; h = 1//500, n = 2)
+    s3 = Simulation(b; h = 1//500, Δt_base = 1//250)
+    s4 = Simulation(b; h = 1//500, Δt_base = Period(1//250))
+    @test [e.D for e in s1.sched] == [1, 5, 10]
+    @test [e.D for e in s2.sched] == [1, 5, 5]
+    @test s3.n == 2 && s3.sched == s2.sched == s4.sched
+
+    # Nothing writable is shared: each Simulation materializes its own buffers.
+    init!(s1); run!(s1, 0.02)
+    init!(s2)
+    @test port(s1, "fcs/inner", :out) ≈ 1.02
+    @test port(s2, "fcs/inner", :out) == 1.0
+
+    # Cross-validation, collected as plain BuildErrors here (§13.2 is absent):
+    @test occursin("h", failure(() -> Simulation(b)).msg)
+    @test occursin("float", failure(() -> Simulation(b; h = 1e-3)).msg)
+    @test occursin("disagrees", failure(() -> Simulation(b; h = 1//500, Δt_base = 1//250,
+                                                         n = 3)).msg)
+    @test occursin("harmonic", failure(() -> Simulation(b; h = 1//300,
+                                                        Δt_base = 1//500)).msg)
+    @test occursin("n must be", failure(() -> Simulation(b; h = 1//500, n = 0)).msg)
+
+    # A non-dividing anchor is refused with its declaring scope and key, and the
+    # admissible set is named off the pool.
+    err = failure(() -> Simulation(b; h = 1//500, Δt_base = 3//250))
+    @test err isa BuildError
+    @test occursin("key `gnss`", err.msg) && occursin("gcd(pool)", err.msg)
+end
+
+@testset "Δt_base derivation demands an all-anchored model (§9.1)" begin
+    # Derivation with an unanchored component present is action at a distance:
+    # refused constructively, naming the components whose periods would rescale.
+    err = failure(() -> Simulation(build(MultiRate()); h = 1//500, Δt_base = :derive))
+    @test err isa BuildError
+    @test occursin("fcs/inner", err.msg) && occursin("Δt_base", err.msg)
+
+    # All anchored: the pool is every period and every nonzero offset, and the
+    # derived value is its GCD — the offset drives the grid 2× finer here.
+    anchored = Group((; c = TickCounter()), (), (), (),
+                     (; var"children/c" = Absolute(Hz(50), 1//100)))
+    sim = Simulation(anchored; h = 1//500, Δt_base = :derive)
+    @test sim.Δt_base == 0.01 && sim.n == 5
+    @test [(e.D, e.Φ) for e in sim.sched] == [(2, 1)]
+end
+
+# --- multi-rate: the gate at run time (§10.5) -----------------------------------
+
+@testset "boundary zero admits Φ = 0; an offset component holds its probe cells" begin
+    # `z` at Relative(2, 1) is not due at boundary zero: until its first tick at
+    # Φ·Δt_base its cell holds what the build probe populated — the ramp's value
+    # at the probe, a coherent ZOH story (§10.5, §9.3).
+    late = Group((; src = Ramp(5.0), z = ZOH()),
+                 ("children/src/out" => "children/z/in",), (),
+                 ("children/z/out" => "y",),
+                 (; var"children/z" = Relative(2, 1)))
+    sim = Simulation(late; h = 1//100)
+    init!(sim)
+    @test port(sim, "", :y) == 5.0                   # probe-populated, not swept
+    run!(sim, 0.01)                                  # base tick 1: the first tick
+    @test port(sim, "", :y) ≈ 5.01
+    run!(sim, 0.02)                                  # base tick 2: not due, holds
+    @test port(sim, "", :y) ≈ 5.01
+end
+
+@testset "a multi-rate sampled loop matches its exact discretization" begin
+    # The increment-3 reference, one level harder: the controller ticks every
+    # second base tick and every base tick is two continuous steps, so the exact
+    # recursion runs at Δt_ctl = D·Δt_base = 4h — and only matches if the gate
+    # admits `ctl` at exactly its own ticks, the hold spans the sub-ticks and
+    # off-tick boundaries, and the bundle's Δt is the compiled schedule's
+    # (§10.5's single source of truth), not h or Δt_base.
+    kI, ω, ζ, r, N = 3.0, 2.0, 0.1, 0.7, 50
+    Δt_ctl = 0.02
+    A = SMatrix{2,2}(0.0, -ω^2, 1.0, -2ζ * ω)
+    B = SVector(0.0, 1.0)
+    Ad = exp(A * Δt_ctl)
+    Bd = A \ ((Ad - I) * B)
+    q, s = SVector(0.0, 0.0), 0.0
+    for _ in 1:N
+        q, s = Ad * q + Bd * s, s + kI * Δt_ctl * (r - q[1])
+    end
+
+    # §10.5's exposed-multiplier idiom: the deployment preference arrives as a
+    # constructor parameter, and the declaration stays the assembly's.
+    sim = Simulation(SampledLoop(; kI, ω, ζ, ctl_rate = Relative(2)); h = 1//200, n = 2)
+    @test [(e.path, e.D, e.Φ) for e in sim.sched] == [("ctl", 2, 0)]
+    @test sim.sched[1].Δt ≈ Δt_ctl
+    set_slot!(sim, "ref", r)
+    init!(sim)
+    run!(sim, N * Δt_ctl)
+    @test state(sim, "plant").q ≈ q rtol = 1e-6
+    @test port(sim, "ctl", :u) ≈ s rtol = 1e-6
+end
+
+@testset "the gated boundary walk does not allocate (§7.5)" begin
+    sim = Simulation(MultiRate(); h = 1//500)
+    init!(sim)
+    bods = phase_bodies(sim)
+    for name in keys(bods)
+        body = bods[name]
+        body(); body(1); body(2)
+        @test @ballocated($body()) == 0
+        @test @ballocated($body(2)) == 0             # a boundary where gates split
+    end
+    sim2 = Simulation(SampledLoop(; ctl_rate = Relative(2)); h = 1//200, n = 2)
+    init!(sim2)
+    @test @ballocated(step!($sim2, 0.005)) == 0
+    @test @ballocated(offtick_boundary!($sim2)) == 0
+    @test @ballocated(boundary!($sim2, 3)) == 0
 end

@@ -85,13 +85,17 @@ end
 Probe `h_x` for every component: no wiring is needed, so this runs first and
 tells the rest of the build which ports are stage-1 — the ones that carry no
 dependence on inputs and therefore break loops (§5.3).
+
+The `Δt` the discrete bundles carry is a fabricated, probe-scoped placeholder
+(§9.3): `Δt` in seconds does not exist until `Simulation` binds `Δt_base`, and
+the probe checks types, not physics.
 """
 function probe_stage1(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
-                      wss::Vector, mstores::Vector, Δt::Float64, ::Type{T}) where {T}
+                      wss::Vector, mstores::Vector, ::Type{T}) where {T}
     map(zip(flat.paths, flat.comps, decls, tiers, wss, mstores)) do (path, c, d, t, ws, m)
         has_stage(h_x, c) || return NamedTuple()
         bn = bundle_names(h_x, c, t, ())
-        y = h_x(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T; ws, m, Δt))
+        y = h_x(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T; ws, m, Δt = 1.0))
         y isa NamedTuple ||
             throw(BuildError("`$path`: h_x must return a NamedTuple of port values, got $(typeof(y))"))
         _check_ports(path, "h_x", y, d.outs, T)
@@ -280,24 +284,236 @@ end
 input_addr(layout::Layout, conns::Vector{Pair{Symbol,Tuple{String,Symbol}}}, face::Symbol) =
     layout.addr[last(conns[findfirst(p -> first(p) === face, conns)])]
 
-# --- 5. the whole build -------------------------------------------------------
+# --- 5. the Build artifact (§9.2) -----------------------------------------------
 
-function build(root::AbstractComponent, ::Type{T} = Float64;
-               chunk_size::Int = 16, Δt::Union{Nothing,Float64} = nothing) where {T}
+"""
+The deployment-free product of the build pipeline (§9.2): everything the strata
+settle before `Δt_base` exists. The schedule it carries is anchor-relative —
+`flat.triples` against `flat.anchors` — because final divisors for anchored
+entries do not exist until `Δt_base` binds; one `Build` backs any number of
+`Simulation`s, each materializing its own stores and buffers, so nothing
+writable lives here. The probe products do: they are what a cell holds until
+first written (§10.5).
+"""
+struct Build{T}
+    flat::Flat
+    tiers::Vector{Tier}
+    decls::Vector{Decls}
+    stage1::Vector{NamedTuple}     # stage-1 probe products, per component
+    products::Vector{NamedTuple}   # complete probe products, per component
+    order::Vector{Int}
+    layout::Layout
+end
+
+"""
+    build(root, T = Float64) → Build
+
+The strata (§9.1), deployment-free: flatten, classify, probe, schedule, lay
+out. Nothing here needs `Δt_base`, `h` or `n` — those are `Simulation`'s.
+"""
+function build(root::AbstractComponent, ::Type{T} = Float64) where {T}
     flat = flatten(root)
     tiers = [classify_tier(p, c) for (p, c) in zip(flat.paths, flat.comps)]
     decls = [declarations(c, t, T) for (c, t) in zip(flat.comps, tiers)]
 
-    # `Δt` is bundle data carried in entry fields (§9.7), so the sample period
-    # is fixed before the executor exists. Here one call binds deployment and
-    # compilation together; in the design they are separate strata, and every
-    # component sits at `D = 1, Φ = 0` until increment 5 brings the grid.
-    if any(t -> t === DISCRETE, tiers) && Δt === nothing
-        throw(BuildError("this model has discrete components; `build` needs the base tick " *
-                         "period, as `build(root; Δt = …)` (§10.5)"))
+    # Probe-scoped mode stores and workspaces (§9.3): the probes need `m` and
+    # `ws` to build bundles, and everything these hold is garbage once the
+    # build finishes — each `Simulation` materializes its own.
+    mstores = Any[isempty(init_m(c)) ? nothing : Ref(init_m(c)) for c in flat.comps]
+    wss = _workspaces(flat, tiers, T)
+
+    stage1 = probe_stage1(flat, decls, tiers, wss, mstores, T)
+    order = schedule_stage2(flat, stage1)
+    layout = cell_layout(flat, decls, T)
+    products = probe_stage2(flat, decls, tiers, stage1, order, layout, wss, mstores, T)
+    Build{T}(flat, tiers, decls, collect(stage1), products, order, layout)
+end
+
+# Declaration by allocation (§7.3, D-077): sizes from the instance, eltypes from
+# the activation. Called once per probe and once per `Simulation`.
+_workspaces(flat::Flat, tiers::Vector{Tier}, ::Type{T}) where {T} =
+    Any[_declares_workspace(c, t) ?
+        (t === CONTINUOUS ? workspace(c, T) : workspace(c)) : nothing
+        for (c, t) in zip(flat.comps, tiers)]
+
+# A discrete component's stages never run at a non-nominal activation: its
+# cells are frozen `Float64` constants with zero partials, holding what the
+# probe wrote, which is exactly what a tick at `t₀⁻` would have produced
+# (§7.2, §10.5; `frozen_discrete_walkthrough.md`).
+_frozen(tiers::Vector{Tier}, ci::Int, ::Type{T}) where {T} =
+    tiers[ci] === DISCRETE && T !== Float64
+
+"""
+Probe stage 2 in topological order — real upstream values available by
+construction — and the update laws last, checking every return against the
+declaration (§9.3); then the declaration-completeness check, for every
+component. The discrete bundles' `Δt` is the probe-scoped placeholder of
+`probe_stage1`. Returns the complete probe products.
+"""
+function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
+                      stage1, order::Vector{Int}, layout::Layout,
+                      wss::Vector, mstores::Vector, ::Type{T}) where {T}
+    products = NamedTuple[s1 for s1 in stage1]
+
+    # A frozen component's inputs are *synthesized*, not read from the upstream
+    # product. Its stages never run at this activation, so it never gathers the
+    # `Dual` cell its pinned input declaration would otherwise have to refuse —
+    # the dependence through it is temporal, not instantaneous. Its own cells
+    # then hold pinned constants, which downstream continuous consumers embed as
+    # zero-partials. (The design carries the *nominal* activation's cell
+    # contents across instead of synthesizing them: §9.4's activation story,
+    # which this increment does not build.)
+    in_values(ci, d) = NamedTuple{tuple(keys(d.ins)...)}(tuple(
+        (_frozen(tiers, ci, T) ? probe_value(d.ins[face]) :
+         _probe_input(flat, layout, products, ci, face, d.ins[face], T)
+         for face in keys(d.ins))...))
+
+    for ci in order
+        c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], stage1[ci]
+        has_stage(h_xu, c) || continue
+        bn = bundle_names(h_xu, c, tiers[ci], tuple(keys(s1)...))
+        u = in_values(ci, d)
+        y2 = h_xu(c, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
+                                    Δt = 1.0))
+        y2 isa NamedTuple ||
+            throw(BuildError("`$path`: h_xu must return a NamedTuple, got $(typeof(y2))"))
+        _check_ports(path, "h_xu", y2, d.outs, T)
+        isempty(intersect(keys(s1), keys(y2))) ||
+            throw(BuildError("`$path`: $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
+        products[ci] = merge(s1, _embed_ports(y2, d.outs, T))
     end
-    Δt_base = something(Δt, 0.0)
-    Δt_base >= 0 || throw(BuildError("Δt must be positive, got $Δt_base"))
+
+    # Completeness of the declaration set (§8.2), for every component and not
+    # only the stateful ones: an unproduced port would otherwise own a cell that
+    # no stage ever writes, and read as a silent zero forever.
+    for ci in eachindex(flat.comps)
+        missing_ports = setdiff(keys(decls[ci].outs), keys(products[ci]))
+        isempty(missing_ports) ||
+            throw(BuildError("`$(flat.paths[ci])`: declared port(s) " *
+                             "$(join(missing_ports, ", ")) produced by no stage"))
+    end
+
+    # The update laws, probed against the now-complete table: `f` for shape,
+    # `g` for the store's own type.
+    for (ci, c) in enumerate(flat.comps)
+        path, d, t = flat.paths[ci], decls[ci], tiers[ci]
+        isempty(d.x) && continue
+        update = t === CONTINUOUS ? f : g
+        bn = bundle_names(update, c, t, tuple(keys(stage1[ci])...))
+        vals = _bundle_values(bn, d, in_values(ci, d), stage1[ci], T; y = products[ci],
+                              ws = wss[ci], m = mstores[ci], Δt = 1.0)
+        t === CONTINUOUS ? _check_derivative(path, f(c, vals), d.x) :
+                           _check_update(path, g(c, vals), d.x)
+    end
+    products
+end
+
+# --- 6. deployment binding (§9.1) -----------------------------------------------
+# Everything below post-dates the strata: it exists per `Simulation`, not per
+# `Build`. Grid arithmetic is exact — GCD over `Rational{Int}` — and floats are
+# refused at the door.
+
+_exact(name, v::Rational{Int}) = v
+_exact(name, v::Integer) = Rational{Int}(v)
+_exact(name, v::Period) = v.T
+_exact(name, v::AbstractFloat) =
+    throw(BuildError("`$name` must be exact — a Rational (`$name = 1//100`) or a " *
+                     "`Period`/`Hz` value: grid derivation is GCD arithmetic, ill-defined " *
+                     "over floats (§9.1, §10.5)"))
+_exact(name, v) =
+    throw(BuildError("`$name` must be a Rational or a `Period`/`Hz` value, got $(typeof(v))"))
+
+_as_int(r::Rational) = denominator(r) == 1 ? Int(numerator(r)) : nothing
+
+"""
+Deployment binding (§9.1): `Δt_base` from one of three cross-validated sources —
+the explicit keyword, the `n·h` product (default `n = 1`), or GCD derivation
+over the constraint pool, requested as `Δt_base = :derive` and permitted only
+with every discrete component anchored. Resolution is one exact division pair
+per anchor and one multiply-add per component. Returns the bound deployment:
+`h`, `n`, `Δt_base`, the per-component `(D, Φ, Δt)` columns, and the bound
+schedule (§9.2's printable artifact, as plain data).
+"""
+function bind_schedule(b::Build, h, n, Δt_base)
+    h === nothing &&
+        throw(BuildError("deployment needs the continuous step: `Simulation(…; h = 1//100)` " *
+                         "— a domain rate is not a framework default (§9.1)"))
+    h_r = _exact("h", h)
+    h_r > 0 || throw(BuildError("h must be positive, got $h_r"))
+    n === nothing || n ≥ 1 || throw(BuildError("n must be an integer ≥ 1, got $n (§9.1)"))
+
+    anchors, prov, triples = b.flat.anchors, b.flat.aprov, b.flat.triples
+    # The constraint pool: every anchor's period and every nonzero offset (§9.1).
+    pool = vcat([Tk for (Tk, _) in anchors], [τk for (_, τk) in anchors if τk != 0])
+
+    if Δt_base === :derive
+        unanchored = [b.flat.paths[ci] for ci in eachindex(b.tiers)
+                      if b.tiers[ci] === DISCRETE && triples[ci][1] == 0]
+        isempty(unanchored) ||
+            throw(BuildError("Δt_base cannot be derived: `$(join(unanchored, "`, `"))` " *
+                             "is/are unanchored, with period `m·Δt_base` — an anchor edit " *
+                             "anywhere in the tree would silently rescale it. Declare the " *
+                             "base tick period instead: `Δt_base = …`, or `n = …` (§9.1)"))
+        isempty(pool) &&
+            throw(BuildError("Δt_base cannot be derived: no anchor declares a constraint " *
+                             "to derive it from (§9.1)"))
+        Δt_r = reduce(gcd, pool)                     # the coarsest admissible value
+    elseif Δt_base !== nothing
+        Δt_r = _exact("Δt_base", Δt_base)
+    else
+        Δt_r = something(n, 1) * h_r                 # the default path (§15.4)
+    end
+
+    n_i = _as_int(Δt_r / h_r)
+    (n_i === nothing || n_i < 1) &&
+        throw(BuildError("harmonic grid: Δt_base = $Δt_r is not an integer multiple of " *
+                         "h = $h_r (Δt_base = n·h, n ≥ 1, §10.5)"))
+    n === nothing || n == n_i ||
+        throw(BuildError("Δt_base = $Δt_r disagrees with n = $n: Δt_base/h = $n_i (§9.1)"))
+
+    # Per anchor, one exact division pair; anchor 0 is the base grid itself.
+    admissible() = "an admissible Δt_base divides gcd(pool) = $(reduce(gcd, pool))"
+    Dk, Φk = [1], [0]
+    for (k, (Tk, τk)) in enumerate(anchors)
+        D = _as_int(Tk / Δt_r)
+        D === nothing &&
+            throw(BuildError("$(prov[k]): period $Tk is not an integer multiple of " *
+                             "Δt_base = $Δt_r — $(admissible()) (§9.1)"))
+        Φ = _as_int(τk / Δt_r)
+        Φ === nothing &&
+            throw(BuildError("$(prov[k]): offset $τk does not land on the base grid at " *
+                             "Δt_base = $Δt_r — $(admissible()) (§9.1)"))
+        push!(Dk, D); push!(Φk, Φ)
+    end
+
+    # Per component, one multiply-add; the canonical residue 0 ≤ Φ < D survives
+    # composition (§10.5), which is what the gate's truncated rem relies on.
+    Δtb = Float64(Δt_r)
+    D_c, Φ_c, Δt_c = Int[], Int[], Float64[]
+    sched = @NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}[]
+    for ci in eachindex(b.tiers)
+        (a, m, c) = triples[ci]
+        if b.tiers[ci] === DISCRETE
+            D, Φ = m * Dk[a + 1], Φk[a + 1] + c * Dk[a + 1]
+            push!(D_c, D); push!(Φ_c, Φ); push!(Δt_c, D * Δtb)
+            push!(sched, (path = b.flat.paths[ci], D = D, Φ = Φ, Δt = D * Δtb))
+        else
+            push!(D_c, 1); push!(Φ_c, 0); push!(Δt_c, 0.0)
+        end
+    end
+    (h = Float64(h_r), n = n_i, Δt_base = Δtb, sched = sched, D = D_c, Φ = Φ_c, Δt = Δt_c)
+end
+
+# --- 7. entry compilation, per deployment ---------------------------------------
+# What moves behind deployment binding: `Δt`, `D` and `Φ` are entry data (§9.7),
+# so the executor cannot exist until `Δt_base` does. Each call materializes its
+# own stores and buffers — the `Build` stays immutable and backs many
+# `Simulation`s (§9.2). No user stage runs here: every check already ran at the
+# probe, and what compiles is the checked shape.
+
+function compile(b::Build{T}, D_c::Vector{Int}, Φ_c::Vector{Int}, Δt_c::Vector{Float64};
+                 chunk_size::Int = 16) where {T}
+    flat, tiers, decls, layout = b.flat, b.tiers, b.decls, b.layout
 
     # Three homes for state, and no store mirrors another (§7.3): the flat
     # buffer for continuous `x`, one store per discrete `x`, one per mode set.
@@ -306,15 +522,7 @@ function build(root::AbstractComponent, ::Type{T} = Float64;
     xstores = Any[t === DISCRETE && !isempty(d.x) ? Ref(d.x) : nothing
                   for (d, t) in zip(decls, tiers)]
     mstores = Any[isempty(init_m(c)) ? nothing : Ref(init_m(c)) for c in flat.comps]
-    # Declaration by allocation (§7.3, D-077): sizes from the instance, eltypes
-    # from the activation. Called once per activation, per component.
-    wss = Any[_declares_workspace(c, t) ?
-              (t === CONTINUOUS ? workspace(c, T) : workspace(c)) : nothing
-              for (c, t) in zip(flat.comps, tiers)]
-
-    stage1 = probe_stage1(flat, decls, tiers, wss, mstores, Δt_base, T)
-    order = schedule_stage2(flat, stage1)
-    layout = cell_layout(flat, decls, T)
+    wss = _workspaces(flat, tiers, T)
 
     store = StoreBundle(NamedTuple{tuple((Symbol(L) for (L, _) in layout.sizes)...)}(
         tuple((CellStore(zeros(L, n)) for (L, n) in layout.sizes)...)))
@@ -328,119 +536,79 @@ function build(root::AbstractComponent, ::Type{T} = Float64;
     ẋbuf = zeros(T, length(xbuf))
     clock = Clock(zero(T))
 
-    # root slots hold their synthesized values until a writer replaces them
-    for (face, v) in layout.slots
-        scatter!(store, layout.addr[("", face)], v)
-    end
-
     addr_group(path, names) =
         NamedTuple{tuple(names...)}(tuple((layout.addr[(path, n)] for n in names)...))
     in_group(ci, d) =
         NamedTuple{tuple(keys(d.ins)...)}(
             tuple((input_addr(layout, flat.conns[ci], face) for face in keys(d.ins))...))
 
+    # A cell holds what the build probe populated until a sweep first writes it
+    # (§10.5): an offset component's pre-first-tick reads and a frozen
+    # component's pinned cells are both this seed.
+    for (ci, path) in enumerate(flat.paths)
+        isempty(b.products[ci]) ||
+            scatter_group!(store, addr_group(path, keys(b.products[ci])), b.products[ci])
+    end
+    # Root slots hold their synthesized values until a writer replaces them.
+    for (face, v) in layout.slots
+        scatter!(store, layout.addr[("", face)], v)
+    end
+
+    frozen(ci) = _frozen(tiers, ci, T)
+    gate(ci) = tiers[ci] === DISCRETE ? (D_c[ci], Φ_c[ci]) : nothing
+    y2keys(ci) = keys(b.products[ci])[length(keys(b.stage1[ci]))+1:end]
+
     hx_entries, hxu_entries, rhs_entries, tick_entries = Any[], Any[], Any[], Any[]
-    hx_tiers, hxu_tiers, rhs_tiers, tick_tiers = Tier[], Tier[], Tier[], Tier[]
-    products = NamedTuple[NamedTuple() for _ in flat.comps]   # probe products, per component
-
-    # A discrete component's stages never run at a non-nominal activation: its
-    # cells are frozen `Float64` constants with zero partials, holding what the
-    # probe wrote, which is exactly what a tick at `t₀⁻` would have produced
-    # (§7.2, §10.5; `frozen_discrete_walkthrough.md`).
-    frozen(ci) = tiers[ci] === DISCRETE && T !== Float64
-
-    # A frozen component's inputs are *synthesized*, not read from the upstream
-    # product. Its stages never run at this activation, so it never gathers the
-    # `Dual` cell its pinned input declaration would otherwise have to refuse —
-    # the dependence through it is temporal, not instantaneous. Its own cells
-    # then hold pinned constants, which downstream continuous consumers embed as
-    # zero-partials. (The design carries the *nominal* activation's cell
-    # contents across instead of synthesizing them: §9.4's activation story,
-    # which this increment does not build.)
-    in_values(ci, d) = NamedTuple{tuple(keys(d.ins)...)}(tuple(
-        (frozen(ci) ? probe_value(d.ins[face]) :
-         _probe_input(flat, layout, products, ci, face, d.ins[face], T)
-         for face in keys(d.ins))...))
+    hx_gates, hxu_gates, rhs_gates, tick_gates = Any[], Any[], Any[], Any[]
 
     for (ci, c) in enumerate(flat.comps)
-        d, s1 = decls[ci], stage1[ci]
-        products[ci] = s1
         (has_stage(h_x, c) && !frozen(ci)) || continue
+        d, s1 = decls[ci], b.stage1[ci]
         bn = bundle_names(h_x, c, tiers[ci], ())
         push!(hx_entries, StageEntry{typeof(d.x),bn}(
             h_x, c, NamedTuple(), NamedTuple(), addr_group(flat.paths[ci], keys(s1)),
-            x_offs[ci], clock, xstores[ci], mstores[ci], wss[ci], Δt_base))
-        push!(hx_tiers, tiers[ci])
+            x_offs[ci], clock, xstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
+        push!(hx_gates, gate(ci))
     end
 
-    for ci in order
-        c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], stage1[ci]
-        has_stage(h_xu, c) || continue
+    for ci in b.order
+        c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], b.stage1[ci]
+        (has_stage(h_xu, c) && !frozen(ci)) || continue
         bn = bundle_names(h_xu, c, tiers[ci], tuple(keys(s1)...))
-        u = in_values(ci, d)
-        y2 = h_xu(c, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
-                                    Δt = Δt_base))
-        y2 isa NamedTuple ||
-            throw(BuildError("`$path`: h_xu must return a NamedTuple, got $(typeof(y2))"))
-        _check_ports(path, "h_xu", y2, d.outs, T)
-        isempty(intersect(keys(s1), keys(y2))) ||
-            throw(BuildError("`$path`: $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
-        y2 = _embed_ports(y2, d.outs, T)
-        products[ci] = merge(s1, y2)
-        frozen(ci) && continue
-
-        yx_g, out_g, in_g = addr_group(path, keys(s1)), addr_group(path, keys(y2)), in_group(ci, d)
         push!(hxu_entries, StageEntry{typeof(d.x),bn}(
-            h_xu, c, in_g, yx_g, out_g, x_offs[ci], clock,
-            xstores[ci], mstores[ci], wss[ci], Δt_base))
-        push!(hxu_tiers, tiers[ci])
-    end
-
-    # Completeness of the declaration set (§8.2), for every component and not
-    # only the stateful ones: an unproduced port would otherwise own a cell that
-    # no stage ever writes, and read as a silent zero forever.
-    for ci in eachindex(flat.comps)
-        missing_ports = setdiff(keys(decls[ci].outs), keys(products[ci]))
-        isempty(missing_ports) ||
-            throw(BuildError("`$(flat.paths[ci])`: declared port(s) " *
-                             "$(join(missing_ports, ", ")) produced by no stage"))
+            h_xu, c, in_group(ci, d), addr_group(path, keys(s1)),
+            addr_group(path, y2keys(ci)), x_offs[ci], clock,
+            xstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
+        push!(hxu_gates, gate(ci))
     end
 
     # The update law, one block per tier: `f` into the flat derivative buffer,
     # `g` into the component's own store. Both read the complete fresh table.
     for (ci, c) in enumerate(flat.comps)
         path, d, t = flat.paths[ci], decls[ci], tiers[ci]
-        isempty(d.x) && continue
+        (isempty(d.x) || frozen(ci)) && continue
         update = t === CONTINUOUS ? f : g
-        bn = bundle_names(update, c, t, tuple(keys(stage1[ci])...))
-        u = in_values(ci, d)
-        vals = _bundle_values(bn, d, u, stage1[ci], T; y = products[ci], ws = wss[ci],
-                              m = mstores[ci], Δt = Δt_base)
+        bn = bundle_names(update, c, t, tuple(keys(b.stage1[ci])...))
         y_g, in_g = addr_group(path, keys(d.outs)), in_group(ci, d)
-
         if t === CONTINUOUS
-            ẋ = f(c, vals)
-            _check_derivative(path, ẋ, d.x)
             push!(rhs_entries, RHSEntry{typeof(d.x),bn}(
                 c, in_g, y_g, x_offs[ci], clock, mstores[ci], wss[ci]))
-            push!(rhs_tiers, t)
+            push!(rhs_gates, nothing)
         else
-            x⁺ = g(c, vals)
-            _check_update(path, x⁺, d.x)
-            frozen(ci) && continue
             push!(tick_entries, UpdateEntry{bn}(
-                c, in_g, y_g, clock, xstores[ci], wss[ci], Δt_base))
-            push!(tick_tiers, t)
+                c, in_g, y_g, clock, xstores[ci], wss[ci], Δt_c[ci]))
+            push!(tick_gates, gate(ci))
         end
     end
 
-    body(es, ts) = chunked_body(es, ts, store, xbuf, ẋbuf, clock; chunk_size)
-    bodies = (sweep_hx = body(hx_entries, hx_tiers),
-              sweep_hxu = body(hxu_entries, hxu_tiers),
-              rhs = body(rhs_entries, rhs_tiers),
-              ticks = body(tick_entries, tick_tiers))
+    body(es, gs) = chunked_body(es, gs, store, xbuf, ẋbuf, clock; chunk_size)
+    bodies = (sweep_hx = body(hx_entries, hx_gates),
+              sweep_hxu = body(hxu_entries, hxu_gates),
+              rhs = body(rhs_entries, rhs_gates),
+              ticks = body(tick_entries, tick_gates))
 
-    Simulation(store, xbuf, ẋbuf, clock, bodies, layout, flat, Δt_base, xstores, mstores, T)
+    (store = store, xbuf = xbuf, ẋbuf = ẋbuf, clock = clock, bodies = bodies,
+     xstores = xstores, mstores = mstores)
 end
 
 # A probed input value: the producer's product, or the synthesized value of the
