@@ -2316,7 +2316,7 @@ output_connections(g::Group) = g.outputs
 
 world = Group(
     (; plant = Plant(), ctrl = PID(kp = 2.0)),
-    ("ctrl/u" => "plant/u", "plant/y" => "ctrl/y"),
+    ("children/ctrl/u" => "children/plant/u", "children/plant/y" => "children/ctrl/y"),
     (;),
     (;),
 )
@@ -6807,6 +6807,20 @@ register's defining question. Drift still stays loud — an unknown path is an
 attach-time `ReadBindingUnresolved` with [did-you-mean](#g-did-you-mean) (the
 offending name plus the list-in-hand it should have matched).
 
+**The scoping is one principle, not three concessions.** What varies across
+the registers is not how far a client is trusted; it is what a violation
+costs, and where the cost lands. A diagnostic client claims no
+substitutability: it addresses one build's instances, and a broken binding
+fails at attach, at its own site, harming only the observer. A wiring entry is
+carried by the declaring *type* and compiled into every instantiation. A wire
+reaching past a generic seam therefore fails at substitution time, at a
+different site, for whoever exercised the substitution the field advertised —
+the non-local failure class the error discipline exists to eliminate ([§8.4][s8-4]).
+The rule is strict exactly where a promise depends on it, and relaxed exactly
+where none is made ([D-083][d-083], [D-130][d-130]). Strictness forbids nothing outright:
+declaring the field's concrete type restores the deep route legally, with the
+hard-coding visible in the declaration itself ([§6.1][s6-1]).
+
 Which register a client resolves under is internal framework fact, never
 user-facing API — the same status as the two `apply!` registers
 ([§14.4][s14-4]).
@@ -10761,6 +10775,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-116]: framework_decisions.md#d-116--expose-phase_bodiessim-as-the-zero-allocation-invariants-measurement-seam
 [d-117]: framework_decisions.md#d-117--extend-declarations-and-stages-via-explicit-per-name-import
 [d-122]: framework_decisions.md#d-122--resolve-de-polysemy-by-giving-each-overloaded-term-one-owner
+[d-130]: framework_decisions.md#d-130--scope-resolves-generic-boundary-duty-by-register-structuralload-bearingdiagnostic
 [d-133]: framework_decisions.md#d-133--split-spec-invoked-numeric-constants-into-deployment-parameters-vs-owning-section-defaults
 [d-136]: framework_decisions.md#d-136--unify-diagnostics-and-liveness-heartbeat-into-one-per-writer-diagnostic-cell
 [d-137]: framework_decisions.md#d-137--bound-snapshot-log-retention-by-count-with-amortized-doubling-stride
