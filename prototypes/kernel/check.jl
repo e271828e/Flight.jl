@@ -276,6 +276,42 @@ output_connections(::GenericHold) = ("inner/plant/y" => "y",)
     @test occursin("generically", err.msg) && occursin("inner", err.msg)
 end
 
+# The rule's other half (§13.3): resolving *to* a generic child is face-level
+# access. `mid` is concretely declared and `inner` generically, so a route from
+# the outer type may end at `inner`'s faces and may not go past them.
+
+struct MidHold{L <: AbstractComponent} <: AbstractComponent
+    inner::L
+end
+child_connections(::MidHold) = ()
+input_connections(::MidHold) = ("ref" => "inner/ref",)
+output_connections(::MidHold) = ("inner/y" => "y",)
+
+struct FaceReach <: AbstractComponent            # ends at the generic child's face
+    mid::MidHold{SampledLoop}
+end
+child_connections(::FaceReach) = ()
+input_connections(::FaceReach) = ("ref" => "mid/inner/ref",)
+output_connections(::FaceReach) = ("mid/inner/y" => "y",)
+
+struct PastReach <: AbstractComponent            # one segment further: past it
+    mid::MidHold{SampledLoop}
+end
+child_connections(::PastReach) = ()
+input_connections(::PastReach) = ("ref" => "mid/inner/sum/a",)
+output_connections(::PastReach) = ("mid/inner/plant/y" => "y",)
+
+@testset "a route may end at a generic child's face, never go past it (§6.1, §13.3)" begin
+    sim = build(FaceReach(MidHold(SampledLoop())); Δt = 0.02)
+    set_slot!(sim, "ref", 1.0)
+    init!(sim)
+    @test port(sim, "", :y) === port(sim, "mid/inner/plant", :y)
+
+    err = failure(() -> build(PastReach(MidHold(SampledLoop())); Δt = 0.02))
+    @test err isa BuildError
+    @test occursin("generically", err.msg) && occursin("mid/inner", err.msg)
+end
+
 # --- the three connection declarations (§8.6) ---------------------------------
 
 struct BackwardsWire <: AbstractComponent        # a consumer endpoint on a port

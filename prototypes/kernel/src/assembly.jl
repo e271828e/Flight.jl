@@ -108,9 +108,10 @@ it names, that component's absolute path, and the final segment.
 
 §6.1's reach rule lives here: a path may traverse any chain of concretely-declared
 component fields and **stops at the first generically-held child**, whose faces are
-the only things addressable beyond it. Immediate children are never deep, so a
-single hop is always legal — which is what lets a container's elements be
-addressed by their parent's own declarations while an ancestor sees only faces.
+the only things addressable beyond it. Resolving *to* a generic child is
+face-level access and legal (§13.3): the terminal hop is exempt, so a route
+through concretely-declared structure may end at a generic child's face, and a
+container's elements are addressable by their parent's own declarations.
 """
 function resolve_terminal(entry::String, base::String, asm, path::AbstractString)
     segs = String.(split(path, '/'))
@@ -135,14 +136,15 @@ function resolve_terminal(entry::String, base::String, asm, path::AbstractString
         push!(crossed, (_join(curpath, seg), typeof(cur), Symbol(segs[i])))
         cur, curpath, i = kid, _join(curpath, seg), i + consumed
     end
-    if length(crossed) > 1
-        for (childpath, C, field) in crossed
-            generically_held(C, field) &&
-                throw(BuildError("$entry: `$path` reaches past `$childpath`, which is held " *
-                                 "generically — a path traverses concretely-declared fields only " *
-                                 "and stops at the first generically-held child, whose faces are " *
-                                 "the only things addressable beyond it (§6.1)"))
-        end
+    # Resolving *to* a generic child is face-level access and legal (§13.3);
+    # the traversals the rule polices are the hops before the terminal
+    # component, so the last crossed entry is exempt.
+    for (childpath, C, field) in crossed[1:end-1]
+        generically_held(C, field) &&
+            throw(BuildError("$entry: `$path` reaches past `$childpath`, which is held " *
+                             "generically — a path traverses concretely-declared fields only " *
+                             "and stops at the first generically-held child, whose faces are " *
+                             "the only things addressable beyond it (§6.1)"))
     end
     cur, curpath, Symbol(segs[end])
 end

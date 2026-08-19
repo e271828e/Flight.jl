@@ -71,10 +71,11 @@ programming convenience:
   about the declaring type's knowledge, not the instance's: the same
   `"inner/sum/a"` against the same `SampledLoop` value resolves when the field
   is declared `::SampledLoop` and is a build error when it is declared `::L`,
-  because deep-routing into a generically held child hard-codes one
-  implementation. Immediate children are never deep, which is what lets a
-  container's elements be addressed by their own parent while an ancestor sees
-  only faces.
+  because deep-routing *past* a generically held child hard-codes one
+  implementation. Resolving *to* one is face-level access and legal (§13.3): a
+  route through concretely-declared structure may end at a generic child's
+  face, and a single hop always may — which is what lets a container's
+  elements be addressed by their parent's own declarations.
 - **Being fed is a whole-tree obligation, not a per-declaration one.** An unfed
   child input inside one assembly is merely awaiting a claim from above — a
   sibling wire, an ancestor's deep route, or an `input_connections` entry
