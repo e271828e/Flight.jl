@@ -746,9 +746,10 @@ h_x(::PinnedLeaf, (; t)) = (a = t, frozen = 2.0)
     @test port(sim, "children/c", :frozen) == 2.0  # a stored constant, not a computed product
 end
 
-# A mixed-leaf cell: legal in the design (a pinned leaf inside a declared
-# struct), but its layout needs multi-cursor addressing this increment does not
-# build — a named refusal, not a mislayout.
+# Mixed-leaf cells (§7.2's per-leaf table): the ordinary route, an `Int` leaf
+# beside `T` leaves, and the D-166 route, a pinned `Float64` inside a declared
+# struct. The cell spans one buffer per leaf eltype; its address carries one
+# cursor per eltype as an `NTuple` field (D-162's C2M point).
 struct TaggedValue{T}
     v::T
     n::Int
@@ -757,10 +758,36 @@ struct MixedCell <: AbstractComponent end
 output_types(::MixedCell, ::Type{T}) where {T <: Real} = (out = TaggedValue{T},)
 h_x(::MixedCell, (; t)) = (out = TaggedValue(t, 1),)
 
-@testset "a mixed-leaf cell is refused by name" begin
-    err = failure(() -> build(single(MixedCell())))
-    @test err isa BuildError
-    @test occursin("mixed-leaf", err.msg) && occursin("out", err.msg)
+struct PinnedPair{T}
+    a::T
+    ref::Float64
+end
+struct PinnedInside <: AbstractComponent end
+output_types(::PinnedInside, ::Type{T}) where {T <: Real} = (out = PinnedPair{T},)
+h_x(::PinnedInside, (; t)) = (out = PinnedPair(t, 2.0),)
+
+@testset "a mixed-leaf cell lays out across its eltypes' buffers (§7.2, D-162)" begin
+    # The Int leaf beside T: mixed at every activation. The tag must come back
+    # as a stored `Int`, not a converted double in the `T` buffer.
+    sim = Simulation(single(MixedCell()); h = 1//100)
+    @test Set(keys(sim.store.stores)) == Set([Symbol(Float64), Symbol(Int)])
+    init!(sim)
+    out = port(sim, "children/c", :out)
+    @test out isa TaggedValue{Float64} && out.n === 1
+    step!(sim, 1e-2)
+    @test @ballocated(step!($sim, 1e-2)) == 0
+
+    # The pinned leaf inside a declared struct (D-166): homogeneous at nominal
+    # (K = 1), mixed off it — same declaration, and at `Dual` the `T` half
+    # walks while `ref` stays a pinned `Float64` in its own buffer.
+    sim = Simulation(single(PinnedInside()); h = 1//100)
+    @test keys(sim.store.stores) === (Symbol(Float64),)
+    sim = Simulation(single(PinnedInside()), D8; h = 1//100)
+    @test Set(keys(sim.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
+    init!(sim)
+    out = port(sim, "children/c", :out)
+    @test out isa PinnedPair{D8}
+    @test out.a isa D8 && out.ref === 2.0
 end
 
 # --- multi-rate: the two registers (§8.7, §10.5, D-185) -------------------------

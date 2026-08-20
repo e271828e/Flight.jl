@@ -1,19 +1,20 @@
 # The signal table: per-eltype homogeneous cell stores with build-time offsets
-# (D-162, §9.7). Cells are flattened by the §7.1 leaf walk into one
-# contiguous buffer per element type; an address carries the port type as its
-# parameter and the offset as an ordinary field, so instances of one component
-# type share one compiled body.
+# (D-162, §9.7). Cells are flattened by the §7.1 leaf walk into one contiguous
+# buffer per element type; a mixed-leaf cell (§7.2's per-leaf table, D-166
+# pinning) simply spans several of them. An address carries the port type as
+# its parameter and one cursor per distinct leaf eltype as an `NTuple` *field*,
+# so instances of one component type share one compiled body; `K` is a pure
+# function of `P` (bench-confirmed 2026-08-20: the C2M point in
+# `../cellstore_bench` keeps D-162's flat curve), and the homogeneous cell is
+# the `K = 1` case of the same representation.
 
-struct CellAddr{P}
-    off::Int
+struct CellAddr{P,K}
+    offs::NTuple{K,Int}
 end
 
 struct CellStore{T}
     buf::Vector{T}
 end
-
-@inline gather(s::CellStore, a::CellAddr{P}) where {P} = reconstruct(P, s.buf, a.off)
-@inline scatter!(s::CellStore, a::CellAddr{P}, v) where {P} = flatten!(s.buf, a.off, v)
 
 """
 The store bundle: one homogeneous `CellStore` per element type present in the
@@ -21,26 +22,38 @@ model's cells, keyed by the eltype's name — the *plural* in §9.7's "per-eltyp
 stores". One concrete bundle type per model, so `Chunk`'s store parameter stays
 a single type: chunk-type count, not model size, is what bounds the compile
 curve D-162 measured. Selection is static — the address's port type names its
-leaf eltype at compile time, so a gather touches exactly one buffer with no
-runtime lookup — and an address's offset is relative to its own eltype's buffer.
+leaf eltypes at compile time, so a gather binds exactly the buffers `P`'s
+leaves live in, with no runtime lookup — and each of an address's offsets is
+relative to its own eltype's buffer, `leaf_eltypes` fixing the order.
 """
 struct StoreBundle{NT<:NamedTuple}
     stores::NT
 end
 
-@generated function gather(b::StoreBundle, a::CellAddr{P}) where {P}
-    key = QuoteNode(Symbol(leaf_eltype(P)))
+@generated function gather(b::StoreBundle, a::CellAddr{P,K}) where {P,K}
+    Ls = leaf_eltypes(P)
+    binds = [:($(Symbol(:buf, k)) = getfield(b.stores, $(QuoteNode(Symbol(L)))).buf)
+             for (k, L) in enumerate(Ls)]
+    expr = _mreconstruct_expr(P, Ls, zeros(Int, K))
     quote
         $(Expr(:meta, :inline))
-        gather(getfield(b.stores, $key), a)
+        offs = a.offs
+        $(binds...)
+        $expr
     end
 end
 
-@generated function scatter!(b::StoreBundle, a::CellAddr{P}, v) where {P}
-    key = QuoteNode(Symbol(leaf_eltype(P)))
+@generated function scatter!(b::StoreBundle, a::CellAddr{P,K}, v) where {P,K}
+    Ls = leaf_eltypes(P)
+    binds = [:($(Symbol(:buf, k)) = getfield(b.stores, $(QuoteNode(Symbol(L)))).buf)
+             for (k, L) in enumerate(Ls)]
+    block = _mflatten_expr(P, :v, Ls, zeros(Int, K))
     quote
         $(Expr(:meta, :inline))
-        scatter!(getfield(b.stores, $key), a, v)
+        offs = a.offs
+        $(binds...)
+        $block
+        nothing
     end
 end
 

@@ -231,11 +231,15 @@ function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
     addr = Dict{Tuple{String,Symbol},Any}()
     slots = Tuple{Symbol,Any}[]
     offs = Dict{DataType,Int}()
-    function place!(path, kind, name, P)
-        L = _cell_leaf_eltype(path, kind, name, P)
-        off = get(offs, L, 0)
-        addr[(path, name)] = CellAddr{P}(off)
-        offs[L] = off + nleaves(P)
+    function place!(path, kind, name, ::Type{P}) where {P}
+        lts = leaf_types(P)
+        isempty(lts) &&
+            throw(BuildError("$(_at(path)): $kind `$name` declares $P, which has no leaves"))
+        Ls = leaf_eltypes(P)
+        addr[(path, name)] = CellAddr{P,length(Ls)}(Tuple(get(offs, L, 0) for L in Ls))
+        for L in Ls
+            offs[L] = get(offs, L, 0) + count(==(L), lts)
+        end
     end
     for (path, d) in zip(flat.paths, decls)
         for (port, P) in pairs(d.outs)
@@ -262,22 +266,6 @@ function _slot_type(flat::Flat, decls::Vector{Decls}, face::Symbol)
         producer === ("", face) && return decls[ci].ins[f]
     end
     throw(BuildError("root input face `$face` routes to no input"))
-end
-
-# A cell lives whole in the buffer of its single leaf eltype, so an address is
-# one offset. A mixed-leaf cell — legal in the design via pinning inside a
-# declared struct (D-166) — needs multi-cursor addressing, which this increment
-# deliberately does not build. Rejecting by name keeps the restriction a scope
-# cut rather than a silent mislayout.
-function _cell_leaf_eltype(path, kind, name, ::Type{P}) where {P}
-    Ls = leaf_types(P)
-    isempty(Ls) &&
-        throw(BuildError("$(_at(path)): $kind `$name` declares $P, which has no leaves"))
-    all(L -> L === Ls[1], Ls) ||
-        throw(BuildError("$(_at(path)): $kind `$name` declares $P, a mixed-leaf cell — this " *
-                         "increment lays out leaf-homogeneous cells only (multi-cursor " *
-                         "addressing not built)"))
-    Ls[1]
 end
 
 """Address of the cell feeding `face`: its resolved producer's port, or a root slot."""

@@ -29,15 +29,14 @@ leaf_types(::Type{P}) where {P<:StaticArray} = repeat(leaf_types(eltype(P)), len
 leaf_types(::Type{P}) where {P} = reduce(vcat, (leaf_types(FT) for FT in fieldtypes(P)); init = Type[])
 
 """
-    leaf_eltype(P)
+    leaf_eltypes(P)
 
-The element type shared by every leaf of `P`. The compile-time selector the
-store bundle dispatches on; meaningful only for leaf-homogeneous `P`, which
-layout has already checked via `leaf_types`.
+The distinct leaf eltypes of `P`, in first-appearance order over the flat
+walk — the one canonical order, shared by layout (which allocates one cursor
+per entry) and by the store bundle's generated gather/scatter (which bind one
+buffer per entry). `K = length(leaf_eltypes(P))` is a pure function of `P`.
 """
-leaf_eltype(::Type{P}) where {P<:Real} = P
-leaf_eltype(::Type{P}) where {P<:StaticArray} = leaf_eltype(eltype(P))
-leaf_eltype(::Type{P}) where {P} = leaf_eltype(fieldtype(P, 1))
+leaf_eltypes(::Type{P}) where {P} = unique(leaf_types(P))
 
 # --- expression builders (compile time) --------------------------------------
 
@@ -89,6 +88,47 @@ function _flatten_expr(::Type{P}, v, base::Int) where {P}
         end
         return Expr(:block, stmts...), b
     end
+end
+
+# --- mixed-cell expression builders (compile time) ----------------------------
+# The per-eltype generalization of the two builders above: a cell whose leaves
+# span several eltypes lives split across the per-eltype buffers, so leaf i is
+# drawn from the buffer bound as `buf<k>` for its own eltype, at
+# `offs[k] + <static index>` — one running base per eltype, all indices static
+# relative to the offsets. The homogeneous cell is the `K = 1` case, where
+# these emit exactly the single-base expressions above.
+
+function _mreconstruct_expr(::Type{P}, Ls::Vector, bases::Vector{Int}) where {P}
+    if P <: Real
+        k = findfirst(==(P), Ls)
+        bases[k] += 1
+        return :(@inbounds $(Symbol(:buf, k))[offs[$k] + $(bases[k])])
+    elseif P <: StaticArray
+        args = [_mreconstruct_expr(eltype(P), Ls, bases) for _ in 1:length(P)]
+        return Expr(:call, P, args...)
+    else
+        args = [_mreconstruct_expr(FT, Ls, bases) for FT in fieldtypes(P)]
+        P <: NamedTuple && return Expr(:call, P, Expr(:tuple, args...))
+        return Expr(:call, P, args...)
+    end
+end
+
+function _mflatten_expr(::Type{P}, v, Ls::Vector, bases::Vector{Int}) where {P}
+    stmts = Expr[]
+    if P <: Real
+        k = findfirst(==(P), Ls)
+        bases[k] += 1
+        push!(stmts, :(@inbounds $(Symbol(:buf, k))[offs[$k] + $(bases[k])] = $v))
+    elseif P <: StaticArray
+        for i in 1:length(P)
+            push!(stmts, _mflatten_expr(eltype(P), :(@inbounds $v[$i]), Ls, bases))
+        end
+    else
+        for (i, FT) in enumerate(fieldtypes(P))
+            push!(stmts, _mflatten_expr(FT, :(getfield($v, $i)), Ls, bases))
+        end
+    end
+    Expr(:block, stmts...)
 end
 
 # --- evaluation-path entry points --------------------------------------------

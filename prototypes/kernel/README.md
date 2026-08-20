@@ -121,10 +121,15 @@ programming convenience:
 The bench that settled the representation (D-162) measured exactly one buffer;
 `StoreBundle` now holds one `CellStore` per leaf element type, keyed by the
 eltype's name. Selection is static — an address carries its port type, whose
-leaf eltype names the buffer at compile time — so a deliberately pinned
-`Float64` leaf (D-166) keeps a buffer of its own beside the `Dual` one instead
-of being flattened into it as a zero-partial, which is what increment 2 had to
-refuse by name. The bundle is one concrete type per model, keeping `Chunk`'s
+leaf eltypes name the buffers at compile time, with one cursor per eltype in
+address *fields* — so a deliberately pinned `Float64` leaf (D-166) keeps a
+buffer of its own beside the `Dual` one instead of being flattened into it as
+a zero-partial, which is what increment 2 had to refuse by name, and a
+mixed-leaf cell (an `Int` tag beside `T` leaves, or a pin inside a declared
+struct) simply spans several buffers, its leaves each living with their own
+kind. The `K = 1` homogeneous cell is a case, not a special case; the C2M
+point in `../cellstore_bench` (2026-08-20) re-confirmed D-162's flat compile
+curve for exactly this address shape. The bundle is one concrete type per model, keeping `Chunk`'s
 store parameter single: chunk-type count, not model size, is what bounds the
 compile curve D-162 blessed.
 
@@ -168,7 +173,6 @@ enforcement.
 | --- | --- | --- |
 | an activation is a whole rebuild: `build(spec, T)` re-runs classification, scheduling and probing at `T` | the nominal `Float64` activation runs at build; a non-nominal activation re-runs Stratum C only (§9.1, §9.4) | unscheduled |
 | a frozen discrete component's inputs are synthesized (`probe_value`) | the nominal activation's cell contents are carried across to the non-nominal one (§9.4) | unscheduled |
-| mixed-leaf cells are refused by name | legal — via D-166 pinning, and ordinarily via `Int`/`Bool`/enum leaves beside `T` leaves (§7.2's per-leaf table); their addresses need a cursor per eltype where this layout has one offset per cell — a scope cut, not doctrine | unscheduled; retirement criteria: the per-eltype cursors land as address *fields*, never type parameters — instance sharing is what keeps chunk-type count the compile bound (D-162) — and a mixed-cell point added to `../cellstore_bench` re-confirms the curve |
 
 ## Authoring caveat found while building this
 
