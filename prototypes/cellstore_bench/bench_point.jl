@@ -12,8 +12,9 @@ include("src/model.jl")
 include("src/protocol.jl")
 include("src/c1_hetero.jl")
 include("src/c2_flat.jl")
+include("src/c2m_mixed.jl")
 
-const CANDIDATES = Dict("C1" => C1, "C2" => C2)
+const CANDIDATES = Dict("C1" => C1, "C2" => C2, "C2M" => C2M)
 
 # The two activations of interest (§7.2): the nominal one, and the 8-partial
 # `Dual` that linearization and trim run through — the instruction multiplier
@@ -28,7 +29,8 @@ const chunk = parse(Int, length(ARGS) >= 3 ? ARGS[3] : "16")
 const scalar = length(ARGS) >= 4 ? ARGS[4] : "Float64"
 const T = SCALARS[scalar]
 
-spec = chain_spec(N)
+# C2M runs on the mixed chain — the point exists to price the mixed cell.
+spec = name == "C2M" ? mixed_chain_spec(N) : chain_spec(N)
 
 # --- gate 2: cold compile of the sweep, then of the snapshotter --------------
 # Measured separately: the snapshot's flat NamedTuple is a large type in its own

@@ -81,6 +81,40 @@ Apple Silicon, Julia 1.12.6, chunk 16, one cold process per point. Raw data in
 
 Recorded as D-162; §9.7 amended.
 
+## The mixed-cell point: C2M (2026-08-20)
+
+Added when the kernel retired its mixed-leaf-cells stand-in; the rows above
+stay frozen. `C2M` (`src/c2m_mixed.jl`) is C2's representation generalized to
+mixed-leaf cells: per-eltype buffers as before, but a cell may span several,
+its address carrying one cursor per distinct leaf eltype of the port type as
+an `NTuple` **field** — `K` a pure function of the port type, the homogeneous
+cell the `K = 1` case, and the `NTuple` address used for every cell. It runs
+on `mixed_chain_spec(N)`: `chain_spec` with the chained port a `TaggedPose3`
+carrying an `Int32` leaf beside the `T` leaves, so the mixing is real at both
+activations. Same machine, Julia 1.12.6, chunk 16, cold points.
+
+| cand | scalar | N | `run!` bodies | compile s | sweep ns | ns/entry | alloc | snap ns |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| C2M | Float64 | 25 | 4 | 1.34 | 193 | 6.9 | 0 | 64 |
+| C2M | Float64 | 100 | 4 | 1.50 | 758 | 7.4 | 0 | 287 |
+| C2M | Float64 | 400 | 4 | 1.50 | 3297 | 8.2 | 0 | 1317 |
+| C2M | Dual8 | 50 | 4 | 8.86 | 2282 | 43.1 | 0 | 1067 |
+| C2M | Dual8 | 200 | 4 | 10.04 | 9500 | 46.8 | 0 | 6990 |
+| C2M | Dual8 | 400 | 4 | 8.93 | 19500 | 48.4 | 0 | 14125 |
+
+- **The curve is C2's**: flat nominal (1.34 → 1.50 s over N = 25 → 400 against
+  C2's 0.89 → 1.14), the same ~9 s `Dual8` saturation, 4 bodies at every N —
+  the `NTuple` offsets survive as runtime data behind `invoke_sweep`'s barrier
+  exactly as the scalar offset did, and the two-buffer store is still one
+  concrete type per model.
+- **Gate 1 holds on the mixed sweep**: zero allocation, sweep and snapshot, at
+  every point; `check.jl` additionally pins the `Int32` tag chain
+  integer-exact, so the tag leaves demonstrably live in their own buffer
+  rather than as converted doubles in the `T` one.
+- **The cost of generality is a small nominal constant** (~1 ns/entry beside
+  C2, within noise on `Dual8`), not a slope: safe to adopt globally rather
+  than special-casing `K = 1`.
+
 ## The model
 
 `chain_spec(N)`: `Source` → `Filter` and `Junction` → a chain of N `Workhorse`
@@ -105,3 +139,4 @@ cites either way.
 | `src/leaves.jl` | flatten/reconstruct over the closed leaf vocabulary — shared (C1 needs it for state, C2 also for cells) |
 | `src/model.jl` | synthetic components, stage functions, spec generator, state layout |
 | `src/protocol.jl` | candidate interface, entry, chunked walk, `build_sweep` |
+| `src/c2m_mixed.jl` | the 2026-08-20 mixed-cell point: `C2M`, `TaggedPose3`, `mixed_chain_spec` |

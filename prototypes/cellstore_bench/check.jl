@@ -10,6 +10,7 @@ include("src/model.jl")
 include("src/protocol.jl")
 include("src/c1_hetero.jl")
 include("src/c2_flat.jl")
+include("src/c2m_mixed.jl")
 
 const T = Float64
 
@@ -97,5 +98,55 @@ end
     for N in (10, 40)
         @test entry_type_count(C1, chain_spec(N), T) == N + 3
         @test entry_type_count(C2, chain_spec(N), T) == 4
+    end
+end
+
+# --- C2M: the mixed-cell point (2026-08-20) -----------------------------------
+# The `K = 1` case must be exactly C2 — same model, same numbers — and the mixed
+# chain must compute, hold its `Int32` leaves, share bodies, and pass gate 1.
+
+function build_mixed(N::Int; chunk_size = 16)
+    spec = mixed_chain_spec(N)
+    sweep, store, layout, _ = build_sweep(C2M, spec, T; chunk_size)
+    snap = build_snapshotter(C2M, spec, layout, store, T)
+    (; spec, sweep, snap)
+end
+
+@testset "C2M computes the homogeneous model (K = 1 collapses to C2)" begin
+    for N in (1, 3, 17)
+        spec = chain_spec(N)
+        sweep, store, layout, _ = build_sweep(C2M, spec, T)
+        snap = build_snapshotter(C2M, spec, layout, store, T)
+        invoke_sweep(sweep)
+        b2 = build(C2, N)
+        invoke_sweep(b2.sweep)
+        @test invoke_snapshot(snap) ≊ invoke_snapshot(b2.snap)
+    end
+end
+
+@testset "C2M computes the mixed model" begin
+    for N in (1, 3, 17), cs in (1, 4, 64)
+        spec = mixed_chain_spec(N)
+        sweep, store, layout, _ = build_sweep(C2M, spec, T; chunk_size = cs)
+        snap = build_snapshotter(C2M, spec, layout, store, T)
+        invoke_sweep(sweep)
+        s = invoke_snapshot(snap)
+        @test s ≊ reference_snapshot(spec, T)
+        # The tag chain is integer-exact and lives in the Int32 buffer: leafwise
+        # ≈ would hide a tag landing in the T buffer as a converted double.
+        @test s[Symbol(:wrk, N, :_pose)].tag === Int32(N + 1)
+    end
+end
+
+@testset "gate 1 and the body count, on the mixed chain" begin
+    for N in (1, 17)
+        b = build_mixed(N)
+        invoke_sweep(b.sweep)
+        invoke_snapshot(b.snap)
+        @test @ballocated(invoke_sweep($(b.sweep))) == 0
+        @test @ballocated(invoke_snapshot($(b.snap))) == 0
+    end
+    for N in (10, 40)
+        @test entry_type_count(C2M, mixed_chain_spec(N), T) == 4
     end
 end
