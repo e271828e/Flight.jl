@@ -82,20 +82,25 @@ end
 # --- 2. probing ---------------------------------------------------------------
 
 """
-Probe `h_x` for every component: no wiring is needed, so this runs first and
-tells the rest of the build which ports are stage-1 — the ones that carry no
-dependence on inputs and therefore break loops (§5.3).
+Probe `h_x` for every component in this activation's executable set: no wiring
+is needed, so this runs first and tells the rest of the build which ports are
+stage-1 — the ones that carry no dependence on inputs and therefore break loops
+(§5.3). A frozen component's stages are outside the set (§9.4), so its stage-1
+product is the nominal activation's, carried across from `carry`.
 
 The `Δt` the discrete bundles carry is a fabricated, probe-scoped placeholder
 (§9.3): `Δt` in seconds does not exist until `Simulation` binds `Δt_base`, and
 the probe checks types, not physics.
 """
 function probe_stage1(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
-                      wss::Vector, mstores::Vector, ::Type{T}) where {T}
-    map(zip(flat.paths, flat.comps, decls, tiers, wss, mstores)) do (path, c, d, t, ws, m)
+                      wss::Vector, mstores::Vector, carry, ::Type{T}) where {T}
+    map(eachindex(flat.comps)) do ci
+        path, c, d = flat.paths[ci], flat.comps[ci], decls[ci]
+        _frozen(tiers, ci, T) && return carry.stage1[ci]
         has_stage(h_x, c) || return NamedTuple()
-        bn = bundle_names(h_x, c, t, ())
-        y = h_x(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T; ws, m, Δt = 1.0))
+        bn = bundle_names(h_x, c, tiers[ci], ())
+        y = h_x(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T;
+                                  ws = wss[ci], m = mstores[ci], Δt = 1.0))
         y isa NamedTuple ||
             throw(BuildError("`$path`: h_x must return a NamedTuple of port values, got $(typeof(y))"))
         _check_ports(path, "h_x", y, d.outs, T)
@@ -272,36 +277,84 @@ end
 input_addr(layout::Layout, conns::Vector{Pair{Symbol,Tuple{String,Symbol}}}, face::Symbol) =
     layout.addr[last(conns[findfirst(p -> first(p) === face, conns)])]
 
-# --- 5. the Build artifact (§9.2) -----------------------------------------------
+# --- 5. the Build artifact and its activations (§9.2, §9.4) ---------------------
 
 """
-The deployment-free product of the build pipeline (§9.2): everything the strata
-settle before `Δt_base` exists. The schedule it carries is anchor-relative —
-`flat.triples` against `flat.anchors` — because final divisors for anchored
-entries do not exist until `Δt_base` binds; one `Build` backs any number of
-`Simulation`s, each materializing its own stores and buffers, so nothing
-writable lives here. The probe products do: they are what a cell holds until
-first written (§10.5).
+One activation: Stratum C's products at a concrete scalar `T` (§9.1) —
+declarations evaluated at `T`, the probe chain run over exactly the function
+set this activation can execute (§9.4), cells laid out. Immutable once
+constructed; the probe products are what a cell holds until first written
+(§10.5).
 """
-struct Build{T}
-    flat::Flat
-    tiers::Vector{Tier}
+struct Activation{T}
     decls::Vector{Decls}
     stage1::Vector{NamedTuple}     # stage-1 probe products, per component
     products::Vector{NamedTuple}   # complete probe products, per component
-    order::Vector{Int}
     layout::Layout
 end
 
 """
-    build(root, T = Float64) → Build
-
-The strata (§9.1), deployment-free: flatten, classify, probe, schedule, lay
-out. Nothing here needs `Δt_base`, `h` or `n` — those are `Simulation`'s.
+The deployment-free product of the build pipeline (§9.2): everything the strata
+settle before `Δt_base` exists. Structure and schedule are `T`-independent by
+construction (§9.1); the nominal `Float64` activation runs at build, and other
+activations re-run Stratum C only, at first request, cached on the `Build`
+(§9.4). The schedule it carries is anchor-relative — `flat.triples` against
+`flat.anchors` — because final divisors for anchored entries do not exist until
+`Δt_base` binds; one `Build` backs any number of `Simulation`s, each
+materializing its own stores and buffers, so nothing writable lives here.
 """
-function build(root::AbstractComponent, ::Type{T} = Float64) where {T}
+struct Build
+    flat::Flat
+    tiers::Vector{Tier}
+    order::Vector{Int}
+    nominal::Activation{Float64}
+    cache::Dict{DataType,Any}      # non-nominal activations, lazily materialized
+end
+
+"""
+    build(root; activations = ()) → Build
+
+Strata A and B plus the nominal activation (§9.1): flatten, classify, probe at
+`Float64`, schedule, lay out. Nothing here needs `Δt_base`, `h` or `n` — those
+are `Simulation`'s. `activations` is §9.4's opt-in exhaustive mode: each listed
+scalar's activation is materialized eagerly instead of at first request.
+"""
+function build(root::AbstractComponent; activations::Tuple = ())
     flat = flatten(root)
     tiers = [classify_tier(p, c) for (p, c) in zip(flat.paths, flat.comps)]
+    nominal, order = _stratum_c(flat, tiers, nothing, nothing, Float64)
+    b = Build(flat, tiers, order, nominal, Dict{DataType,Any}())
+    for A in activations
+        activation(b, A)
+    end
+    b
+end
+
+"""
+    activation(b, T) → Activation{T}
+
+The activation at `T`: the nominal one directly, any other from the cache or by
+a Stratum-C re-run at first request (§9.4). An activation is a pure function of
+the build and the concrete scalar type, so caching is invisible; the spec's
+torn-state guarantee is normative for concurrent first requests, which this
+single-threaded prototype meets by having none.
+"""
+function activation(b::Build, ::Type{T}) where {T}
+    T === Float64 && return b.nominal
+    get!(b.cache, T) do
+        first(_stratum_c(b.flat, b.tiers, b.order, b.nominal, T))
+    end::Activation{T}
+end
+
+# Stratum C at `T`, parametric in the scalar (§9.1): declarations evaluated,
+# probe chain run, cells laid out. At the nominal activation `carry` is
+# `nothing`, every stage is probed (§9.3's probe-everything scope), and Stratum
+# B's schedule falls out between the two probe passes — the stage-1 run at
+# `Float64` serves classification and nominal products alike. A non-nominal
+# activation receives both: the schedule is `T`-independent, and the frozen
+# components' products are carried across from `carry` rather than probed,
+# their stages being outside this activation's executable set (§9.4).
+function _stratum_c(flat::Flat, tiers::Vector{Tier}, order, carry, ::Type{T}) where {T}
     decls = [declarations(c, t, T) for (c, t) in zip(flat.comps, tiers)]
 
     # Probe-scoped mode stores and workspaces (§9.3): the probes need `m` and
@@ -310,11 +363,11 @@ function build(root::AbstractComponent, ::Type{T} = Float64) where {T}
     mstores = Any[isempty(init_m(c)) ? nothing : Ref(init_m(c)) for c in flat.comps]
     wss = _workspaces(flat, tiers, T)
 
-    stage1 = probe_stage1(flat, decls, tiers, wss, mstores, T)
-    order = schedule_stage2(flat, stage1)
+    stage1 = probe_stage1(flat, decls, tiers, wss, mstores, carry, T)
+    order === nothing && (order = schedule_stage2(flat, stage1))
     layout = cell_layout(flat, decls, T)
-    products = probe_stage2(flat, decls, tiers, stage1, order, layout, wss, mstores, T)
-    Build{T}(flat, tiers, decls, collect(stage1), products, order, layout)
+    products = probe_stage2(flat, decls, tiers, stage1, order, layout, wss, mstores, carry, T)
+    Activation{T}(decls, collect(stage1), products, layout), order
 end
 
 # Declaration by allocation (§7.3, D-077): sizes from the instance, eltypes from
@@ -335,30 +388,34 @@ _frozen(tiers::Vector{Tier}, ci::Int, ::Type{T}) where {T} =
 Probe stage 2 in topological order — real upstream values available by
 construction — and the update laws last, checking every return against the
 declaration (§9.3); then the declaration-completeness check, for every
-component. The discrete bundles' `Δt` is the probe-scoped placeholder of
-`probe_stage1`. Returns the complete probe products.
+component. Frozen components are not probed: their complete products come from
+`carry`, the nominal activation (§9.4). The discrete bundles' `Δt` is the
+probe-scoped placeholder of `probe_stage1`. Returns the complete probe
+products.
 """
 function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
                       stage1, order::Vector{Int}, layout::Layout,
-                      wss::Vector, mstores::Vector, ::Type{T}) where {T}
+                      wss::Vector, mstores::Vector, carry, ::Type{T}) where {T}
     products = NamedTuple[s1 for s1 in stage1]
 
-    # A frozen component's inputs are *synthesized*, not read from the upstream
-    # product. Its stages never run at this activation, so it never gathers the
-    # `Dual` cell its pinned input declaration would otherwise have to refuse —
-    # the dependence through it is temporal, not instantaneous. Its own cells
-    # then hold pinned constants, which downstream continuous consumers embed as
-    # zero-partials. (The design carries the *nominal* activation's cell
-    # contents across instead of synthesizing them: §9.4's activation story,
-    # which this increment does not build.)
+    # A frozen component's stages never run at this activation, so its complete
+    # product is the *nominal* activation's, carried across (§9.4): its cells
+    # hold what a tick at `t₀⁻` computed from real nominal inputs — pinned
+    # `Float64` constants, which downstream continuous consumers embed as
+    # zero-partials. The dependence through it is temporal, not instantaneous
+    # (`frozen_discrete_walkthrough.md`), so nothing here needs to gather the
+    # `Dual` cell its pinned input declaration would otherwise have to refuse.
+    for ci in eachindex(flat.comps)
+        _frozen(tiers, ci, T) && (products[ci] = carry.products[ci])
+    end
+
     in_values(ci, d) = NamedTuple{tuple(keys(d.ins)...)}(tuple(
-        (_frozen(tiers, ci, T) ? probe_value(d.ins[face]) :
-         _probe_input(flat, layout, products, ci, face, d.ins[face], T)
+        (_probe_input(flat, layout, products, ci, face, d.ins[face], T)
          for face in keys(d.ins))...))
 
     for ci in order
         c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], stage1[ci]
-        has_stage(h_xu, c) || continue
+        (has_stage(h_xu, c) && !_frozen(tiers, ci, T)) || continue
         bn = bundle_names(h_xu, c, tiers[ci], tuple(keys(s1)...))
         u = in_values(ci, d)
         y2 = h_xu(c, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
@@ -382,10 +439,11 @@ function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
     end
 
     # The update laws, probed against the now-complete table: `f` for shape,
-    # `g` for the store's own type.
+    # `g` for the store's own type. A frozen component's `g` is outside the
+    # executable set like its output stages (§9.4).
     for (ci, c) in enumerate(flat.comps)
         path, d, t = flat.paths[ci], decls[ci], tiers[ci]
-        isempty(d.x) && continue
+        (isempty(d.x) || _frozen(tiers, ci, T)) && continue
         update = t === CONTINUOUS ? f : g
         bn = bundle_names(update, c, t, tuple(keys(stage1[ci])...))
         vals = _bundle_values(bn, d, in_values(ci, d), stage1[ci], T; y = products[ci],
@@ -499,9 +557,9 @@ end
 # `Simulation`s (§9.2). No user stage runs here: every check already ran at the
 # probe, and what compiles is the checked shape.
 
-function compile(b::Build{T}, D_c::Vector{Int}, Φ_c::Vector{Int}, Δt_c::Vector{Float64};
-                 chunk_size::Int = 16) where {T}
-    flat, tiers, decls, layout = b.flat, b.tiers, b.decls, b.layout
+function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{Int},
+                 Δt_c::Vector{Float64}; chunk_size::Int = 16) where {T}
+    flat, tiers, decls, layout = b.flat, b.tiers, act.decls, act.layout
 
     # Three homes for state, and no store mirrors another (§7.3): the flat
     # buffer for continuous `x`, one store per discrete `x`, one per mode set.
@@ -534,8 +592,8 @@ function compile(b::Build{T}, D_c::Vector{Int}, Φ_c::Vector{Int}, Δt_c::Vector
     # (§10.5): an offset component's pre-first-tick reads and a frozen
     # component's pinned cells are both this seed.
     for (ci, path) in enumerate(flat.paths)
-        isempty(b.products[ci]) ||
-            scatter_group!(store, addr_group(path, keys(b.products[ci])), b.products[ci])
+        isempty(act.products[ci]) ||
+            scatter_group!(store, addr_group(path, keys(act.products[ci])), act.products[ci])
     end
     # Root slots hold their synthesized values until a writer replaces them.
     for (face, v) in layout.slots
@@ -544,14 +602,14 @@ function compile(b::Build{T}, D_c::Vector{Int}, Φ_c::Vector{Int}, Δt_c::Vector
 
     frozen(ci) = _frozen(tiers, ci, T)
     gate(ci) = tiers[ci] === DISCRETE ? (D_c[ci], Φ_c[ci]) : nothing
-    y2keys(ci) = keys(b.products[ci])[length(keys(b.stage1[ci]))+1:end]
+    y2keys(ci) = keys(act.products[ci])[length(keys(act.stage1[ci]))+1:end]
 
     hx_entries, hxu_entries, rhs_entries, tick_entries = Any[], Any[], Any[], Any[]
     hx_gates, hxu_gates, rhs_gates, tick_gates = Any[], Any[], Any[], Any[]
 
     for (ci, c) in enumerate(flat.comps)
         (has_stage(h_x, c) && !frozen(ci)) || continue
-        d, s1 = decls[ci], b.stage1[ci]
+        d, s1 = decls[ci], act.stage1[ci]
         bn = bundle_names(h_x, c, tiers[ci], ())
         push!(hx_entries, StageEntry{typeof(d.x),bn}(
             h_x, c, NamedTuple(), NamedTuple(), addr_group(flat.paths[ci], keys(s1)),
@@ -560,7 +618,7 @@ function compile(b::Build{T}, D_c::Vector{Int}, Φ_c::Vector{Int}, Δt_c::Vector
     end
 
     for ci in b.order
-        c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], b.stage1[ci]
+        c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], act.stage1[ci]
         (has_stage(h_xu, c) && !frozen(ci)) || continue
         bn = bundle_names(h_xu, c, tiers[ci], tuple(keys(s1)...))
         push!(hxu_entries, StageEntry{typeof(d.x),bn}(
@@ -576,7 +634,7 @@ function compile(b::Build{T}, D_c::Vector{Int}, Φ_c::Vector{Int}, Δt_c::Vector
         path, d, t = flat.paths[ci], decls[ci], tiers[ci]
         (isempty(d.x) || frozen(ci)) && continue
         update = t === CONTINUOUS ? f : g
-        bn = bundle_names(update, c, t, tuple(keys(b.stage1[ci])...))
+        bn = bundle_names(update, c, t, tuple(keys(act.stage1[ci])...))
         y_g, in_g = addr_group(path, keys(d.outs)), in_group(ci, d)
         if t === CONTINUOUS
             push!(rhs_entries, RHSEntry{typeof(d.x),bn}(

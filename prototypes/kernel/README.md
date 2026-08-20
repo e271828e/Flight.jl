@@ -44,7 +44,7 @@ selection, never a sentinel index failing every gate (D-185).
 | class by declaration shape, children and containers, paths and the reach rule, endpoint and face resolution, the flatten pass with the obligation model and the sample-time fold to `(anchor, m, c)` triples | §8.5, §8.6, §6.1, §9.1 | `src/assembly.jl` |
 | per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
 | entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries | §9.7, §10.5 | `src/executor.jl` |
-| tier classification, probe, feedthrough graph, layout, embed-accept, the `Build` artifact, deployment binding (three cross-validated `Δt_base` sources, the GCD constraint pool, per-anchor division pairs) and per-deployment entry compilation | §8.2, §9.3, §5.3, §9.1, §9.2, D-166 | `src/build.jl` |
+| tier classification, probe, feedthrough graph, layout, embed-accept, the `Build` artifact, the activation seam (nominal at build, `activation(b, T)` as a cached Stratum-C re-run, frozen products carried across, the eager `activations` keyword), deployment binding (three cross-validated `Δt_base` sources, the GCD constraint pool, per-anchor division pairs) and per-deployment entry compilation | §8.2, §9.3, §5.3, §9.1, §9.2, §9.4, D-166 | `src/build.jl` |
 | `Simulation` with its deployment constructor and bound schedule, RK4, the boundary macro-sequence at ticks and off ticks, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §9.7, §11.3 | `src/sim.jl` |
 | the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.5 | `src/library.jl` |
 
@@ -116,6 +116,17 @@ programming convenience:
   Entry compilation seeds every cell from the probe products, so an offset
   component's pre-first-tick reads and a frozen component's pinned cells are
   the same story (§10.5, §9.3) rather than a lucky zero.
+- **The nominal activation runs at build; any other is a Stratum-C re-run.**
+  `activation(b, T)` materializes at first request and caches on the `Build`
+  (§9.4); structure and schedule are computed once and shared. A frozen
+  component sits outside the non-nominal executable set: its stages are never
+  probed there, and its complete products — cells included — are carried
+  across from the nominal activation, holding what a tick at `t₀⁻` computed
+  from real upstream values rather than anything synthesized. That is what
+  makes a discrete stage reading `t` lawful (it is `Float64` whenever the
+  stage actually runs), and why a pinned-leaf lurk detonates at the `Dual`
+  activation — or eagerly, via `build(root; activations = (Float64, D8))`,
+  the CI idiom — rather than at `build`.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -169,10 +180,11 @@ the prototype has. `prototypes/` sits outside the design tools' checked
 rosters, so no battery enforces this section: the diff review is the
 enforcement.
 
-| the stand-in | the spec's shape | retired by |
-| --- | --- | --- |
-| an activation is a whole rebuild: `build(spec, T)` re-runs classification, scheduling and probing at `T` | the nominal `Float64` activation runs at build; a non-nominal activation re-runs Stratum C only (§9.1, §9.4) | unscheduled |
-| a frozen discrete component's inputs are synthesized (`probe_value`) | the nominal activation's cell contents are carried across to the non-nominal one (§9.4) | unscheduled |
+The table is currently empty: every stand-in introduced through increment 5
+was retired on 2026-08-20 (the `Tuple` container, mixed-leaf cells, the
+whole-rebuild activation and the synthesized frozen inputs). The rule stands
+for whatever the next increment brings — a new stand-in re-creates the table
+with its row, in the introducing commit.
 
 ## Authoring caveat found while building this
 

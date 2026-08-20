@@ -20,29 +20,32 @@ struct Simulation{T,S,B,CL}
 end
 
 """
-    Simulation(build::Build; h, n = 1, Δt_base = nothing, chunk_size = 16)
+    Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
 Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
 cross-validated sources — explicit (a `Rational` or `Period`/`Hz` value), the
 `n·h` product (the default path), or GCD derivation over the anchors' constraint
 pool, requested as `Δt_base = :derive` and permitted only with every discrete
-component anchored. The convenience form is *defined as* `Simulation(build(root,
-T); …)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ`
-are entry data, and one `Build` backs many `Simulation`s.
+component anchored. The scalar picks the activation the entries compile over —
+the nominal one directly, any other via `activation(b, T)`'s cached Stratum-C
+re-run (§9.4). The convenience form is *defined as* `Simulation(build(root), T;
+…)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ` are
+entry data, and one `Build` backs many `Simulation`s.
 """
-function Simulation(b::Build{T}; h = nothing, n = nothing, Δt_base = nothing,
-                    chunk_size::Int = 16) where {T}
+function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
+                    Δt_base = nothing, chunk_size::Int = 16) where {T}
+    act = activation(b, T)
     bound = bind_schedule(b, h, n, Δt_base)
-    c = compile(b, bound.D, bound.Φ, bound.Δt; chunk_size)
+    c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     work = ntuple(_ -> zeros(T, length(c.xbuf)), 5)
     Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock)}(
-        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, b.layout, b.flat,
+        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, act.layout, b.flat,
         bound.h, bound.n, bound.Δt_base, bound.sched, c.xstores, c.mstores, work)
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
-    Simulation(build(root, T); kw...)
+    Simulation(build(root), T; kw...)
 
 """
     phase_bodies(sim)

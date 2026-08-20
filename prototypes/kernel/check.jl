@@ -720,10 +720,58 @@ h_x(::PinnedGetsDual, (; t)) = (frozen = t,)
     @test ForwardDiff.value(port(sim, "children/c", :vec)[2]) == 1.0
 
     # The converse is not accepted: a `Dual` at a pinned leaf is an error, with
-    # the hint that names the one honest cause.
-    err = failure(() -> build(single(PinnedGetsDual()), D8))
+    # the hint that names the one honest cause. It fails at the `Dual`
+    # activation's own Stratum-C re-run, not at `build` (§9.4's lazy lurk).
+    b = build(single(PinnedGetsDual()))
+    err = failure(() -> activation(b, D8))
     @test err isa BuildError
     @test occursin("participates in differentiation", err.msg)
+end
+
+# The activation seam (§9.1, §9.4): the nominal activation runs at build, any
+# other is a cached Stratum-C re-run, and a frozen component's products are
+# carried across from the nominal activation rather than probed or synthesized.
+struct NomSource <: AbstractComponent end
+output_types(::NomSource, ::Type{T}) where {T <: Real} = (val = T,)
+h_x(::NomSource, (; t)) = (val = 3.0 + t,)
+
+struct FrozenReader <: AbstractComponent end
+input_types(::FrozenReader) = (in = Float64,)
+output_types(::FrozenReader) = (out = Float64,)
+h_xu(::FrozenReader, (; u)) = (out = 2.0 * u.in,)
+
+struct ClockStamp <: AbstractComponent end
+output_types(::ClockStamp) = (stamp = Float64,)
+h_x(::ClockStamp, (; t)) = (stamp = t,)
+
+@testset "a non-nominal activation re-runs Stratum C; frozen products carry (§9.4)" begin
+    pair() = Group((; src = NomSource(), rd = FrozenReader()),
+                   ("children/src/val" => "children/rd/in",), (), ())
+
+    # The nominal activation runs at build and *is* the Float64 activation; a
+    # non-nominal one materializes at first request and is cached on the Build.
+    b = build(pair())
+    @test activation(b, Float64) === b.nominal
+    @test activation(b, D8) === activation(b, D8)
+
+    # The frozen reader's cells hold what the *nominal* probe computed from its
+    # real upstream value — 2·(3.0 + 0.0) — not a value synthesized off its
+    # declaration. Its cell pins while its producer's walks.
+    simd = Simulation(b, D8; h = 1//100)
+    @test port(simd, "children/src", :val) isa D8
+    @test port(simd, "children/rd", :out) === 6.0
+
+    # A discrete stage is never probed at a non-nominal activation (§9.4's
+    # executable set): `t` in a discrete bundle is lawful, because it is a
+    # `Float64` whenever the stage actually runs — so this must not detonate
+    # as a `Dual` arriving at a pinned declaration.
+    sims = Simulation(single(ClockStamp()), D8; h = 1//100)
+    @test port(sims, "children/c", :stamp) === 0.0
+
+    # §9.4's opt-in exhaustive mode: the listed activations materialize at
+    # build time, which is where CI catches a lurking pinned leaf.
+    err = failure(() -> build(single(PinnedGetsDual()); activations = (Float64, D8)))
+    @test err isa BuildError && occursin("participates in differentiation", err.msg)
 end
 
 # A deliberately pinned leaf (D-166): `frozen` is declared `Float64` rather than
