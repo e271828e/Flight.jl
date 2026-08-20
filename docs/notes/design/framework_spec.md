@@ -8792,7 +8792,8 @@ One [frame](#g-frame) each:
   stopped, wake waits, unblock hooks, named-timeout joins.
 
 Remaining open (feeding [§16][s16]): the `q_sf` home (thin mapping entry vs.
-avionics-internal derivation — aircraft design, not framework design).
+avionics-internal derivation — aircraft design, not framework design), and the
+mode-engage entry's write-order check.
 
 ### 15.5 The strapdown IMU: integrate-and-dump across the tier boundary
 
@@ -9035,6 +9036,8 @@ disposition exceeds a cell are expanded below the table.
 | The [executor](#g-executor) compile-cost re-measurement | runs on the real vehicle skeleton, early — before the executor's shape hardens | [§9.7][s9-7] | — |
 | *Residual*: the `q_sf` home | aircraft design, so it belongs on this list | [§15.4][s15-4] | — |
 | *Residual*: a root-declared overridable `stop_on` default | reopen only if the constructor argument proves chronically forgotten | [§13.5][s13-5] | — |
+| *Residual*: the engage-boundary write-order check | verify the FCS latch and the GUI slot sync-write commute on one boundary — believed order-free, both deriving from the same measurements | [§15.4][s15-4] | — |
+| *Residual*: the C172 AD audit for trim | Interpolations tables (prefer cubic knots), saturation rank-deficiency (LM-tolerated, reported), the gear identically zero airborne | [§14.8][s14-8] | [D-070][d-070] |
 
 **The parametrization pass.** `Ranged` survives at [ports](#g-port) and
 parameters, and there the rewrite targets the walk rule ([§8.2][s8-2]):
