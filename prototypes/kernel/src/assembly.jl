@@ -53,15 +53,17 @@ _join(path::String, seg::String) = isempty(path) ? seg : path * "/" * seg
 
 _holds_components(c) = any(fieldnames(typeof(c))) do name
     v = getfield(c, name)
-    v isa AbstractComponent || (v isa NamedTuple && any(e -> e isa AbstractComponent, v))
+    v isa AbstractComponent ||
+        ((v isa NamedTuple || v isa Tuple) && any(e -> e isa AbstractComponent, v))
 end
 
 # --- children (§8.5) ----------------------------------------------------------
 # Fields whose type is `<: AbstractComponent` are children, the field name their
-# path segment. A `NamedTuple` field whose elements are *all* components is a
-# container: transparent grouping with no contract and no wiring of its own,
-# contributing its elements as children *of the parent*, path-named `"field/key"`.
-# Every other field is inert parameter data.
+# path segment. A `Tuple` or `NamedTuple` field whose elements are *all*
+# components is a container: transparent grouping with no contract and no wiring
+# of its own, contributing its elements as children *of the parent*, path-named
+# `"field/1"…"field/N"` or `"field/key"`. Every other field is inert parameter
+# data.
 
 """`segment => instance` for every child of `c`, in field order."""
 function children(path::String, c)
@@ -70,7 +72,7 @@ function children(path::String, c)
         v = getfield(c, name)
         if v isa AbstractComponent
             push!(kids, string(name) => v)
-        elseif v isa NamedTuple
+        elseif v isa NamedTuple || v isa Tuple
             n = count(e -> e isa AbstractComponent, v)
             n == 0 && continue                     # inert data; an empty container too
             n == length(v) ||

@@ -233,7 +233,14 @@ struct EmptyRoster <: AbstractComponent          # parametric code needs no spec
 end
 child_connections(::EmptyRoster) = ()
 
-@testset "container children are path-named `field/key` (§8.5)" begin
+struct TupleRoster{U <: Tuple} <: AbstractComponent
+    units::U
+end
+child_connections(::TupleRoster)  = ("units/1/out" => "units/2/e",)
+input_connections(::TupleRoster)  = ("in" => "units/1/e",)
+output_connections(::TupleRoster) = ("units/2/out" => "y",)
+
+@testset "container children are path-named `field/key` and `field/1` (§8.5)" begin
     sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ());
                      h = 1//10)
     @test sim.flat.paths == ["children/c1", "children/c2"]
@@ -247,6 +254,20 @@ child_connections(::EmptyRoster) = ()
     err = failure(() -> build(single(MixedContainer((a = Gain(1.0), b = 2.0)))))
     @test err isa BuildError
     @test occursin("mixes components", err.msg) && occursin("kids", err.msg)
+
+    # The `Tuple` form: the same rule with index segments, `"field/1"…"field/N"`
+    # (§8.5), addressable by the parent's declarations like any child name.
+    tsim = Simulation(TupleRoster((Gain(2.0), Gain(3.0))); h = 1//10)
+    @test tsim.flat.paths == ["units/1", "units/2"]
+    set_slot!(tsim, "in", 1.0)
+    init!(tsim)
+    @test port(tsim, "units/2", :out) === 6.0
+    @test port(tsim, "", :y) === port(tsim, "units/2", :out)
+
+    # The mixing rule is form-blind.
+    err = failure(() -> build(TupleRoster((Gain(1.0), 2.0))))
+    @test err isa BuildError
+    @test occursin("mixes components", err.msg) && occursin("units", err.msg)
 end
 
 # --- paths and the reach rule (§6.1, §8.6) ------------------------------------
