@@ -14,7 +14,7 @@ struct Simulation{T,S,B,CL}
     n::Int                        # steps per base tick: Δt_base = n·h (§10.5)
     Δt_base::Float64
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
-    xstores::Vector{Any}          # discrete state stores, by component index
+    sstores::Vector{Any}          # discrete state stores, by component index
     mstores::Vector{Any}          # mode stores, by component index
     work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄
 end
@@ -41,7 +41,7 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     work = ntuple(_ -> zeros(T, length(c.xbuf)), 5)
     Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, act.layout, b.flat,
-        bound.h, bound.n, bound.Δt_base, bound.sched, c.xstores, c.mstores, work)
+        bound.h, bound.n, bound.Δt_base, bound.sched, c.sstores, c.mstores, work)
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -77,7 +77,7 @@ end
 The boundary macro-sequence at a base tick (§10.3, §10.6 in miniature): the
 boundary sweep restores signal-table consistency with the due set gated off
 `tick`, then the due updates run. Output stages before updates, so a discrete
-component's cells carry `y[k]` computed from `x[k]` while `g` produces `x[k+1]`
+component's cells carry `y[k]` computed from `s[k]` while `g` produces `s[k+1]`
 — the sampled-data recursion, ordered by construction rather than by convention.
 """
 @inline function boundary!(sim::Simulation, tick::Int)
@@ -162,8 +162,8 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
     target = round(Int, Float64(t_end) / sim.h)
     while sim.clock.step < target
         step!(sim, h)
-        s = (sim.clock.step += 1)
-        s % sim.n == 0 ? boundary!(sim, s ÷ sim.n) : offtick_boundary!(sim)
+        k = (sim.clock.step += 1)
+        k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
     end
     nothing
 end
@@ -186,12 +186,12 @@ function set_slot!(sim::Simulation, face::AbstractString, v)
 end
 
 """
-State at `path`, from whichever home owns it: the flat buffer on the continuous
-tier, the component's own store on the discrete one (§7.3).
+State at `path`, from whichever home owns it: `x` in the flat buffer on the
+continuous tier, `s` in the component's own store on the discrete one (§7.3).
 """
 function state(sim::Simulation{T}, path::String) where {T}
     ci = index_of(sim.flat, path)
-    sim.xstores[ci] === nothing || return sim.xstores[ci][]
+    sim.sstores[ci] === nothing || return sim.sstores[ci][]
     _tier(i) = classify_tier(sim.flat.paths[i], sim.flat.comps[i])
     _decls(i) = declarations(sim.flat.comps[i], _tier(i), T)
     off = 0

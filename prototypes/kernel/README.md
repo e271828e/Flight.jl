@@ -40,7 +40,7 @@ selection, never a sentinel index failing every gate (D-185).
 | piece | spec | file |
 | --- | --- | --- |
 | leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer, both tiers' arities, the bundle law, `probe_value`, `AbstractComponent`, the three connection declarations, and the two rate registers (`Relative`/`Absolute` over `Period`/`Hz`, plain data carriers) with `sample_times` | §5.2, §8.2, §8.6, §8.7, §9.3, D-185 | `src/declare.jl` |
+| declaration layer, both tiers' disjoint name families and arities, the bundle law, `probe_value`, `AbstractComponent`, the three connection declarations, and the two rate registers (`Relative`/`Absolute` over `Period`/`Hz`, plain data carriers) with `sample_times` | §5.2, §8.2, §8.6, §8.7, §9.3, D-185, D-195 | `src/declare.jl` |
 | class by declaration shape, children and containers, paths and the reach rule, endpoint and face resolution, the flatten pass with the obligation model and the sample-time fold to `(anchor, m, c)` triples | §8.5, §8.6, §6.1, §9.1 | `src/assembly.jl` |
 | per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
 | entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries | §9.7, §10.5 | `src/executor.jl` |
@@ -51,7 +51,8 @@ selection, never a sentinel index failing every gate (D-185).
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
 
-- **The schedule is derived, not authored.** Stage-1 (`h_x`) ports carry no
+- **The schedule is derived, not authored.** Stage-1 (`h_x` continuous, `h_s`
+  discrete) ports carry no
   input dependence, so consuming one adds no edge to the feedthrough graph. The
   reference model's feedback path closes through the plant's `h_x` port and
   schedules as `sum → ctl → plant`; rewiring the same loop through the plant's
@@ -67,11 +68,14 @@ programming convenience:
   passes vacuously, which is the point: consumers iterate the roster with no
   per-model branching.
 - **Tier is read off the declaration shape, never announced.** For a stateful
-  leaf the update law carries it (`f` continuous, `g` discrete); for a
-  stateless one the contract arity does. Every other tier-implying declaration
-  must agree, and disagreement names the offending one — `g` beside a
-  two-argument `output_types`, `init_m` on a discrete leaf, both arities of one
-  contract.
+  leaf the whole name family carries it — `init_x`/`h_x`/`h_xu`/`f` continuous
+  against `init_s`/`h_s`/`h_su`/`g` discrete, the two disjoint (D-195), with
+  the update law the decider; for a stateless one the contract arity does.
+  Every other tier-implying declaration must agree, and disagreement names the
+  offending one — `g` beside a two-argument `output_types`, `init_m` on a
+  discrete leaf, both arities of one contract, and the wrong-letter case the
+  split families restore: a continuous stage name on a leaf whose update law is
+  `g`.
 - **The ZOH is not implemented.** It is the absence of any way to change a
   discrete cell mid-step: the interior sweep is compiled from continuous
   entries alone, so the hot path carries no gating test, and a discrete cell

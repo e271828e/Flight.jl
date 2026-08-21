@@ -32,6 +32,14 @@ no pinned state leaf, so there is no choice for a `T` to record.
 init_x(::Any) = NamedTuple()
 
 """
+Discrete state, **by value**, and the discrete tier's own letter (D-195): any
+isbits type, pinned wholesale — nothing here walks with the activation, which
+is why the declaration takes no `T`. Disjoint from `init_x` by construction, so
+a state declaration always carries its tier (§8.2).
+"""
+init_s(::Any) = NamedTuple()
+
+"""
 Modes, **by value**, continuous-only: the event system is continuous-side only,
 so declaring `init_m` announces the continuous tier (§8.2). Mode stores are
 written by handlers; nothing else may.
@@ -167,12 +175,20 @@ sample_times(::Any) = (;)
 # destructured by name: `h_xu(c::Plant, (; x, u)) = ...`. The framework's call
 # is one fixed shape; the bundle law (below) decides what the tuple carries.
 #
+# The two output stages come in one pair per tier and the pairs are disjoint
+# (D-195): `h_x`/`h_xu` continuous, `h_s`/`h_su` discrete. "No `u` in the name"
+# is the no-feedthrough marker within either pair, and a stage name on its own
+# now carries the tier, which is what makes a wrong-letter declaration
+# diagnosable (§8.2).
+#
 # A component defines the stages it needs. `has_stage` is how the build asks,
 # and it is a question about method existence, not a declaration the author
 # repeats — the definition site is the single source of truth.
 
 function h_x end
 function h_xu end
+function h_s end
+function h_su end
 function f end
 function g end
 
@@ -201,6 +217,13 @@ declared_at(fn, c, t::Tier) =
     t === CONTINUOUS ? (_declares(fn, c, Type{Float64}) ? fn(c, Float64) : NamedTuple()) :
                        (_declares(fn, c) ? fn(c) : NamedTuple())
 
+# The tier's own name family (D-195). Everything downstream asks for a stage or
+# an update law *through* the tier, so no code path ever holds a name that
+# serves both.
+stage1_of(t::Tier) = t === CONTINUOUS ? h_x : h_s
+stage2_of(t::Tier) = t === CONTINUOUS ? h_xu : h_su
+update_of(t::Tier) = t === CONTINUOUS ? f : g
+
 # --- the bundle law (§5.2) ----------------------------------------------------
 # A name appears in a component's bundle iff the corresponding store or fact
 # exists for that component. Undeclared stores are *absent*, never
@@ -215,19 +238,24 @@ The by-type declarations are asked at nominal `Float64`: presence is a property
 of the declaration's key set, which is fixed by the declaration and cannot vary
 with the activation scalar, so the bundle shape is the same at every activation.
 
-The per-function, per-tier name sets are closed: `m` is continuous-only and
-`Δt` discrete-only, both under the shared state letter (D-173).
+The per-function, per-tier name sets are closed, and so are the state letters:
+`x`/`y_x` with `m` on the continuous tier, `s`/`y_s` with `Δt` on the discrete
+(D-195).
 """
 function bundle_names(fn, c, t::Tier, stage1_ports::Tuple)
-    update = t === CONTINUOUS ? f : g
+    stage2, update = stage2_of(t), update_of(t)
     names = Symbol[]
-    !isempty(init_x(c)) && push!(names, :x)
-    t === CONTINUOUS && !isempty(init_m(c)) && push!(names, :m)
-    if fn === h_xu || fn === update
+    if t === CONTINUOUS
+        !isempty(init_x(c)) && push!(names, :x)
+        !isempty(init_m(c)) && push!(names, :m)
+    else
+        !isempty(init_s(c)) && push!(names, :s)
+    end
+    if fn === stage2 || fn === update
         !isempty(declared_at(input_types, c, t)) && push!(names, :u)
     end
-    if fn === h_xu
-        !isempty(stage1_ports) && push!(names, :y_x)
+    if fn === stage2
+        !isempty(stage1_ports) && push!(names, t === CONTINUOUS ? :y_x : :y_s)
     elseif fn === update
         !isempty(declared_at(output_types, c, t)) && push!(names, :y)
     end

@@ -440,16 +440,16 @@ end
 
 struct DiscreteCounter <: AbstractComponent   # stateful discrete: `g` decides
 end
-init_x(::DiscreteCounter) = (n = 0,)
+init_s(::DiscreteCounter) = (n = 0,)
 output_types(::DiscreteCounter) = (n = Int,)
-h_x(::DiscreteCounter, (; x)) = (n = x.n,)
-g(::DiscreteCounter, (; x)) = (n = x.n + 1,)
+h_s(::DiscreteCounter, (; s)) = (n = s.n,)
+g(::DiscreteCounter, (; s)) = (n = s.n + 1,)
 
 struct DiscreteMap <: AbstractComponent       # stateless discrete: the arity decides
 end
 input_types(::DiscreteMap) = (a = Int,)
 output_types(::DiscreteMap) = (b = Int,)
-h_xu(::DiscreteMap, (; u)) = (b = 2u.a,)
+h_su(::DiscreteMap, (; u)) = (b = 2u.a,)
 
 struct BothUpdates <: AbstractComponent       # `f` and `g` on one component
 end
@@ -461,18 +461,25 @@ g(::BothUpdates, (; x)) = (q = x.q,)
 
 struct WrongArity <: AbstractComponent        # `g` beside a two-argument contract
 end
-init_x(::WrongArity) = (n = 0,)
+init_s(::WrongArity) = (n = 0,)
 output_types(::WrongArity, ::Type{T}) where {T <: Real} = (a = T,)
-h_x(::WrongArity, (; x)) = (a = 1.0,)
-g(::WrongArity, (; x)) = (n = x.n,)
+h_s(::WrongArity, (; s)) = (a = 1.0,)
+g(::WrongArity, (; s)) = (n = s.n,)
+
+struct WrongLetter <: AbstractComponent       # a continuous stage name on a `g` leaf
+end
+init_s(::WrongLetter) = (n = 0,)
+output_types(::WrongLetter) = (a = Int,)
+h_x(::WrongLetter, (; s)) = (a = s.n,)
+g(::WrongLetter, (; s)) = (n = s.n,)
 
 struct ModesOnDiscrete <: AbstractComponent   # `init_m` is continuous-only
 end
-init_x(::ModesOnDiscrete) = (n = 0,)
+init_s(::ModesOnDiscrete) = (n = 0,)
 init_m(::ModesOnDiscrete) = (phase = :idle,)
 output_types(::ModesOnDiscrete) = (a = Int,)
-h_x(::ModesOnDiscrete, (; x)) = (a = x.n,)
-g(::ModesOnDiscrete, (; x)) = (n = x.n,)
+h_s(::ModesOnDiscrete, (; s)) = (a = s.n,)
+g(::ModesOnDiscrete, (; s)) = (n = s.n,)
 
 struct BothArities <: AbstractComponent       # a member of both contract families
 end
@@ -489,13 +496,18 @@ h_x(::BothArities, (; t)) = (a = 1.0,)
     @test classify_tier("c", DiscreteMap()) === DISCRETE
 
     # The discrete bundle sets: `Δt` is a discrete-tier fact, `m` a continuous
-    # one, both under the shared state letter (D-173).
-    @test bundle_names(h_x, DiscreteCounter(), DISCRETE, ()) === (:x, :t, :Δt)
-    @test bundle_names(g, DiscreteCounter(), DISCRETE, (:n,)) === (:x, :y, :t, :Δt)
-    @test bundle_names(h_xu, DiscreteMap(), DISCRETE, ()) === (:u, :t, :Δt)
+    # one, and the state letters are the tiers' own — `s`/`y_s` here against
+    # `x`/`y_x` above, disjoint by construction (D-195).
+    @test bundle_names(h_s, DiscreteCounter(), DISCRETE, ()) === (:s, :t, :Δt)
+    @test bundle_names(g, DiscreteCounter(), DISCRETE, (:n,)) === (:s, :y, :t, :Δt)
+    @test bundle_names(h_su, DiscreteMap(), DISCRETE, ()) === (:u, :t, :Δt)
+    @test bundle_names(h_su, DiscreteCounter(), DISCRETE, (:n,)) === (:s, :y_s, :t, :Δt)
 
-    # Disagreement names the offending declaration and the tier the rest announce.
+    # Disagreement names the offending declaration and the tier the rest
+    # announce — including the wrong-letter case the split families restore, a
+    # continuous stage name on a leaf whose update law is `g` (D-195).
     for (c, offender) in ((BothUpdates(), "g"), (WrongArity(), "output_types"),
+                          (WrongLetter(), "h_x"),
                           (ModesOnDiscrete(), "init_m"), (BothArities(), "output_types"))
         err = failure(() -> classify_tier("c", c))
         @test err isa BuildError
@@ -550,7 +562,7 @@ end
     # store already holds `s[N+1]`. That gap *is* the sampled-data ordering:
     # output stages before updates, within one boundary (§10.5).
     @test port(sim, "children/ctl", :u) ≈ s rtol = 1e-6
-    @test state(sim, "children/ctl").s ≈ s_next rtol = 1e-6
+    @test state(sim, "children/ctl").acc ≈ s_next rtol = 1e-6
 end
 
 @testset "the ZOH holds by compile-time absence (§10.5)" begin
@@ -627,10 +639,10 @@ end
 # A `g` that widens its own store: the discrete world is pinned, so this is an
 # error rather than a silent conversion at the store assignment.
 struct WidenedUpdate <: AbstractComponent end
-init_x(::WidenedUpdate) = (n = 0,)
+init_s(::WidenedUpdate) = (n = 0,)
 output_types(::WidenedUpdate) = (n = Int,)
-h_x(::WidenedUpdate, (; x)) = (n = x.n,)
-g(::WidenedUpdate, (; x)) = (n = x.n + 0.5,)
+h_s(::WidenedUpdate, (; s)) = (n = s.n,)
+g(::WidenedUpdate, (; s)) = (n = s.n + 0.5,)
 
 @testset "a discrete successor is the store's own type (§7.3)" begin
     @test_throws BuildError build(single(WidenedUpdate()))
@@ -738,11 +750,11 @@ h_x(::NomSource, (; t)) = (val = 3.0 + t,)
 struct FrozenReader <: AbstractComponent end
 input_types(::FrozenReader) = (in = Float64,)
 output_types(::FrozenReader) = (out = Float64,)
-h_xu(::FrozenReader, (; u)) = (out = 2.0 * u.in,)
+h_su(::FrozenReader, (; u)) = (out = 2.0 * u.in,)
 
 struct ClockStamp <: AbstractComponent end
 output_types(::ClockStamp) = (stamp = Float64,)
-h_x(::ClockStamp, (; t)) = (stamp = t,)
+h_s(::ClockStamp, (; t)) = (stamp = t,)
 
 @testset "a non-nominal activation re-runs Stratum C; frozen products carry (§9.4)" begin
     pair() = Group((; src = NomSource(), rd = FrozenReader()),

@@ -60,8 +60,9 @@ output_types(::Sum, ::Type{T}) where {T <: Real} = (e = T,)
 h_xu(c::Sum, (; u)) = (e = c.sa * u.a + c.sb * u.b,)
 
 # --- the discrete tier --------------------------------------------------------
-# The plain declaration arities are the tier (D-166/D-167): these components
-# declare the pinned world, and nothing about them walks with the activation.
+# The tier's own name family (D-195) — `init_s`, `h_s`/`h_su`, `g` — beside the
+# plain declaration arities (D-166/D-167): these components declare the pinned
+# world, and nothing about them walks with the activation.
 
 """
 Discrete integrator: publishes its state from **stage 1** — the loop-breaking
@@ -72,12 +73,12 @@ struct DiscreteIntegrator <: AbstractComponent
     k::Float64
 end
 
-init_x(::DiscreteIntegrator) = (s = 0.0,)
+init_s(::DiscreteIntegrator) = (acc = 0.0,)
 input_types(::DiscreteIntegrator) = (e = Float64,)
 output_types(::DiscreteIntegrator) = (u = Float64,)
 
-h_x(::DiscreteIntegrator, (; x)) = (u = x.s,)
-g(c::DiscreteIntegrator, (; x, u, Δt)) = (s = x.s + c.k * Δt * u.e,)
+h_s(::DiscreteIntegrator, (; s)) = (u = s.acc,)
+g(c::DiscreteIntegrator, (; s, u, Δt)) = (acc = s.acc + c.k * Δt * u.e,)
 
 """
 Tick counter: `Int` state, `Int` and `Bool` ports. The second and third store
@@ -85,11 +86,11 @@ buffers of the bundle, which a continuous model never needs (D-162).
 """
 struct TickCounter <: AbstractComponent end
 
-init_x(::TickCounter) = (n = 0,)
+init_s(::TickCounter) = (n = 0,)
 output_types(::TickCounter) = (n = Int, even = Bool)
 
-h_x(::TickCounter, (; x)) = (n = x.n, even = iseven(x.n))
-g(::TickCounter, (; x)) = (n = x.n + 1,)
+h_s(::TickCounter, (; s)) = (n = s.n, even = iseven(s.n))
+g(::TickCounter, (; s)) = (n = s.n + 1,)
 
 """
 Two-channel exponential smoother, written in §7.3's blessed idiom: the in-place
@@ -100,18 +101,18 @@ struct Smoother <: AbstractComponent
     α::Float64
 end
 
-init_x(::Smoother) = (v = SVector(0.0, 0.0),)
+init_s(::Smoother) = (v = SVector(0.0, 0.0),)
 input_types(::Smoother) = (a = Float64, b = Float64)
 output_types(::Smoother) = (v = SVector{2,Float64},)
 workspace(::Smoother) = (tmp = Vector{Float64}(undef, 2),)
 
-h_x(::Smoother, (; x)) = (v = x.v,)
+h_s(::Smoother, (; s)) = (v = s.v,)
 
-function g(c::Smoother, (; x, u, ws))
+function g(c::Smoother, (; s, u, ws))
     ws.tmp[1] = u.a
     ws.tmp[2] = u.b
     for i in 1:2
-        ws.tmp[i] = c.α * ws.tmp[i] + (1 - c.α) * x.v[i]
+        ws.tmp[i] = c.α * ws.tmp[i] + (1 - c.α) * s.v[i]
     end
     (v = SVector{2,Float64}(ws.tmp[1], ws.tmp[2]),)
 end
@@ -290,7 +291,7 @@ struct ZOH <: AbstractComponent end
 
 input_types(::ZOH) = (in = Float64,)
 output_types(::ZOH) = (out = Float64,)
-h_xu(::ZOH, (; u)) = (out = u.in,)
+h_su(::ZOH, (; u)) = (out = u.in,)
 
 """Affine clock publisher: continuous, stateless, stage 1 — `out = c₀ + t`."""
 struct Ramp <: AbstractComponent

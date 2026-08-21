@@ -5,24 +5,24 @@
 
 # --- entries ------------------------------------------------------------------
 # Three kinds, by where the product goes: a stage entry writes cells (both
-# tiers — the stage names are shared, D-173), an RHS entry writes the flat `ẋ`
-# buffer, an update entry writes its own discrete state store. All build their
-# §5.2 bundle the same way, from `BN` — the bundle name set the law fixed at
-# build time.
+# tiers — one entry type carries either tier's stage function, whose names are
+# disjoint, D-195), an RHS entry writes the flat `ẋ` buffer, an update entry
+# writes its own discrete state store. All build their §5.2 bundle the same way,
+# from `BN` — the bundle name set the law fixed at build time.
 #
 # What selects code sits in type parameters, what varies per instance in fields
 # (§9.7): the state store is a `Ref` whose *type* is shared by every instance of
 # a component type, so two instances still compile to one body.
 
-struct StageEntry{F,Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,OA<:NamedTuple,CL,XS,MS,WS}
+struct StageEntry{F,Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,OA<:NamedTuple,CL,SS,MS,WS}
     fn::F
     comp::Comp
     inputs::IA      # input face => cell address (the wiring's name binding)
-    yx::YA          # own stage-1 port => cell address
+    y1::YA          # own stage-1 port => cell address (`y_x`, `y_s` on the discrete tier)
     outs::OA        # port this entry writes => cell address
     x_off::Int      # continuous state offset into the flat buffer
     clock::CL
-    xstore::XS      # discrete state store, or nothing on the continuous tier
+    sstore::SS      # discrete state store, or nothing on the continuous tier
     mstore::MS      # mode store, or nothing
     ws::WS          # workspace, or nothing
     Δt::Float64     # sample period; unused on the continuous tier
@@ -38,41 +38,44 @@ struct RHSEntry{Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,CL,MS,WS}
     ws::WS
 end
 
-struct UpdateEntry{Comp,BN,IA<:NamedTuple,YA<:NamedTuple,CL,XS,WS}
+struct UpdateEntry{Comp,BN,IA<:NamedTuple,YA<:NamedTuple,CL,SS,WS}
     comp::Comp
     inputs::IA
     y::YA           # every own port — `g` reads the complete fresh table too
     clock::CL
-    xstore::XS      # written by this entry, and by nothing else
+    sstore::SS      # written by this entry, and by nothing else
     ws::WS
     Δt::Float64
 end
 
 # Outer constructors: only `XT`/`BN` cannot be inferred from the arguments.
-StageEntry{XT,BN}(fn, comp, inputs, yx, outs, x_off, clock, xstore, mstore, ws, Δt) where {XT,BN} =
-    StageEntry{typeof(fn),typeof(comp),XT,BN,typeof(inputs),typeof(yx),typeof(outs),
-               typeof(clock),typeof(xstore),typeof(mstore),typeof(ws)}(
-        fn, comp, inputs, yx, outs, x_off, clock, xstore, mstore, ws, Δt)
+StageEntry{XT,BN}(fn, comp, inputs, y1, outs, x_off, clock, sstore, mstore, ws, Δt) where {XT,BN} =
+    StageEntry{typeof(fn),typeof(comp),XT,BN,typeof(inputs),typeof(y1),typeof(outs),
+               typeof(clock),typeof(sstore),typeof(mstore),typeof(ws)}(
+        fn, comp, inputs, y1, outs, x_off, clock, sstore, mstore, ws, Δt)
 
 RHSEntry{XT,BN}(comp, inputs, y, x_off, clock, mstore, ws) where {XT,BN} =
     RHSEntry{typeof(comp),XT,BN,typeof(inputs),typeof(y),typeof(clock),
              typeof(mstore),typeof(ws)}(comp, inputs, y, x_off, clock, mstore, ws)
 
-UpdateEntry{BN}(comp, inputs, y, clock, xstore, ws, Δt) where {BN} =
+UpdateEntry{BN}(comp, inputs, y, clock, sstore, ws, Δt) where {BN} =
     UpdateEntry{typeof(comp),BN,typeof(inputs),typeof(y),typeof(clock),
-                typeof(xstore),typeof(ws)}(comp, inputs, y, clock, xstore, ws, Δt)
+                typeof(sstore),typeof(ws)}(comp, inputs, y, clock, sstore, ws, Δt)
 
 # One bundle-expression builder, three @generated entry points. Absent names are
 # absent, never `nothing`-filled: a body destructuring what it does not own
-# fails at the destructuring (§5.2). `x` reads from the flat buffer on the
-# continuous tier and from the component's own store on the discrete one — the
-# shared state letter (D-173), two homes.
-function _bundle_expr(BN, XT, XS)
+# fails at the destructuring (§5.2). The two state letters name the two homes
+# outright (D-195): `x` reconstructs from the flat buffer, `s` reads the
+# component's own store, and no name selects a home by tier at compile time
+# because the tier already picked the name.
+function _bundle_expr(BN, XT)
     args = map(BN) do n
-        n === :x   ? (XS === Nothing ? :(reconstruct($XT, xbuf, e.x_off)) : :(e.xstore[])) :
+        n === :x   ? :(reconstruct($XT, xbuf, e.x_off)) :
+        n === :s   ? :(e.sstore[]) :
         n === :m   ? :(e.mstore[]) :
         n === :u   ? :(gather_group(e.inputs, store)) :
-        n === :y_x ? :(gather_group(e.yx, store)) :
+        n === :y_x ? :(gather_group(e.y1, store)) :
+        n === :y_s ? :(gather_group(e.y1, store)) :
         n === :y   ? :(gather_group(e.y, store)) :
         n === :ws  ? :(e.ws) :
         n === :t   ? :(e.clock.t) :
@@ -82,25 +85,25 @@ function _bundle_expr(BN, XT, XS)
     :(NamedTuple{$BN}(($(args...),)))
 end
 
-@generated function make_bundle(e::StageEntry{F,Comp,XT,BN,IA,YA,OA,CL,XS}, store,
-                                xbuf) where {F,Comp,XT,BN,IA,YA,OA,CL,XS}
+@generated function make_bundle(e::StageEntry{F,Comp,XT,BN}, store,
+                                xbuf) where {F,Comp,XT,BN}
     quote
         $(Expr(:meta, :inline))
-        $(_bundle_expr(BN, XT, XS))
+        $(_bundle_expr(BN, XT))
     end
 end
 
 @generated function make_bundle(e::RHSEntry{Comp,XT,BN}, store, xbuf) where {Comp,XT,BN}
     quote
         $(Expr(:meta, :inline))
-        $(_bundle_expr(BN, XT, Nothing))
+        $(_bundle_expr(BN, XT))
     end
 end
 
 @generated function make_bundle(e::UpdateEntry{Comp,BN}, store, xbuf) where {Comp,BN}
     quote
         $(Expr(:meta, :inline))
-        $(_bundle_expr(BN, Nothing, Ref))
+        $(_bundle_expr(BN, Nothing))
     end
 end
 
@@ -118,7 +121,7 @@ end
 # The jump map: `g` reads the fresh table and writes only its own store, which
 # is what makes the update block order-free with disjoint writes (§9.7).
 @inline function run!(e::UpdateEntry, store, xbuf, ẋbuf)
-    e.xstore[] = g(e.comp, make_bundle(e, store, xbuf))
+    e.sstore[] = g(e.comp, make_bundle(e, store, xbuf))
     nothing
 end
 

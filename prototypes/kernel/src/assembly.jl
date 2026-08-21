@@ -10,13 +10,13 @@
 
 @enum Class PRIMITIVE ASSEMBLY
 
-const LEAF_FAMILY = "`init_x`, `init_m`, `workspace`, `input_types`, " *
-                    "`output_types` or a stage (`h_x`, `h_xu`, `f`, `g`)"
+const LEAF_FAMILY = "`init_x`, `init_s`, `init_m`, `workspace`, `input_types`, " *
+                    "`output_types` or a stage (`h_x`, `h_xu`, `h_s`, `h_su`, `f`, `g`)"
 
 """The leaf declarations `c` defines, in inventory order (§8.2)."""
 function leaf_declarations(c)
     found = Symbol[]
-    for (name, fn) in ((:init_x, init_x), (:init_m, init_m))
+    for (name, fn) in ((:init_x, init_x), (:init_s, init_s), (:init_m, init_m))
         _declares(fn, c) && push!(found, name)
     end
     # Either arity is a leaf declaration; which one is lawful is the tier's
@@ -25,7 +25,8 @@ function leaf_declarations(c)
                        (:output_types, output_types))
         (_declares(fn, c) || _declares(fn, c, Type{Float64})) && push!(found, name)
     end
-    for (name, fn) in ((:h_x, h_x), (:h_xu, h_xu), (:f, f), (:g, g))
+    for (name, fn) in ((:h_x, h_x), (:h_xu, h_xu), (:h_s, h_s), (:h_su, h_su),
+                       (:f, f), (:g, g))
         has_stage(fn, c) && push!(found, name)
     end
     found

@@ -2,7 +2,7 @@
 # executor out. Three jobs, in order, because each needs the previous one's
 # answer:
 #
-#   1. probe stage 1 — needs no wiring at all (an `h_x` bundle carries no `u`),
+#   1. probe stage 1 — needs no wiring at all (an `h_x`/`h_s` bundle carries no `u`),
 #      which is what makes it the fixed point the rest of the build stands on;
 #   2. derive the feedthrough graph and schedule stage 2 topologically, since a
 #      stage-1 port carries no dependence and therefore breaks would-be loops;
@@ -15,31 +15,39 @@
 # --- 1. declarations at the activation scalar ---------------------------------
 
 struct Decls
-    x::NamedTuple          # initial state values, walked to the activation scalar
+    x::NamedTuple          # continuous state, walked to the activation scalar
+    s::NamedTuple          # discrete state, pinned wholesale (D-195)
     ins::NamedTuple        # face => type, evaluated at the activation scalar
     outs::NamedTuple       # port => type, evaluated at the activation scalar
 end
 
-# The two registers split by D-166's criterion: `init_x` is by value and, on the
-# continuous tier, its types are *walked*; `input_types`/`output_types` are
-# functions of the activation scalar there and are *evaluated*. There is no
+"""The tier's own state register: exactly one of the two is ever populated."""
+state_decls(d::Decls, t::Tier) = t === CONTINUOUS ? d.x : d.s
+
+# The two registers split by D-166's criterion: `init_x` is by value and its
+# types are *walked*; `input_types`/`output_types` are functions of the
+# activation scalar on the continuous tier and are *evaluated*. There is no
 # output-side leaf walk — the cell types at an activation are literally what the
 # declaration returns at that `T`. On the discrete tier the plain forms declare
-# the pinned world, so nothing walks and nothing is evaluated at `T`.
+# the pinned world, so `init_s` does not walk and nothing is evaluated at `T`.
 function declarations(c, t::Tier, ::Type{T}) where {T}
     t === CONTINUOUS ?
-        Decls(retype_value(T, init_x(c)), input_types(c, T), output_types(c, T)) :
-        Decls(init_x(c), declared_at(input_types, c, t), declared_at(output_types, c, t))
+        Decls(retype_value(T, init_x(c)), NamedTuple(), input_types(c, T), output_types(c, T)) :
+        Decls(NamedTuple(), init_s(c),
+              declared_at(input_types, c, t), declared_at(output_types, c, t))
 end
 
 # --- tier classification (§8.2) -----------------------------------------------
 # Tier is read off the declaration shape, never announced. For a **stateful**
-# leaf the update law carries it — `f` continuous, `g` discrete, the stage names
-# being shared (D-173). A **stateless** leaf has no update law, so its contract
-# arities decide, `output_types` being mandatory and therefore the decider: the
-# two-argument forms declare cells at the activation scalar, the plain forms the
-# pinned discrete world (D-166/D-167). Every other tier-implying declaration
-# must then agree, and disagreement names the offending one.
+# leaf the whole name family carries it — `init_x`/`h_x`/`h_xu`/`f` continuous
+# against `init_s`/`h_s`/`h_su`/`g` discrete, the two disjoint (D-195), with the
+# update law the decider. A **stateless** leaf has no update law, so its
+# contract arities decide, `output_types` being mandatory and therefore the
+# decider: the two-argument forms declare cells at the activation scalar, the
+# plain forms the pinned discrete world (D-166/D-167). Every other tier-implying
+# declaration must then agree, and disagreement names the offending one —
+# including the wrong-letter cases the split state letters make visible, an
+# `h_x` or an `init_x` on a leaf whose update law is `g` and the converse.
 #
 # The classifier sees primitives only: a component that declares nothing at all
 # has no *class* to read, which §8.5 settles before this runs.
@@ -49,6 +57,12 @@ function classify_tier(path::String, c)
     votes = Tuple{Symbol,Tier}[]
     has_stage(f, c) && push!(votes, (:f, CONTINUOUS))
     has_stage(g, c) && push!(votes, (:g, DISCRETE))
+    !isempty(init_x(c)) && push!(votes, (:init_x, CONTINUOUS))
+    !isempty(init_s(c)) && push!(votes, (:init_s, DISCRETE))
+    has_stage(h_x, c) && push!(votes, (:h_x, CONTINUOUS))
+    has_stage(h_xu, c) && push!(votes, (:h_xu, CONTINUOUS))
+    has_stage(h_s, c) && push!(votes, (:h_s, DISCRETE))
+    has_stage(h_su, c) && push!(votes, (:h_su, DISCRETE))
     !isempty(init_m(c)) && push!(votes, (:init_m, CONTINUOUS))
     for (name, fn) in ((:output_types, output_types), (:input_types, input_types),
                        (:workspace, workspace))
@@ -57,10 +71,11 @@ function classify_tier(path::String, c)
     end
 
     # The decider, by §8.2's two cases.
-    if !isempty(init_x(c))
+    state = !isempty(init_x(c)) ? :init_x : !isempty(init_s(c)) ? :init_s : nothing
+    if state !== nothing
         i = findfirst(v -> first(v) === :f || first(v) === :g, votes)
         i === nothing &&
-            throw(BuildError("`$path` declares `init_x` but defines neither `f` nor `g` — " *
+            throw(BuildError("`$path` declares `$state` but defines neither `f` nor `g` — " *
                              "a store needs its update (§8.2)"))
     else
         i = findfirst(v -> first(v) === :output_types, votes)
@@ -82,7 +97,8 @@ end
 # --- 2. probing ---------------------------------------------------------------
 
 """
-Probe `h_x` for every component in this activation's executable set: no wiring
+Probe the stage-1 function — `h_x` continuous, `h_s` discrete (D-195) — for
+every component in this activation's executable set: no wiring
 is needed, so this runs first and tells the rest of the build which ports are
 stage-1 — the ones that carry no dependence on inputs and therefore break loops
 (§5.3). A frozen component's stages are outside the set (§9.4), so its stage-1
@@ -97,24 +113,28 @@ function probe_stage1(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
     map(eachindex(flat.comps)) do ci
         path, c, d = flat.paths[ci], flat.comps[ci], decls[ci]
         _frozen(tiers, ci, T) && return carry.stage1[ci]
-        has_stage(h_x, c) || return NamedTuple()
-        bn = bundle_names(h_x, c, tiers[ci], ())
-        y = h_x(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T;
-                                  ws = wss[ci], m = mstores[ci], Δt = 1.0))
+        h1 = stage1_of(tiers[ci])
+        has_stage(h1, c) || return NamedTuple()
+        stage = String(nameof(h1))
+        bn = bundle_names(h1, c, tiers[ci], ())
+        y = h1(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T;
+                                 ws = wss[ci], m = mstores[ci], Δt = 1.0))
         y isa NamedTuple ||
-            throw(BuildError("`$path`: h_x must return a NamedTuple of port values, got $(typeof(y))"))
-        _check_ports(path, "h_x", y, d.outs, T)
+            throw(BuildError("`$path`: $stage must return a NamedTuple of port values, got $(typeof(y))"))
+        _check_ports(path, stage, y, d.outs, T)
         _embed_ports(y, d.outs, T)
     end
 end
 
-function _bundle_values(bn, d::Decls, u, y_x, ::Type{T}; y = NamedTuple(), ws = nothing,
+function _bundle_values(bn, d::Decls, u, y1, ::Type{T}; y = NamedTuple(), ws = nothing,
                         m = nothing, Δt = 0.0) where {T}
     vals = map(bn) do n
         n === :x   ? d.x :
+        n === :s   ? d.s :
         n === :m   ? m[] :
         n === :u   ? u :
-        n === :y_x ? y_x :
+        n === :y_x ? y1 :
+        n === :y_s ? y1 :
         n === :y   ? y :
         n === :ws  ? ws :
         n === :t   ? zero(T) :
@@ -179,11 +199,11 @@ Edges run producer → consumer for every consumed **stage-2** port; consuming a
 stage-1 port adds no edge, which is the whole structural payoff of the split.
 Returns a topological order over component indices, or reports the cycle.
 """
-function schedule_stage2(flat::Flat, stage1::Vector)
+function schedule_stage2(flat::Flat, tiers::Vector{Tier}, stage1::Vector)
     n = length(flat.comps)
     deps = [Int[] for _ in 1:n]
     for ci in 1:n
-        has_stage(h_xu, flat.comps[ci]) || continue
+        has_stage(stage2_of(tiers[ci]), flat.comps[ci]) || continue
         for (_, (ppath, pport)) in flat.conns[ci]
             isempty(ppath) && continue                   # a root slot: no producer to wait for
             pi = index_of(flat, ppath)
@@ -211,7 +231,8 @@ function schedule_stage2(flat::Flat, stage1::Vector)
         cycle = sort!(collect(remaining))
         names = join((flat.paths[ci] for ci in cycle), " → ")
         throw(BuildError("algebraic loop through stage-2 ports: $names — break it with a " *
-                         "stage-1 (`h_x`) port, which carries no input dependence (§5.4/§5.5)"))
+                         "stage-1 (`h_x`/`h_s`) port, which carries no input dependence " *
+                         "(§5.4/§5.5)"))
     end
     order
 end
@@ -364,7 +385,7 @@ function _stratum_c(flat::Flat, tiers::Vector{Tier}, order, carry, ::Type{T}) wh
     wss = _workspaces(flat, tiers, T)
 
     stage1 = probe_stage1(flat, decls, tiers, wss, mstores, carry, T)
-    order === nothing && (order = schedule_stage2(flat, stage1))
+    order === nothing && (order = schedule_stage2(flat, tiers, stage1))
     layout = cell_layout(flat, decls, T)
     products = probe_stage2(flat, decls, tiers, stage1, order, layout, wss, mstores, carry, T)
     Activation{T}(decls, collect(stage1), products, layout), order
@@ -415,14 +436,16 @@ function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
 
     for ci in order
         c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], stage1[ci]
-        (has_stage(h_xu, c) && !_frozen(tiers, ci, T)) || continue
-        bn = bundle_names(h_xu, c, tiers[ci], tuple(keys(s1)...))
+        h2 = stage2_of(tiers[ci])
+        (has_stage(h2, c) && !_frozen(tiers, ci, T)) || continue
+        stage = String(nameof(h2))
+        bn = bundle_names(h2, c, tiers[ci], tuple(keys(s1)...))
         u = in_values(ci, d)
-        y2 = h_xu(c, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
-                                    Δt = 1.0))
+        y2 = h2(c, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
+                                  Δt = 1.0))
         y2 isa NamedTuple ||
-            throw(BuildError("`$path`: h_xu must return a NamedTuple, got $(typeof(y2))"))
-        _check_ports(path, "h_xu", y2, d.outs, T)
+            throw(BuildError("`$path`: $stage must return a NamedTuple, got $(typeof(y2))"))
+        _check_ports(path, stage, y2, d.outs, T)
         isempty(intersect(keys(s1), keys(y2))) ||
             throw(BuildError("`$path`: $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
         products[ci] = merge(s1, _embed_ports(y2, d.outs, T))
@@ -443,13 +466,13 @@ function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
     # executable set like its output stages (§9.4).
     for (ci, c) in enumerate(flat.comps)
         path, d, t = flat.paths[ci], decls[ci], tiers[ci]
-        (isempty(d.x) || _frozen(tiers, ci, T)) && continue
-        update = t === CONTINUOUS ? f : g
+        (isempty(state_decls(d, t)) || _frozen(tiers, ci, T)) && continue
+        update = update_of(t)
         bn = bundle_names(update, c, t, tuple(keys(stage1[ci])...))
         vals = _bundle_values(bn, d, in_values(ci, d), stage1[ci], T; y = products[ci],
                               ws = wss[ci], m = mstores[ci], Δt = 1.0)
         t === CONTINUOUS ? _check_derivative(path, f(c, vals), d.x) :
-                           _check_update(path, g(c, vals), d.x)
+                           _check_update(path, g(c, vals), d.s)
     end
     products
 end
@@ -562,10 +585,10 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     flat, tiers, decls, layout = b.flat, b.tiers, act.decls, act.layout
 
     # Three homes for state, and no store mirrors another (§7.3): the flat
-    # buffer for continuous `x`, one store per discrete `x`, one per mode set.
+    # buffer for continuous `x`, one store per discrete `s`, one per mode set.
     # A store's *type* is shared by every instance of a component type, so
     # instances still compile to one body; only the reference varies.
-    xstores = Any[t === DISCRETE && !isempty(d.x) ? Ref(d.x) : nothing
+    sstores = Any[t === DISCRETE && !isempty(d.s) ? Ref(d.s) : nothing
                   for (d, t) in zip(decls, tiers)]
     mstores = Any[isempty(init_m(c)) ? nothing : Ref(init_m(c)) for c in flat.comps]
     wss = _workspaces(flat, tiers, T)
@@ -608,23 +631,25 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     hx_gates, hxu_gates, rhs_gates, tick_gates = Any[], Any[], Any[], Any[]
 
     for (ci, c) in enumerate(flat.comps)
-        (has_stage(h_x, c) && !frozen(ci)) || continue
+        h1 = stage1_of(tiers[ci])
+        (has_stage(h1, c) && !frozen(ci)) || continue
         d, s1 = decls[ci], act.stage1[ci]
-        bn = bundle_names(h_x, c, tiers[ci], ())
+        bn = bundle_names(h1, c, tiers[ci], ())
         push!(hx_entries, StageEntry{typeof(d.x),bn}(
-            h_x, c, NamedTuple(), NamedTuple(), addr_group(flat.paths[ci], keys(s1)),
-            x_offs[ci], clock, xstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
+            h1, c, NamedTuple(), NamedTuple(), addr_group(flat.paths[ci], keys(s1)),
+            x_offs[ci], clock, sstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
         push!(hx_gates, gate(ci))
     end
 
     for ci in b.order
         c, path, d, s1 = flat.comps[ci], flat.paths[ci], decls[ci], act.stage1[ci]
-        (has_stage(h_xu, c) && !frozen(ci)) || continue
-        bn = bundle_names(h_xu, c, tiers[ci], tuple(keys(s1)...))
+        h2 = stage2_of(tiers[ci])
+        (has_stage(h2, c) && !frozen(ci)) || continue
+        bn = bundle_names(h2, c, tiers[ci], tuple(keys(s1)...))
         push!(hxu_entries, StageEntry{typeof(d.x),bn}(
-            h_xu, c, in_group(ci, d), addr_group(path, keys(s1)),
+            h2, c, in_group(ci, d), addr_group(path, keys(s1)),
             addr_group(path, y2keys(ci)), x_offs[ci], clock,
-            xstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
+            sstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
         push!(hxu_gates, gate(ci))
     end
 
@@ -632,8 +657,8 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     # `g` into the component's own store. Both read the complete fresh table.
     for (ci, c) in enumerate(flat.comps)
         path, d, t = flat.paths[ci], decls[ci], tiers[ci]
-        (isempty(d.x) || frozen(ci)) && continue
-        update = t === CONTINUOUS ? f : g
+        (isempty(state_decls(d, t)) || frozen(ci)) && continue
+        update = update_of(t)
         bn = bundle_names(update, c, t, tuple(keys(act.stage1[ci])...))
         y_g, in_g = addr_group(path, keys(d.outs)), in_group(ci, d)
         if t === CONTINUOUS
@@ -642,7 +667,7 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
             push!(rhs_gates, nothing)
         else
             push!(tick_entries, UpdateEntry{bn}(
-                c, in_g, y_g, clock, xstores[ci], wss[ci], Δt_c[ci]))
+                c, in_g, y_g, clock, sstores[ci], wss[ci], Δt_c[ci]))
             push!(tick_gates, gate(ci))
         end
     end
@@ -654,7 +679,7 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
               ticks = body(tick_entries, tick_gates))
 
     (store = store, xbuf = xbuf, ẋbuf = ẋbuf, clock = clock, bodies = bodies,
-     xstores = xstores, mstores = mstores)
+     sstores = sstores, mstores = mstores)
 end
 
 # A probed input value: the producer's product, or the synthesized value of the
@@ -698,10 +723,10 @@ end
 # successor must be the store's own type exactly. The discrete world is pinned —
 # no walk, no embedding — which makes the store assignment type-stable and the
 # ban on arithmetic over stores enforceable by construction.
-function _check_update(path, x⁺, x::NamedTuple)
-    x⁺ isa NamedTuple ||
-        throw(BuildError("`$path`: g must return a NamedTuple shaped like `init_x`, got $(typeof(x⁺))"))
-    typeof(x⁺) === typeof(x) ||
-        throw(BuildError("`$path`: g returns $(typeof(x⁺)), state store is $(typeof(x)) — a " *
+function _check_update(path, s⁺, s::NamedTuple)
+    s⁺ isa NamedTuple ||
+        throw(BuildError("`$path`: g must return a NamedTuple shaped like `init_s`, got $(typeof(s⁺))"))
+    typeof(s⁺) === typeof(s) ||
+        throw(BuildError("`$path`: g returns $(typeof(s⁺)), state store is $(typeof(s)) — a " *
                          "discrete successor is the store's own type exactly (§7.3)"))
 end
