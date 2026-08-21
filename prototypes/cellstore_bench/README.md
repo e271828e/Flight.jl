@@ -32,7 +32,7 @@ identical for both. A candidate supplies only `build_store`, `cell_addr`,
 ## Gates, in order
 
 1. **`@ballocated(sweep()) == 0`** — mandatory. `sweep()` is the zero-arg
-   interior variant of `sweep_hxu` (§9.7). A candidate that cannot pass is out
+   interior variant of `sweep_2` (§9.7). A candidate that cannot pass is out
    whatever else it does.
 2. **Compile cost vs. N identical instances** — the discriminating measurement.
    A flat curve for C2 means the code sharing is real; a slope in the class of

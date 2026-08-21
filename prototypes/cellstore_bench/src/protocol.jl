@@ -93,7 +93,7 @@ end
     _walk(Base.tail(t), store, xbuf)
 end
 
-"""The zero-arg interior variant of `sweep_hxu` (§9.7) — what gate 1 measures."""
+"""The zero-arg interior variant of `sweep_2` (§9.7) — what gate 1 measures."""
 struct Sweep{C<:Tuple}
     chunks::C
 end
@@ -113,7 +113,7 @@ end
 """
     build_sweep(C, spec, T; chunk_size = 16)
 
-Returns `(sweep, store, layout, xbuf)`. `sweep()` is the interior `sweep_hxu`.
+Returns `(sweep, store, layout, xbuf)`. `sweep()` is the interior `sweep_2`.
 """
 function build_sweep(::Type{C}, spec::ModelSpec, ::Type{T};
                      chunk_size::Int = 16) where {C<:Candidate,T}

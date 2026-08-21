@@ -627,18 +627,18 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     gate(ci) = tiers[ci] === DISCRETE ? (D_c[ci], Φ_c[ci]) : nothing
     y2keys(ci) = keys(act.products[ci])[length(keys(act.stage1[ci]))+1:end]
 
-    hx_entries, hxu_entries, rhs_entries, tick_entries = Any[], Any[], Any[], Any[]
-    hx_gates, hxu_gates, rhs_gates, tick_gates = Any[], Any[], Any[], Any[]
+    stage1_entries, stage2_entries, rhs_entries, tick_entries = Any[], Any[], Any[], Any[]
+    stage1_gates, stage2_gates, rhs_gates, tick_gates = Any[], Any[], Any[], Any[]
 
     for (ci, c) in enumerate(flat.comps)
         h1 = stage1_of(tiers[ci])
         (has_stage(h1, c) && !frozen(ci)) || continue
         d, s1 = decls[ci], act.stage1[ci]
         bn = bundle_names(h1, c, tiers[ci], ())
-        push!(hx_entries, StageEntry{typeof(d.x),bn}(
+        push!(stage1_entries, StageEntry{typeof(d.x),bn}(
             h1, c, NamedTuple(), NamedTuple(), addr_group(flat.paths[ci], keys(s1)),
             x_offs[ci], clock, sstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
-        push!(hx_gates, gate(ci))
+        push!(stage1_gates, gate(ci))
     end
 
     for ci in b.order
@@ -646,11 +646,11 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
         h2 = stage2_of(tiers[ci])
         (has_stage(h2, c) && !frozen(ci)) || continue
         bn = bundle_names(h2, c, tiers[ci], tuple(keys(s1)...))
-        push!(hxu_entries, StageEntry{typeof(d.x),bn}(
+        push!(stage2_entries, StageEntry{typeof(d.x),bn}(
             h2, c, in_group(ci, d), addr_group(path, keys(s1)),
             addr_group(path, y2keys(ci)), x_offs[ci], clock,
             sstores[ci], mstores[ci], wss[ci], Δt_c[ci]))
-        push!(hxu_gates, gate(ci))
+        push!(stage2_gates, gate(ci))
     end
 
     # The update law, one block per tier: `f` into the flat derivative buffer,
@@ -673,8 +673,8 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     end
 
     body(es, gs) = chunked_body(es, gs, store, xbuf, ẋbuf, clock; chunk_size)
-    bodies = (sweep_hx = body(hx_entries, hx_gates),
-              sweep_hxu = body(hxu_entries, hxu_gates),
+    bodies = (sweep_1 = body(stage1_entries, stage1_gates),
+              sweep_2 = body(stage2_entries, stage2_gates),
               rhs = body(rhs_entries, rhs_gates),
               ticks = body(tick_entries, tick_gates))
 

@@ -59,9 +59,9 @@ end
     sim = Simulation(feedback_model(); h = 1//1000)
     # sum first (both its inputs are loop-breaking), then ctl, then plant
     paths = [e.comp isa Sum ? :sum : e.comp isa Gain ? :ctl : :plant
-             for e in walked(sim.bodies.sweep_hxu)]
+             for e in walked(sim.bodies.sweep_2)]
     @test paths == [:sum, :ctl, :plant]
-    @test length(walked(sim.bodies.sweep_hx)) == 1
+    @test length(walked(sim.bodies.sweep_1)) == 1
     @test length(walked(sim.bodies.rhs)) == 1
 end
 
@@ -97,7 +97,7 @@ end
 @testset "the phase-body roster is fixed and total (§9.7)" begin
     sim = Simulation(feedback_model(); h = 1//100)
     b = phase_bodies(sim)
-    @test keys(b) === (:sweep_hx, :sweep_hxu, :rhs, :ticks)
+    @test keys(b) === (:sweep_1, :sweep_2, :rhs, :ticks)
     @test b.ticks() === nothing            # empty body: legal, a no-op
     @test b.ticks(3) === nothing           # and total in both arities
     for name in keys(b)
@@ -133,8 +133,8 @@ end
                 ("ref" => ("children/a/ref", "children/b/ref"),), ())
     sim = Simulation(two; h = 1//100)
     types(body) = unique(typeof(e) for e in walked(body))
-    @test length(types(sim.bodies.sweep_hx)) == 1     # two Plants, one h_x body
-    @test length(types(sim.bodies.sweep_hxu)) == 3    # Plant, Gain, Sum
+    @test length(types(sim.bodies.sweep_1)) == 1     # two Plants, one h_x body
+    @test length(types(sim.bodies.sweep_2)) == 3    # Plant, Gain, Sum
     @test length(types(sim.bodies.rhs)) == 1
 
     # The discrete tier keeps the property: a state store is a `Ref` whose
@@ -144,7 +144,7 @@ end
                           h = 1//10)
     @test length(walked(counters.bodies.ticks)) == 2
     @test length(types(counters.bodies.ticks)) == 1
-    @test length(types(counters.bodies.sweep_hx)) == 1
+    @test length(types(counters.bodies.sweep_1)) == 1
     # And one bundle type per model, whatever the eltype count (D-162).
     @test counters.store isa StoreBundle
 end
@@ -573,8 +573,8 @@ end
     # Structural: the interior variants carry continuous entries only, so there
     # is no gating test on the hot path — the hold is not implemented, it is
     # the absence of any way to change the cell.
-    @test length(walked(sim.bodies.sweep_hx, :interior)) == 1        # plant only
-    @test length(walked(sim.bodies.sweep_hx)) == 2                   # plus ctl
+    @test length(walked(sim.bodies.sweep_1, :interior)) == 1        # plant only
+    @test length(walked(sim.bodies.sweep_1)) == 2                   # plus ctl
     @test isempty(walked(sim.bodies.ticks, :interior))
     @test length(walked(sim.bodies.ticks)) == 1
 
@@ -655,7 +655,7 @@ end
     # tick at `t₀⁻` would have produced.
     simd = Simulation(sampled_loop(), D8; h = 1//50)
     @test isempty(walked(simd.bodies.ticks))
-    @test length(walked(simd.bodies.sweep_hx)) == 1          # plant only; ctl frozen
+    @test length(walked(simd.bodies.sweep_1)) == 1          # plant only; ctl frozen
     @test port(simd, "children/ctl", :u) isa Float64
 
     init!(simd)
@@ -918,9 +918,9 @@ end
 
     # The gate is structural: the interior variants carry no discrete entry, the
     # boundary variants gate every one of them, and nothing else.
-    @test isempty(walked(sim.bodies.sweep_hxu, :interior))
-    @test gated(sim.bodies.sweep_hxu) == 3
-    @test gated(sim.bodies.sweep_hx) == 0            # the ramp is continuous
+    @test isempty(walked(sim.bodies.sweep_2, :interior))
+    @test gated(sim.bodies.sweep_2) == 3
+    @test gated(sim.bodies.sweep_1) == 0            # the ramp is continuous
 end
 
 @testset "the hyperperiod chart is readable off the cells (§10.5)" begin

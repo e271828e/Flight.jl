@@ -21,7 +21,7 @@ end
 # --- component types ----------------------------------------------------------
 # Declarations: `input_types(c, T)`, `output_types(c, T)`, `init_x(c, T)`.
 # Stage function: `h_xu(c, x, u)` — the interior continuous stage, the body the
-# `sweep_hxu()` measurement (§9.7) runs.
+# `sweep_2()` measurement (§9.7) runs.
 
 """Root source: no inputs, drives the chain. One instance per model."""
 struct Source

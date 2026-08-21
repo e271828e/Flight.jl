@@ -67,8 +67,8 @@ interior variant of each sweep block, then the `f` block against the complete
 fresh table. Leaves `ẋbuf` holding the derivative of whatever `xbuf` holds.
 """
 @inline function evaluate!(sim::Simulation)
-    sim.bodies.sweep_hx()
-    sim.bodies.sweep_hxu()
+    sim.bodies.sweep_1()
+    sim.bodies.sweep_2()
     sim.bodies.rhs()
     nothing
 end
@@ -81,8 +81,8 @@ component's cells carry `y[k]` computed from `s[k]` while `g` produces `s[k+1]`
 — the sampled-data recursion, ordered by construction rather than by convention.
 """
 @inline function boundary!(sim::Simulation, tick::Int)
-    sim.bodies.sweep_hx(tick)
-    sim.bodies.sweep_hxu(tick)
+    sim.bodies.sweep_1(tick)
+    sim.bodies.sweep_2(tick)
     sim.bodies.ticks(tick)
     nothing
 end
@@ -95,8 +95,8 @@ zero-arg interior bodies are exactly the boundary walk with every discrete
 entry gated out, so consistency is restored and nothing discrete can move.
 """
 @inline function offtick_boundary!(sim::Simulation)
-    sim.bodies.sweep_hx()
-    sim.bodies.sweep_hxu()
+    sim.bodies.sweep_1()
+    sim.bodies.sweep_2()
     nothing
 end
 
