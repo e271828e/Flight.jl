@@ -22,12 +22,12 @@ module ConditionDemo
 
 ######################## The algebra (§14.2, §14.6) ############################
 
-#x is the fused state store — continuous and discrete leaves alike (D-173);
-#there is no separate z payload, z being the shift operator only
-struct Fragment{X<:NamedTuple, M<:NamedTuple, S<:NamedTuple}
-    x::X; m::M; slots::S            #self-vocabulary payloads; no paths
+#x is the continuous state store and s the discrete one — one letter per tier
+#(D-195, superseding D-173's fusion); z remains the shift operator only
+struct Fragment{X<:NamedTuple, S<:NamedTuple, M<:NamedTuple, L<:NamedTuple}
+    x::X; s::S; m::M; slots::L      #self-vocabulary payloads; no paths
 end
-fragment(; x = (;), m = (;), slots = (;)) = Fragment(x, m, slots)
+fragment(; x = (;), s = (;), m = (;), slots = (;)) = Fragment(x, s, m, slots)
 
 struct Scoped{N}                    #at(prefix, node): stores, never applies
     prefix::String
@@ -51,7 +51,7 @@ override(base, patch, rest...) = override(Override(base, patch), rest...)
 
 struct Entry
     path::String                    #component path from the resolution root
-    store::Symbol                   #:x, :m, or :slot
+    store::Symbol                   #:x, :s, :m, or :slot
     field::Symbol                   #state/mode field, or face name for :slot
     value::Any
     provenance::String
@@ -84,7 +84,7 @@ join_path(prefix, p) = isempty(prefix) ? p : prefix * "/" * p
 
 function flatten!(out, f::Fragment, path, prov)
     prov *= "fragment"
-    for store in (:x, :m)
+    for store in (:x, :s, :m)
         for (field, value) in pairs(getfield(f, store))
             push!(out, Entry(path, store, field, value, prov))
         end
@@ -94,8 +94,8 @@ function flatten!(out, f::Fragment, path, prov)
     end
 end
 
-flatten!(out, s::Scoped, path, prov) =
-    flatten!(out, s.node, join_path(path, s.prefix), prov * "at(\"$(s.prefix)\") → ")
+flatten!(out, sc::Scoped, path, prov) =
+    flatten!(out, sc.node, join_path(path, sc.prefix), prov * "at(\"$(sc.prefix)\") → ")
 
 function flatten!(out, m::Merged, path, prov)
     for (i, n) in enumerate(m.nodes)
@@ -142,18 +142,18 @@ root_slot(e::Entry) = isempty(e.path) ? String(e.field) :
 
 function label(f::Fragment)
     parts = String[]
-    for store in (:x, :m, :slots)
+    for store in (:x, :s, :m, :slots)
         nt = getfield(f, store)
         isempty(nt) || push!(parts, "$store = $nt")
     end
     "fragment(" * join(parts, ", ") * ")"
 end
-label(s::Scoped) = "at \"$(s.prefix)\""
+label(sc::Scoped) = "at \"$(sc.prefix)\""
 label(::Merged) = "merge"
 label(::Override) = "override (base, patch — patch wins)"
 
 children(::Fragment) = ()
-children(s::Scoped) = (s.node,)
+children(sc::Scoped) = (sc.node,)
 children(m::Merged) = m.nodes
 children(o::Override) = (o.base, o.patch)
 
@@ -183,8 +183,8 @@ function print_entries(entries)
     end
 end
 
-function banner(s)
-    println(); println("═"^78); println("  ", s); println("═"^78)
+function banner(msg)
+    println(); println("═"^78); println("  ", msg); println("═"^78)
 end
 
 ######################## Toy aircraft (dispatch targets only) ##################
@@ -232,10 +232,10 @@ at(prefix::AbstractString, p::TrimProblem) = TrimProblem(
     at(prefix, p.reads),                       #reads are inert selector data: same Scoped node
     p.residuals)                               #path-free: pass through
 
-describe(s::Deriv, prefix)  = "ẋ[" * join_path(prefix, s.path) * " : $(s.field)]"
-describe(s::Output, prefix) = "y[" * join_path(prefix, s.path) * " : $(s.field)]"
+describe(sel::Deriv, prefix)  = "ẋ[" * join_path(prefix, sel.path) * " : $(sel.field)]"
+describe(sel::Output, prefix) = "y[" * join_path(prefix, sel.path) * " : $(sel.field)]"
 
-print_reads(s::Scoped, prefix = "") = print_reads(s.node, join_path(prefix, s.prefix))
+print_reads(sc::Scoped, prefix = "") = print_reads(sc.node, join_path(prefix, sc.prefix))
 function print_reads(reads::NamedTuple, prefix = "")
     for (name, sel) in pairs(reads)
         println("  ", rpad(string(name), 6), " = ", describe(sel, prefix))

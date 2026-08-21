@@ -409,7 +409,7 @@ flavors fall out of the same gate — the main evidence the representation is ri
   every `Φ` is 0, so "at boundary zero everything is due" is the degenerate case of
   the same identity. This is what the residue invariant of section 3 buys: it makes
   index 0 honest. An offset component's first tick is at `Φ·Δt_base`; until then its
-  cells hold the values the build probe populated from `init_x` ([§9.3][s9-3]) — a coherent
+  cells hold the values the build probe populated from `init_s` ([§9.3][s9-3]) — a coherent
   ZOH story, since those are exactly the values a tick at `t₀⁻` would have produced.
 - **`t*` boundaries**: the empty due set is **arity selection, not an index trick**.
   There is no sentinel index that fails all gates — a `D = 1, Φ = 0` component
@@ -486,13 +486,13 @@ The suite's and ctrl's due sets are *disjoint at every boundary* — the designe
 effect of a half-period stagger. Boundary by boundary:
 
 - **t = 0**: due = {ctrl} (the boundary-zero rule of section 5.5). The sensors have
-  never ticked; ctrl reads their build-probed `init_x` cells for the first
+  never ticked; ctrl reads their build-probed `init_s` cells for the first
   millisecond.
 - **Odd ms**: due = {sensors}; ctrl's cells hold.
 - **Even ms, not multiples of 20**: due set empty — the boundary exists for events
   and frame structure only. These 1 kHz boundaries in a model whose fastest task is
   500 Hz are the overhead the offset-refined grid charges.
-- **Multiples of 20 ms**: due = {ctrl}, whose `h_xu` reads sensor cells written at
+- **Multiples of 20 ms**: due = {ctrl}, whose `h_su` reads sensor cells written at
   the previous odd boundary — data exactly 1 ms old, every time, deterministically.
 
 **What the offset bought.** With offset 0, sensors and ctrl coincide at every 20 ms

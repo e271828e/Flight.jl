@@ -197,7 +197,7 @@ were derived.
 | [D-170][d-170] | Split assembly connections into child/input/output declarations | ratified |
 | [D-171][d-171] | Rename `passthrough` to `input_passthrough` | ratified |
 | [D-172][d-172] | Rule "face" kind-blind, defined at first use | ratified |
-| [D-173][d-173] | Fuse the discrete state letter `z` into `x` | ratified |
+| [D-173][d-173] | Fuse the discrete state letter `z` into `x` | superseded → [D-195][d-195] |
 | [D-174][d-174] | Re-class the GUI as an ordinary enumerated writer | ratified |
 | [D-175][d-175] | Re-scope `gui = true` to a run-scoped attachment | ratified |
 | [D-176][d-176] | Unify trace retention on one sparse record format | ratified |
@@ -219,6 +219,7 @@ were derived.
 | [D-192][d-192] | Let the greedy claim empty the harness remainder | ratified |
 | [D-193][d-193] | Keep per-writer liveness on one timestamp plus task state | ratified |
 | [D-194][d-194] | Retire the `w` channel: intermediates are declared ports | ratified |
+| [D-195][d-195] | Give the discrete state its own letter `s` | ratified |
 
 ### D-001 — Hybrid causal formalism with two-tier events and projection
 
@@ -5850,7 +5851,7 @@ names).
 
 ### D-173 — Fuse the discrete state letter `z` into `x`
 
-**Status.** ratified
+**Status.** superseded → [D-195][d-195]
 
 **Position.** The discrete state letter `z` fuses into `x`: `h_z`/`h_zu` →
 `h_x`/`h_xu`, `init_z` → `init_x`, `y_z` → `y_x`, bundle field `z` → `x`, `z⁺ =
@@ -6701,6 +6702,62 @@ a subsystem-scoped signal. No private inter-method channel exists there.
   visibility rule survive, [D-055][d-055]'s "first wrapper type" ground has expired
   ([D-185][d-185]'s `Relative`/`Absolute`), and the fallback stays on record.
 
+### D-195 — Give the discrete state its own letter `s`
+
+**Status.** ratified
+
+**Position.** The discrete state un-fuses from `x` into its own letter `s`;
+[D-173][d-173]'s `z` retirement stands untouched — bare `z` still means only the shift
+operator `z⁻¹`.
+
+- The discrete-tier names re-split: `h_x`/`h_xu` → `h_s`/`h_su`, `init_x` →
+  `init_s`, `y_x` → `y_s`, bundle field `x` → `s`, `x⁺ = g(x,u,t)` → `s⁺ =
+  g(s,u,t)`; the continuous tier keeps the `x` family, and `f`/`g`, `m` and
+  `Δt` keep their meanings.
+- The per-function-per-tier closed bundle-name sets become per-function closed
+  sets again: the two tiers' name families are disjoint by construction.
+- The wrong-letter error class [D-173][d-173] retired rejoins
+  `DeclarationOnWrongTier`'s member set — a discrete leaf declaring `h_x`, or
+  a continuous one declaring `h_s`, is statically diagnosable again.
+
+**Spec.** [§3.2][s3-2], [§5.2][s5-2], [§5.3][s5-3], [§7.3][s7-3], [§8.2][s8-2], [§8.7][s8-7], [§9.3][s9-3], [§9.5][s9-5], [§12.5][s12-5], [§13.7][s13-7], [§14.1][s14-1], [§15.2][s15-2], [§15.5][s15-5],
+[Appendix A][sA], [Appendix B][sB], [Appendix C][sC], [Appendix D][sD] (all companions swept)
+
+**Rationale.** [D-173][d-173] correctly retired `z` but recycled the continuous letter,
+erasing a real distinction: the discrete state is a different object — no
+derivative, any isbits type (pinned, eltype-generic or mixed), latched between
+ticks, stored in per-component state stores where the continuous state lives in
+the flat buffer ([§9.1][s9-1]) — and one letter made leaf declarations and framework
+prose read as one mechanism where the engine holds two.
+
+[D-173][d-173]'s "every candidate letter is taken" premise has since emptied for `s`:
+the Laplace variable appears nowhere in the spec — the document's only
+transform-domain symbol is `z⁻¹` — and `s` carries unique positive precedent,
+being legacy FlightCore's own discrete state field (`Model.s`), which [§12.5][s12-5]'s
+consumer survey already quotes as `x`/`s`; the migration ([§16][s16]) reads the legacy
+vocabulary back rather than introducing a third letter. The "doubled API"
+objection is nominal, not per-leaf: a leaf is strictly one tier ([D-056][d-056]) and
+still implements exactly one name family, and the doubling buys back the
+wrong-letter diagnostic. The hybrid-systems `x⁺` convention [D-173][d-173] leaned on
+models a single state that both flows and jumps; the framework's tiers are
+disjoint ([D-056][d-056], [§3.2][s3-2]), so its premise never applied here. [D-173][d-173]'s
+`is_discrete` rejection is untouched — the arity-is-the-tier doctrine survives
+with the letters split.
+
+**Rejected.**
+- *`w`:* free in current text since [D-194][d-194], but permanently means intermediates
+  in the log's lineage ([D-165][d-165], [D-169][d-169], [D-194][d-194]) — reuse would make one letter
+  mean two things across the log's history; reads as process noise/disturbance
+  in the state-space literature; prefix near-miss with the `ws` workspace
+  field.
+- *`d`:* `D` is already the compiled sample-rate divisor ([§8.7][s8-7], [Appendix D][sD]) and
+  the feedthrough matrix in `linearize`'s return, `d` the trim decision vector
+  ([§14.7][s14-7]); differential-operator reading, flagged by [D-173][d-173] already.
+- *Keeping the fusion:* the collision argument that motivated it was against
+  `z`, not for `x` — with a clean letter available, the shared letter's only
+  remaining yield is the halved name count, which per-tier disjointness makes a
+  diagnostic asset instead.
+
 <!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
 [d-001]: #d-001--hybrid-causal-formalism-with-two-tier-events-and-projection
 [d-002]: #d-002--adopt-the-causal-port-based-paradigm
@@ -6896,6 +6953,7 @@ a subsystem-scoped signal. No private inter-method channel exists there.
 [d-192]: #d-192--let-the-greedy-claim-empty-the-harness-remainder
 [d-193]: #d-193--keep-per-writer-liveness-on-one-timestamp-plus-task-state
 [d-194]: #d-194--retire-the-w-channel-intermediates-are-declared-ports
+[d-195]: #d-195--give-the-discrete-state-its-own-letter-s
 [s10-1]: framework_spec.md#101-loop-ownership-the-framework-owns-the-simulation-loop
 [s10-2]: framework_spec.md#102-the-stepper-seam
 [s10-3]: framework_spec.md#103-signal-table-consistency-is-a-boundary-property

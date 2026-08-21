@@ -10,10 +10,10 @@ re-adjudication, to preserve the answer to one recurring question.*
 
 Everything here answers one question. Take a continuous component A, a
 discrete component B, and a continuous component C, wired in a chain: B's
-`h_xu` reads one of A's outputs and computes an output wired to one of C's
+`h_su` reads one of A's outputs and computes an output wired to one of C's
 inputs. Under a `Dual` activation, B's stages never run and B's cells are
 frozen `Float64` constants with zero partials. **How can the AD chain work
-without calling `h_xu` between A's and C's output stages?**
+without calling `h_su` between A's and C's output stages?**
 
 The answer: the instantaneous chain A → B → C that the question pictures does
 not exist in the real system either. AD follows actual dataflow, and the
@@ -25,8 +25,8 @@ instantaneous dependence that the hybrid semantics never had.
 
 B is a sampled-data component — the model of a digital device. Its execution
 contract ([§10.5][s10-5]'s gated scheduling) is: at B's tick times $t_k$, its stages
-run — `h_x`/`h_xu` read whatever their inputs *are at that instant*, compute
-B's outputs, write them to B's cells, and `g` updates B's `x`. Between ticks, B's
+run — `h_s`/`h_su` read whatever their inputs *are at that instant*, compute
+B's outputs, write them to B's cells, and `g` updates B's `s`. Between ticks, B's
 stages do not run at all; its cells **hold** — the zero-order hold (ZOH) that
 a real DAC performs. This is true in every nominal simulation sweep, before
 AD ever enters the picture.
@@ -65,7 +65,7 @@ approximation of a derivative too hard to get; it is the derivative.
 
 ## 4. The fictitious system
 
-Suppose instead the sweep ran B's `h_xu` on A's current `Dual` output. The
+Suppose instead the sweep ran B's `h_su` on A's current `Dual` output. The
 partials would flow A → B → C, and the result would be the Jacobian of a
 **fictitious system** — one in which B recomputes continuously, i.e. the
 sample-and-hold has been deleted and the digital controller replaced by a
@@ -75,7 +75,7 @@ why discretization matters in control design at all.
 
 There is a structural echo of the same fact. A feedback loop closed through B
 is schedulable precisely because B's output is held state rather than
-feedthrough ([§5.3][s5-3]); treat `h_xu` as in-sweep feedthrough and that loop
+feedthrough ([§5.3][s5-3]); treat `h_su` as in-sweep feedthrough and that loop
 becomes algebraic, which [§5.5][s5-5] would have to reject. The freeze and the
 schedule are the same statement made twice.
 
@@ -87,15 +87,15 @@ $t_k$ enters B's tick computation, and B's held output shapes $\dot{x}$ over
 the whole interval $[t_k, t_{k+1})$. But that dependence lives in the
 composition *across* the interval — the sampled-data step map
 
-$$\Phi : (x_k, \mathrm{slots}) \mapsto x_{k+1}
-\qquad \text{(over the whole state, continuous and discrete leaves alike:
-integrate one period, then run the due ticks)}$$
+$$\Phi : ((x_k, s_k), \mathrm{slots}) \mapsto (x_{k+1}, s_{k+1})
+\qquad \text{(over the whole state, continuous } x \text{ and discrete } s
+\text{ alike: integrate one period, then run the due ticks)}$$
 
-and differentiating $\Phi$ is exactly where "call `h_xu` between A and C"
+and differentiating $\Phi$ is exactly where "call `h_su` between A and C"
 becomes correct: the `Dual`s must flow through B's stages *at tick position
-in the step*, with the real leaves of B's `x` walked. That is verbatim [§14.10][s14-10]'s
+in the step*, with the real leaves of B's `s` walked. That is verbatim [§14.10][s14-10]'s
 recorded door — the sampled-data `Dual` activation, executable set
-"continuous chain + `f` + discrete `h_x`/`h_xu` + `g`", with its honest
+"continuous chain + `f` + `h_s`/`h_su` + `g`", with its honest
 boundary ($\Phi$ is differentiable only where the event pattern is locally
 constant; exactness across a firing needs saltation corrections).
 

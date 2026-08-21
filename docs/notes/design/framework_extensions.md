@@ -77,7 +77,7 @@ increasing effort:
 4. **Continuous transport delay.** The engine reference supports delay blocks with
    interpolated history; we have only the discrete `UnitDelay` ([§5.5][s5-5], [§13.7][s13-7]). A
    continuous transport delay is a *library component* with a ring buffer in its
-   discrete state `x` —
+   discrete state `s` —
    it strains the immutable-state and allocation-policy corners but touches no kernel.
 5. **Enabled-subsystem behavior** (hold or reset states while a control signal is
    low). The pattern already exists as mode logic plus reset events — the
