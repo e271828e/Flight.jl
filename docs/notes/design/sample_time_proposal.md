@@ -380,7 +380,7 @@ the entry's evaluation:
 ```
 
 The same gate wraps the entry's appearances in all three tick-sensitive blocks —
-boundary `sweep_hx(idx)`, boundary `sweep_hxu(idx)`, and `ticks(idx)` — since
+boundary `sweep_1(idx)`, boundary `sweep_2(idx)`, and `ticks(idx)` — since
 due-ness is per component, per boundary, not per stage. With the schedule tuple
 concretely typed, those field loads constant-fold in practice; either way it is the
 "one subtraction" over today's `idx % D == 0`. The interior (zero-arg) arities are

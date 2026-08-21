@@ -3379,10 +3379,10 @@ writes.
 
 **Each sweep block compiles in two arities off one entry list**, along the
 interior/boundary split that [§10.5][s10-5] fixes. The zero-arg
-`sweep_hx()`/`sweep_hxu()` are the interior variants, over continuous entries
-only. That is what makes `@ballocated(sweep_hxu()) == 0` a well-defined
+`sweep_1()`/`sweep_2()` are the interior variants, over continuous entries
+only. That is what makes `@ballocated(sweep_2()) == 0` a well-defined
 measurement *of the interior path*, rather than of whichever tick phase the
-simulation happens to be sitting in. The `sweep_hx(tick)`/`sweep_hxu(tick)`
+simulation happens to be sitting in. The `sweep_1(tick)`/`sweep_2(tick)`
 forms are the boundary variants, gating their discrete entries by
 `(idx − Φ) % D` against the passed index, symmetric with `ticks(tick)`. `rhs`
 takes no index ([D-147][d-147]). One gate serves all three tick-sensitive blocks —
@@ -3459,8 +3459,8 @@ tuple's type has exactly one consumer: the unrolled walk.
 named callables bound over the simulation's own buffers. The four blocks:
 
 - `rhs` — the `f` block.
-- `sweep_hx` — in both arities.
-- `sweep_hxu` — in both arities.
+- `sweep_1` — in both arities.
+- `sweep_2` — in both arities.
 - `ticks` — takes the tick index its entries gate on.
 
 Returned with them are the per-event guards and handlers and the per-component
@@ -8265,10 +8265,14 @@ u = (throttle_cmd = get_slot("throttle"), …)
 y = (EAS = get_output("vehicle/airflow", :EAS), …)
 ```
 
-The three lists are validated at resolution against the declared state
-stores, [faces](#g-face) and `output_types`, with
-[did-you-mean](#g-did-you-mean) errors (the offending name plus the
-list-in-hand it should have matched). They compile to offsets once, and
+The three lists are validated at resolution — the `x` list against the
+continuous tier's `init_x` stores, the `u` list against [faces](#g-face), the
+`y` list against `output_types` — with [did-you-mean](#g-did-you-mean) errors
+(the offending name plus the list-in-hand it should have matched). An `x`
+entry naming a discrete store is rejected at resolution with the entry and its
+tier in hand, the no-silent-zeros rule again ([D-167][d-167], [D-197][d-197]): the frozen tier's
+only possible partials are zeros, and the rejection's next-move guidance points
+at the recorded step-map extension below. They compile to offsets once, and
 relocate whole via `at(prefix, taps)`. The shuttle layer's successor is that
 compiled writer/reader pair, and the promised `get_x_ss` deletion
 ([§7.1][s7-1]) is discharged.
@@ -8384,6 +8388,9 @@ evaluation of $\Phi$ integrates one period, then runs the [due](#g-due)
   `h_s`/`h_su` + `g`".
 - **Forward sensitivities** through the in-house RK steppers, for free — a
   payoff of owning the loop ([§10.1][s10-1]).
+- **A distinct `s`-tap register** beside the `x` list, labeling the step map's
+  state blocks $\partial(x^+, s^+)/\partial(x, s)$ ([D-197][d-197]); the `x` list keeps
+  its continuous meaning unchanged.
 
 The honest boundary: $\Phi$ is differentiable only where the
 event pattern is locally constant. Exactness across a firing needs saltation
@@ -9652,7 +9659,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   accessor of the harness and REPL registers ([§12.6][s12-6]).
 - `phase_bodies(sim) → named callables` — the compiled phase bodies of the
   nominal activation, bound over the simulation's own buffers: the four
-  blocks (`rhs`, `sweep_hx`, `sweep_hxu`, `ticks` — the sweeps in both
+  blocks (`rhs`, `sweep_1`, `sweep_2`, `ticks` — the sweeps in both
   arities, zero-arg interior and tick-indexed boundary; `ticks` takes the tick
   index) plus per-event guards/handlers and per-component `project`, keyed
   by the model's roster. The [§7.5][s7-5] allocation seam: warm, then
@@ -10262,7 +10269,7 @@ the authored value at apply time ([§14.3][s14-3]).
 
 <a id="g-measurement-seam"></a>**measurement seam / phase bodies** — `phase_bodies(sim)` returns the compiled
 bodies of the nominal activation bound over the simulation's own buffers
-(`rhs`, `sweep_hx`, `sweep_hxu` — the sweeps in both arities, zero-arg interior
+(`rhs`, `sweep_1`, `sweep_2` — the sweeps in both arities, zero-arg interior
 and tick-indexed boundary — `ticks`, plus per-event guards and handlers
 and per-component `project`). Its one promise is identity with what the loop
 runs, which is what makes the allocation assertions ([§7.5][s7-5]) honest ([§9.7][s9-7]).
@@ -10841,6 +10848,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-193]: framework_decisions.md#d-193--keep-per-writer-liveness-on-one-timestamp-plus-task-state
 [d-194]: framework_decisions.md#d-194--retire-the-w-channel-intermediates-are-declared-ports
 [d-195]: framework_decisions.md#d-195--give-the-discrete-state-its-own-letter-s
+[d-197]: framework_decisions.md#d-197--reject-discrete-stores-in-linearizations-x-tap-list
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
