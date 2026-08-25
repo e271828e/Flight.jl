@@ -61,6 +61,17 @@ retained pair and dense output and never a scratch index, and the fitted
 convergence orders — 4 and 2 through one unchanged deployment surface and one
 unchanged localization machinery — are the interchangeability proof.
 
+**Increment 9 — the data plane's core exchange.** §11.1's planes 1–3 with the
+roster empty: the harness register's staging cell — the positional
+`Union{Nothing, Tᵢ}` batch compiled over the root face set, `stage!`'s shim
+with every check at staging, CAS merge under newest-wins-per-face — the
+frame-top drain by one `atomicswap` and a compiled scatter, and snapshot
+publication, one buffer copy per frame-top boundary behind a release/acquire
+`@atomic latest` read by `latest(sim)`. `run!`'s frame takes its §11.1
+anatomy — drain, integrate, boundary sequence, publication — and the epoch
+tests' slot writes move onto the machinery the θ = 0 discriminator was built
+expecting. Two stand-ins enter the table.
+
     julia --project=. test/runtests.jl
 
 ## What is real here
@@ -76,6 +87,7 @@ unchanged localization machinery — are the interchangeability proof.
 | `Simulation` with its deployment constructor, bound schedule and the `method`/`firing_budget`/`localization_tol`/`localization_budget` keywords, the seam's framework side (the never-entered-empty short-circuit), the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §10.4, §9.7, §11.3 | `src/sim.jl` |
 | the stepper seam's backend side: the three-clause contract as dispatch — `step!` by arbitrary `h`, dense output via the retained `startpoint` pair and `dense!` (the shared cubic Hermite both backends inherit), one-step methods only — with fixed-step RK4 (the default) and Heun, each owning exactly its own scratch | §10.2, D-017 | `src/stepper.jl` |
 | the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazily-paid arrival derivative, bracketed trial evaluations over the seam's dense output under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
+| the data plane's core exchange: the harness register's staging cell (its derived surface the whole root face set — the empty roster's unclaimed complement), the shim/merge/scatter triple with every check at staging, the frame-top drain via `atomicswap`, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
 | the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
@@ -249,6 +261,32 @@ programming convenience:
   obligation rides the seam too: a localized stamp under Heun lands at the
   discrete solution's O(h²) through the same Hermite trials, and the
   frame-top stamps stay bitwise, having never depended on the method.
+- **A staged write is pending, never applied.** `stage!` from any task touches
+  no live slot; the batch lands at the top of the next frame `run!` advances —
+  and nowhere earlier. A batch staged while stopped waits through boundary
+  zero (`init!` runs on the un-drained slot — the contrast with `set_slot!`
+  before `init!`, which makes a holding predicate fire at `t₀`), and the
+  frame's outcome is a pure function of the drained batch: the staged
+  trajectory is bitwise the directly-written one.
+- **Merge is the only coalescing policy, and every check runs at staging.**
+  Newest wins per face and untouched faces survive — a sparse `b` batch cannot
+  clobber a pending `a` (§15.3's flaps/gear hazard), a re-staged face takes
+  the newest level. The checks run on the writer's side: a face with no
+  position in the schema is discarded under `OutOfClaimEntry`, an
+  unconvertible value under `EntryTypeMismatch`, the rest of the batch stands,
+  and the drain is pure application — the shim having already converted to the
+  activation's slot types, so a `Dual` deployment stages plain reals. The
+  empty drain is allocation-free: a quiet loop's frame top costs nothing.
+- **Nothing reachable from a published snapshot is ever written again.**
+  Publication is one buffer copy and one release-store after the boundary
+  sequence completes — boundary zero included, off-tick frame tops included —
+  and the snapshot is the whole table, root slots riding along as the source
+  cells they are, state stores deliberately absent (§11.2). The run moves on;
+  the snapshot holds. A concurrent reader acquire-loading `latest` sees only
+  coherent worlds — the in-lockstep pair `g2 = 2·g1` holds bitwise in every
+  observed snapshot, and `t` never decreases — and a task staging against
+  running frames loses nothing to the CAS merge: the last staged level is what
+  stands.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -292,7 +330,27 @@ probe), §13.2's diagnostic framing (build errors here are a plain `BuildError`
 with a good message, not the structured carrier, and runtime degradations are a
 plain `@warn` carrying the spec'd payload, not Appendix C's named advisory
 values), partial advance and the per-run overrides (§12.6 — `run!(sim, t_end)`
-takes `t_end` to the nearest step boundary), and the entire runtime periphery.
+takes `t_end` to the nearest step boundary), and the runtime periphery beyond
+increment 9's core exchange:
+
+- **the roster and claims machinery (§11.3):** `attach!`/`detach!`, returned
+  and computed claims, the admission checks, device ids, and per-device
+  staging cells (§11.4) — the harness register's is the only cell, and its
+  derived surface is the whole root face set, which *is* the empty roster's
+  unclaimed complement, so nothing here deviates from §11.3's rule; there is
+  simply no roster to subtract;
+- **the snapshot's framework status** (§11.2, §11.8) — the snapshot carries
+  the table, `t` and the frame ordinal, no status value — along with §11.8's
+  diagnostics and liveness machinery wholesale;
+- **the log** (§11.2): retention, `log_every`/`log_max`, progressive
+  re-decimation, the kept endpoints — readers hold snapshots or lose them;
+- **output-device bindings and the selectors** (§11.2, §14.4), the §11.5
+  input trace, the §11.6 device contract and §11.1's task topology (`run!`
+  blocks its caller and the loop runs on the calling task — the no-rostered-
+  device register, not a deviation), and the §11.7 GUI write path;
+- **all of §12 beyond `latest`'s inspection register:** control plane, loop
+  scheduling, the next-snapshot wait, shutdown, real-time pacing (§10.7) and
+  replay (§12.7).
 
 ## Stand-ins: where the prototype's shape is not the spec's
 
@@ -308,10 +366,13 @@ enforcement.
 
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
+| one published snapshot per boundary, `t*` boundaries included (§11.2, §10.6) | publication at frame tops and boundary zero only; a `t*` boundary fires unpublished | when a consumer needs the per-boundary record — the log or the trace increment |
+| slot initial values owned by the init/trim services (§11.3, §14.6); the running write path is the drain alone | `set_slot!` writes a root slot directly at any stopped-sim point | the §14 services increment |
 
-(The table is empty: every stand-in introduced through increment 5 was retired
-on 2026-08-20, and increment 6's one row — localized guards detecting at
-boundary resolution — was retired by increment 7 on 2026-08-25.)
+(Every stand-in introduced through increment 5 was retired on 2026-08-20, and
+increment 6's one row — localized guards detecting at boundary resolution —
+was retired by increment 7 on 2026-08-25. The two rows above entered with
+increment 9.)
 
 ## Authoring caveat found while building this
 

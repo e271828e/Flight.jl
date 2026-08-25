@@ -2,7 +2,7 @@
 # seam (§10.2) and the phase-body accessor (§9.7). The framework owns the loop;
 # the one delegated operation is "advance the continuous state from `t` by `h`".
 
-struct Simulation{T,S,B,CL,EV,M}
+struct Simulation{T,S,B,CL,EV,M,H}
     store::S
     xbuf::Vector{T}
     ẋbuf::Vector{T}
@@ -24,6 +24,8 @@ struct Simulation{T,S,B,CL,EV,M}
     stepper::M                    # the seam's backend (§10.2), owning its own scratch
     xnext::Vector{T}              # the retained arrival pair (§10.4): xₙ₊₁ saved before trials clobber
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
+    harness::H                    # the §11.3 harness register: the one staging cell built here
+    published::Published          # §11.2's `@atomic latest` holder
 end
 
 """
@@ -79,12 +81,14 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     stepper = method(T, length(c.xbuf))
+    harness = Harness(act.layout)
     Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events),
-               typeof(stepper)}(
+               typeof(stepper),typeof(harness)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
         Int(localization_budget), any(c.events.localized), bound.sched,
-        c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)))
+        c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
+        harness, Published(nothing))
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -253,26 +257,93 @@ function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.step = 0
     fill!(sim.events.prior, false)
     boundary!(sim, 0)
+    publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
     nothing
 end
 
 """
-Advance to `t_end` one frame at a time — `frame!` carries each grid step
+Advance to `t_end` one frame at a time, each frame §11.1's anatomy — drain,
+integrate, boundary sequence, publication. `frame!` carries each grid step
 `[tₖ₋₁, tₖ]` through the §10.4 localization loop, firing any `t*` boundaries it
-brackets on the way — then the frame-top boundary (§10.3): a base tick every
-`n` frames, where the gate reads the tick index, and the empty-due-set boundary
-in between. The grid is driven by the step counter, so `t_end` is taken to the
-nearest frame top; partial advance is the periphery's (§12.6) and absent here.
+brackets on the way; the frame-top boundary (§10.3) is a base tick every `n`
+frames, where the gate reads the tick index, and the empty-due-set boundary in
+between. The drain runs at the frame top only, never at a `t*` boundary
+(§10.4), and publication follows the frame-top boundary sequence — the `t*`
+boundaries themselves are not published, a stand-in (README). The grid is
+driven by the step counter, so `t_end` is taken to the nearest frame top;
+partial advance is the periphery's (§12.6) and absent here.
 """
 function run!(sim::Simulation{T}, t_end::Real) where {T}
     target = round(Int, Float64(t_end) / sim.h)
     while sim.clock.step < target
+        drain!(sim)
         k = (sim.clock.step += 1)
         frame!(sim, k)
         k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
+        publish!(sim)
     end
     nothing
 end
+
+# --- the data plane (§11): staging, the drain, publication ---------------------
+
+"""
+    stage!(sim, "face" => value, ...)
+
+Stage a batch of root-slot writes from any task, at any wall-clock moment,
+never touching a live slot (§11.1): the entries land in the harness register's
+staging cell (§11.3) under the one coalescing policy — CAS merge, newest wins
+per face (§11.4). Untouched faces survive into the pending batch; re-staged
+faces take the newest level. Every check runs here, on the writer's side: a
+face with no position in the schema is discarded with an `OutOfClaimEntry`
+warning, an unconvertible value with `EntryTypeMismatch`, and the rest of the
+batch stands. The staged batch is applied by the drain at the top of the next
+frame `run!` advances.
+"""
+function stage!(sim::Simulation, pairs::Pair...)
+    batch = _normalize(sim.harness, pairs)
+    batch === nothing || _stage!(sim.harness, batch)
+    nothing
+end
+
+"""
+The drain (§11.4): exactly one point in each frame, at its top, where the loop
+takes the staged batch with one `atomicswap(cell, nothing)` — an indivisible
+take, so there is no lost-write window — and applies it through the compiled
+scatter, `nothing` skipped, every check long since spent at staging. Never at
+a `t*` boundary (§10.4). Between drains the loop owns its data exclusively,
+and the frame's outcome is a pure function of the drained batch.
+"""
+function drain!(sim::Simulation)
+    ref = @atomicswap sim.harness.cell.pending = nothing
+    ref === nothing && return nothing
+    _apply!(sim.store, sim.harness.addrs, ref[])
+    nothing
+end
+
+"""
+Publish this boundary (§11.2): build the snapshot in private memory — one
+buffer copy, the framework side of §7.5's scope — then a single release-store
+to `latest`. Runs only after the boundary sequence completes, so every
+published table is boundary-consistent (§10.3), and the copy is what makes the
+binding rule hold: nothing reachable from a published snapshot is ever written
+again.
+"""
+function publish!(sim::Simulation)
+    snap = Snapshot(sim.clock.t, sim.clock.step, capture(sim.store), sim.layout)
+    @atomic :release sim.published.latest = snap
+    nothing
+end
+
+"""
+    latest(sim)
+
+Acquire-load the most recently published snapshot — `nothing` before the first
+`init!`. A reader on any task observes an immutable, coherent world for as
+long as it holds the value, without coordinating with the loop; the calling
+task reads the same reference, §12.6's inspection register.
+"""
+latest(sim::Simulation) = @atomic :acquire sim.published.latest
 
 # --- reading and writing the table outside the loop ---------------------------
 # Path-addressed, dictionary-driven, deliberately off the measured path: these
@@ -283,8 +354,12 @@ end
 port(sim::Simulation, path::String, name::Symbol) = gather(sim.store, sim.layout.addr[(path, name)])
 
 """
-Write a root slot, by the root input face's name (§11.3): the write surface is
-the root's own faces, the one terminal fed by no component.
+Write a root slot directly, by the root input face's name — a stopped-sim
+establishment operation and a stand-in (README): slot initial values are owned
+by the §14 init/trim services (§11.3), absent here, and the *running* write
+path is staged batches through the drain alone. Kept for authored initial slot
+values until the services exist; a write meant to reach a running trajectory
+goes through `stage!`.
 """
 function set_slot!(sim::Simulation, face::AbstractString, v)
     scatter!(sim.store, sim.layout.addr[("", Symbol(face))], v)

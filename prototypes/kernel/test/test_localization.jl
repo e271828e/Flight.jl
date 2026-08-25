@@ -1,7 +1,7 @@
 # --- localization (§10.4, increment 7) ------------------------------------------
-# The input epochs these tests rely on are the prototype's honest ones: run!
-# returns at a frame top, and set_slot! between runs is the frame-top seam the
-# drain will occupy (§11.4) — so a slot write is always epoch-aligned here.
+# The input epochs these tests rely on are the real ones since increment 9: a
+# batch staged between runs is applied by the drain at the next frame top
+# (§11.4) — so a slot write is always epoch-aligned here, by construction.
 
 @testset "a localized event fires at t*, within tol of the true crossing (§10.4)" begin
     # Linear trajectory: RK4 and the cubic Hermite are both exact, so the stamp
@@ -53,7 +53,7 @@ end
     init!(sim)
     run!(sim, 0.3)
     @test modes(sim, "children/c").count == 0
-    set_slot!(sim, "in", 1.0)
+    stage!(sim, "in" => 1.0)                     # staged, drained at the next frame top (§11.4)
     run!(sim, 0.6)
     @test modes(sim, "children/c").count == 1
     @test modes(sim, "children/c").t_fired == 4 * sim.h     # the grid point itself
@@ -140,7 +140,7 @@ end
     init!(sim2)
     run!(sim2, 0.5)
     @test modes(sim2, "children/s").count == 0              # gate down: -one(σ) throughout
-    set_slot!(sim2, "gate", true)
+    stage!(sim2, "gate" => true)                            # the u seam, through the drain (§11.4)
     run!(sim2, 0.8)
     @test modes(sim2, "children/s").count == 1
     @test modes(sim2, "children/s").t_fired == 6 * sim2.h

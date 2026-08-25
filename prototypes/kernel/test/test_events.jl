@@ -101,8 +101,8 @@ end
     init!(sim)                                   # the synthesized slot is 0.0: not holding
     run!(sim, 0.3)
     @test modes(sim, "children/c").count == 0
-    set_slot!(sim, "in", 1.0)                    # the input epoch seam
-    run!(sim, 0.6)                               # the first boundary after it sees the edge
+    stage!(sim, "in" => 1.0)                     # the input epoch seam, staged (§11.4)
+    run!(sim, 0.6)                               # drained at the frame top: the first boundary sees the edge
     @test modes(sim, "children/c") === (state = :fired, count = 1)
     @test port(sim, "children/c", :on) === true  # the settled sweep published the new mode
     run!(sim, 1.5)                               # sticky: holding presents no further edge
