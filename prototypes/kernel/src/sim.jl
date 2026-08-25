@@ -26,12 +26,14 @@ struct Simulation{T,S,B,CL,EV,M}
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
     plane::DataPlane              # the §11.3 roster and harness register, mutable at stopped-sim points
     published::Published          # §11.2's `@atomic latest` holder
+    log::SnapshotLog              # §11.2's retained snapshots, loop-task bookkeeping
 end
 
 """
     Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
                method = RK4, firing_budget = 4, localization_tol = 1e-6,
-               localization_budget = 8, chunk_size = 16)
+               localization_budget = 8, log = true, log_every = 1,
+               log_max = 65536, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
 Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
@@ -64,10 +66,20 @@ legitimate multi-event frame needs three or four, chattering needs tens). All
 three are trajectory-determining and grid-independent: they stand beside `h`
 and `n`, validated here with their siblings, and enter none of the grid
 arithmetic.
+
+`log`, `log_every` and `log_max` are §11.2's retention keywords: the plain
+switch (default `true`), the keep-every-kth stride over published boundaries
+(an integer ≥ 1, default 1) and the bound on retained snapshot references (an
+integer ≥ 1 defaulting to 65536 = 2¹⁶ — about 22 minutes at 50 Hz and full
+density before anything is dropped — with `Inf` the explicit opt-out). Unlike
+every keyword above they are **view policies, never trajectory-determining**:
+two deployments differing only here produce bitwise-identical trajectories,
+retention being reference bookkeeping over what publication already built.
 """
 function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                     Δt_base = nothing, method = RK4, firing_budget = 4,
                     localization_tol = 1e-6, localization_budget = 8,
+                    log = true, log_every = 1, log_max = 65536,
                     chunk_size::Int = 16) where {T}
     method isa Type && method <: AbstractStepper ||
         throw(BuildError("method must be a stepper type — RK4 or Heun — got $method (§10.2)"))
@@ -77,6 +89,13 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         throw(BuildError("localization_tol must be a positive real, got $localization_tol (§10.4)"))
     localization_budget isa Integer && localization_budget ≥ 1 ||
         throw(BuildError("localization_budget must be an integer ≥ 1, got $localization_budget (§10.4)"))
+    log isa Bool ||
+        throw(BuildError("log must be true or false — the retention switch — got $log (§11.2)"))
+    log_every isa Integer && log_every ≥ 1 ||
+        throw(BuildError("log_every must be an integer ≥ 1, got $log_every (§11.2)"))
+    (log_max isa Integer && log_max ≥ 1) || log_max === Inf ||
+        throw(BuildError("log_max must be an integer ≥ 1, or Inf as the explicit " *
+                         "opt-out, got $log_max (§11.2)"))
     act = activation(b, T)
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
@@ -87,7 +106,8 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
         Int(localization_budget), any(c.events.localized), bound.sched,
         c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
-        DataPlane(act.layout, c.store), Published(nothing))
+        DataPlane(act.layout, c.store), Published(nothing),
+        SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)))
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -248,13 +268,16 @@ tick at `Φ·Δt_base`.
 Boundary zero also establishes every event prior as not-holding (§10.6), so a
 predicate already holding in the authored state fires at `t₀` — derived, not
 asserted — and a warm restart (`init!` again) resets all three registers from
-scratch: such predicates fire again at the new `t₀`.
+scratch: such predicates fire again at the new `t₀`. The log resets with them
+(§11.2): a warm restart is a new trajectory, and its boundary zero lands as a
+fresh first endpoint.
 """
 function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.t = t₀
     sim.clock.t₀ = t₀
     sim.clock.step = 0
     fill!(sim.events.prior, false)
+    _reset!(sim.log)
     boundary!(sim, 0)
     publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
     nothing
@@ -267,10 +290,10 @@ integrate, boundary sequence, publication. `frame!` carries each grid step
 brackets on the way; the frame-top boundary (§10.3) is a base tick every `n`
 frames, where the gate reads the tick index, and the empty-due-set boundary in
 between. The drain runs at the frame top only, never at a `t*` boundary
-(§10.4), and publication follows the frame-top boundary sequence — the `t*`
-boundaries themselves are not published, a stand-in (README). The grid is
-driven by the step counter, so `t_end` is taken to the nearest frame top;
-partial advance is the periphery's (§12.6) and absent here.
+(§10.4), while publication follows *every* boundary sequence (§11.2) — the
+frame top's here, a `t*` boundary's inside the frame loop, before integration
+resumes. The grid is driven by the step counter, so `t_end` is taken to the
+nearest frame top; partial advance is the periphery's (§12.6) and absent here.
 """
 function run!(sim::Simulation{T}, t_end::Real) where {T}
     target = round(Int, Float64(t_end) / sim.h)
@@ -432,11 +455,13 @@ buffer copy, the framework side of §7.5's scope — then a single release-store
 to `latest`. Runs only after the boundary sequence completes, so every
 published table is boundary-consistent (§10.3), and the copy is what makes the
 binding rule hold: nothing reachable from a published snapshot is ever written
-again.
+again. Behind the store the snapshot enters the log (§11.2): logging dissolves
+into publication, retention being the only thing the log adds.
 """
 function publish!(sim::Simulation)
     snap = Snapshot(sim.clock.t, sim.clock.step, capture(sim.store), sim.layout)
     @atomic :release sim.published.latest = snap
+    log!(sim.log, snap)
     nothing
 end
 
@@ -449,6 +474,32 @@ long as it holds the value, without coordinating with the loop; the calling
 task reads the same reference, §12.6's inspection register.
 """
 latest(sim::Simulation) = @atomic :acquire sim.published.latest
+
+"""
+    logged(sim)
+
+The log's retained snapshots, oldest first (§11.2): the boundary-zero
+endpoint, the bounded middle at the effective stride, and the terminal
+endpoint — the latest published boundary — deduplicated when retention
+already holds it. A stopped-sim read behind the §11.3 gate: the log is
+loop-task bookkeeping, so reading it beside a running loop is the same
+hazard class as a mid-run `attach!`; a concurrent reader's register is
+`latest(sim)`, and it holds snapshots or loses them (§11.2). Empty before
+the first `init!`, and empty under `log = false` — the switch gates
+retention wholesale.
+"""
+function logged(sim::Simulation)
+    assert_stopped(sim.plane, "logged")
+    L = sim.log
+    out = Snapshot[]
+    L.first === nothing && return out
+    push!(out, L.first)
+    for s in L.snaps
+        s === nothing || push!(out, s)
+    end
+    L.last === out[end] || push!(out, L.last)
+    out
+end
 
 # --- reading and writing the table outside the loop ---------------------------
 # Path-addressed, dictionary-driven, deliberately off the measured path: these

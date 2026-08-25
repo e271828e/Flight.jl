@@ -85,6 +85,17 @@ the two periphery roots, the declared sides, the enumeration contract with
 its error-throwing fallback, and the bidirectional conformance check. One
 stand-in enters the table: device staging without handles.
 
+**Increment 11 — the log.** Publication moves to its §11.2 cadence — every
+boundary, `t*` boundaries included, each snapshot released before integration
+resumes — and the log dissolves into it: a vector of retained snapshot
+references, the same objects with zero extra copies, behind the
+`log`/`log_every`/`log_max` keywords with progressive re-decimation — the
+stride doubling at each fill, one release per retained append, compaction once
+per generation — and the two endpoints held unconditionally outside the bound,
+the terminal one standing in as the latest published boundary while §12.4's
+run end is absent. The keywords are view policies, never
+trajectory-determining, and increment 9's publication stand-in retires.
+
     julia --project=. test/runtests.jl
 
 ## What is real here
@@ -102,6 +113,7 @@ stand-in enters the table: device staging without handles.
 | the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazily-paid arrival derivative, bracketed trial evaluations over the seam's dense output under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
 | the data plane's core exchange: the compiled writer — one schema/shim/merge/scatter unit over any write surface, with every check at staging and the out-of-schema warning discriminated by writer — staging cells, the frame-top drain via `atomicswap` behind stopped-sim-compiled thunks, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
 | the roster and claims: `AbstractDevice`/`AbstractBinding` with the declared sides and the false root defaults, the enumeration contract and the bidirectional conformance check (`which` against the fallback), `attach!`/`detach!` behind the §11.3 freeze with the three-part admission in spec order, both claim sources with `EmptyGreedyClaim` for the staked empty remainder, monotonic never-reused device ids, per-device cells over claim sets, the harness register as the derived remainder — recompiled at every roster change, its pending batch renormalized (`ClaimedFaceEntry` at the seam), emptied outright by a rostered greedy (D-192) — and the attachment-order drain, harness last | §11.3, §11.4, §11.6 | `src/roster.jl`, `src/sim.jl` |
+| the log: publication at every boundary (`t*` included, before integration resumes), retention as a vector of the published references themselves under `log`/`log_every`/`log_max`, progressive re-decimation (the stride doubling at each fill, one release per retained append, once-per-generation compaction, the middle at consecutive multiples of `log_every · 2^k`), the two endpoints outside the bound — the terminal one being the latest published boundary, §12.4's run end being absent — and `logged(sim)` as the stopped-sim reader behind the §11.3 gate | §11.2, D-137, D-023, D-038 | `src/dataplane.jl`, `src/sim.jl` |
 | the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity) and the `Enumerated`/`Greedy` bindings, one per claim source | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
@@ -334,6 +346,24 @@ programming convenience:
   empty drain still allocates nothing — and the frame's outcome stays a pure
   function of the drained batches, whoever staged them: the device-staged
   trajectory is bitwise the directly-written one.
+- **Every boundary publishes, and the log is the publications themselves.** A
+  localized firing's `t*` boundary releases its own snapshot before
+  integration resumes — the log holds a snapshot whose `t` is bitwise the
+  stamped `t*`, carrying the settled post-transition table while the boundary
+  before it still shows the armed value — and `logged(sim)[end] ===
+  latest(sim)`: retention is reference-keeping over what publication already
+  built, zero extra copies (D-023). What a localizing frame allocates is
+  exactly that publication, the framework-side §7.5 carve-out, and nothing of
+  the localization machinery's own.
+- **Retention is a view policy under a continuously-held bound.** Deployments
+  differing only in `log`/`log_every`/`log_max` produce bitwise-identical
+  trajectories. The middle never exceeds `log_max` at any boundary — one
+  release pairs with each retained append — and when the log fills the stride
+  doubles: coverage stays global at `log_every · 2^k`, the middles landing on
+  consecutive multiples of the effective stride with the whole run spanned,
+  while the boundary-zero and latest snapshots outlive any policy, outside
+  the bound. The off switch retains nothing; publication is upstream of it,
+  so `latest` still sees every boundary.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -378,7 +408,7 @@ with a good message, not the structured carrier, and runtime degradations are a
 plain `@warn` carrying the spec'd payload, not Appendix C's named advisory
 values), partial advance and the per-run overrides (§12.6 — `run!(sim, t_end)`
 takes `t_end` to the nearest step boundary), and the runtime periphery beyond
-increments 9–10's data plane:
+increments 9–11's data plane:
 
 - **the device task machinery (§11.6) and §11.1's task topology:**
   `init!`/`loop`/`shutdown!`/`unblock!`, the framework wrapper with its
@@ -393,8 +423,6 @@ increments 9–10's data plane:
 - **the snapshot's framework status** (§11.2, §11.8) — the snapshot carries
   the table, `t` and the frame ordinal, no status value — along with §11.8's
   diagnostics and liveness machinery wholesale;
-- **the log** (§11.2): retention, `log_every`/`log_max`, progressive
-  re-decimation, the kept endpoints — readers hold snapshots or lose them;
 - **output-device bindings and the selectors** (§11.2, §14.4), the §11.5
   input trace, and the §11.7 GUI write path;
 - **all of §12 beyond `latest`'s inspection register:** control plane, loop
@@ -418,14 +446,14 @@ enforcement.
 
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
-| one published snapshot per boundary, `t*` boundaries included (§11.2, §10.6) | publication at frame tops and boundary zero only; a `t*` boundary fires unpublished | when a consumer needs the per-boundary record — the log or the trace increment |
 | slot initial values owned by the init/trim services (§11.3, §14.6); the running write path is the drain alone | `set_slot!` writes a root slot directly at any stopped-sim point | the §14 services increment |
 | a device stages through the handle `attach!` returned, `stage!(handle, batch)` on its own task (§11.6) | `stage!(sim, dev, pairs...)` addresses the rostered device's cell directly, and `attach!` returns the device id | the device-contract increment, when handles exist |
 
-(Every stand-in introduced through increment 5 was retired on 2026-08-20, and
+(Every stand-in introduced through increment 5 was retired on 2026-08-20;
 increment 6's one row — localized guards detecting at boundary resolution —
-was retired by increment 7 on 2026-08-25. The first two rows above entered
-with increment 9, the third with increment 10.)
+was retired by increment 7, and increment 9's publication row by increment 11,
+both on 2026-08-25. The `set_slot!` row above entered with increment 9, the
+device-staging row with increment 10.)
 
 ## Authoring caveat found while building this
 

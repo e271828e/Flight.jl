@@ -1,9 +1,9 @@
 # The data plane (§11): staging cells with their frame-top drain — planes 1
-# and 2 of §11.1's replacement for the shared mutable model — and snapshot
-# publication, plane 3. The cells' owners — the roster's device entries and
-# the harness register beside them — live in roster.jl; what stands further
-# out in the spec — device tasks, the trace, the log — is deliberately absent
-# (README).
+# and 2 of §11.1's replacement for the shared mutable model — snapshot
+# publication, plane 3, and the log riding behind it (§11.2). The cells'
+# owners — the roster's device entries and the harness register beside them —
+# live in roster.jl; what stands further out in the spec — device tasks, the
+# trace — is deliberately absent (README).
 #
 # This file holds the types and the pure mechanics; the `Simulation`-facing
 # surface — `stage!`, `drain!`, `publish!`, `latest` — lives in sim.jl, beside
@@ -182,4 +182,106 @@ view.
 """
 mutable struct Published
     @atomic latest::Union{Nothing,Snapshot}
+end
+
+# --- the log (§11.2) -----------------------------------------------------------
+
+"""
+The log (§11.2): logging dissolves into publication. What is retained are the
+published snapshots themselves — the same objects, zero extra copies (D-023
+rejected preallocated buffers; unlogged snapshots die young) — under three
+policies validated at deployment binding: the plain switch, the keep-every-kth
+stride `log_every`, and the retention bound `log_max` (`Inf` stored as
+`typemax(Int)`). Normative are the guarantees, not the mechanism below: the
+bound is respected *continuously*, the retained count never exceeding
+`log_max`; coverage is global at the effective stride `log_every · 2^k` after
+`k` generations; and the two endpoints are kept unconditionally.
+
+The endpoints ride outside the bounded middle — two extra references, never
+counted against it. `first` is the boundary-zero snapshot (§14.5); `last` is
+the latest published boundary, which at any stopped moment *is* the run-so-
+far's terminal snapshot — §12.4's shutdown protocol being absent (README),
+that register is what the spec's terminal endpoint faithfully degenerates to.
+
+The middle re-decimates progressively (D-137: a rolling window was rejected —
+what coarsens is density, never extent), amortized: `snaps` holds one
+generation's retained snapshots, `nothing` marking a released slot until the
+once-per-generation compaction. The arithmetic rests on one invariant — at
+each generation's start the compacted vector holds the boundaries at ordinals
+`stride · (1..max)`, index by index — so the entries the doubled stride
+abandons are exactly the odd indices, and `cursor` walks them.
+"""
+mutable struct SnapshotLog
+    enabled::Bool
+    every::Int                      # log_every: the authored stride
+    max::Int                        # log_max: what bounds `live`, never the endpoints
+    stride::Int                     # the effective stride, every · 2^generation
+    nb::Int                         # published-boundary ordinal; boundary zero = 0
+    first::Union{Nothing,Snapshot}  # the boundary-zero endpoint (§14.5)
+    last::Union{Nothing,Snapshot}   # the terminal endpoint: the latest published boundary
+    snaps::Vector{Union{Nothing,Snapshot}}   # the bounded middle; `nothing` = released
+    live::Int                       # retained middles: the count `log_max` bounds
+    cursor::Int                     # the thinning cursor over odd indices; 0 = inactive
+end
+
+SnapshotLog(enabled::Bool, every::Int, max::Int) =
+    SnapshotLog(enabled, every, max, every, 0, nothing, nothing,
+                Union{Nothing,Snapshot}[], 0, 0)
+
+# A warm restart is a new trajectory (§10.6's register reset, carried through):
+# the log starts over, its boundary zero a fresh first endpoint.
+function _reset!(L::SnapshotLog)
+    L.stride = L.every
+    L.nb = 0
+    L.first = nothing
+    L.last = nothing
+    empty!(L.snaps)
+    L.live = 0
+    L.cursor = 0
+    nothing
+end
+
+"""
+One published boundary enters the log (§11.2), on the loop task, right behind
+the release-store: boundary zero lands in `first`, a stride multiple is
+retained into the middle, and every snapshot re-points `last` — one field
+store, which is all the terminal endpoint costs. Off, the switch retains
+nothing at all: retention is what it gates, publication being upstream of it.
+"""
+function log!(L::SnapshotLog, snap::Snapshot)
+    L.enabled || return nothing
+    if L.nb == 0
+        L.first = snap
+    elseif L.nb % L.stride == 0
+        _retain!(L, snap, L.nb)
+    end
+    L.last = snap
+    L.nb += 1
+    nothing
+end
+
+# One retained append (§11.2, D-137), the amortized re-decimation in full. At
+# the fill point — middle at `max`, no thinning under way — the stride doubles
+# *immediately*, and the candidate in hand re-tests against it, half the old
+# stride's multiples being no longer retained; the appends that follow continue
+# the surviving even multiples seamlessly. While thinning is active each
+# retained append first releases one predecessor at the cursor, so the bound
+# holds continuously and a generation's thinning completes exactly when its
+# refill does; compaction then runs, once per generation, restoring the
+# index-by-ordinal invariant for the next fill.
+function _retain!(L::SnapshotLog, snap::Snapshot, nb::Int)
+    if L.cursor == 0 && L.live == L.max
+        L.stride *= 2
+        L.cursor = 1
+        nb % L.stride == 0 || return nothing
+    end
+    if L.cursor > 0
+        L.snaps[L.cursor] = nothing
+        L.live -= 1
+        L.cursor += 2
+        L.cursor > L.max && (filter!(!isnothing, L.snaps); L.cursor = 0)
+    end
+    push!(L.snaps, snap)
+    L.live += 1
+    nothing
 end

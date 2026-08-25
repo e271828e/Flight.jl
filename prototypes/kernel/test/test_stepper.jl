@@ -85,9 +85,12 @@ end
     init!(sim)
     step!(sim, 1e-3)
     @test @ballocated(step!($sim, 1e-3)) == 0
-    siml = Simulation(single(Bouncer(1.0, 0.07)); h = 1//10, method = Heun)
+    # The localizing frame allocates exactly its t* boundary's publication —
+    # the framework-side carve-out (§7.5, §11.2) — as under RK4 (gate 3).
+    siml = Simulation(single(Bouncer(1.0, 0.07)); h = 1//10, method = Heun, log = false)
     init!(siml)
-    @test @ballocated(frame!($siml, 1), setup = (init!($siml)), evals = 1) == 0
+    pub = @ballocated publish!($siml)
+    @test @ballocated(frame!($siml, 1), setup = (init!($siml)), evals = 1) == pub
 end
 
 @testset "the second backend is generic over the scalar (§7.2)" begin

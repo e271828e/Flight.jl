@@ -3,7 +3,8 @@
 # hierarchy (increment 4), the multi-rate grid (increment 5), events at
 # boundaries (increment 6), localization (increment 7), the stepper seam
 # with its second backend (increment 8), the data plane's core exchange
-# (increment 9) and the roster and claims (increment 10).
+# (increment 9), the roster and claims (increment 10) and the log
+# (increment 11).
 #
 #   julia --project=. test/runtests.jl
 
@@ -33,3 +34,4 @@ include("test_localization.jl")
 include("test_stepper.jl")
 include("test_dataplane.jl")
 include("test_roster.jl")
+include("test_log.jl")

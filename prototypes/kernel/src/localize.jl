@@ -129,12 +129,14 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
         # construction, so this is exactly the off-tick boundary: projection
         # (authority rests here, not with the raw trials), the full event
         # phase iterated to quiescence under a fresh firing budget, priors
-        # updated from the settled samples. Integration then resumes from the
-        # settled state; the interpolant is invalidated by falling out of
+        # updated from the settled samples — and the settled boundary publishes
+        # before integration resumes (§11.2): every boundary is a published
+        # consistency point. The interpolant is invalidated by falling out of
         # scope — the handlers made it a lie for t > t*.
         dense!(sim.stepper, sim.xbuf, sim.xnext, sim.ẋnext, θ★, h′)
         sim.clock.t = t_seg + θ★ * h′
         offtick_boundary!(sim)
+        publish!(sim)
         count += 1
     end
 end
