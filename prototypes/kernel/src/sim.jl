@@ -2,7 +2,7 @@
 # seam (§10.2) and the phase-body accessor (§9.7). The framework owns the loop;
 # the one delegated operation is "advance the continuous state from `t` by `h`".
 
-struct Simulation{T,S,B,CL,EV,M,H}
+struct Simulation{T,S,B,CL,EV,M}
     store::S
     xbuf::Vector{T}
     ẋbuf::Vector{T}
@@ -24,7 +24,7 @@ struct Simulation{T,S,B,CL,EV,M,H}
     stepper::M                    # the seam's backend (§10.2), owning its own scratch
     xnext::Vector{T}              # the retained arrival pair (§10.4): xₙ₊₁ saved before trials clobber
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
-    harness::H                    # the §11.3 harness register: the one staging cell built here
+    plane::DataPlane              # the §11.3 roster and harness register, mutable at stopped-sim points
     published::Published          # §11.2's `@atomic latest` holder
 end
 
@@ -81,14 +81,13 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     stepper = method(T, length(c.xbuf))
-    harness = Harness(act.layout)
     Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events),
-               typeof(stepper),typeof(harness)}(
+               typeof(stepper)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
         Int(localization_budget), any(c.events.localized), bound.sched,
         c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
-        harness, Published(nothing))
+        DataPlane(act.layout, c.store), Published(nothing))
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -275,49 +274,155 @@ partial advance is the periphery's (§12.6) and absent here.
 """
 function run!(sim::Simulation{T}, t_end::Real) where {T}
     target = round(Int, Float64(t_end) / sim.h)
-    while sim.clock.step < target
-        drain!(sim)
-        k = (sim.clock.step += 1)
-        frame!(sim, k)
-        k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
-        publish!(sim)
+    plane = sim.plane
+    @atomic plane.running = true      # the §11.3 freeze: the roster is fixed for the run
+    try
+        while sim.clock.step < target
+            drain!(sim)
+            k = (sim.clock.step += 1)
+            frame!(sim, k)
+            k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
+            publish!(sim)
+        end
+    finally
+        @atomic plane.running = false
     end
+    nothing
+end
+
+# --- the roster (§11.3): stopped-sim configuration -----------------------------
+
+"""
+    attach!(sim, dev::AbstractDevice, b::AbstractBinding) -> device id
+
+Roster a device under a binding — a stopped-sim configuration operation
+(`ServiceLifecycle` while running: the roster is frozen per run, pause
+included). The binding's conformance check runs first (§11.6), then the
+three-part admission in spec order (§11.3): identity — this instance already
+rostered is `AlreadyAttached`, rebinding being spelled `detach!` then
+`attach!` — affinity (`CallerTaskConflict`: at most one `needs_calling_task`
+holder), and claims (`ClaimConflict`, which the identity check having run
+first always makes two *distinct* devices). The claim is staked from its
+source — the enumeration called once, or the unclaimed complement computed at
+this instant and never recomputed, so attaching the greedy claimant last is
+the idiom and a second greedy stakes the empty remainder under an
+`EmptyGreedyClaim` warning (§11.6) — the entry's writer is compiled over it,
+and the harness register's surface is recompiled to the complement that
+remains, renormalizing any pending harness batch (§11.4). Returns the entry's
+stable device id. With handles absent, staging against the entry is spelled
+`stage!(sim, dev, pairs...)` — a stand-in (README).
+"""
+function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding)
+    plane = sim.plane
+    assert_stopped(plane, "attach!")
+    check_binding(b)
+    for e in plane.roster                          # identity, before claims (§11.3)
+        e.dev === dev && throw(BuildError(
+            "AlreadyAttached: this $(typeof(dev)) instance is already rostered as " *
+            "$(_who(e)) under $(typeof(e.binding)) — rebinding is spelled `detach!` " *
+            "then `attach!` (§11.3)"))
+    end
+    if needs_calling_task(dev)                     # affinity: a single-slot resource
+        i = findfirst(e -> needs_calling_task(e.dev), plane.roster)
+        i === nothing || throw(BuildError(
+            "CallerTaskConflict: $(typeof(dev)) declares `needs_calling_task`, and " *
+            "$(_who(plane.roster[i])) already holds the calling task (§11.1, §11.3)"))
+    end
+    claim = _claim(plane, sim.layout, b)
+    for f in claim                                 # claims: face exclusivity
+        haskey(plane.claimedby, f) && throw(BuildError(
+            "ClaimConflict: `$f` is claimed by both $(typeof(dev)) and " *
+            "$(plane.claimedby[f]) — one writer per slot at any time (§11.3)"))
+    end
+    id = plane.next_id                             # assigned on admission alone: a
+    plane.next_id += 1                             # rejected attach consumes no id
+    w = Writer(sim.layout, claim)
+    push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.store, w)))
+    reclaim!(plane, sim.layout)
+    is_greedy(b) && isempty(claim) &&
+        @warn "EmptyGreedyClaim: device $id ($(typeof(dev))) under $(typeof(b)) staked " *
+              "the empty remainder — every root input face is already claimed (§11.6)"
+    id
+end
+
+"""
+    detach!(sim, dev)
+
+Release a rostered device — the same stopped-sim gate as `attach!`. The
+claims are released and the harness register's surface regains them; a
+pending undrained batch in the entry's cell is discarded with it, detach
+being a deliberate reconfiguration, while the slots it fed hold their
+last-drained values. The device id retires with the entry, never reused.
+"""
+function detach!(sim::Simulation, dev::AbstractDevice)
+    plane = sim.plane
+    assert_stopped(plane, "detach!")
+    i = findfirst(e -> e.dev === dev, plane.roster)
+    i === nothing && throw(BuildError(
+        "this $(typeof(dev)) instance is not rostered — `detach!` releases an " *
+        "existing attachment (§11.3)"))
+    deleteat!(plane.roster, i)
+    reclaim!(plane, sim.layout)
     nothing
 end
 
 # --- the data plane (§11): staging, the drain, publication ---------------------
 
 """
-    stage!(sim, "face" => value, ...)
+    stage!(sim, "face" => value, ...)          # the harness register (§11.3)
+    stage!(sim, dev, "face" => value, ...)     # a rostered device's cell (§11.4)
 
 Stage a batch of root-slot writes from any task, at any wall-clock moment,
-never touching a live slot (§11.1): the entries land in the harness register's
-staging cell (§11.3) under the one coalescing policy — CAS merge, newest wins
-per face (§11.4). Untouched faces survive into the pending batch; re-staged
-faces take the newest level. Every check runs here, on the writer's side: a
-face with no position in the schema is discarded with an `OutOfClaimEntry`
-warning, an unconvertible value with `EntryTypeMismatch`, and the rest of the
-batch stands. The staged batch is applied by the drain at the top of the next
-frame `run!` advances.
+never touching a live slot (§11.1): the entries land in the writer's staging
+cell under the one coalescing policy — CAS merge, newest wins per face
+(§11.4). Untouched faces survive into the pending batch; re-staged faces take
+the newest level. Every check runs here, on the writer's side: a face outside
+the writer's surface is discarded with a warning — a device's under
+`OutOfClaimEntry` against its claim set, the harness register's under
+`ClaimedFaceEntry` naming the incumbent when a rostered claim covers the face
+(a rostered greedy claimant empties the harness surface outright, D-192) and
+`OutOfClaimEntry` when nothing does — an unconvertible value under
+`EntryTypeMismatch`, and the rest of the batch stands. The staged batch is
+applied by the drain at the top of the next frame `run!` advances. The device
+form is the stand-in for the handle's `stage!` (§11.6, README).
 """
 function stage!(sim::Simulation, pairs::Pair...)
-    batch = _normalize(sim.harness, pairs)
-    batch === nothing || _stage!(sim.harness, batch)
+    plane = sim.plane
+    w = plane.harness
+    batch = _normalize(w, pairs, plane.claimedby)
+    batch === nothing || _stage!(w, batch)
+    nothing
+end
+
+function stage!(sim::Simulation, dev::AbstractDevice, pairs::Pair...)
+    plane = sim.plane
+    i = findfirst(e -> e.dev === dev, plane.roster)
+    i === nothing && throw(BuildError(
+        "this $(typeof(dev)) instance is not rostered — a device stages into its " *
+        "own attached cell (§11.4)"))
+    e = plane.roster[i]
+    batch = _normalize(e.writer, pairs, plane.claimedby; device = _who(e))
+    batch === nothing || _stage!(e.writer, batch)
     nothing
 end
 
 """
 The drain (§11.4): exactly one point in each frame, at its top, where the loop
-takes the staged batch with one `atomicswap(cell, nothing)` — an indivisible
-take, so there is no lost-write window — and applies it through the compiled
-scatter, `nothing` skipped, every check long since spent at staging. Never at
-a `t*` boundary (§10.4). Between drains the loop owns its data exclusively,
-and the frame's outcome is a pure function of the drained batch.
+takes each staged batch with one `atomicswap(cell, nothing)` — an indivisible
+take, so there is no lost-write window — and applies it through the entry's
+compiled scatter, `nothing` skipped, every check long since spent at staging.
+Cells drain in attachment order, the harness register's last by convention:
+with every surface disjoint the order is unobservable, so the rule exists to
+make the record read the same way every time, not to arbitrate (§11.3). Never
+at a `t*` boundary (§10.4). Between drains the loop owns its data exclusively,
+and the frame's outcome is a pure function of the drained batches.
 """
 function drain!(sim::Simulation)
-    ref = @atomicswap sim.harness.cell.pending = nothing
-    ref === nothing && return nothing
-    _apply!(sim.store, sim.harness.addrs, ref[])
+    plane = sim.plane
+    for e in plane.roster
+        e.drain()
+    end
+    plane.harness_drain()
     nothing
 end
 

@@ -580,3 +580,54 @@ child_connections(::MultiRate) =
 output_connections(::MultiRate) =
     ("fcs/y_inner" => "inner", "fcs/y_outer" => "outer", "gnss/out" => "gnss")
 sample_times(::MultiRate) = (fcs = Relative(1), gnss = Absolute(Hz(50)))
+
+# --- the periphery's coverage set: devices and bindings (§11.3, §11.6) ----------
+
+"""
+    Pad(name)
+
+A stub device: no task, no hardware — the identity carrier for the roster.
+Mutable deliberately, because identity is the instance (`===`, §11.3): an
+immutable stub with equal fields would be egal to its twin, and two
+same-named `Pad`s are meant to be two devices.
+"""
+mutable struct Pad <: AbstractDevice
+    name::String
+end
+
+"""
+    Panel(name)
+
+A stub device declaring the calling-task affinity (§11.6): at most one holder
+per roster, the calling task being a single-slot resource (§11.1, §11.3).
+"""
+mutable struct Panel <: AbstractDevice
+    name::String
+end
+needs_calling_task(::Panel) = true
+
+"""
+    Enumerated(faces...)
+
+The returned claim source (§11.3): an input-side binding whose `claims` names
+exactly the faces it was built with — the enumeration is the interface, and
+the empty enumeration is the honest may-write-nothing degenerate, not a back
+door (§11.6).
+"""
+struct Enumerated <: AbstractBinding
+    faces::Vector{String}
+end
+Enumerated(faces::AbstractString...) = Enumerated(collect(String, faces))
+is_input(::Enumerated) = true
+claims(b::Enumerated) = b.faces
+
+"""
+    Greedy()
+
+The computed claim source (§11.3): `is_greedy` declared, no `claims` of its
+own — the framework computes the unclaimed complement at the attach point,
+the shipped GUI binding's shape (§11.6, §11.7).
+"""
+struct Greedy <: AbstractBinding end
+is_input(::Greedy) = true
+is_greedy(::Greedy) = true

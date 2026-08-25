@@ -72,6 +72,19 @@ anatomy — drain, integrate, boundary sequence, publication — and the epoch
 tests' slot writes move onto the machinery the θ = 0 discriminator was built
 expecting. Two stand-ins enter the table.
 
+**Increment 10 — the roster and claims.** §11.3 wholesale over increment 9's
+cell machinery: `attach!`/`detach!` as stopped-sim operations behind the run
+freeze, the three-part admission in spec order, both claim sources — the
+enumeration called once and validated, the unclaimed complement computed at
+the attach instant and never recomputed — per-device staging cells compiled
+over claim sets exactly as the harness register's is over the complement that
+remains, that register recompiled at every roster change with its pending
+batch renormalized through the new schema, and the drain over the roster in
+attachment order, harness last. From §11.6, exactly the attach-point slice:
+the two periphery roots, the declared sides, the enumeration contract with
+its error-throwing fallback, and the bidirectional conformance check. One
+stand-in enters the table: device staging without handles.
+
     julia --project=. test/runtests.jl
 
 ## What is real here
@@ -87,8 +100,9 @@ expecting. Two stand-ins enter the table.
 | `Simulation` with its deployment constructor, bound schedule and the `method`/`firing_budget`/`localization_tol`/`localization_budget` keywords, the seam's framework side (the never-entered-empty short-circuit), the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §10.4, §9.7, §11.3 | `src/sim.jl` |
 | the stepper seam's backend side: the three-clause contract as dispatch — `step!` by arbitrary `h`, dense output via the retained `startpoint` pair and `dense!` (the shared cubic Hermite both backends inherit), one-step methods only — with fixed-step RK4 (the default) and Heun, each owning exactly its own scratch | §10.2, D-017 | `src/stepper.jl` |
 | the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazily-paid arrival derivative, bracketed trial evaluations over the seam's dense output under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
-| the data plane's core exchange: the harness register's staging cell (its derived surface the whole root face set — the empty roster's unclaimed complement), the shim/merge/scatter triple with every check at staging, the frame-top drain via `atomicswap`, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6 | `src/library.jl` |
+| the data plane's core exchange: the compiled writer — one schema/shim/merge/scatter unit over any write surface, with every check at staging and the out-of-schema warning discriminated by writer — staging cells, the frame-top drain via `atomicswap` behind stopped-sim-compiled thunks, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
+| the roster and claims: `AbstractDevice`/`AbstractBinding` with the declared sides and the false root defaults, the enumeration contract and the bidirectional conformance check (`which` against the fallback), `attach!`/`detach!` behind the §11.3 freeze with the three-part admission in spec order, both claim sources with `EmptyGreedyClaim` for the staked empty remainder, monotonic never-reused device ids, per-device cells over claim sets, the harness register as the derived remainder — recompiled at every roster change, its pending batch renormalized (`ClaimedFaceEntry` at the seam), emptied outright by a rostered greedy (D-192) — and the attachment-order drain, harness last | §11.3, §11.4, §11.6 | `src/roster.jl`, `src/sim.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity) and the `Enumerated`/`Greedy` bindings, one per claim source | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
@@ -287,6 +301,39 @@ programming convenience:
   observed snapshot, and `t` never decreases — and a task staging against
   running frames loses nothing to the CAS merge: the last staged level is what
   stands.
+- **One writer per slot at any time, structurally.** Claims are disjoint by
+  admission, so cross-writer races on a slot cannot arise and no drain-order
+  arbitration policy exists to need. The admission's order is itself pinned:
+  the same instance re-attached under an overlapping claim is
+  `AlreadyAttached`, never a self-`ClaimConflict`, because identity runs before
+  claims — which is what keeps `ClaimConflict` always naming two *distinct*
+  devices. Identity is the instance (`===`): the library's stub devices are
+  mutable structs precisely so two same-named `Pad`s are two devices.
+- **One claim mechanism, two claim sources, exhausted at the attach point.**
+  A returned claim is the enumeration, validated face by face
+  (`AttachUnknownFace`) — the empty enumeration an honest may-write-nothing
+  degenerate, not a back door. A computed claim is the unclaimed complement at
+  the attach instant, never recomputed, so attaching the greedy claimant last
+  is the idiom and a second greedy stakes the empty remainder under
+  `EmptyGreedyClaim`. Downstream nothing tells the sources apart: the greedy
+  entry's out-of-claim staging is the same `OutOfClaimEntry` as anyone's.
+- **The harness register's surface is derived, never claimed.** It is the
+  unclaimed complement, recomputed at every roster change: a harness write to
+  a claimed face is `ClaimedFaceEntry` naming the incumbent, a rostered greedy
+  empties the surface outright and every harness `stage!` in such a session is
+  rejected that way (D-192), and detach regrows it. The recompilation's one
+  seam is renormalization: a batch staged before a stopped-sim `attach!` is
+  reshaped through the new schema — the newly claimed face discarded with the
+  incumbent and the site named, the rest surviving to the drain — so the run
+  always starts with cells matching the run's schemas.
+- **The roster is frozen per run, and the drain stays free.** `attach!` and
+  `detach!` against a running loop are `ServiceLifecycle`, from any task, and
+  the freeze lifts with the run; device ids are monotonic per `Simulation`,
+  never reused, and a rejected attach consumes none. The per-writer drain
+  thunks are compiled at the same stopped-sim points, so a populated roster's
+  empty drain still allocates nothing — and the frame's outcome stays a pure
+  function of the drained batches, whoever staged them: the device-staged
+  trajectory is bitwise the directly-written one.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -331,26 +378,31 @@ with a good message, not the structured carrier, and runtime degradations are a
 plain `@warn` carrying the spec'd payload, not Appendix C's named advisory
 values), partial advance and the per-run overrides (§12.6 — `run!(sim, t_end)`
 takes `t_end` to the nearest step boundary), and the runtime periphery beyond
-increment 9's core exchange:
+increments 9–10's data plane:
 
-- **the roster and claims machinery (§11.3):** `attach!`/`detach!`, returned
-  and computed claims, the admission checks, device ids, and per-device
-  staging cells (§11.4) — the harness register's is the only cell, and its
-  derived surface is the whole root face set, which *is* the empty roster's
-  unclaimed complement, so nothing here deviates from §11.3's rule; there is
-  simply no roster to subtract;
+- **the device task machinery (§11.6) and §11.1's task topology:**
+  `init!`/`loop`/`shutdown!`/`unblock!`, the framework wrapper with its
+  `DeviceCrash` discrimination, handles and their primitives, `should_abort`,
+  `map_input`/`map_output` and the shipped `TableBinding`, the bad-datum
+  channel, device death and orphaned claims — a rostered device here is an
+  identity holding a claim and a staging cell, with no task behind it, and
+  `run!` blocks its caller: with no device tasks to spawn, that is §11.1's
+  calling-task register, not a deviation. The output side is absent wholesale —
+  a binding declaring `is_output` is rejected at attach, `reads` and the
+  compiled gather unbuilt;
 - **the snapshot's framework status** (§11.2, §11.8) — the snapshot carries
   the table, `t` and the frame ordinal, no status value — along with §11.8's
   diagnostics and liveness machinery wholesale;
 - **the log** (§11.2): retention, `log_every`/`log_max`, progressive
   re-decimation, the kept endpoints — readers hold snapshots or lose them;
 - **output-device bindings and the selectors** (§11.2, §14.4), the §11.5
-  input trace, the §11.6 device contract and §11.1's task topology (`run!`
-  blocks its caller and the loop runs on the calling task — the no-rostered-
-  device register, not a deviation), and the §11.7 GUI write path;
+  input trace, and the §11.7 GUI write path;
 - **all of §12 beyond `latest`'s inspection register:** control plane, loop
   scheduling, the next-snapshot wait, shutdown, real-time pacing (§10.7) and
-  replay (§12.7).
+  replay (§12.7). The §11.3 freeze is enforced by a single running flag —
+  §12.6's status machine is absent, so `built`, `initialized` and `stopped`
+  are indistinguishable here and every not-running point admits
+  `attach!`/`detach!`.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 
@@ -368,11 +420,12 @@ enforcement.
 | --- | --- | --- |
 | one published snapshot per boundary, `t*` boundaries included (§11.2, §10.6) | publication at frame tops and boundary zero only; a `t*` boundary fires unpublished | when a consumer needs the per-boundary record — the log or the trace increment |
 | slot initial values owned by the init/trim services (§11.3, §14.6); the running write path is the drain alone | `set_slot!` writes a root slot directly at any stopped-sim point | the §14 services increment |
+| a device stages through the handle `attach!` returned, `stage!(handle, batch)` on its own task (§11.6) | `stage!(sim, dev, pairs...)` addresses the rostered device's cell directly, and `attach!` returns the device id | the device-contract increment, when handles exist |
 
 (Every stand-in introduced through increment 5 was retired on 2026-08-20, and
 increment 6's one row — localized guards detecting at boundary resolution —
-was retired by increment 7 on 2026-08-25. The two rows above entered with
-increment 9.)
+was retired by increment 7 on 2026-08-25. The first two rows above entered
+with increment 9, the third with increment 10.)
 
 ## Authoring caveat found while building this
 
@@ -396,3 +449,10 @@ raised as `DeadStage` at the probe (§9.3). Increment 4 catches the case where
 the trap lands, one stratum earlier and under the other rule: a component that
 declares nothing has no *class* to read either (§8.5), so the build names both
 families rather than reaching the probe at all. `DeadStage` itself is not built.
+
+The periphery's trait and enumeration methods (`is_input`, `is_greedy`,
+`claims`, `needs_calling_task`) are the same class of declaration and hit the
+same trap — a trait "declared" inside a `@testset` is a local function the
+conformance check never sees, presenting a binding that declares nothing. The
+malformed bindings in `test/test_roster.jl` sit at top level for exactly this
+reason.

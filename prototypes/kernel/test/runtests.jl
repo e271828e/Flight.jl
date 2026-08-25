@@ -2,8 +2,8 @@
 # skeleton (increment 2), the discrete tier at one rate (increment 3), the
 # hierarchy (increment 4), the multi-rate grid (increment 5), events at
 # boundaries (increment 6), localization (increment 7), the stepper seam
-# with its second backend (increment 8) and the data plane's core exchange
-# (increment 9).
+# with its second backend (increment 8), the data plane's core exchange
+# (increment 9) and the roster and claims (increment 10).
 #
 #   julia --project=. test/runtests.jl
 
@@ -16,6 +16,7 @@ include("../src/store.jl")
 include("../src/executor.jl")
 include("../src/build.jl")
 include("../src/dataplane.jl")
+include("../src/roster.jl")
 include("../src/stepper.jl")
 include("../src/sim.jl")
 include("../src/localize.jl")
@@ -31,3 +32,4 @@ include("test_events.jl")
 include("test_localization.jl")
 include("test_stepper.jl")
 include("test_dataplane.jl")
+include("test_roster.jl")
