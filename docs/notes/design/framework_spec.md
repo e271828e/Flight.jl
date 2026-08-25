@@ -2136,9 +2136,10 @@ hide the omission indefinitely.
 leaf, `init_x`/`h_x`/`h_xu`/`f` mark continuous and `init_s`/`h_s`/`h_su`/`g`
 mark discrete: the two families are disjoint, so every name such a leaf writes
 carries the tier ([D-195][d-195]). The remaining tier-implying
-declarations must agree. `init_m` and `events` are continuous-only, the event
-system being continuous-side only ([§5.2][s5-2], [§3.2][s3-2],
-[§14.1][s14-1]). `workspace`'s arity splits the tiers (`(::C, ::Type{T})`
+declarations must agree. `init_m`, `events` and `project` are continuous-only —
+the event system is continuous-side only ([§5.2][s5-2], [§3.2][s3-2],
+[§14.1][s14-1]), and projection's one manifold is the continuous state's
+([§2.2][s2-2]). `workspace`'s arity splits the tiers (`(::C, ::Type{T})`
 versus `(::C)`), and so do the arities of `output_types` and `input_types`
 ([D-166][d-166]–[D-167][d-167]). Disagreement is `DeclarationOnWrongTier` ([Appendix C][sC]),
 reported as the offending declaration with the tier the leaf's other
@@ -9740,7 +9741,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions ([§8.1][s8-1]) | [§8.5][s8-5] | build (collected) |
 | `ClassMixed` | component path, the `child_connections` declaration and the offending leaf declarations | [§8.5][s8-5] | build (collected) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | [§8.5][s8-5] | build (collected) |
-| `DeclarationOnWrongTier` | component path, the offending declaration (`f`/`g`, a state or stage name from the wrong family — `init_x`/`h_x`/`h_xu` against `init_s`/`h_s`/`h_su`, [D-195][d-195] — `events`, `init_m`, or a `workspace`/`output_types` arity), the tier the leaf's other declarations announce | [§5.2][s5-2], [§8.2][s8-2], [§8.5][s8-5] | build (collected) |
+| `DeclarationOnWrongTier` | component path, the offending declaration (`f`/`g`, a state or stage name from the wrong family — `init_x`/`h_x`/`h_xu` against `init_s`/`h_s`/`h_su`, [D-195][d-195] — `events`, `init_m`, `project`, or a `workspace`/`output_types` arity), the tier the leaf's other declarations announce | [§5.2][s5-2], [§8.2][s8-2], [§8.5][s8-5] | build (collected) |
 | `TierSignatureMismatch` | component path, the declaration at fault (`input_types` or `output_types`), the leaf's tier, the signature form found versus the form mandated (two-argument `(::C, ::Type{T})` on the continuous tier, plain `(::C)` on the discrete); stateful leaves only — on a stateless leaf `output_types`' arity *is* the tier ([§8.2][s8-2]), so there is nothing to mismatch | [§8.2][s8-2], [§8.5][s8-5] | build (collected) |
 | `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | [§8.6][s8-6] | build (collected) |
 | `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | [§8.6][s8-6] | build (collected) |
