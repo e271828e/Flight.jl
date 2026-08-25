@@ -1,0 +1,209 @@
+# Localization mechanics (§10.4): the frame loop that carries each grid step
+# through `integrate → arrival sweep → trigger → θ = 0 validation → bracket →
+# root-find → t* → remainder step`, iterated under `localization_budget`. The
+# runtime consultation of `Build.policies` lives here — a sign-form guard's
+# crossing is bracketed by trial evaluations over the cubic Hermite interpolant
+# and fired at a `t*` boundary, strictly inside the frame.
+#
+# Frame ≠ boundary (§10.4): the frame `[tₙ, tₙ₊₁]` is the unit of scheduling —
+# tick eligibility keys to it, and `t*` is never a tick — while a boundary is a
+# published consistency point. Every `t*` produced here is a boundary that is
+# not a frame top.
+
+"""Frame top `k`, computed from the index and `t₀` — never accumulated (§10.4)."""
+_grid_time(sim::Simulation, k::Int) = sim.clock.t₀ + k * sim.h
+
+"""
+    frame!(sim, k)
+
+Advance through the frame `[tₖ₋₁, tₖ]`, leaving the clock at the indexed frame
+top with the state and table at their arrival values — the frame-top boundary
+itself is the caller's, exactly as before. A model with no localized events
+(every non-nominal activation included, its events having compiled out) takes
+the bare step: no arrival machinery, no extra sweep, today's exact path.
+"""
+function frame!(sim::Simulation{T}, k::Int) where {T}
+    t_to = _grid_time(sim, k)
+    sim.has_localized ? _localized_frame!(sim, t_to) : step!(sim, T(sim.h))
+    sim.clock.t = t_to
+    nothing
+end
+
+# The localization loop (§10.4). Each turn integrates one segment — the whole
+# frame first, then remainder steps from each `t*` — and either returns at the
+# frame top or fires one `t*` boundary and goes around. The budget counts
+# localizations, one per `t*` boundary produced: per segment, root-finding runs
+# are already structurally bounded (at most one per declared event), while the
+# segment count is the quantity chattering inflates without bound.
+function _localized_frame!(sim::Simulation{T}, t_to) where {T}
+    es = sim.events
+    n = length(es.prior)
+    x₀, k₁ = sim.work[1], sim.work[2]
+    count = 0
+    fill!(es.loc_warned, false)
+    while true
+        t_seg = sim.clock.t
+        h′ = t_to - t_seg
+        step!(sim, h′)                        # leaves x₀ = x(t_seg), k₁ = ẋ(t_seg) behind
+
+        # The arrival sweep at the segment's end — interior, on the raw
+        # unprojected state, before any discrete cell refreshes (§10.4): the
+        # sweep that closes the integration step is what raises the trigger.
+        sim.bodies.sweep_1(); sim.bodies.sweep_2()
+        _guards!(es)
+        copyto!(es.σ1, es.σ)
+
+        # The trigger (§10.4): localized policy, prior not-holding at the last
+        # boundary's quiescence, holding at arrival — §2.1's directional edge.
+        any_trig = false
+        for i in 1:n
+            es.trig[i] = es.localized[i] && !es.prior[i] && es.σ1[i] ≥ 0
+            any_trig |= es.trig[i]
+        end
+        any_trig || return nothing
+
+        # Budget exhaustion degrades; it does not throw (§10.4): the remainder
+        # step has already completed, and this crossing fires in the coming
+        # boundary's ordinary iteration — boundary granularity for this frame.
+        if count ≥ sim.localization_budget
+            for i in 1:n
+                (es.trig[i] && !es.loc_warned[i]) || continue
+                es.loc_warned[i] = true
+                (path, name) = es.names[i]
+                @warn "ChatteringBudget: event `$name` at `$path` has localized $count " *
+                      "times in the frame ending at t = $t_to; further crossings this " *
+                      "frame fire at boundary resolution (§10.4)"
+            end
+            return nothing
+        end
+
+        copyto!(sim.xnext, sim.xbuf)          # retain xₙ₊₁ before the trials clobber it
+
+        # The θ = 0 validation (§10.4): x(t_seg) back into the buffer, one
+        # interior sweep, no interpolant — x̂(0) = xₙ identically. σ₀ is the left
+        # bracket value, and it discriminates the edge's cause: σ₀ holding means
+        # the frame-top drain flipped the guard (`u` is the only thing that can
+        # differ from the prior's evaluation context), so no in-frame crossing
+        # exists — not localizing is the action, and it consumes no budget.
+        copyto!(sim.xbuf, x₀)
+        sim.clock.t = t_seg
+        sim.bodies.sweep_1(); sim.bodies.sweep_2()
+        _guards!(es)
+        copyto!(es.σ0, es.σ)
+        remaining = false
+        for i in 1:n
+            es.trig[i] = es.trig[i] && es.σ0[i] < 0
+            remaining |= es.trig[i]
+        end
+        if !remaining
+            copyto!(sim.xbuf, sim.xnext)      # epoch-caused only: fall through to the frame top
+            return nothing
+        end
+
+        # ẋₙ₊₁, paid only past a validated trigger (§10.4): one sweep and the
+        # RHS block at the arrival state completes the interpolant's data.
+        copyto!(sim.xbuf, sim.xnext)
+        sim.clock.t = t_seg + h′
+        evaluate!(sim)
+        copyto!(sim.ẋnext, sim.ẋbuf)
+
+        # Root-find each validated event; the boundary fires at the earliest t*
+        # (§10.4). Ties need no decision — every standing edge at θ★ fires in
+        # the boundary's own iteration — and a later crossing simply does not
+        # hold at θ★, so it re-triggers on the remainder and re-localizes there.
+        θ★ = 1.0
+        for i in 1:n
+            es.trig[i] || continue
+            θ★ = min(θ★, _crossing(sim, i, es.σ0[i], es.σ1[i], t_seg, h′))
+        end
+        if θ★ ≥ 1.0
+            # Degenerate: the crossing is the frame top itself (§10.4). The
+            # localization is discarded and the event fires inside the frame
+            # top's ordinary iteration — one boundary, no zero-length remainder.
+            copyto!(sim.xbuf, sim.xnext)
+            return nothing
+        end
+
+        # The t* boundary (§10.4): interpolated state in, then the §10.6
+        # sequence with ticks never due — t* is off the harmonic grid by
+        # construction, so this is exactly the off-tick boundary: projection
+        # (authority rests here, not with the raw trials), the full event
+        # phase iterated to quiescence under a fresh firing budget, priors
+        # updated from the settled samples. Integration then resumes from the
+        # settled state; the interpolant is invalidated by falling out of
+        # scope — the handlers made it a lie for t > t*.
+        _hermite!(sim.xbuf, x₀, k₁, sim.xnext, sim.ẋnext, θ★, h′)
+        sim.clock.t = t_seg + θ★ * h′
+        offtick_boundary!(sim)
+        count += 1
+    end
+end
+
+"""
+One trial evaluation (§10.4): write x̂(θ) into the state buffer, set the
+mid-step clock, run the interior sweep, evaluate the guards. Discrete cells
+ZOH-hold through it — the interior sweep has no discrete entries — and the
+state is raw: projection's reach is the boundary, not the trial.
+"""
+function _trial!(sim::Simulation, θ::Float64, t_seg, h′)
+    _hermite!(sim.xbuf, sim.work[1], sim.work[2], sim.xnext, sim.ẋnext, θ, h′)
+    sim.clock.t = t_seg + θ * h′
+    sim.bodies.sweep_1(); sim.bodies.sweep_2()
+    _guards!(sim.events)
+    nothing
+end
+
+# The cubic Hermite continuous extension over the segment (§10.4): x̂(θ) from
+# (xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁), θ ∈ [0, 1], derivatives scaled by the segment width.
+# Uniform accuracy O(h⁴), one order below the discrete solution — the standard
+# pairing, and why nothing more expensive is worth running trials against.
+function _hermite!(x̂, x₀, ẋ₀, x₁, ẋ₁, θ::Float64, h′)
+    θ² = θ * θ; θ³ = θ² * θ
+    b₀ = 2θ³ - 3θ² + 1
+    b₁ = 3θ² - 2θ³
+    d₀ = (θ³ - 2θ² + θ) * h′
+    d₁ = (θ³ - θ²) * h′
+    @inbounds for i in eachindex(x̂)
+        x̂[i] = b₀ * x₀[i] + d₀ * ẋ₀[i] + b₁ * x₁[i] + d₁ * ẋ₁[i]
+    end
+    nothing
+end
+
+"""
+Bracketed, derivative-free root-finding over trial evaluations (§10.4, D-018):
+ITP (Oliveira & Takahashi 2020) on the θ ∈ [0, 1] bracket, entered only with
+σ₀ measured not-holding and σ₁ holding — the observed bracket *is* the
+convergence certificate. Stops once `hi - lo ≤ localization_tol` (relative: the
+bracket in θ against the segment, D-133) and returns the **holding endpoint of
+the final bracket** — every `hi` is an actual observation, so the returned
+point is strictly later than the segment start and the guard observably holds
+there. A return of exactly 1.0 is the degenerate crossing-at-the-frame-top,
+discarded by the caller.
+"""
+function _crossing(sim::Simulation, i::Int, σ₀::Float64, σ₁::Float64, t_seg, h′)
+    es, tol = sim.events, sim.localization_tol
+    lo, hi = 0.0, 1.0
+    σlo, σhi = σ₀, σ₁
+    # ITP constants over the unit bracket: κ₁ = 0.2, κ₂ = 2, n₀ = 1; ε is the
+    # half-width target, and past n_max the projection radius hits zero, which
+    # degrades each remaining iteration to plain bisection.
+    ε = tol / 2
+    nmax = max(ceil(Int, -log2(tol)), 0) + 1
+    j = 0
+    while hi - lo > tol
+        xh = 0.5 * (lo + hi)
+        (lo < xh < hi) || break                       # the bracket is at float resolution
+        xf = (lo * σhi - hi * σlo) / (σhi - σlo)      # regula falsi, well-defined: σlo < 0 ≤ σhi
+        s = sign(xh - xf)
+        δ = 0.2 * (hi - lo)^2
+        xt = δ ≤ abs(xh - xf) ? xf + s * δ : xh       # truncate toward the midpoint
+        r = max(ε * exp2(nmax - j) - 0.5 * (hi - lo), 0.0)
+        θ = abs(xt - xh) ≤ r ? xt : xh - s * r        # project into the minmax radius
+        (lo < θ < hi) || (θ = xh)
+        _trial!(sim, θ, t_seg, h′)
+        σθ = es.σ[i]
+        σθ ≥ 0 ? (hi = θ; σhi = σθ) : (lo = θ; σlo = σθ)
+        j += 1
+    end
+    hi
+end

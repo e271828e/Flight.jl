@@ -805,11 +805,12 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     # handlers are outside every other activation's executable set (§9.4,
     # D-052), so the event phase there is the bare sweep. Entries carry a global
     # index into the register vectors, in executor component order then
-    # declaration order within a component (§10.6). The stand-in of the moment:
-    # a `:localized` policy compiles to the same boundary-detected entry — see
-    # the README's stand-ins table.
+    # declaration order within a component (§10.6), and each carries its
+    # `Build.policies` verdict into the compiled mask — which is what the frame
+    # loop's trigger check reads (§10.4).
     ev_entries, ev_owner = Any[], Int[]
     ev_names = Tuple{String,Symbol}[]
+    ev_localized = Bool[]
     if T === Float64
         for (ci, c) in enumerate(flat.comps)
             evs = events(c)
@@ -824,6 +825,7 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
                     x_offs[ci], clock, mstores[ci], wss[ci]))
                 push!(ev_owner, ci)
                 push!(ev_names, (flat.paths[ci], name))
+                push!(ev_localized, b.policies[ci][name] === :localized)
             end
         end
     end
@@ -844,7 +846,7 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     (store = store, xbuf = xbuf, ẋbuf = ẋbuf, clock = clock, bodies = bodies,
      sstores = sstores, mstores = mstores,
      events = EventSet(ev_entries, proj_entries, store, xbuf, ev_owner, ev_names,
-                       length(flat.comps)))
+                       ev_localized, length(flat.comps)))
 end
 
 # A probed input value: the producer's product, or the synthesized value of the

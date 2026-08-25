@@ -40,8 +40,17 @@ type, the handler return law held key by key at the probe, and the boundary
 macro-sequence in its final form, integrate → project → [sweep → guards →
 handlers] iterated to quiescence under `firing_budget` → all due `g` updates.
 The three per-event registers are plain vectors on the `Simulation`, and
-boundary zero derives fires-at-`t₀` from all-not-holding priors. Localization
-is absent: a sign-form guard detects at boundaries under the stand-in below.
+boundary zero derives fires-at-`t₀` from all-not-holding priors.
+
+**Increment 7 — localization.** The runtime now consults the policy the probe
+recorded: a sign-form guard's crossing is bracketed by trial evaluations over
+the cubic Hermite interpolant and fired at a `t*` boundary strictly inside the
+frame. The frame loop runs §10.4's chain — arrival sweep and trigger, the
+θ = 0 validation with its epoch discriminator, the lazily-paid ẋₙ₊₁, ITP
+root-finding, the `t*` boundary as the off-tick §10.6 sequence, the remainder
+step targeting the indexed frame top — iterated under `localization_budget`,
+with `localization_tol` and `localization_budget` joining `firing_budget` as
+validated deployment keywords. The stand-ins table empties.
 
     julia --project=. test/runtests.jl
 
@@ -53,10 +62,11 @@ is absent: a sign-form guard detects at boundaries under the stand-in below.
 | declaration layer, both tiers' disjoint name families and arities, the bundle law, `probe_value`, `AbstractComponent`, the three connection declarations, the two rate registers (`Relative`/`Absolute` over `Period`/`Hz`, plain data carriers) with `sample_times`, and the event surface — `Event(guard, handler)` with no detection keyword, the ordered named `events` collection, positional `project`, the guard/handler name set and the §2.1 predicate | §5.2, §8.2, §8.6, §8.7, §9.3, §2.1, D-179, D-185, D-195 | `src/declare.jl` |
 | class by declaration shape (with `events` and `project` in the leaf family), children and containers, paths and the reach rule, endpoint and face resolution, the flatten pass with the obligation model and the sample-time fold to `(anchor, m, c)` triples | §8.5, §8.6, §6.1, §9.1 | `src/assembly.jl` |
 | per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
-| entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries, and the event machinery — event/projection entries, the register vectors, the guard/fire/project walks with handler-store latching | §9.7, §10.5, §10.6, §5.3 | `src/executor.jl` |
+| entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries, and the event machinery — event/projection entries, the register vectors (§10.6's three plus §10.4's policy mask and σ samples, the guard walk feeding both) and the guard/fire/project walks with handler-store latching | §9.7, §10.5, §10.6, §10.4, §5.3 | `src/executor.jl` |
 | tier classification, probe, feedthrough graph, layout, embed-accept, the `Build` artifact, the activation seam (nominal at build, `activation(b, T)` as a cached Stratum-C re-run, frozen products carried across, the eager `activations` keyword), deployment binding (three cross-validated `Δt_base` sources, the GCD constraint pool, per-anchor division pairs), per-deployment entry compilation, and the event probe — both-halves at declaration reading, policy off the guard's return type onto `Build.policies`, the handler return law key by key, `project` held complete | §8.2, §9.3, §5.3, §9.1, §9.2, §9.4, §10.4, D-166, D-179 | `src/build.jl` |
-| `Simulation` with its deployment constructor, bound schedule and `firing_budget` keyword, RK4, the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §9.7, §11.3 | `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.5, §10.6 | `src/library.jl` |
+| `Simulation` with its deployment constructor, bound schedule and the `firing_budget`/`localization_tol`/`localization_budget` keywords, RK4, the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §10.4, §9.7, §11.3 | `src/sim.jl` |
+| the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazy cubic Hermite interpolant, bracketed trial evaluations under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
@@ -145,10 +155,13 @@ programming convenience:
   no detection keyword: the probe runs every guard at the nominal activation
   and its return type decides — `Bool` boundary-detected, the nominal scalar
   localized, anything else an error naming both admissible forms (D-179). The
-  policy lands on `Build.policies`; under the stand-in below the runtime does
-  not yet consult it. Guards and handlers are outside every non-nominal
-  activation's executable set (D-052), so at a `Dual` deployment the event
-  phase compiles to the bare sweep and a mode never moves.
+  policy lands on `Build.policies` and compiles into the event set's mask,
+  which is what the frame loop's trigger check reads — the mixed predicate
+  rides the gate idiom `(gate) ? σ : -one(σ)`, whose return type keeps it
+  localized. Guards and handlers are outside every non-nominal activation's
+  executable set (D-052), so at a `Dual` deployment the event phase compiles
+  to the bare sweep, a mode never moves, and the frame loop takes the bare
+  step with no arrival machinery at all.
 - **A cascade is logically simultaneous, not one link per step.** The event
   phase iterates [sweep → guards → handlers] to quiescence within one boundary,
   so a supervisor → follower → follower chain settles in three rounds at any
@@ -179,6 +192,44 @@ programming convenience:
   post-transition value, and only then does a sampled consumer's `g` read it —
   one test, and the wrong order costs the full pre-reset value, orders of
   magnitude outside its tolerance.
+- **`t*` is an observation, and the stamp proves it.** A handler reads `t` from
+  its bundle, so a stamping handler is the direct observable: a localized
+  firing lands within `localization_tol` of the true crossing — exactly, on a
+  trajectory the cubic Hermite reproduces; at `O(h⁴)` on the rotor — and at
+  the *holding endpoint* of the final bracket, never before the crossing. The
+  trajectory-level counterpart is the discarding reset: `Bouncer`'s period is
+  exact under localization where boundary-resolution firings would accumulate
+  a full overshoot per reset, while `Sawtooth`'s carrying handler shows the
+  complement — its boundary states are firing-resolution-invariant, so the
+  boundary recursion stays its exact reference.
+- **The θ = 0 validation discriminates the edge's cause, before any
+  interpolant cost.** A slot write between runs is the frame-top epoch seam:
+  the re-measured σ₀ holds under the frame's own `u`, so the edge is the
+  drain's, no in-frame crossing exists, and the event falls through to fire at
+  the frame top *exactly* — the indexed grid time, no budget spent, nothing
+  warned. The gate idiom's `Bool` flip is the same story. And a crossing
+  landing on the grid point itself degenerates the other way: every interior
+  trial is not-holding, the localization is discarded, and the firing is
+  bitwise the boundary-detected one.
+- **Multiple crossings fire earliest-first, and ties need no decision.** Each
+  triggered event is root-found, the boundary fires at the minimum `t*`, and
+  the later crossing simply does not hold there — it re-triggers on the
+  remainder against a fresh interpolant. A tie is one localization: both edges
+  stand at the shared `t*` and fire inside that one boundary's iteration,
+  which a budget of 1 proves by not warning.
+- **The budget counts `t*` boundaries, and exhaustion degrades.** Per segment,
+  root-finding runs are structurally bounded at one per declared event; the
+  segment count is what chattering inflates, so `localization_budget` prices
+  exactly that. The relaxer spends 8 localizations in one frame, warns
+  `ChatteringBudget` once — naming the event and the count — and its next
+  crossing fires at the frame top: boundary granularity for that frame alone,
+  the remainder having already completed.
+- **Ticks are never due at `t*`.** The `t*` boundary is the off-tick §10.6
+  sequence — projection, the full iteration, priors settled — and nothing
+  else: a sampled consumer beside a localized event accumulates only frame-top
+  samples, where a spurious tick would have added the mid-frame value.
+  Discrete cells ZOH-hold through the trials for the increment-3 reason:
+  the interior sweep the trials run has no discrete entries to gate.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -198,9 +249,12 @@ compile curve D-162 blessed.
 
 Correctness is checked against analytically integrated references — the
 continuous loop by matrix exponential, the sampled loop by its exact ZOH
-discretization `q[k+1] = Ad q[k] + Bd s[k]` — with a tolerance, never `==`
-(D-163). The sampled-data reference is the sharp one: it only matches if the
-hold is real *and* output stages run before updates within a boundary.
+discretization `q[k+1] = Ad q[k] + Bd s[k]`, localized event times against
+analytic crossing instants — with a tolerance, never `==` (D-163), except for
+the frame-top stamps, which are asserted bitwise against the indexed grid time
+because that is the claim. The sampled-data reference is the sharp one: it
+only matches if the hold is real *and* output stages run before updates within
+a boundary.
 
 ## What is deliberately absent
 
@@ -211,10 +265,7 @@ leave-one-out refinement factors or prime attribution, no nearest-non-refining
 offset suggestions, no `GridUtilization` advisory. The refusal messages name
 the offending anchor and the pool's GCD, and stop there.
 
-Beyond that: localization (§10.4 — the cubic Hermite interpolant, the θ = 0
-validation and its epoch discriminator, trial evaluations, root-finding, `t*`
-boundaries, the remainder step, and the `localization_tol`/`localization_budget`
-keywords), computed connections and the §8.8 helpers (`input_passthrough` and
+Beyond that: computed connections and the §8.8 helpers (`input_passthrough` and
 the generic-holding sugar), visibility enforcement (§8.3), did-you-mean
 suggestion lists (an error names the offender plainly), auto-published ports,
 §9.5's always-on conformance check (the return laws are checked once, at the
@@ -238,10 +289,10 @@ enforcement.
 
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
-| a sign-form guard is **localized** (§10.4): the crossing instant bracketed by root-finding over trial evaluations and fired at a `t*` boundary | the policy is classified at the probe and recorded on `Build.policies`, but the runtime never consults it: a localized event detects and fires at boundary resolution, exactly like a `Bool` guard | increment 7 (localization); the degradation is the spec's own — de-localizing preserves the predicate and its edges (§10.4), so only event *timing resolution* deviates |
 
-(Every stand-in introduced through increment 5 was retired on 2026-08-20; the
-row above is increment 6's.)
+(The table is empty: every stand-in introduced through increment 5 was retired
+on 2026-08-20, and increment 6's one row — localized guards detecting at
+boundary resolution — was retired by increment 7 on 2026-08-25.)
 
 ## Authoring caveat found while building this
 

@@ -194,8 +194,10 @@ events(::Follower) = (engage = Event(follower_guard, follower_handler),)
 """
 Sawtooth: `q̇ = rate`, and a **sign-form** guard `q − 1` whose handler carries
 the overshoot across the reset, `q ← q − 1`. The sign form declares the event
-localized (§10.4, D-179); under the current stand-in it fires at boundary
-resolution, so its exact reference is the boundary-detected recursion.
+localized (§10.4, D-179) — and the carrying handler makes the *trajectory*
+invariant to where the firing lands, `q(t) = rate·t − #wraps` either way, so
+the boundary-detected recursion stays its exact reference. What localization
+changes here is only the timing resolution `Bouncer` makes observable.
 """
 struct Sawtooth <: AbstractComponent
     rate::Float64
@@ -288,6 +290,103 @@ preempted_a(::Preempted, (; m)) = (m = (; a = true),)
 preempted_b(::Preempted, (; m)) = (m = (; b = true),)
 events(::Preempted) = (first = Event(preempted_guard_a, preempted_a),
                        second = Event(preempted_guard_b, preempted_b))
+
+# --- the localization coverage set (§10.4) --------------------------------------
+
+"""
+Crossing stamper: a **sign-form** guard on its input against a level, and a
+handler that records the boundary time it fired at — the direct observable for
+`t*`. A localized firing stamps within `localization_tol` of the true crossing
+(exactly, when the trajectory feeding it is polynomial of degree ≤ 3, where the
+Hermite interpolant is exact); an epoch-caused or degenerate edge stamps its
+frame top exactly.
+"""
+struct Stamper <: AbstractComponent
+    level::Float64
+end
+
+init_m(::Stamper) = (t_fired = -1.0, count = 0)
+input_types(::Stamper, ::Type{T}) where {T <: Real} = (sig = T,)
+output_types(::Stamper, ::Type{T}) where {T <: Real} = (armed = Bool,)
+
+h_x(::Stamper, (; m)) = (armed = m.count == 0,)
+
+stamper_guard(c::Stamper, (; u)) = u.sig - c.level
+stamper_handler(::Stamper, (; m, t)) = (m = (t_fired = t, count = m.count + 1),)
+events(::Stamper) = (cross = Event(stamper_guard, stamper_handler),)
+
+"""
+The gate idiom (§10.4): a mixed predicate in its blessed spelling,
+`(gate) ? σ : -one(σ)` — the `Bool` factor rides the branch, the continuous
+factor rides the value, and the guard's return type stays the nominal scalar,
+so the event is localized. Trial evaluations vary only θ, with `u` fixed
+through a localization, so the gate is constant over the bracket and σ
+restricted to it is the continuous atom.
+"""
+struct GatedStamper <: AbstractComponent
+    level::Float64
+end
+
+init_m(::GatedStamper) = (t_fired = -1.0, count = 0)
+input_types(::GatedStamper, ::Type{T}) where {T <: Real} = (sig = T, gate = Bool)
+output_types(::GatedStamper, ::Type{T}) where {T <: Real} = (armed = Bool,)
+
+h_x(::GatedStamper, (; m)) = (armed = m.count == 0,)
+
+function gated_stamper_guard(c::GatedStamper, (; u))
+    σ = u.sig - c.level
+    u.gate ? σ : -one(σ)
+end
+gated_stamper_handler(::GatedStamper, (; m, t)) = (m = (t_fired = t, count = m.count + 1),)
+events(::GatedStamper) = (cross = Event(gated_stamper_guard, gated_stamper_handler),)
+
+"""
+Resetting ramp: `q̇ = rate` against a sign guard at `level`, and a handler that
+*discards* the overshoot, `q ← 0` — unlike `Sawtooth`'s carrying handler, so
+the trajectory itself depends on where the firing lands. Localized resets give
+the exact period `level/rate`; boundary-resolution resets accumulate the
+overshoot as phase error, which is the observable §10.4 buys.
+"""
+struct Bouncer <: AbstractComponent
+    rate::Float64
+    level::Float64
+end
+
+init_x(::Bouncer) = (q = 0.0,)
+init_m(::Bouncer) = (count = 0,)
+output_types(::Bouncer, ::Type{T}) where {T <: Real} = (q = T,)
+
+h_x(::Bouncer, (; x)) = (q = x.q,)
+f(c::Bouncer, (; x)) = (q = c.rate,)
+
+bouncer_guard(c::Bouncer, (; x)) = x.q - c.level
+bouncer_handler(::Bouncer, (; x, m)) = (x = (q = 0.0,), m = (count = m.count + 1,))
+events(::Bouncer) = (reset = Event(bouncer_guard, bouncer_handler),)
+
+"""
+Relaxation chatterer: `q̇ = rate` against a sign guard at `level`, re-armed by
+its own handler to `level − drop` — each remainder step re-crosses within the
+same frame, so localizations pile up until `localization_budget` is spent and
+the frame degrades to boundary granularity under a `ChatteringBudget` warning
+(§10.4), while the run proceeds deterministically.
+"""
+struct Relaxer <: AbstractComponent
+    rate::Float64
+    level::Float64
+    drop::Float64
+end
+
+init_x(::Relaxer) = (q = 0.0,)
+init_m(::Relaxer) = (count = 0,)
+output_types(::Relaxer, ::Type{T}) where {T <: Real} = (q = T,)
+
+h_x(::Relaxer, (; x)) = (q = x.q,)
+f(c::Relaxer, (; x)) = (q = c.rate,)
+
+relaxer_guard(c::Relaxer, (; x)) = x.q - c.level
+relaxer_handler(c::Relaxer, (; x, m)) =
+    (x = (q = c.level - c.drop,), m = (count = m.count + 1,))
+events(::Relaxer) = (pop = Event(relaxer_guard, relaxer_handler),)
 
 # --- the anonymous assembly (§8.5) --------------------------------------------
 

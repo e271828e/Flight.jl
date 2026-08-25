@@ -152,10 +152,12 @@ end
     @test modes(simp, "children/c") === (a = true, b = false)
 end
 
-@testset "an x-writing handler matches the boundary-resolution reference" begin
-    # The sign-form guard runs under the stand-in: boundary detection, so the
-    # exact reference is the boundary recursion — and the second wrap lands on
-    # an *off-tick* boundary under n = 2, which must fire it all the same.
+@testset "an x-writing handler's carried overshoot is resolution-invariant" begin
+    # The sawtooth's wrap now genuinely localizes, but its carrying handler
+    # (`q ← q − 1`) makes the *boundary states* invariant to where the firing
+    # lands, so the boundary recursion stays the exact reference — and the
+    # second wrap crosses inside an *off-tick* frame under n = 2, which must
+    # fire it all the same.
     q_ref(N) = (q = 0.0; for _ in 1:N; q += 0.03; q ≥ 1 && (q -= 1); end; q)
     for n in (1, 2)
         sim = Simulation(single(Sawtooth(0.3)); h = 1//10, n)

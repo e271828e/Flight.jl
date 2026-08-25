@@ -187,6 +187,13 @@ the global event index, in no state store, reconstructed deterministically.
 `now`, `fire` and `comp_fired` are the iteration's round-scoped scratch, and
 `warned` implements "at most once per event per boundary" for the
 `FiringBudget` degradation.
+
+The localization registers (§10.4) sit beside them: `localized` is the
+runtime's read of `Build.policies`, fixed at compilation; `σ` holds each
+sign-form guard's numeric sample from the latest walk (`now` holds its
+predicate, `σ ≥ 0`); `σ0`/`σ1` retain the θ = 0 validation and arrival samples
+across the trials that clobber `σ`; `trig` is the frame's triggered set and
+`loc_warned` the `ChatteringBudget` once-per-event-per-frame latch.
 """
 struct EventSet{E<:Tuple,P<:Tuple,S,X}
     entries::E
@@ -194,7 +201,8 @@ struct EventSet{E<:Tuple,P<:Tuple,S,X}
     store::S
     xbuf::X
     owner::Vector{Int}                   # component index per event
-    names::Vector{Tuple{String,Symbol}}  # (path, event name), for the degradation warning
+    names::Vector{Tuple{String,Symbol}}  # (path, event name), for the degradation warnings
+    localized::Vector{Bool}              # detection policy per event (§10.4)
     now::Vector{Bool}
     prior::Vector{Bool}
     last::Vector{Bool}
@@ -202,14 +210,21 @@ struct EventSet{E<:Tuple,P<:Tuple,S,X}
     count::Vector{Int}
     warned::Vector{Bool}
     comp_fired::Vector{Bool}             # per component, round-scoped
+    σ::Vector{Float64}
+    σ0::Vector{Float64}
+    σ1::Vector{Float64}
+    trig::Vector{Bool}
+    loc_warned::Vector{Bool}
 end
 
 function EventSet(entries::Vector, projects::Vector, store, xbuf,
-                  owner::Vector{Int}, names::Vector{Tuple{String,Symbol}}, ncomps::Int)
+                  owner::Vector{Int}, names::Vector{Tuple{String,Symbol}},
+                  localized::Vector{Bool}, ncomps::Int)
     n = length(entries)
-    EventSet(tuple(entries...), tuple(projects...), store, xbuf, owner, names,
+    EventSet(tuple(entries...), tuple(projects...), store, xbuf, owner, names, localized,
              fill(false, n), fill(false, n), fill(false, n), fill(false, n),
-             zeros(Int, n), fill(false, n), fill(false, ncomps))
+             zeros(Int, n), fill(false, n), fill(false, ncomps),
+             zeros(n), zeros(n), zeros(n), fill(false, n), fill(false, n))
 end
 
 # The three walks the iteration drives, each the compile-time-unrolled tuple
@@ -225,12 +240,17 @@ end
     _proj_walk(Base.tail(t), xbuf)
 end
 
-@noinline _guards!(es::EventSet) = _guard_walk(es.entries, es.store, es.xbuf, es.now)
-@inline _guard_walk(::Tuple{}, store, xbuf, now) = nothing
-@inline function _guard_walk(t::Tuple, store, xbuf, now)
+@noinline _guards!(es::EventSet) = _guard_walk(es.entries, es.store, es.xbuf, es.now, es.σ)
+@inline _guard_walk(::Tuple{}, store, xbuf, now, σs) = nothing
+@inline function _guard_walk(t::Tuple, store, xbuf, now, σs)
     e = t[1]
-    now[e.idx] = _holding(e.guard(e.comp, make_bundle(e, store, xbuf)))
-    _guard_walk(Base.tail(t), store, xbuf, now)
+    σ = e.guard(e.comp, make_bundle(e, store, xbuf))
+    now[e.idx] = _holding(σ)
+    # The numeric sample, for the localization brackets (§10.4). The guard's
+    # return type is in the entry's type, so the branch folds per entry: a
+    # `Bool` guard never touches the register.
+    σ isa Bool || (σs[e.idx] = σ)
+    _guard_walk(Base.tail(t), store, xbuf, now, σs)
 end
 
 @noinline _fire!(es::EventSet) = _fire_walk(es.entries, es.store, es.xbuf, es.fire)

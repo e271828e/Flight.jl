@@ -15,15 +15,21 @@ struct Simulation{T,S,B,CL,EV}
     n::Int                        # steps per base tick: Δt_base = n·h (§10.5)
     Δt_base::Float64
     firing_budget::Int            # per-event firings per boundary (§10.6)
+    localization_tol::Float64     # relative bracket-width stop (§10.4)
+    localization_budget::Int      # t* boundaries permitted per frame (§10.4)
+    has_localized::Bool           # any localized event compiled in: the frame loop's fast-path key
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
     sstores::Vector{Any}          # discrete state stores, by component index
     mstores::Vector{Any}          # mode stores, by component index
-    work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄
+    work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄ — x₀ and k₁ survive the step as (xₙ, ẋₙ)
+    xnext::Vector{T}              # the retained arrival pair (§10.4): xₙ₊₁ saved before trials clobber
+    ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
 end
 
 """
     Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
-               firing_budget = 4, chunk_size = 16)
+               firing_budget = 4, localization_tol = 1e-6,
+               localization_budget = 8, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
 Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
@@ -39,21 +45,36 @@ entry data, and one `Build` backs many `Simulation`s.
 `firing_budget` is §10.6's deployment keyword: how many times each declared
 event may fire at one boundary, an integer ≥ 1 defaulting to 4 — a legitimate
 re-enable is one or two firings deep, a toggling FSM pair chatters without
-bound, and 4 separates them without ever binding on a healthy model. It is
-grid-independent, so it enters none of the grid arithmetic.
+bound, and 4 separates them without ever binding on a healthy model.
+
+`localization_tol` and `localization_budget` are §10.4's: the relative bracket
+width at which root-finding stops (positive, defaulting to 1e-6 — the event
+time can only ever be as accurate as the `O(h⁴)` interpolant, so anything
+tighter buys nothing while every trial evaluation costs a full sweep), and how
+many localizations one frame admits (an integer ≥ 1 defaulting to 8 — a
+legitimate multi-event frame needs three or four, chattering needs tens). All
+three are trajectory-determining and grid-independent: they stand beside `h`
+and `n`, validated here with their siblings, and enter none of the grid
+arithmetic.
 """
 function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
-                    Δt_base = nothing, firing_budget = 4, chunk_size::Int = 16) where {T}
+                    Δt_base = nothing, firing_budget = 4, localization_tol = 1e-6,
+                    localization_budget = 8, chunk_size::Int = 16) where {T}
     firing_budget isa Integer && firing_budget ≥ 1 ||
         throw(BuildError("firing_budget must be an integer ≥ 1, got $firing_budget (§10.6)"))
+    localization_tol isa Real && localization_tol > 0 ||
+        throw(BuildError("localization_tol must be a positive real, got $localization_tol (§10.4)"))
+    localization_budget isa Integer && localization_budget ≥ 1 ||
+        throw(BuildError("localization_budget must be an integer ≥ 1, got $localization_budget (§10.4)"))
     act = activation(b, T)
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     work = ntuple(_ -> zeros(T, length(c.xbuf)), 5)
     Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
-        bound.h, bound.n, bound.Δt_base, Int(firing_budget), bound.sched,
-        c.sstores, c.mstores, work)
+        bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
+        Int(localization_budget), any(c.events.localized), bound.sched,
+        c.sstores, c.mstores, work, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)))
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -237,6 +258,7 @@ scratch: such predicates fire again at the new `t₀`.
 """
 function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.t = t₀
+    sim.clock.t₀ = t₀
     sim.clock.step = 0
     fill!(sim.events.prior, false)
     boundary!(sim, 0)
@@ -244,18 +266,18 @@ function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
 end
 
 """
-Advance to `t_end` in steps of the deployment's `h`, one boundary per step
-(§10.3): a base tick every `n` steps, where the gate reads the tick index, and
-the empty-due-set boundary in between. The grid is driven by the step counter,
-so `t_end` is taken to the nearest step boundary; partial advance is the
-periphery's (§12.6) and absent here.
+Advance to `t_end` one frame at a time — `frame!` carries each grid step
+`[tₖ₋₁, tₖ]` through the §10.4 localization loop, firing any `t*` boundaries it
+brackets on the way — then the frame-top boundary (§10.3): a base tick every
+`n` frames, where the gate reads the tick index, and the empty-due-set boundary
+in between. The grid is driven by the step counter, so `t_end` is taken to the
+nearest frame top; partial advance is the periphery's (§12.6) and absent here.
 """
 function run!(sim::Simulation{T}, t_end::Real) where {T}
-    h = T(sim.h)
     target = round(Int, Float64(t_end) / sim.h)
     while sim.clock.step < target
-        step!(sim, h)
         k = (sim.clock.step += 1)
+        frame!(sim, k)
         k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
     end
     nothing

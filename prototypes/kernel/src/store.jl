@@ -83,10 +83,14 @@ The clock, in its own mutable cell so the zero-arg phase bodies can close over
 it. `t` is a bundle field for every stage (§5.2's bundle law) and varies within
 a step — RK stages evaluate at internal times. `step` counts completed
 continuous steps since `t₀`; every `n`-th step boundary is a base tick (§10.5),
-and no entry reads it — it is the loop's, not the bundle's.
+and no entry reads it — it is the loop's, not the bundle's. `t₀` anchors the
+indexed grid: frame tops are `t₀ + k·h`, computed from the index and never
+accumulated, so a remainder step's float arithmetic cannot drift the grid
+(§10.4).
 """
 mutable struct Clock{T}
     t::T
     step::Int
+    t₀::T
 end
-Clock(t) = Clock(t, 0)
+Clock(t) = Clock(t, 0, t)
