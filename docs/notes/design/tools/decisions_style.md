@@ -75,9 +75,14 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
    was settled when it was settled. Amend by adding a later entry and marking
    the earlier one superseded; do not retrofit a changed position into old
    prose.
-2. **Entries ≤ D-121 keep pre-D-122 vocabulary.** The D-121/D-122 renames apply
-   forward, not backward — rewording an old entry into current vocabulary
-   falsifies the record of what was decided in what terms.
+2. **Entries keep the vocabulary of their day.** The D-121/D-122 renames and
+   every later one (D-172, D-185–D-187, D-194–D-196, the 2026-08-15
+   "generic-holding" / "trial evaluation" renames) apply forward, not
+   backward — a rename sweeps the spec and its companions, never the log — and
+   rewording an old entry into current vocabulary falsifies the record of what
+   was decided in what terms; rule 7 licenses prose rewrites, not vocabulary
+   modernization. The current name is always one spec read away, or in the
+   superseding entry.
 3. **Citations are written bare, then linked mechanically.** Write `§5.2`,
    `Appendix B`, `D-037`, ranges as `D-166–D-168`; run
    `julia docs/notes/design/tools/linkify.jl` and it converts them to reference
