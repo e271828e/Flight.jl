@@ -25,7 +25,9 @@
 # their own numbered sections — a link labelled `§N` that points at the spec while
 # the walkthrough itself has a section `N`. Often legitimate (the spec is usually
 # what is meant), but it is the shape a mis-resolved self-reference takes, so the
-# set is printed and any growth in it deserves a look.
+# set is printed and any growth in it deserves a look. Current known set, all
+# hand-verified as correct spec citations: event_visibility_walkthrough.md l.20
+# (§7). Anything beyond that line is new and needs the same hand check.
 #
 # Decision citations are ordinary links after the Pass B sweep — `D-037` is a
 # `[D-037][d-037]` reference resolving into framework_decisions.md — so checks 2

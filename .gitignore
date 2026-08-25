@@ -24,6 +24,9 @@ $RECYCLE.BIN/
 .VSCodeCounter
 .zed/
 
+# Local PDF exports of the design docs
+docs/notes/design/*.pdf
+
 # Misc
 imgui.ini
 tmp/

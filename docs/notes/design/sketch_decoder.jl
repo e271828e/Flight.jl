@@ -3,6 +3,10 @@
 #declaration layer (§13), explicit summing junctions (§6) and type-based
 #assemblies (§13.5-§13.8). Illustrative, non-committed syntax; not runnable.
 #
+#UNCHECKED against the current spec: unlike condition_demo.jl, this sketch was
+#never remapped after the framework_spec.md renumberings, so every § below is
+#presumed stale — cited section numbers are the v0.19-era design doc's.
+#
 #Interfaces (continuous component), in evaluation order. Every function takes
 #(comp, args): one NamedTuple bundle of views, destructured by name — the
 #author names only what the body reads (§5.2, the bundle law). Maximal legal

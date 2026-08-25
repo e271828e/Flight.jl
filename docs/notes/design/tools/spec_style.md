@@ -43,6 +43,11 @@ in pedagogy is not.
 - **The wrap target is 80 columns of *rendered* text**, link markup collapsed.
   A source line carrying citations runs longer than 80 and is not a defect:
   `[contract](#g-contract)` is 24 source characters for 8 rendered ones.
+- One standing glossary-link trap: §15.5's "class split" and "two leaf
+  classes" name the continuous-vs-discrete taxonomy, not the
+  primitive-vs-assembly status of `#g-class` — they take no glossary link.
+  `check_glossary.jl`'s WHITELIST is the record of anchors adjudicated as
+  legitimately unlinked; consult it before "fixing" an unlinked term.
 
 ## Section template
 
@@ -83,6 +88,23 @@ claim-inventory procedure: extract normative claims before, verify each survives
 after, diff decision citations and glossary links. When a sentence resists
 rewriting because its meaning is unclear, that is a finding, not an obstacle —
 flag it for discussion instead of guessing.
+
+## The battery, and what it does not reach
+
+- **The battery is the acceptance test**, exactly as for the log
+  (`decisions_style.md` rule 6): `check_refs.jl`, `check_rows.jl`,
+  `check_glossary.jl --strict`, and `linkify.jl` as a no-op on re-run — after
+  every edit, before every commit.
+- **`§` is reserved for spec citations.** Companions cite their own sections
+  as "section N.N", which is what keeps every `§` in the corpus checkable
+  against the spec's outline.
+- **A new companion registers in both check tools' rosters** — `COMPANIONS` in
+  `check_refs.jl`, `FILES` in `check_rows.jl` — or its citations are silently
+  unchecked.
+- **The design dir's `.jl` sketches sit outside the rosters.** Every `§` in
+  them is hand-verified prose that rots silently at each renumbering. A sketch
+  carries its verification state in its own header; a renumbering that
+  re-verifies or strands one updates that header, not this file.
 
 ## Document structure — settled, not open
 

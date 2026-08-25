@@ -82,7 +82,10 @@ external tool's behavior (Simulink/MATLAB/Modelica does X; we do Y; because Z).
    rewording an old entry into current vocabulary falsifies the record of what
    was decided in what terms; rule 7 licenses prose rewrites, not vocabulary
    modernization. The current name is always one spec read away, or in the
-   superseding entry.
+   superseding entry. **Citations are the one exception**: every entry, old
+   ones included, cites the CURRENT § numbering — a spec renumbering sweeps
+   the whole log's citations, and the log never double-maps old numbering
+   against new.
 3. **Citations are written bare, then linked mechanically.** Write `§5.2`,
    `Appendix B`, `D-037`, ranges as `D-166–D-168`; run
    `julia docs/notes/design/tools/linkify.jl` and it converts them to reference
