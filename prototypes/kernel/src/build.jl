@@ -64,6 +64,7 @@ function classify_tier(path::String, c)
     has_stage(h_s, c) && push!(votes, (:h_s, DISCRETE))
     has_stage(h_su, c) && push!(votes, (:h_su, DISCRETE))
     !isempty(init_m(c)) && push!(votes, (:init_m, CONTINUOUS))
+    !isempty(events(c)) && push!(votes, (:events, CONTINUOUS))
     for (name, fn) in ((:output_types, output_types), (:input_types, input_types),
                        (:workspace, workspace))
         _declares(fn, c, Type{Float64}) && push!(votes, (name, CONTINUOUS))
@@ -329,6 +330,7 @@ struct Build
     tiers::Vector{Tier}
     order::Vector{Int}
     nominal::Activation{Float64}
+    policies::Vector{NamedTuple}   # per component: event name => :boundary | :localized (§10.4)
     cache::Dict{DataType,Any}      # non-nominal activations, lazily materialized
 end
 
@@ -343,12 +345,34 @@ scalar's activation is materialized eagerly instead of at first request.
 function build(root::AbstractComponent; activations::Tuple = ())
     flat = flatten(root)
     tiers = [classify_tier(p, c) for (p, c) in zip(flat.paths, flat.comps)]
+    _check_event_declarations(flat)
     nominal, order = _stratum_c(flat, tiers, nothing, nothing, Float64)
-    b = Build(flat, tiers, order, nominal, Dict{DataType,Any}())
+    policies = probe_events(flat, tiers, nominal)
+    b = Build(flat, tiers, order, nominal, policies, Dict{DataType,Any}())
     for A in activations
         activation(b, A)
     end
     b
+end
+
+# An event needs both halves (§8.2): a guard or handler with no method for the
+# component type is caught by method lookup at declaration-reading time, rather
+# than as a `MethodError` at the first firing — an event firing only in a corner
+# of the envelope would otherwise hide the omission indefinitely.
+function _check_event_declarations(flat::Flat)
+    for (path, c) in zip(flat.paths, flat.comps)
+        for (name, ev) in pairs(events(c))
+            ev isa Event ||
+                throw(BuildError("`$path`: events entry `$name` is $(typeof(ev)) — an entry " *
+                                 "is `Event(guard, handler)`, with no detection keyword (§8.2)"))
+            for (half, fn) in (("guard", ev.guard), ("handler", ev.handler))
+                hasmethod(fn, Tuple{typeof(c),NamedTuple}) ||
+                    throw(BuildError("`$path`: event `$name`'s $half has no method for " *
+                                     "$(typeof(c)) — an event needs both halves (§8.2)"))
+            end
+        end
+    end
+    nothing
 end
 
 """
@@ -474,7 +498,112 @@ function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
         t === CONTINUOUS ? _check_derivative(path, f(c, vals), d.x) :
                            _check_update(path, g(c, vals), d.s)
     end
+
+    # `project`, probed at every activation it runs at — its result is written
+    # back to the buffer wholesale at both schedule positions (§5.3), so the
+    # check holds it *complete* against `X`'s own shape at `T` (§9.3).
+    for (ci, c) in enumerate(flat.comps)
+        has_stage(project, c) || continue
+        path, d = flat.paths[ci], decls[ci]
+        tiers[ci] === CONTINUOUS ||
+            throw(BuildError("`$path` declares `project`, which is continuous-only — " *
+                             "projection normalizes continuous state (§5.2)"))
+        isempty(d.x) &&
+            throw(BuildError("`$path` declares `project` but no `init_x` — there is no " *
+                             "state manifold to project onto (§5.2)"))
+        _check_state_write(path, "project", project(c, d.x), d.x)
+    end
     products
+end
+
+# The complete state write-back (§9.3): the same predicate for `project`'s
+# return and a handler's `x` key, both written to the flat buffer wholesale.
+function _check_state_write(path, what, x⁺, x::NamedTuple)
+    x⁺ isa NamedTuple ||
+        throw(BuildError("`$path`: $what must return a NamedTuple shaped like the state, " *
+                         "got $(typeof(x⁺))"))
+    keys(x⁺) === keys(x) ||
+        throw(BuildError("`$path`: $what returns fields $(keys(x⁺)), state has $(keys(x)) — " *
+                         "a state write-back is complete against the field set (§9.3, §9.5)"))
+    for k in keys(x)
+        nleaves(typeof(x⁺[k])) == nleaves(typeof(x[k])) ||
+            throw(BuildError("`$path`: $what field `$k` is $(typeof(x⁺[k])), state field is " *
+                             "$(typeof(x[k]))"))
+    end
+end
+
+"""
+Probe the event system, at the nominal activation only (§9.3, D-052): guards
+and handlers never run at a non-nominal activation (§9.4), so nothing here is
+parametric in the scalar. Each guard runs against real probed values and its
+return type *is* the detection policy (§10.4, D-179) — `Bool` boundary-detected,
+the nominal scalar localized, anything else an error naming both admissible
+forms. Each handler runs once and its return is held to the §5.2 return law,
+key by key. Returns the per-component policy register.
+"""
+function probe_events(flat::Flat, tiers::Vector{Tier}, act::Activation{Float64})
+    decls, layout, products = act.decls, act.layout, act.products
+    mstores = Any[isempty(init_m(c)) ? nothing : Ref(init_m(c)) for c in flat.comps]
+    wss = _workspaces(flat, tiers, Float64)
+    map(eachindex(flat.comps)) do ci
+        c, path, d = flat.comps[ci], flat.paths[ci], decls[ci]
+        evs = events(c)
+        isempty(evs) && return NamedTuple()
+        bn = event_bundle_names(c)
+        u = NamedTuple{tuple(keys(d.ins)...)}(tuple(
+            (_probe_input(flat, layout, products, ci, face, d.ins[face], Float64)
+             for face in keys(d.ins))...))
+        vals = _bundle_values(bn, d, u, NamedTuple(), Float64; y = products[ci],
+                              ws = wss[ci], m = mstores[ci])
+        NamedTuple{tuple(keys(evs)...)}(map(tuple(keys(evs)...)) do name
+            σ = evs[name].guard(c, vals)
+            policy = σ isa Bool ? :boundary :
+                     σ isa Float64 ? :localized :
+                     throw(BuildError("`$path`: event `$name`'s guard returns $(typeof(σ)) — " *
+                                      "a guard is `Bool`-valued (boundary-detected) or returns " *
+                                      "the continuous sign value (localized) (§2.1, §10.4)"))
+            _check_handler(path, name, evs[name].handler(c, vals), d, c)
+            policy
+        end)
+    end
+end
+
+# The handler return law (§5.2, §9.3): a key is present iff the store exists on
+# the component and the handler updates it. Key set first — an unknown key, or a
+# key naming a store the component does not declare, names the stores that
+# exist. Then per key: `x` complete (the flat buffer is written back wholesale),
+# `m` a names-subset with matching types (per-field stores merge naturally).
+function _check_handler(path, name, ret, d::Decls, c)
+    ret isa NamedTuple ||
+        throw(BuildError("`$path`: event `$name`'s handler must return a NamedTuple of the " *
+                         "stores it writes, got $(typeof(ret)) (§5.2)"))
+    m₀ = init_m(c)
+    stores = Symbol[]
+    isempty(d.x) || push!(stores, :x)
+    isempty(m₀) || push!(stores, :m)
+    for k in keys(ret)
+        k in stores ||
+            throw(BuildError("`$path`: event `$name`'s handler returns `$k` — a handler's " *
+                             "keys name the stores it writes, and this component's are " *
+                             (isempty(stores) ? "none" :
+                              join(("`$s`" for s in stores), ", ")) * " (§5.2)"))
+    end
+    haskey(ret, :x) && _check_state_write(path, "event `$name`'s handler `x`", ret.x, d.x)
+    if haskey(ret, :m)
+        ret.m isa NamedTuple ||
+            throw(BuildError("`$path`: event `$name`'s handler `m` must be a NamedTuple, " *
+                             "got $(typeof(ret.m)) (§5.2)"))
+        for k in keys(ret.m)
+            haskey(m₀, k) ||
+                throw(BuildError("`$path`: event `$name`'s handler writes mode `$k`, and " *
+                                 "`init_m` declares $(keys(m₀)) — `m` is a names-subset " *
+                                 "write (§5.2)"))
+            typeof(ret.m[k]) === typeof(m₀[k]) ||
+                throw(BuildError("`$path`: event `$name`'s handler mode `$k` is " *
+                                 "$(typeof(ret.m[k])), declared $(typeof(m₀[k])) (§5.2)"))
+        end
+    end
+    nothing
 end
 
 # --- 6. deployment binding (§9.1) -----------------------------------------------
@@ -672,6 +801,40 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
         end
     end
 
+    # The event system compiles at the nominal activation only: guards and
+    # handlers are outside every other activation's executable set (§9.4,
+    # D-052), so the event phase there is the bare sweep. Entries carry a global
+    # index into the register vectors, in executor component order then
+    # declaration order within a component (§10.6). The stand-in of the moment:
+    # a `:localized` policy compiles to the same boundary-detected entry — see
+    # the README's stand-ins table.
+    ev_entries, ev_owner = Any[], Int[]
+    ev_names = Tuple{String,Symbol}[]
+    if T === Float64
+        for (ci, c) in enumerate(flat.comps)
+            evs = events(c)
+            isempty(evs) && continue
+            d = decls[ci]
+            bn = event_bundle_names(c)
+            pj = has_stage(project, c) ? project : nothing
+            for name in keys(evs)
+                push!(ev_entries, EventEntry{typeof(d.x),bn}(
+                    evs[name].guard, evs[name].handler, pj, c, length(ev_entries) + 1,
+                    in_group(ci, d), addr_group(flat.paths[ci], keys(d.outs)),
+                    x_offs[ci], clock, mstores[ci], wss[ci]))
+                push!(ev_owner, ci)
+                push!(ev_names, (flat.paths[ci], name))
+            end
+        end
+    end
+
+    # Projection runs at every activation — it is continuous machinery, inside
+    # every executable set — between the integrate's state write and its decode
+    # (§5.3).
+    proj_entries = Any[ProjectEntry{typeof(decls[ci].x)}(c, x_offs[ci])
+                       for (ci, c) in enumerate(flat.comps)
+                       if tiers[ci] === CONTINUOUS && has_stage(project, c)]
+
     body(es, gs) = chunked_body(es, gs, store, xbuf, ẋbuf, clock; chunk_size)
     bodies = (sweep_1 = body(stage1_entries, stage1_gates),
               sweep_2 = body(stage2_entries, stage2_gates),
@@ -679,7 +842,9 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
               ticks = body(tick_entries, tick_gates))
 
     (store = store, xbuf = xbuf, ẋbuf = ẋbuf, clock = clock, bodies = bodies,
-     sstores = sstores, mstores = mstores)
+     sstores = sstores, mstores = mstores,
+     events = EventSet(ev_entries, proj_entries, store, xbuf, ev_owner, ev_names,
+                       length(flat.comps)))
 end
 
 # A probed input value: the producer's product, or the synthesized value of the

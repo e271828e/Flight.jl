@@ -137,9 +137,10 @@ function h_xu(c::WorkGain, (; u, ws))
 end
 
 """
-A mode-carrying source: modes are continuous-only, and in this increment they
-are read but never written — handlers are the event system, which is absent.
-The branch returning a literal is the constant-branch idiom (D-166).
+A mode-carrying source: modes are continuous-only, read here and written by
+nothing — a component may legitimately declare modes no event of its own
+transitions (§8.2). The branch returning a literal is the constant-branch
+idiom (D-166).
 """
 struct ModedSource <: AbstractComponent end
 
@@ -147,6 +148,146 @@ init_m(::ModedSource) = (phase = :idle,)
 output_types(::ModedSource, ::Type{T}) where {T <: Real} = (out = T,)
 
 h_x(::ModedSource, (; m)) = (out = m.phase === :idle ? 0.0 : 1.0,)
+
+# --- the event coverage set (§2.1, §10.6) -------------------------------------
+# Guards and handlers are ordinary named functions referenced by `events` —
+# nothing global-generic about them, which is why they carry component-prefixed
+# names here rather than adding methods to a framework surface.
+
+"""
+Threshold trigger: mode-only state, a `Bool` guard on its input against a
+level, and a *sticky* predicate — the input stays above the level after the
+transition, so edge semantics must make it fire exactly once. `count` records
+firings, which is what the tests read.
+"""
+struct Trigger <: AbstractComponent
+    level::Float64
+end
+
+init_m(::Trigger) = (state = :armed, count = 0)
+input_types(::Trigger, ::Type{T}) where {T <: Real} = (sig = T,)
+output_types(::Trigger, ::Type{T}) where {T <: Real} = (on = Bool,)
+
+h_x(::Trigger, (; m)) = (on = m.state === :fired,)
+
+trigger_guard(c::Trigger, (; u)) = u.sig ≥ c.level
+trigger_handler(::Trigger, (; m)) = (m = (state = :fired, count = m.count + 1),)
+events(::Trigger) = (fire = Event(trigger_guard, trigger_handler),)
+
+"""
+Cascade follower: goes `:idle → :on` on the rising edge of its `Bool` input. A
+chain of these under a `Trigger` is §10.6's logically-simultaneous cascade —
+settled within one boundary, one iteration round per link, independent of `h`.
+"""
+struct Follower <: AbstractComponent end
+
+init_m(::Follower) = (state = :idle,)
+input_types(::Follower, ::Type{T}) where {T <: Real} = (go = Bool,)
+output_types(::Follower, ::Type{T}) where {T <: Real} = (on = Bool,)
+
+h_x(::Follower, (; m)) = (on = m.state === :on,)
+
+follower_guard(::Follower, (; u)) = u.go
+follower_handler(::Follower, (; m)) = (m = (state = :on,),)
+events(::Follower) = (engage = Event(follower_guard, follower_handler),)
+
+"""
+Sawtooth: `q̇ = rate`, and a **sign-form** guard `q − 1` whose handler carries
+the overshoot across the reset, `q ← q − 1`. The sign form declares the event
+localized (§10.4, D-179); under the current stand-in it fires at boundary
+resolution, so its exact reference is the boundary-detected recursion.
+"""
+struct Sawtooth <: AbstractComponent
+    rate::Float64
+end
+
+init_x(::Sawtooth) = (q = 0.0,)
+output_types(::Sawtooth, ::Type{T}) where {T <: Real} = (q = T,)
+
+h_x(::Sawtooth, (; x)) = (q = x.q,)
+f(c::Sawtooth, (; x)) = (q = c.rate,)
+
+sawtooth_guard(::Sawtooth, (; x)) = x.q - 1.0
+sawtooth_handler(::Sawtooth, (; x)) = (x = (q = x.q - 1.0,),)
+events(::Sawtooth) = (wrap = Event(sawtooth_guard, sawtooth_handler),)
+
+"""
+Unit-circle rotor: `ċ = -ω s, ṡ = ω c` under a renormalizing `project` — the
+state manifold in miniature. Boundary zero already projects (§14.5), so a
+deliberately off-manifold `init_x` lands on the circle before the first step.
+"""
+struct Rotor <: AbstractComponent
+    ω::Float64
+    r₀::SVector{2,Float64}
+end
+
+Rotor(; ω = 1.0, r₀ = SVector(1.0, 0.0)) = Rotor(ω, r₀)
+
+init_x(c::Rotor) = (r = c.r₀,)
+output_types(::Rotor, ::Type{T}) where {T <: Real} = (c = T,)
+
+h_x(::Rotor, (; x)) = (c = x.r[1],)
+f(c::Rotor, (; x)) = (r = SVector(-c.ω * x.r[2], c.ω * x.r[1]),)
+project(::Rotor, x) = (r = x.r / sqrt(x.r[1]^2 + x.r[2]^2),)
+
+"""
+Two events toggling one mode: each transition re-arms the other, so the pair
+chatters without bound and each spends `firing_budget` at the first boundary —
+the §10.6 degradation path, warned and bounded while the rest of the model
+iterates untouched. `flips` counts every firing.
+"""
+struct Chatterer <: AbstractComponent end
+
+init_m(::Chatterer) = (v = false, flips = 0)
+output_types(::Chatterer, ::Type{T}) where {T <: Real} = (v = Bool,)
+
+h_x(::Chatterer, (; m)) = (v = m.v,)
+
+chatter_up(::Chatterer, (; m)) = !m.v
+chatter_down(::Chatterer, (; m)) = m.v
+chatter_flip(::Chatterer, (; m)) = (m = (v = !m.v, flips = m.flips + 1),)
+events(::Chatterer) = (up = Event(chatter_up, chatter_flip),
+                       down = Event(chatter_down, chatter_flip))
+
+"""
+Two events on one predicate: both edges rise in the same round, the first fires
+by declaration order, and the second is eligible but blocked — its sample is
+*not* overwritten (D-191), so the standing edge fires it in the next round.
+"""
+struct TwoShot <: AbstractComponent end
+
+init_m(::TwoShot) = (a = false, b = false)
+input_types(::TwoShot, ::Type{T}) where {T <: Real} = (sig = T,)
+output_types(::TwoShot, ::Type{T}) where {T <: Real} = (a = Bool,)
+
+h_x(::TwoShot, (; m)) = (a = m.a,)
+
+twoshot_guard(::TwoShot, (; u)) = u.sig ≥ 1.0
+twoshot_a(::TwoShot, (; m)) = (m = (; a = true),)
+twoshot_b(::TwoShot, (; m)) = (m = (; b = true),)
+events(::TwoShot) = (first = Event(twoshot_guard, twoshot_a),
+                     second = Event(twoshot_guard, twoshot_b))
+
+"""
+The blocked-then-falsified variant: the second event's premise includes the
+first's *not* having fired, so the round-1 block defers it into a round where
+the premise is gone — it re-decides against the post-transition sweep and never
+fires, where a within-round sequence would have fired it on the stale premise.
+"""
+struct Preempted <: AbstractComponent end
+
+init_m(::Preempted) = (a = false, b = false)
+input_types(::Preempted, ::Type{T}) where {T <: Real} = (sig = T,)
+output_types(::Preempted, ::Type{T}) where {T <: Real} = (a = Bool,)
+
+h_x(::Preempted, (; m)) = (a = m.a,)
+
+preempted_guard_a(::Preempted, (; u)) = u.sig ≥ 1.0
+preempted_guard_b(::Preempted, (; u, m)) = u.sig ≥ 1.0 && !m.a
+preempted_a(::Preempted, (; m)) = (m = (; a = true),)
+preempted_b(::Preempted, (; m)) = (m = (; b = true),)
+events(::Preempted) = (first = Event(preempted_guard_a, preempted_a),
+                       second = Event(preempted_guard_b, preempted_b))
 
 # --- the anonymous assembly (§8.5) --------------------------------------------
 

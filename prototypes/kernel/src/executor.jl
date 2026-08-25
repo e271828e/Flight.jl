@@ -125,6 +125,137 @@ end
     nothing
 end
 
+# --- the event machinery (§10.6, §5.3) ------------------------------------------
+# Not sweep entries: guards and handlers are driven by the boundary iteration in
+# `sim.jl`, against per-event registers, so their entries live in their own
+# compiled set. One entry per declared event, carrying both halves plus its
+# component's `project` (or `nothing`), and a global index into the register
+# vectors — global order is executor component order, then declaration order
+# within a component, which is what makes the §13.4-style dispatch order
+# deterministic. Bundles are built exactly like every other entry's, from the
+# event name set the law fixed at build time (`x, m, u, y, ws, t`, §5.2).
+
+struct EventEntry{G,H,P,Comp,XT,BN,IA<:NamedTuple,YA<:NamedTuple,CL,MS,WS}
+    guard::G
+    handler::H
+    proj::P         # the component's `project`, or nothing
+    comp::Comp
+    idx::Int        # global event index into the register vectors
+    inputs::IA
+    y::YA           # every own port — guards and handlers read the complete fresh table
+    x_off::Int
+    clock::CL
+    mstore::MS
+    ws::WS
+end
+
+EventEntry{XT,BN}(guard, handler, proj, comp, idx, inputs, y, x_off, clock,
+                  mstore, ws) where {XT,BN} =
+    EventEntry{typeof(guard),typeof(handler),typeof(proj),typeof(comp),XT,BN,
+               typeof(inputs),typeof(y),typeof(clock),typeof(mstore),typeof(ws)}(
+        guard, handler, proj, comp, idx, inputs, y, x_off, clock, mstore, ws)
+
+@generated function make_bundle(e::EventEntry{G,H,P,Comp,XT,BN}, store,
+                                xbuf) where {G,H,P,Comp,XT,BN}
+    quote
+        $(Expr(:meta, :inline))
+        $(_bundle_expr(BN, XT))
+    end
+end
+
+"""
+Projection between a state write and its decode (§5.3): reconstruct, project,
+write back wholesale — the completeness the probe established is what makes the
+wholesale write safe by construction.
+"""
+struct ProjectEntry{Comp,XT}
+    comp::Comp
+    x_off::Int
+end
+ProjectEntry{XT}(comp, x_off) where {XT} = ProjectEntry{typeof(comp),XT}(comp, x_off)
+
+@inline function run_project!(e::ProjectEntry{Comp,XT}, xbuf) where {Comp,XT}
+    flatten!(xbuf, e.x_off, project(e.comp, reconstruct(XT, xbuf, e.x_off)))
+    nothing
+end
+
+"""
+The per-`Simulation` compiled event set: the entry tuples plus the §10.6
+registers. The three normative registers — prior, last-observed sample, firing
+count — are detection bookkeeping, not model memory: plain vectors indexed by
+the global event index, in no state store, reconstructed deterministically.
+`now`, `fire` and `comp_fired` are the iteration's round-scoped scratch, and
+`warned` implements "at most once per event per boundary" for the
+`FiringBudget` degradation.
+"""
+struct EventSet{E<:Tuple,P<:Tuple,S,X}
+    entries::E
+    projects::P
+    store::S
+    xbuf::X
+    owner::Vector{Int}                   # component index per event
+    names::Vector{Tuple{String,Symbol}}  # (path, event name), for the degradation warning
+    now::Vector{Bool}
+    prior::Vector{Bool}
+    last::Vector{Bool}
+    fire::Vector{Bool}
+    count::Vector{Int}
+    warned::Vector{Bool}
+    comp_fired::Vector{Bool}             # per component, round-scoped
+end
+
+function EventSet(entries::Vector, projects::Vector, store, xbuf,
+                  owner::Vector{Int}, names::Vector{Tuple{String,Symbol}}, ncomps::Int)
+    n = length(entries)
+    EventSet(tuple(entries...), tuple(projects...), store, xbuf, owner, names,
+             fill(false, n), fill(false, n), fill(false, n), fill(false, n),
+             zeros(Int, n), fill(false, n), fill(false, ncomps))
+end
+
+# The three walks the iteration drives, each the compile-time-unrolled tuple
+# recursion of the phase bodies. Guard evaluation writes each predicate sample
+# into `now` by global index; the fire walk runs `handler → project` for
+# exactly the masked entries, latching the returned stores — `x` into the flat
+# buffer, `m` merged into the mode store, per the return law's iff shape (§5.2).
+
+@noinline _projects!(es::EventSet) = _proj_walk(es.projects, es.xbuf)
+@inline _proj_walk(::Tuple{}, xbuf) = nothing
+@inline function _proj_walk(t::Tuple, xbuf)
+    run_project!(t[1], xbuf)
+    _proj_walk(Base.tail(t), xbuf)
+end
+
+@noinline _guards!(es::EventSet) = _guard_walk(es.entries, es.store, es.xbuf, es.now)
+@inline _guard_walk(::Tuple{}, store, xbuf, now) = nothing
+@inline function _guard_walk(t::Tuple, store, xbuf, now)
+    e = t[1]
+    now[e.idx] = _holding(e.guard(e.comp, make_bundle(e, store, xbuf)))
+    _guard_walk(Base.tail(t), store, xbuf, now)
+end
+
+@noinline _fire!(es::EventSet) = _fire_walk(es.entries, es.store, es.xbuf, es.fire)
+@inline _fire_walk(::Tuple{}, store, xbuf, fire) = nothing
+@inline function _fire_walk(t::Tuple, store, xbuf, fire)
+    e = t[1]
+    if fire[e.idx]
+        _latch!(e, e.handler(e.comp, make_bundle(e, store, xbuf)), xbuf)
+        _fire_project!(e, xbuf)
+    end
+    _fire_walk(Base.tail(t), store, xbuf, fire)
+end
+
+@inline function _latch!(e::EventEntry, ret::NamedTuple, xbuf)
+    haskey(ret, :x) && flatten!(xbuf, e.x_off, ret.x)
+    haskey(ret, :m) && (e.mstore[] = merge(e.mstore[], ret.m))
+    nothing
+end
+
+@inline function _fire_project!(e::EventEntry{G,H,P,Comp,XT}, xbuf) where {G,H,P,Comp,XT}
+    P === Nothing && return nothing
+    flatten!(xbuf, e.x_off, e.proj(e.comp, reconstruct(XT, xbuf, e.x_off)))
+    nothing
+end
+
 # --- the gate (§10.5, D-185) ----------------------------------------------------
 # The boundary sweep walks the full list with *discrete* entries gated by
 # `(idx − Φ) % D == 0`. The gate is a wrapper only discrete entries wear, so a

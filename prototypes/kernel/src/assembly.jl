@@ -11,9 +11,10 @@
 @enum Class PRIMITIVE ASSEMBLY
 
 const LEAF_FAMILY = "`init_x`, `init_s`, `init_m`, `workspace`, `input_types`, " *
-                    "`output_types` or a stage (`h_x`, `h_xu`, `h_s`, `h_su`, `f`, `g`)"
+                    "`output_types`, `events` or a stage (`h_x`, `h_xu`, `h_s`, `h_su`, " *
+                    "`f`, `g`, `project`)"
 
-"""The leaf declarations `c` defines, in inventory order (§8.2)."""
+"""The leaf declarations `c` defines, in inventory order (§8.2, §8.5)."""
 function leaf_declarations(c)
     found = Symbol[]
     for (name, fn) in ((:init_x, init_x), (:init_s, init_s), (:init_m, init_m))
@@ -25,8 +26,9 @@ function leaf_declarations(c)
                        (:output_types, output_types))
         (_declares(fn, c) || _declares(fn, c, Type{Float64})) && push!(found, name)
     end
+    _declares(events, c) && push!(found, :events)
     for (name, fn) in ((:h_x, h_x), (:h_xu, h_xu), (:h_s, h_s), (:h_su, h_su),
-                       (:f, f), (:g, g))
+                       (:f, f), (:g, g), (:project, project))
         has_stage(fn, c) && push!(found, name)
     end
     found

@@ -2,17 +2,19 @@
 # seam (§10.2) and the phase-body accessor (§9.7). The framework owns the loop;
 # the one delegated operation is "advance the continuous state from `t` by `h`".
 
-struct Simulation{T,S,B,CL}
+struct Simulation{T,S,B,CL,EV}
     store::S
     xbuf::Vector{T}
     ẋbuf::Vector{T}
     clock::CL
     bodies::B
+    events::EV                    # the compiled event set with its §10.6 registers
     layout::Layout
     flat::Flat
     h::Float64                    # the continuous step, bound at deployment
     n::Int                        # steps per base tick: Δt_base = n·h (§10.5)
     Δt_base::Float64
+    firing_budget::Int            # per-event firings per boundary (§10.6)
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
     sstores::Vector{Any}          # discrete state stores, by component index
     mstores::Vector{Any}          # mode stores, by component index
@@ -20,7 +22,8 @@ struct Simulation{T,S,B,CL}
 end
 
 """
-    Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing, chunk_size = 16)
+    Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
+               firing_budget = 4, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
 Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
@@ -32,16 +35,25 @@ the nominal one directly, any other via `activation(b, T)`'s cached Stratum-C
 re-run (§9.4). The convenience form is *defined as* `Simulation(build(root), T;
 …)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ` are
 entry data, and one `Build` backs many `Simulation`s.
+
+`firing_budget` is §10.6's deployment keyword: how many times each declared
+event may fire at one boundary, an integer ≥ 1 defaulting to 4 — a legitimate
+re-enable is one or two firings deep, a toggling FSM pair chatters without
+bound, and 4 separates them without ever binding on a healthy model. It is
+grid-independent, so it enters none of the grid arithmetic.
 """
 function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
-                    Δt_base = nothing, chunk_size::Int = 16) where {T}
+                    Δt_base = nothing, firing_budget = 4, chunk_size::Int = 16) where {T}
+    firing_budget isa Integer && firing_budget ≥ 1 ||
+        throw(BuildError("firing_budget must be an integer ≥ 1, got $firing_budget (§10.6)"))
     act = activation(b, T)
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     work = ntuple(_ -> zeros(T, length(c.xbuf)), 5)
-    Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock)}(
-        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, act.layout, b.flat,
-        bound.h, bound.n, bound.Δt_base, bound.sched, c.sstores, c.mstores, work)
+    Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events)}(
+        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
+        bound.h, bound.n, bound.Δt_base, Int(firing_budget), bound.sched,
+        c.sstores, c.mstores, work)
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -74,15 +86,22 @@ fresh table. Leaves `ẋbuf` holding the derivative of whatever `xbuf` holds.
 end
 
 """
-The boundary macro-sequence at a base tick (§10.3, §10.6 in miniature): the
-boundary sweep restores signal-table consistency with the due set gated off
-`tick`, then the due updates run. Output stages before updates, so a discrete
-component's cells carry `y[k]` computed from `s[k]` while `g` produces `s[k+1]`
-— the sampled-data recursion, ordered by construction rather than by convention.
+The boundary macro-sequence at a base tick, final form (§5.3, §10.6):
+
+> integrate → project → [sweep → guards → handlers] iterated to quiescence
+> (under the firing budget) → all due `g` updates
+
+Integration has just written the state, so projection runs first — between the
+write and its decode; the event phase then iterates with the due set fixed for
+the whole boundary, and the due updates run last, after quiescence, reading
+post-transition values off the settled table. Output stages before updates, so
+a discrete component's cells carry `y[k]` computed from `s[k]` while `g`
+produces `s[k+1]` — the sampled-data recursion, ordered by construction rather
+than by convention.
 """
 @inline function boundary!(sim::Simulation, tick::Int)
-    sim.bodies.sweep_1(tick)
-    sim.bodies.sweep_2(tick)
+    _projects!(sim.events)
+    event_phase!(sim, tick)
     sim.bodies.ticks(tick)
     nothing
 end
@@ -92,11 +111,79 @@ The macro-sequence at a step boundary that is *not* a base tick: the tick
 counter has not advanced, so the due set is empty — and emptiness is arity
 selection, never a sentinel index failing every gate (§10.5, D-185). The
 zero-arg interior bodies are exactly the boundary walk with every discrete
-entry gated out, so consistency is restored and nothing discrete can move.
+entry gated out, so consistency is restored and nothing discrete can move;
+projection and the event phase run in full — every step boundary is a boundary
+(§10.4).
 """
 @inline function offtick_boundary!(sim::Simulation)
-    sim.bodies.sweep_1()
-    sim.bodies.sweep_2()
+    _projects!(sim.events)
+    event_phase!(sim, nothing)
+    nothing
+end
+
+# One iteration round's sweep: the whole gated schedule (§10.6), in the due-set
+# arity the boundary fixed — never the update laws, which wait for quiescence.
+@inline _round!(sim::Simulation, tick::Int) =
+    (sim.bodies.sweep_1(tick); sim.bodies.sweep_2(tick); nothing)
+@inline _round!(sim::Simulation, ::Nothing) =
+    (sim.bodies.sweep_1(); sim.bodies.sweep_2(); nothing)
+
+"""
+The event phase (§10.6): [sweep → guards → handlers] iterated to quiescence,
+the fixed point where a round of handlers fires nothing. The first round always
+runs — it is the boundary sweep that restores table consistency — so a model
+with no events degenerates to exactly that sweep, with no register work at all.
+
+An event fires in a round iff its predicate is observed holding, the sample
+observed before it was not-holding, and its firing count for this boundary is
+below the budget; at most one event fires per component per round, the first
+eligible in declaration order — priority with re-decision. The one register
+subtlety is D-191's: an eligible-but-blocked event's last-observed sample is
+*not* overwritten, so the edge it presented stands into the next round. Budget
+exhaustion degrades rather than throwing: the event's further edges at this
+boundary are lost under a `FiringBudget` warning, at most once per event per
+boundary, while every other event iterates untouched. At quiescence the prior
+is updated unconditionally from the final samples — every prior an honest
+observation of a settled boundary.
+"""
+function event_phase!(sim::Simulation, tick)
+    es = sim.events
+    _round!(sim, tick)
+    n = length(es.prior)
+    n == 0 && return nothing
+    copyto!(es.last, es.prior)
+    fill!(es.count, 0)
+    fill!(es.warned, false)
+    budget = sim.firing_budget
+    while true
+        _guards!(es)
+        fill!(es.comp_fired, false)
+        any_fired = false
+        for i in 1:n
+            edge = !es.last[i] && es.now[i]
+            eligible = edge && es.count[i] < budget
+            if edge && !eligible && !es.warned[i]
+                es.warned[i] = true
+                (path, name) = es.names[i]
+                @warn "FiringBudget: event `$name` at `$path` has fired $budget times at " *
+                      "the boundary t = $(sim.clock.t); its further edges here are lost (§10.6)"
+            end
+            firing = eligible && !es.comp_fired[es.owner[i]]
+            es.fire[i] = firing
+            if firing
+                es.comp_fired[es.owner[i]] = true
+                es.count[i] += 1
+                any_fired = true
+            end
+            # A blocked edge stays unconsumed (D-191): only the eligible-but-
+            # blocked sample stands; every other event takes this round's.
+            (eligible && !firing) || (es.last[i] = es.now[i])
+        end
+        any_fired || break
+        _fire!(es)
+        _round!(sim, tick)
+    end
+    copyto!(es.prior, es.last)
     nothing
 end
 
@@ -142,10 +229,16 @@ Boundary zero is an ordinary boundary with an empty integrate (§10.5, §14.5):
 the gate at index 0 admits exactly the components with `Φ = 0`, implemented by
 nothing. An offset component holds its probe-populated cells until its first
 tick at `Φ·Δt_base`.
+
+Boundary zero also establishes every event prior as not-holding (§10.6), so a
+predicate already holding in the authored state fires at `t₀` — derived, not
+asserted — and a warm restart (`init!` again) resets all three registers from
+scratch: such predicates fire again at the new `t₀`.
 """
 function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.t = t₀
     sim.clock.step = 0
+    fill!(sim.events.prior, false)
     boundary!(sim, 0)
     nothing
 end
@@ -201,5 +294,5 @@ function state(sim::Simulation{T}, path::String) where {T}
     reconstruct(typeof(_decls(ci).x), sim.xbuf, off)
 end
 
-"""Modes at `path` (§7.3). Read-only here: handlers are the event system."""
+"""Modes at `path` (§7.3). Read-only here: modes are written by handlers alone."""
 modes(sim::Simulation, path::String) = sim.mstores[index_of(sim.flat, path)][]

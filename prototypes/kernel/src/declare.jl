@@ -2,8 +2,7 @@
 # are ordinary functions of the *instance*, written at concrete `Float64`; the
 # framework's activation walk (§7.2) retypes them. No macros, no stage tags.
 #
-# Both tiers live here. `events` is the one declaration entry this file
-# deliberately does not have yet.
+# Both tiers live here, and so does the event declaration surface (§2.1, §8.2).
 
 # --- the one root type (§8.5) -------------------------------------------------
 # There is no `AbstractAssembly`: primitives and assemblies share one root, so a
@@ -170,6 +169,41 @@ constructor parameter and read off the instance here (§10.5).
 """
 sample_times(::Any) = (;)
 
+# --- events (§2.1, §8.2) ------------------------------------------------------
+
+"""
+One guard/handler pair, and nothing else: `Event(guard, handler)` carries no
+detection keyword. Detection policy is declared by the guard's *return type* —
+a `Bool` guard is boundary-detected, a sign-form guard is localized — read off
+the probe it already runs (§10.4, D-179), so the illegal form/policy pairing is
+unrepresentable rather than merely diagnosed.
+"""
+struct Event{G,H}
+    guard::G
+    handler::H
+end
+
+"""
+The ordered, named guard/handler collection (§8.2): `name = Event(guard,
+handler)` entries. Order is semantics — declaration order is priority with
+re-decision at the boundary iteration (§10.6). Continuous-only, like `init_m`:
+the event system is continuous-side only (§5.2). Nothing here is inferrable.
+"""
+events(::Any) = (;)
+
+"""
+Manifold projection (§5.2): one store in, the same store out, which is why it
+alone stays positional. It runs between a state write and its decode — after
+integration and after each handler firing (§5.3) — and its return is written
+back to the buffer wholesale, so the probe holds it complete against the state
+shape (§9.3).
+"""
+function project end
+
+"""The §2.1 predicate of a guard's return: the `Bool` form itself, or `σ ≥ 0`."""
+_holding(σ::Bool) = σ
+_holding(σ) = σ ≥ 0
+
 # --- what an author defines (the §5.2 signatures) -----------------------------
 # Every stage takes the component and exactly one NamedTuple bundle of views,
 # destructured by name: `h_xu(c::Plant, (; x, u)) = ...`. The framework's call
@@ -267,6 +301,23 @@ end
 
 _declares_workspace(c, t::Tier) =
     t === CONTINUOUS ? _declares(workspace, c, Type{Float64}) : _declares(workspace, c)
+
+"""
+Bundle field names for a guard or handler (§5.2): the update law's view of the
+world — `x, m, y, u, t [, ws]` — one closed set shared by both halves, on the
+continuous tier only. The same iff rule as `bundle_names`, without a stage-1
+distinction: guards and handlers run against the complete fresh table.
+"""
+function event_bundle_names(c)
+    names = Symbol[]
+    !isempty(init_x(c)) && push!(names, :x)
+    !isempty(init_m(c)) && push!(names, :m)
+    !isempty(declared_at(input_types, c, CONTINUOUS)) && push!(names, :u)
+    !isempty(declared_at(output_types, c, CONTINUOUS)) && push!(names, :y)
+    _declares_workspace(c, CONTINUOUS) && push!(names, :ws)
+    push!(names, :t)
+    tuple(names...)
+end
 
 # --- probe values (§9.3) -----------------------------------------------------
 # Root slots are the one terminal with no producer; the build synthesizes their
