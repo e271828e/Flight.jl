@@ -2,8 +2,8 @@
 # through `integrate → arrival sweep → trigger → θ = 0 validation → bracket →
 # root-find → t* → remainder step`, iterated under `localization_budget`. The
 # runtime consultation of `Build.policies` lives here — a sign-form guard's
-# crossing is bracketed by trial evaluations over the cubic Hermite interpolant
-# and fired at a `t*` boundary, strictly inside the frame.
+# crossing is bracketed by trial evaluations over the seam's dense output
+# (§10.2, `dense!`) and fired at a `t*` boundary, strictly inside the frame.
 #
 # Frame ≠ boundary (§10.4): the frame `[tₙ, tₙ₊₁]` is the unit of scheduling —
 # tick eligibility keys to it, and `t*` is never a tick — while a boundary is a
@@ -38,13 +38,13 @@ end
 function _localized_frame!(sim::Simulation{T}, t_to) where {T}
     es = sim.events
     n = length(es.prior)
-    x₀, k₁ = sim.work[1], sim.work[2]
-    count = 0
+    (x₀, _) = startpoint(sim.stepper)         # the seam's retained pair (§10.2):
+    count = 0                                 # x₀ = x(t_seg) after each step!
     fill!(es.loc_warned, false)
     while true
         t_seg = sim.clock.t
         h′ = t_to - t_seg
-        step!(sim, h′)                        # leaves x₀ = x(t_seg), k₁ = ẋ(t_seg) behind
+        step!(sim, h′)
 
         # The arrival sweep at the segment's end — interior, on the raw
         # unprojected state, before any discrete cell refreshes (§10.4): the
@@ -132,7 +132,7 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
         # updated from the settled samples. Integration then resumes from the
         # settled state; the interpolant is invalidated by falling out of
         # scope — the handlers made it a lie for t > t*.
-        _hermite!(sim.xbuf, x₀, k₁, sim.xnext, sim.ẋnext, θ★, h′)
+        dense!(sim.stepper, sim.xbuf, sim.xnext, sim.ẋnext, θ★, h′)
         sim.clock.t = t_seg + θ★ * h′
         offtick_boundary!(sim)
         count += 1
@@ -146,26 +146,10 @@ ZOH-hold through it — the interior sweep has no discrete entries — and the
 state is raw: projection's reach is the boundary, not the trial.
 """
 function _trial!(sim::Simulation, θ::Float64, t_seg, h′)
-    _hermite!(sim.xbuf, sim.work[1], sim.work[2], sim.xnext, sim.ẋnext, θ, h′)
+    dense!(sim.stepper, sim.xbuf, sim.xnext, sim.ẋnext, θ, h′)
     sim.clock.t = t_seg + θ * h′
     sim.bodies.sweep_1(); sim.bodies.sweep_2()
     _guards!(sim.events)
-    nothing
-end
-
-# The cubic Hermite continuous extension over the segment (§10.4): x̂(θ) from
-# (xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁), θ ∈ [0, 1], derivatives scaled by the segment width.
-# Uniform accuracy O(h⁴), one order below the discrete solution — the standard
-# pairing, and why nothing more expensive is worth running trials against.
-function _hermite!(x̂, x₀, ẋ₀, x₁, ẋ₁, θ::Float64, h′)
-    θ² = θ * θ; θ³ = θ² * θ
-    b₀ = 2θ³ - 3θ² + 1
-    b₁ = 3θ² - 2θ³
-    d₀ = (θ³ - 2θ² + θ) * h′
-    d₁ = (θ³ - θ²) * h′
-    @inbounds for i in eachindex(x̂)
-        x̂[i] = b₀ * x₀[i] + d₀ * ẋ₀[i] + b₁ * x₁[i] + d₁ * ẋ₁[i]
-    end
     nothing
 end
 

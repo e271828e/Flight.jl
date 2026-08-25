@@ -52,6 +52,15 @@ step targeting the indexed frame top — iterated under `localization_budget`,
 with `localization_tol` and `localization_budget` joining `firing_budget` as
 validated deployment keywords. The stand-ins table empties.
 
+**Increment 8 — the stepper seam's second backend.** §10.2's seam becomes
+dispatch: `step!`, `startpoint` and `dense!` on a stepper type, RK4's scratch
+moving off the `Simulation` into its own struct, and Heun joining as
+`method = Heun` — a deployment keyword defaulting to `RK4`. The frame loop's
+reach into RK4's work registers is gone: localization reads the seam's
+retained pair and dense output and never a scratch index, and the fitted
+convergence orders — 4 and 2 through one unchanged deployment surface and one
+unchanged localization machinery — are the interchangeability proof.
+
     julia --project=. test/runtests.jl
 
 ## What is real here
@@ -64,8 +73,9 @@ validated deployment keywords. The stand-ins table empties.
 | per-eltype cell stores and the store bundle | §9.7, D-162 | `src/store.jl` |
 | entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries, and the event machinery — event/projection entries, the register vectors (§10.6's three plus §10.4's policy mask and σ samples, the guard walk feeding both) and the guard/fire/project walks with handler-store latching | §9.7, §10.5, §10.6, §10.4, §5.3 | `src/executor.jl` |
 | tier classification, probe, feedthrough graph, layout, embed-accept, the `Build` artifact, the activation seam (nominal at build, `activation(b, T)` as a cached Stratum-C re-run, frozen products carried across, the eager `activations` keyword), deployment binding (three cross-validated `Δt_base` sources, the GCD constraint pool, per-anchor division pairs), per-deployment entry compilation, and the event probe — both-halves at declaration reading, policy off the guard's return type onto `Build.policies`, the handler return law key by key, `project` held complete | §8.2, §9.3, §5.3, §9.1, §9.2, §9.4, §10.4, D-166, D-179 | `src/build.jl` |
-| `Simulation` with its deployment constructor, bound schedule and the `firing_budget`/`localization_tol`/`localization_budget` keywords, RK4, the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §10.4, §9.7, §11.3 | `src/sim.jl` |
-| the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazy cubic Hermite interpolant, bracketed trial evaluations under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
+| `Simulation` with its deployment constructor, bound schedule and the `method`/`firing_budget`/`localization_tol`/`localization_budget` keywords, the seam's framework side (the never-entered-empty short-circuit), the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §10.4, §9.7, §11.3 | `src/sim.jl` |
+| the stepper seam's backend side: the three-clause contract as dispatch — `step!` by arbitrary `h`, dense output via the retained `startpoint` pair and `dense!` (the shared cubic Hermite both backends inherit), one-step methods only — with fixed-step RK4 (the default) and Heun, each owning exactly its own scratch | §10.2, D-017 | `src/stepper.jl` |
+| the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazily-paid arrival derivative, bracketed trial evaluations over the seam's dense output under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
 | the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group` and the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
@@ -230,6 +240,15 @@ programming convenience:
   samples, where a spurious tick would have added the mid-frame value.
   Discrete cells ZOH-hold through the trials for the increment-3 reason:
   the interior sweep the trials run has no discrete entries to gate.
+- **The integration method is a deployment binding, and nothing outside its
+  own struct knows which one ran.** `method = Heun` swaps the backend with the
+  loop, the localization machinery and every model unchanged, and the
+  convergence orders fitted through that one surface — 4 and 2 against the
+  same matrix-exponential reference — pin each backend as itself, where a
+  shared loose tolerance would let a mislabeled one hide. The dense-output
+  obligation rides the seam too: a localized stamp under Heun lands at the
+  discrete solution's O(h²) through the same Hermite trials, and the
+  frame-top stamps stay bitwise, having never depended on the method.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;

@@ -1,7 +1,8 @@
 # Acceptance tests for the kernel prototype: the continuous-tier walking
 # skeleton (increment 2), the discrete tier at one rate (increment 3), the
 # hierarchy (increment 4), the multi-rate grid (increment 5), events at
-# boundaries (increment 6) and localization (increment 7).
+# boundaries (increment 6), localization (increment 7) and the stepper seam
+# with its second backend (increment 8).
 #
 #   julia --project=. test/runtests.jl
 
@@ -13,6 +14,7 @@ include("../src/assembly.jl")
 include("../src/store.jl")
 include("../src/executor.jl")
 include("../src/build.jl")
+include("../src/stepper.jl")
 include("../src/sim.jl")
 include("../src/localize.jl")
 include("../src/library.jl")
@@ -25,3 +27,4 @@ include("test_hierarchy.jl")
 include("test_multirate.jl")
 include("test_events.jl")
 include("test_localization.jl")
+include("test_stepper.jl")

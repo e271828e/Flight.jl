@@ -2,7 +2,7 @@
 # seam (§10.2) and the phase-body accessor (§9.7). The framework owns the loop;
 # the one delegated operation is "advance the continuous state from `t` by `h`".
 
-struct Simulation{T,S,B,CL,EV}
+struct Simulation{T,S,B,CL,EV,M}
     store::S
     xbuf::Vector{T}
     ẋbuf::Vector{T}
@@ -21,14 +21,14 @@ struct Simulation{T,S,B,CL,EV}
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
     sstores::Vector{Any}          # discrete state stores, by component index
     mstores::Vector{Any}          # mode stores, by component index
-    work::NTuple{5,Vector{T}}     # RK4 scratch: x₀, k₁..k₄ — x₀ and k₁ survive the step as (xₙ, ẋₙ)
+    stepper::M                    # the seam's backend (§10.2), owning its own scratch
     xnext::Vector{T}              # the retained arrival pair (§10.4): xₙ₊₁ saved before trials clobber
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
 end
 
 """
     Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
-               firing_budget = 4, localization_tol = 1e-6,
+               method = RK4, firing_budget = 4, localization_tol = 1e-6,
                localization_budget = 8, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
@@ -41,6 +41,12 @@ the nominal one directly, any other via `activation(b, T)`'s cached Stratum-C
 re-run (§9.4). The convenience form is *defined as* `Simulation(build(root), T;
 …)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ` are
 entry data, and one `Build` backs many `Simulation`s.
+
+`method` selects the integration backend across the stepper seam (§10.2): a
+stepper type — `RK4`, the default, or `Heun` — materialized against the flat
+buffer at binding like every other deployment product. The method is
+trajectory-determining and grid-independent, exactly like the keywords below;
+nothing outside the backend's own struct knows which one ran.
 
 `firing_budget` is §10.6's deployment keyword: how many times each declared
 event may fire at one boundary, an integer ≥ 1 defaulting to 4 — a legitimate
@@ -58,8 +64,11 @@ and `n`, validated here with their siblings, and enter none of the grid
 arithmetic.
 """
 function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
-                    Δt_base = nothing, firing_budget = 4, localization_tol = 1e-6,
-                    localization_budget = 8, chunk_size::Int = 16) where {T}
+                    Δt_base = nothing, method = RK4, firing_budget = 4,
+                    localization_tol = 1e-6, localization_budget = 8,
+                    chunk_size::Int = 16) where {T}
+    method isa Type && method <: AbstractStepper ||
+        throw(BuildError("method must be a stepper type — RK4 or Heun — got $method (§10.2)"))
     firing_budget isa Integer && firing_budget ≥ 1 ||
         throw(BuildError("firing_budget must be an integer ≥ 1, got $firing_budget (§10.6)"))
     localization_tol isa Real && localization_tol > 0 ||
@@ -69,12 +78,13 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     act = activation(b, T)
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
-    work = ntuple(_ -> zeros(T, length(c.xbuf)), 5)
-    Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events)}(
+    stepper = method(T, length(c.xbuf))
+    Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events),
+               typeof(stepper)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
         Int(localization_budget), any(c.events.localized), bound.sched,
-        c.sstores, c.mstores, work, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)))
+        c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)))
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -208,39 +218,20 @@ function event_phase!(sim::Simulation, tick)
     nothing
 end
 
-# --- the stepper (§10.2): in-house fixed-step RK4 over the flat buffer ---------
-# One-step method, arbitrary `h`, zero allocation. The seam is never entered
-# empty: with no continuous state the step degenerates to advancing `t`.
+# --- the stepper seam, framework side (§10.2) ----------------------------------
 
-function step!(sim::Simulation{T}, h::T) where {T}
-    x, ẋ = sim.xbuf, sim.ẋbuf
-    n = length(x)
-    if n == 0
-        sim.clock.t += h
-        return nothing
-    end
-    x₀, k₁, k₂, k₃, k₄ = sim.work
-    t₀ = sim.clock.t
-    copyto!(x₀, x)
+"""
+    step!(sim, h)
 
-    evaluate!(sim); copyto!(k₁, ẋ)
-    _advance!(x, x₀, k₁, h / 2); sim.clock.t = t₀ + h / 2
-    evaluate!(sim); copyto!(k₂, ẋ)
-    _advance!(x, x₀, k₂, h / 2)
-    evaluate!(sim); copyto!(k₃, ẋ)
-    _advance!(x, x₀, k₃, h); sim.clock.t = t₀ + h
-    evaluate!(sim); copyto!(k₄, ẋ)
-
-    @inbounds for i in 1:n
-        x[i] = x₀[i] + (h / 6) * (k₁[i] + 2k₂[i] + 2k₃[i] + k₄[i])
-    end
+Advance the continuous state from `t` by `h`, delegated across the stepper
+seam to whichever backend the deployment bound (stepper.jl). The seam is never
+entered empty: with no continuous state the step degenerates to advancing `t`,
+the backend is simply not called, and no backend contract has to say what it
+would do at N = 0.
+"""
+@inline function step!(sim::Simulation, h)
+    isempty(sim.xbuf) ? (sim.clock.t += h) : step!(sim.stepper, sim, h)
     nothing
-end
-
-@inline function _advance!(x, x₀, k, dt)
-    @inbounds for i in eachindex(x)
-        x[i] = x₀[i] + dt * k[i]
-    end
 end
 
 """
