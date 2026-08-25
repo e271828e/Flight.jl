@@ -43,7 +43,7 @@ The three per-event registers are plain vectors on the `Simulation`, and
 boundary zero derives fires-at-`t₀` from all-not-holding priors. Localization
 is absent: a sign-form guard detects at boundaries under the stand-in below.
 
-    julia --project=. check.jl
+    julia --project=. test/runtests.jl
 
 ## What is real here
 
@@ -251,8 +251,9 @@ a method to the global `h_x`: it binds a *new local function* of that name.
 Calls inside the block see it and look fine; the global generic function the
 build dispatches on is untouched, so `build` sees a component that declares
 nothing at all. Ordinary top-level definitions — the
-script, module and notebook-cell cases — are unaffected. `check.jl` defines its
-malformed test components at top level for exactly this reason.
+script, module and notebook-cell cases — are unaffected. The files under
+`test/` define their malformed test components at top level for exactly this
+reason.
 
 This is the local-scope sibling of the `using Flight` trap §8.1 already
 documents, and §8.1's shadowing check does not reach it: there is no
