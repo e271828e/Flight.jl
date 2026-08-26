@@ -547,7 +547,8 @@ end
 The drain (§11.4): exactly one point in each frame, at its top, where the loop
 takes each staged batch with one `atomicswap(cell, nothing)` — an indivisible
 take, so there is no lost-write window — and applies it through the entry's
-compiled scatter, `nothing` skipped, every check long since spent at staging.
+compiled scatter, masked-off positions skipped, every check long since spent
+at staging.
 Cells drain in attachment order, the harness register's last by convention:
 with every surface disjoint the order is unobservable, so the rule exists to
 make the record read the same way every time, not to arbitrate (§11.3). Never

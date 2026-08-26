@@ -174,3 +174,38 @@ end
     init!(sim)
     @test @ballocated(drain!($sim)) == 0
 end
+
+@testset "a populated drain is as free as an empty one, whatever the batch touches (§11.4, D-202)" begin
+    sim = Simulation(two_slots(); h = 1//10)
+    init!(sim)
+    stage!(sim, "a" => 1.0); drain!(sim)             # warm the writer's one scatter
+    @test @ballocated(drain!($sim), setup = (stage!($sim, "a" => 1.0)), evals = 1) == 0
+    # A never-drained sparsity pattern costs the same nothing: the scatter is
+    # one specialization per writer, never one per touched-face combination.
+    @test @ballocated(drain!($sim), setup = (stage!($sim, "b" => 1.0)), evals = 1) == 0
+    @test @ballocated(drain!($sim), setup = (stage!($sim, "a" => 1.0, "b" => 2.0)),
+                      evals = 1) == 0
+end
+
+# A surface past the 32-wide threshold where Base's tuple `map` leaves its
+# inlined small-tuple path: the merge and the scatter must lean on neither.
+wide_slots(n) = Group(NamedTuple(Symbol(:s, i) => Sum(sa = 1.0, sb = 1.0) for i in 1:n), (),
+                      Tuple(vcat(["a$i" => "children/s$i/a" for i in 1:n],
+                                 ["b$i" => "children/s$i/b" for i in 1:n])), ())
+
+@testset "a wide surface stages, merges and drains like a narrow one (§11.4, D-202)" begin
+    sim = Simulation(wide_slots(17); h = 1//10)      # 34 root faces
+    init!(sim)
+    stage!(sim, "a3" => 1.5)
+    stage!(sim, "b9" => -2.0, "a3" => 2.5)           # merge: newest wins, untouched survive
+    drain!(sim)
+    @test port(sim, "", :a3) === 2.5
+    @test port(sim, "", :b9) === -2.0
+    @test port(sim, "", :a1) === 0.0                 # never staged, never touched
+    dense = () -> stage!(sim, ("a$i" => Float64(i) for i in 1:17)...,
+                              ("b$i" => -Float64(i) for i in 1:17)...)
+    dense(); drain!(sim)                             # warm the wide scatter
+    @test port(sim, "", :b17) === -17.0
+    @test @ballocated(drain!($sim), setup = (stage!($sim, "a7" => 1.0)), evals = 1) == 0
+    @test @ballocated(drain!($sim), setup = ($dense()), evals = 1) == 0
+end

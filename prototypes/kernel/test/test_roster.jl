@@ -242,3 +242,13 @@ end
     init!(sim)
     @test @ballocated(drain!($sim)) == 0
 end
+
+@testset "a populated device drain is as free as an empty one (§11.4, D-202)" begin
+    sim = Simulation(two_slots(); h = 1//10)
+    ha = attach!(sim, Pad("da"), Enumerated("a"))
+    hg = attach!(sim, Pad("gui"), Greedy())
+    init!(sim)
+    stage!(ha, "a" => 1.0); stage!(hg, "b" => 1.0); drain!(sim)   # warm both scatters
+    @test @ballocated(drain!($sim), setup = (stage!($ha, "a" => 2.0)), evals = 1) == 0
+    @test @ballocated(drain!($sim), setup = (stage!($hg, "b" => 2.0)), evals = 1) == 0
+end

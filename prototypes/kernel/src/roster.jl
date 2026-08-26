@@ -125,7 +125,8 @@ _who(e::RosterEntry) = "device $(e.id) ($(typeof(e.dev)))"
 # The stopped-sim compile of one writer's drain (§11.4): a zero-argument thunk
 # capturing the store and the writer *concretely* — this dynamic dispatch is
 # what specializes the closure — so the frame top's call boxes no argument and
-# an empty drain stays allocation-free. The per-entry dispatch this leaves is
+# the drain, empty or populated, stays allocation-free (D-202). The per-entry
+# dispatch this leaves is
 # the iteration §11.4 licenses in place of the tuple specialization the freeze
 # would also permit.
 _drain_thunk(store, w::Writer) = () -> _drain!(store, w)
@@ -230,7 +231,7 @@ function reclaim!(plane::DataPlane, layout::Layout)
     plane.harness_drain = _drain_thunk(plane.store, w)
     if pending !== nothing
         batch = pending[]
-        entries = [old.faces[i] => batch[i] for i in 1:length(batch) if batch[i] !== nothing]
+        entries = [old.faces[i] => batch.vals[i] for i in 1:length(old.faces) if batch.mask[i]]
         renorm = _normalize(plane.harness, entries, plane.claimedby, plane.harness_diag;
                             site = :renormalization)
         renorm === nothing || _stage!(plane.harness, renorm)

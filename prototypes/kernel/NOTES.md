@@ -153,6 +153,19 @@ per-publication vector against the spec's inline-allocation claim.
 warning-matching tests convert to the spec's own doctrine — kind plus
 payload fields, never message text.
 
+**Increment 15 — the values-plus-mask batch.** D-202 applied: the staged
+batch becomes a pair of positional tuples — a concrete values tuple and a
+`Bool` touched-mask — replacing the `Union{Nothing,T}` carrier, whose
+covariant narrow batch types made the frame-top scatter dispatch per
+touched-face combination (a boxed call per populated drain, a mid-run
+compile per never-seen pattern) and whose merge fell off Base's small-tuple
+`map` path past 32 faces. The writer gains its `blank` batch — placeholders
+drawn from the layout's probe values under an all-clear mask — the shim sets
+the mask where it used to fill `nothing`, merge and scatter unroll by
+generation over the writer's one concrete type, and the drain is
+allocation-free populated as well as empty, at any width, whatever the
+batch touches. No stand-ins enter or retire.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -488,6 +501,14 @@ Each of these is a spec claim rather than a programming convenience:
   lifecycle as the batch it was rejected from; the attach renormalization's
   `ClaimedFaceEntry` carries `site = :renormalization` to tell it from an
   ordinary staging rejection.
+- **The drain is free, populated or empty, at any width.** The batch's
+  values-plus-mask pair is one concrete isbits layout per writer (D-202), so
+  the scatter is a single specialization compiled at the stopped-sim point:
+  a never-before-drained sparsity pattern allocates exactly what the warmed
+  one does — nothing — for the harness register and device writers alike,
+  and a 34-face surface (past the 32-wide threshold where Base's tuple `map`
+  leaves its inlined path, which the generated merge never touches) drains
+  as free as a two-face one.
 
 ## Stand-in retirement history
 

@@ -306,22 +306,39 @@ _task_state(::Nothing) = :none
 _task_state(t::Task) = istaskfailed(t) ? :failed : istaskdone(t) ? :done : :running
 
 """
+The batch (§11.4, D-202): a pair of positional tuples over one writer's
+surface — a values tuple, concretely typed `Tuple{T₁, …, Tₙ}`, and a parallel
+`Bool` touched-mask. A set mask position means *staged this time*; a clear one
+means *not touched*, never "reset" — its value is the placeholder the writer
+was compiled with, dead behind the mask guard. The concrete layout is the
+point (D-202): a `Union{Nothing,Tᵢ}` carrier reads more directly, but tuple
+covariance makes each touched-face combination its own concrete type, and the
+frame-top scatter would specialize per pattern — mid-run compilation and a
+boxed dispatch where the drain promises pure application.
+"""
+struct Batch{V<:Tuple,M<:Tuple}
+    vals::V                  # position → the staged (or placeholder) value
+    mask::M                  # position → touched this time (NTuple{n,Bool})
+end
+
+"""
 The compiled writer (§11.4): one write surface's staged representation, fixed
 at a stopped-sim point — a device's compiled at attach against its claim set,
 the harness register's at deployment binding and at every roster change
 against its *derived* surface, the unclaimed complement (§11.3). The batch is
-a positional tuple over the surface, `Union{Nothing, Tᵢ}` per face, isbits and
-pointer-free, with `nothing` meaning *not touched this time*, never "reset".
-The face-name → position schema, the slot types and the per-position cell
-addresses — the compiled scatter's data — live here beside the staging cell
-they describe; a roster entry carries one of these per device (roster.jl), and
-the harness register carries the one whose shape the framework derives rather
-than receives.
+the values-plus-mask pair above (D-202), isbits with one concrete layout per
+writer. The face-name → position schema, the slot types, the per-position cell
+addresses — the compiled scatter's data — and the blank batch the shim starts
+from (placeholders drawn from the layout's probe values, mask all clear) live
+here beside the staging cell they describe; a roster entry carries one of
+these per device (roster.jl), and the harness register carries the one whose
+shape the framework derives rather than receives.
 """
-struct Writer{B<:Tuple,A<:Tuple}
+struct Writer{B<:Batch,A<:Tuple}
     faces::Vector{Symbol}    # position → face name: the schema
     types::Vector{Any}       # position → the slot's declared type Tᵢ
     addrs::A                 # position → the slot's cell address
+    blank::B                 # placeholders under an all-clear mask
     cell::StagingCell{B}
 end
 
@@ -330,14 +347,17 @@ _port_type(::CellAddr{P,K}) where {P,K} = P
 function Writer(layout::Layout, faces::Vector{Symbol})
     addrs = Tuple(layout.addr[("", f)] for f in faces)
     types = Any[_port_type(a) for a in addrs]
-    B = Tuple{(Union{Nothing,T} for T in types)...}
-    Writer{B,typeof(addrs)}(faces, types, addrs, StagingCell{B}(nothing))
+    probes = Dict(f => v for (f, v) in layout.slots)
+    vals = Tuple(convert(types[i], probes[faces[i]]) for i in eachindex(faces))
+    blank = Batch(convert(Tuple{types...}, vals), ntuple(_ -> false, length(faces)))
+    Writer{typeof(blank),typeof(addrs)}(faces, types, addrs, blank,
+                                        StagingCell{typeof(blank)}(nothing))
 end
 
 """
 §11.4's shim, run at staging on the writer's own side: the author's face ⇒
 value pairs become a batch — name → position, convert to the slot's declared
-type, fill `nothing`. Every diagnostic site follows the compilation here, to
+type, set the mask. Every diagnostic site follows the compilation here, to
 staging: face validity, surface membership and value convertibility are all
 static facts of the run, so a face with no position in the schema is
 discarded under an `OutOfClaimEntry`/`ClaimedFaceEntry` and an unconvertible
@@ -358,10 +378,11 @@ writer and `nothing` the harness; `site` distinguishes ordinary staging from
 an attach's renormalization in the `ClaimedFaceEntry` payload. Returns
 `nothing` for a batch with no surviving entry.
 """
-function _normalize(w::Writer{B}, pairs, claimedby::Dict{Symbol,String},
+function _normalize(w::Writer, pairs, claimedby::Dict{Symbol,String},
                     cell::DiagCell; device::Union{Nothing,String} = nothing,
-                    site::Symbol = :staging) where {B}
-    vals = Any[nothing for _ in w.faces]
+                    site::Symbol = :staging)
+    vals = Any[w.blank.vals...]
+    mask = fill(false, length(w.faces))
     for (face, v) in pairs
         s = Symbol(face)
         i = findfirst(==(s), w.faces)
@@ -382,19 +403,25 @@ function _normalize(w::Writer{B}, pairs, claimedby::Dict{Symbol,String},
             _report!(cell, EntryTypeMismatch(s, v, w.types[i]))
             continue
         end
+        mask[i] = true
     end
-    all(isnothing, vals) ? nothing : convert(B, (vals...,))
+    any(mask) || return nothing
+    Batch(convert(typeof(w.blank.vals), (vals...,)), (mask...,))
 end
 
 _facelist(faces) = isempty(faces) ? "empty" : "{$(join(faces, ", "))}"
 
 # The one coalescing policy (§11.4): merge, newest wins per face. Untouched
 # faces survive; re-staged faces take the newest level — the per-face ZOH.
-# Positional, so it compiles straight-line and union-splits. Plain `::Tuple`
-# arguments, because a sparse batch's *runtime* type is the narrow tuple of
-# what it touched — covariantly inside `B`, but two batches rarely share it.
-_merge(pending::Tuple, incoming::Tuple) =
-    map((p, i) -> i === nothing ? p : i, pending, incoming)
+# Positional and mask-driven, unrolled by generation: both arguments share the
+# writer's one concrete batch type, and the unroll leans on no small-tuple
+# heuristic, so width does not degrade it (D-202).
+@generated function _merge(pending::Batch{V,M}, incoming::Batch{V,M}) where {V,M}
+    vals = [:(incoming.mask[$i] ? incoming.vals[$i] : pending.vals[$i])
+            for i in 1:fieldcount(M)]
+    mask = [:(pending.mask[$i] | incoming.mask[$i]) for i in 1:fieldcount(M)]
+    :(Batch{V,M}(($(vals...),), ($(mask...),)))
+end
 
 # The CAS merge loop (§11.4), on the writer's task.
 function _stage!(w::Writer{B}, batch::B) where {B}
@@ -408,10 +435,12 @@ function _stage!(w::Writer{B}, batch::B) where {B}
 end
 
 # The drain's application (§11.4): the compiled scatter, position → slot cell,
-# statically typed, `nothing` skipped — pure application, no checks.
-@generated function _apply!(store, addrs::Tuple, batch::Tuple)
-    stmts = [:(batch[$i] === nothing || scatter!(store, addrs[$i], batch[$i]))
-             for i in 1:fieldcount(batch)]
+# statically typed, masked-off positions skipped — pure application, no
+# checks. One specialization per writer, compiled at the stopped-sim point
+# that compiled the writer, whatever the batch touches (D-202).
+@generated function _apply!(store, addrs::Tuple, batch::Batch)
+    stmts = [:(batch.mask[$i] && scatter!(store, addrs[$i], batch.vals[$i]))
+             for i in 1:fieldcount(fieldtype(batch, :mask))]
     quote
         $(stmts...)
         nothing
