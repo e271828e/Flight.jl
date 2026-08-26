@@ -6053,10 +6053,11 @@ loop itself ends first.
    obligations: the predicate check and interruptible blocking.
    Steps (2) and (3) are what make every blocking point interruptible. The
    wrapper's `finally shutdown!(device)` is guaranteed on every exit path.
-5. **Join with a timeout of 5 s.** A device task exceeding the timeout is
-   reported *by name*, through the [§12.2][s12-2] heartbeat. It is then
-   abandoned with a `DeviceJoinTimeout` warning ([Appendix C][sC]) rather than
-   left to hang `run!`.
+5. **Join under the `join_timeout` cap.** The cap is a `Simulation` deployment
+   keyword: a positive real in seconds of wall clock, defaulting to 5
+   ([Appendix B][sB]). A device task exceeding it is reported *by name*, through the
+   [§12.2][s12-2] heartbeat. It is then abandoned with a `DeviceJoinTimeout`
+   warning ([Appendix C][sC]) rather than left to hang `run!`.
 6. **Device-initiated paths.** A device exits voluntarily when its loop body
    returns, at a window ✕ or a peer EOT. No `should_close` hook exists
    ([§11.6][s11-6]). With `should_abort` set, the wrapper's exit path also
@@ -6080,7 +6081,8 @@ The ordered part, in one line:
 > **(1)** stop observed → current boundary completed → final snapshot published
 > → sticky `stopped` set → **(2)** framework waits woken → **(3)** `unblock!`
 > per device → **(4)** loop bodies return, each through its wrapper's
-> `finally shutdown!` → **(5)** join under the 5 s cap → `run!` returns
+> `finally shutdown!` → **(5)** join under the `join_timeout` cap → `run!`
+> returns
 
 **Why the final snapshot goes out before the status is set.** Publishing first
 guarantees that output devices can flush the true final state. The status in
@@ -6102,9 +6104,19 @@ frames until the boundary time first covers the duration.
 against boundary times on the grid. `stop_on` is checked at *every* published
 boundary, `t*` included ([§13.5][s13-5]).
 
-**Why five seconds.** It is generous for GUI window teardown and socket closes.
-It is short enough that an abandoned join reads as a diagnosed timeout rather
-than a hang.
+**Why the default is five seconds.** It is generous for GUI window teardown and
+socket closes. It is short enough that an abandoned join reads as a diagnosed
+timeout rather than a hang.
+
+**The cap is deployment, not implementation** — the disposition [§10.4][s10-4] gives its
+own two constants, extended here to an operational one ([D-198][d-198]). Deployment
+contexts legitimately differ in patience: an unattended sweep wants to fail
+fast, a test battery exercising the abandonment path faster still, while a
+device with slow teardown may warrant more. The cap is not
+trajectory-determining — the trajectory has ended at the final snapshot before
+any join begins — so, like `log_max` ([§11.2][s11-2]), it stays out of the trace
+header's deployment block, and replay neither records nor compares it ([§11.5][s11-5],
+[§12.7][s12-7]).
 
 **The calling-task device sits outside the join.** The
 [calling task](#g-calling-task) is the task that invoked `run!`. The device it
@@ -9454,7 +9466,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 - `Simulation(world; algorithm = RK4(), h, n = 1, Δt_base = nothing,
   t_end = Inf,
   stop_on = (), localization_tol = 1e-6, localization_budget = 8,
-  firing_budget = 4,
+  firing_budget = 4, join_timeout = 5.0,
   trace = true, log = true, log_every = 1, log_max = 65536)` —
   wraps the build (`Simulation(world; …) = Simulation(build(world); …)`;
   the `Build` overload takes the same deployment keywords and deploys an
@@ -9471,6 +9483,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   | `localization_tol` | `1e-6` | the root-finder's relative bracket-width convergence test (`localization_tol · h`) | [§10.4][s10-4] |
   | `localization_budget` | `8` | the per-frame localization allowance | [§10.4][s10-4] |
   | `firing_budget` | `4` | the per-event, per-boundary firing allowance of the event iteration, an integer ≥ 1 | [§10.6][s10-6] |
+  | `join_timeout` | `5.0` | the shutdown tail's join cap, in seconds of wall clock | [§12.4][s12-4] |
   | `trace` | `true` | the input trace's plain kill switch | [§11.5][s11-5] |
   | `log` | `true` | the snapshot log's plain kill switch | [§11.2][s11-2] |
   | `log_every` | `1` | the log's keep-every-kth decimation | [§11.2][s11-2] |
@@ -9497,7 +9510,10 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   `localization_budget` and `firing_budget` are all three
   trajectory-determining like their siblings, hence validated with them
   (`DeploymentInvalid`) and recorded in the deployment block, where replay
-  compares them ([§11.5][s11-5], [§12.7][s12-7]).
+  compares them ([§11.5][s11-5], [§12.7][s12-7]). `join_timeout`, the shutdown
+  tail's join cap, is the one operational keyword: it moves no trajectory, so
+  it stays outside the deployment block, and replay neither records nor
+  compares it ([§12.4][s12-4]).
 
   Recording: `log_every` is admissible on the derived artifact only, never on
   the trace ([§11.2][s11-2], [§11.5][s11-5], [D-029][d-029]). When the log fills, the
@@ -10850,6 +10866,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-194]: framework_decisions.md#d-194--retire-the-w-channel-intermediates-are-declared-ports
 [d-195]: framework_decisions.md#d-195--give-the-discrete-state-its-own-letter-s
 [d-197]: framework_decisions.md#d-197--reject-discrete-stores-in-linearizations-x-tap-list
+[d-198]: framework_decisions.md#d-198--promote-the-shutdown-join-timeout-to-a-deployment-keyword
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
