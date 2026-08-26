@@ -4827,8 +4827,9 @@ resolving against a source, [§14.4][s14-4]), which reach any cell, the diagnost
 register admitting deep paths. A binding is resolved at attach against the
 `Build` with [did-you-mean](#g-did-you-mean) (the offending name plus the list-in-hand it should
 have matched), and compiled to one gather — the output half of the binding
-interface ([§11.6][s11-6]). `map_output` therefore receives a labeled NamedTuple instead
-of performing its own path lookups. That discharges the obligation stated in
+interface ([§11.6][s11-6]). `map_output` therefore receives a labeled NamedTuple — keyed
+by the names `reads` declared ([§11.6][s11-6]) — instead of performing its own path
+lookups. That discharges the obligation stated in
 [§15.4][s15-4]: a substitution that breaks a binding fails at attach, not with silent
 garbage UDP.
 
@@ -5467,7 +5468,7 @@ is_greedy(::T16000MBinding) = false    # the claim source within the input side 
 
 claims(b::T16000MBinding)   = ...      # input side:  the enumerated face set → the claim
 map_input(datum, b)                    #              datum → face ⇒ value pairs — user code
-reads(b)                               # output side: §14.4 selectors → one compiled gather
+reads(b)                               # output side: labeled §14.4 selectors → one compiled gather
 map_output(nt, b)                      #              the gather's NamedTuple → wire datum
 ```
 
@@ -5486,6 +5487,14 @@ business. `map_input`/`map_output` are, precisely, **conventions of the
 author-owned loop idiom**: the framework never calls them, so they are taught
 ([Appendix A][sA]) and never checked. A binding whose loop calls something else
 by another name is simply a binding with a different private helper.
+
+**Rule.** `reads(b)` returns a labeled NamedTuple of [selectors](#g-selector)
+(the closed family of deferred reads, [§14.4][s14-4]) — `(; alt = get_output(…), pose
+= get_face(…))`. The labels are the binding's own naming, carried through
+compilation in declaration order, so the NamedTuple `map_output` receives is
+keyed by exactly the names `reads` declared. One returned value thereby
+fixes names, order and reads together, under the same attach-time validation
+as `claims` ([D-199][d-199]).
 
 **Sides are declared; the obligations they create are enforced both ways.**
 `claims` and `reads` have **error-throwing fallbacks on the root**, so a
@@ -10867,6 +10876,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-195]: framework_decisions.md#d-195--give-the-discrete-state-its-own-letter-s
 [d-197]: framework_decisions.md#d-197--reject-discrete-stores-in-linearizations-x-tap-list
 [d-198]: framework_decisions.md#d-198--promote-the-shutdown-join-timeout-to-a-deployment-keyword
+[d-199]: framework_decisions.md#d-199--the-reads-enumeration-returns-a-labeled-namedtuple-of-selectors
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
