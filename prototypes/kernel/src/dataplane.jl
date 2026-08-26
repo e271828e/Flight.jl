@@ -149,66 +149,172 @@ function _drain!(store, w::Writer)
     nothing
 end
 
-# --- the diagnostic cell (§11.8) -----------------------------------------------
+# --- the diagnostic channel (§11.8, §13.2, Appendix C) -------------------------
 
 """
-The one diagnostic value of the prototype's device channel: a datum that could
-not be mapped for environmental reasons — a truncated datagram, malformed
-JSON, an out-of-range field — reported by the author's own loop body via
+The prototype's closed kind set for the runtime warning stream (§13.2,
+Appendix C): each kind is a Julia type, its identity, and its payload is
+plain data — paths and names as strings and symbols, never component
+instances; the declared/observed *port* types are the payload exception, and
+they are small. These are the kinds whose sources the prototype has built;
+the four whose features are absent — `DebtReanchor`, `ThreadBudget`,
+`ReplayDiscardedStaging`, `UnboundedRun` — are absent with them (README), and
+`DeviceJoinTimeout` presents synchronously from the tail, past the last
+snapshot any status can ride (README's stand-ins). Writer attribution is
+never a payload field: the channel is per-writer, so the cell supplies it
+(§11.8, §12.4: no call passes a device id).
+
+`MalformedDatum` is the author's kind: a datum that could not be mapped for
+environmental reasons — a truncated datagram, malformed JSON, an
+out-of-range field — reported by the author's own loop body via
 `report!(handle, MalformedDatum(cause))` after catching its own parser error
 (§11.6: catch, stage nothing, report, continue). The classification is the
 author's — only they know their parser — and any *other* exception
-propagates to the wrapper as the `DeviceCrash` it is. The payload is the
-cause (Appendix C: the exception, or any diagnostic-content value); device
-attribution is the cell's, the channel being per-writer.
+propagates to the wrapper as the `DeviceCrash` it is. The rest are the
+framework's: the three staging kinds (§11.4 — the write-surface and entry
+violations, every check at staging), the two budget degradations (§10.4,
+§10.6, on the loop's own cell), and the device crash (§12.4, from the
+wrapper on the device's task, or from the calling task at the init bracket).
 """
 struct MalformedDatum
     cause::Any
 end
+
+"§11.4's out-of-schema entry: no position in the writer's compiled surface."
+struct OutOfClaimEntry
+    face::Symbol
+    value::Any                      # the discarded value
+    surface::Vector{Symbol}         # the writer's claim set, the list-in-hand
+    incumbent::Union{Nothing,String} # who claims the face, when someone does
+end
+
+"§11.3's harness write to a claimed face, naming the incumbent; `site` is `:staging` or `:renormalization`."
+struct ClaimedFaceEntry
+    face::Symbol
+    incumbent::String
+    value::Any
+    site::Symbol
+end
+
+"§11.4's unconvertible value, rejected at staging for every writer."
+struct EntryTypeMismatch
+    face::Symbol
+    value::Any
+    declared::Any                   # the slot's declared type
+end
+
+"§10.4's localization-budget exhaustion: further crossings this frame fire at boundary resolution."
+struct ChatteringBudget
+    path::String
+    event::Symbol
+    t::Float64
+    budget::Int
+    count::Int
+end
+
+"§10.6's firing-budget exhaustion: the event's further edges at this boundary are lost."
+struct FiringBudget
+    path::String
+    event::Symbol
+    t::Float64
+    budget::Int
+    count::Int
+end
+
+"§12.4's device failure — the wrapper's catch, or the init bracket's; `abort` is the attachment's `should_abort`."
+struct DeviceCrash
+    cause::Any
+    abort::Bool
+end
+
+"The closed set as a union: what a ring holds, and what `_report!` admits."
+const DiagValue = Union{MalformedDatum,OutOfClaimEntry,ClaimedFaceEntry,
+                        EntryTypeMismatch,ChatteringBudget,FiringBudget,DeviceCrash}
+
+"""
+The per-kind counter record (§11.8): a **fixed-shape isbits record, never a
+`Dict`** — licensed by the closed kind set, which makes the counter layout a
+type rather than a lookup. One field per kind, in the kinds' declaration
+order; the same shape serves a batch's suppressed counts and the loop's
+cumulative totals, and `+` is the fold between them.
+"""
+struct KindCounts
+    malformed::Int
+    out_of_claim::Int
+    claimed_face::Int
+    type_mismatch::Int
+    chattering::Int
+    firing::Int
+    crash::Int
+end
+KindCounts() = KindCounts(0, 0, 0, 0, 0, 0, 0)
+
+_kind(::MalformedDatum)   = :malformed
+_kind(::OutOfClaimEntry)  = :out_of_claim
+_kind(::ClaimedFaceEntry) = :claimed_face
+_kind(::EntryTypeMismatch) = :type_mismatch
+_kind(::ChatteringBudget) = :chattering
+_kind(::FiringBudget)     = :firing
+_kind(::DeviceCrash)      = :crash
+
+_bump(c::KindCounts, k::Symbol) =
+    KindCounts((getfield(c, f) + (f === k) for f in fieldnames(KindCounts))...)
+Base.:+(a::KindCounts, b::KindCounts) =
+    KindCounts((getfield(a, f) + getfield(b, f) for f in fieldnames(KindCounts))...)
+_total(c::KindCounts) = sum(f -> getfield(c, f), fieldnames(KindCounts))
 
 "The ring's capacity (§11.8): the channel's normative bound, which *is* the rate limit."
 const DIAG_RING = 16
 
 """
 One frame's bounded accumulation (§11.8): a small ring of diagnostic values,
-capacity `DIAG_RING`, plus a count of what the ring could not hold — the
-per-kind record collapsed to one integer, the closed kind set having exactly
-one member here (`MalformedDatum`; the staging kinds warn synchronously as a
-stand-in, README). The drop policy is earliest-in-frame retained, excess
-becomes counts: the first occurrences are the ones with diagnostic content,
-the hundredth is noise the count already reports. Immutable, because the CAS
-handoff below needs value semantics: an append builds a new batch, and a
-drained batch is frozen — never written again — with the writer allocating
-afresh at its next emission, on its own task (§11.8's GC-over-reuse trade).
+capacity `DIAG_RING`, plus the per-kind counts of what the ring could not
+hold. The drop policy is earliest-in-frame retained, excess becomes counts:
+the first occurrences are the ones with diagnostic content, the hundredth is
+noise the count already reports. Immutable, because the CAS handoff below
+needs value semantics: an append builds a new batch, and a drained batch is
+frozen — never written again — with the writer allocating afresh at its next
+emission, on its own task (§11.8's GC-over-reuse trade).
 """
 struct DiagBatch
-    ring::Vector{MalformedDatum}
-    suppressed::Int
+    ring::Vector{DiagValue}
+    suppressed::KindCounts
 end
 
 "The shared empty sentinel (§11.8): what the drain swaps *in*, and what a quiet frame gets back."
-const EMPTY_DIAG = DiagBatch(MalformedDatum[], 0)
+const EMPTY_DIAG = DiagBatch(DiagValue[], KindCounts())
 
 """
-The diagnostic cell (§11.8): one per rostered device, single writer — the
-device's own task, the same ownership argument as the staging cells: no
-locking, no arbitration, no new primitive. The CAS mirrors `_stage!`'s: a
-failed replace means the loaded batch was intercepted by the drain, and the
-retry re-reads what is pending now — the intercepted entries are already
-taken, and the entry in hand merges against the fresh (sentinel) state.
+The diagnostic cell (§11.8): one per writer — each rostered device's, the
+harness register's, the loop's own — single-writer, the same ownership
+argument as the staging cells: no locking, no arbitration, no new primitive.
+The CAS mirrors `_stage!`'s: a failed replace means the loaded batch was
+intercepted by the drain, and the retry re-reads what is pending now — the
+intercepted entries are already taken, and the entry in hand merges against
+the fresh (sentinel) state.
+
+The liveness heartbeat rides in the same cell (§11.8, §12.2), as the atomic
+timestamp the device task stores on every loop pass from inside the handle
+primitives and the loop acquire-loads where it publishes. It is a field,
+always present, never a diagnostic kind; its initial `0.0` is what makes a
+never-heartbeated cell — a failed `init!`'s — read stale against the §12.2
+threshold from the first frame, with no marking machinery (§12.4).
 """
 mutable struct DiagCell
     @atomic batch::DiagBatch
+    @atomic heartbeat::Float64
 end
+DiagCell(b::DiagBatch) = DiagCell(b, 0.0)
 
-# The writer's side (§11.8), on the device task: append under the bound, or
-# count past it. Reached through `report!(handle, …)` (devices.jl).
-function _report!(cell::DiagCell, d::MalformedDatum)
+# The writer's side (§11.8), on the writer's own task: append under the bound,
+# or count past it by kind. Reached through `report!(handle, …)` (devices.jl)
+# and from the framework's own emission sites.
+function _report!(cell::DiagCell, d::DiagValue)
     while true
         cur = @atomic cell.batch
         next = length(cur.ring) < DIAG_RING ?
             DiagBatch(push!(copy(cur.ring), d), cur.suppressed) :
-            DiagBatch(cur.ring, cur.suppressed + 1)
+            DiagBatch(cur.ring, _bump(cur.suppressed, _kind(d)))
         (; success) = @atomicreplace cell.batch cur => next
         success && return nothing
     end
@@ -219,6 +325,11 @@ end
 # swaps the sentinel in and gets the sentinel back — no allocation, and no
 # load-only code path that goes untested on healthy runs.
 _take!(cell::DiagCell) = @atomicswap cell.batch = EMPTY_DIAG
+
+# The heartbeat's two sides (§11.8, §12.2): the store from inside the handle
+# primitives, the acquire-load where the loop publishes.
+_beat!(cell::DiagCell) = (@atomic :release cell.heartbeat = time(); nothing)
+_heartbeat(cell::DiagCell) = @atomic :acquire cell.heartbeat
 
 """
 The loop's per-run totals for one writer (§11.8): cumulative per-kind counts

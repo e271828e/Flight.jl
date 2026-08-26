@@ -99,3 +99,60 @@ end
     run!(sim, (sim.clock.step + 2) * sim.h)
     @test diagnostics(sim) == ["device 1 (LateReporter)" => 0]
 end
+
+@testset "the cell is kind-generic: mixed rings, per-kind suppression (§11.8, §13.2)" begin
+    # The closed set rides one union; the counter record is fixed-shape isbits,
+    # a type rather than a lookup (§11.8), and + is the fold between records.
+    @test isbitstype(KindCounts)
+    a = _bump(_bump(KindCounts(), :malformed), :crash)
+    b = _bump(KindCounts(), :malformed)
+    @test (a + b).malformed == 2 && (a + b).crash == 1
+    @test _total(a + b) == 3
+
+    # A raw cell takes any kind of the set; the ring preserves arrival order
+    # across kinds, earliest-in-frame retained.
+    cell = DiagCell(EMPTY_DIAG)
+    _report!(cell, MalformedDatum("m1"))
+    _report!(cell, OutOfClaimEntry(:flaps, 1.0, [:a, :b], nothing))
+    _report!(cell, ClaimedFaceEntry(:a, "device 1 (Pad)", 2.0, :staging))
+    _report!(cell, EntryTypeMismatch(:b, "high", Float64))
+    _report!(cell, ChatteringBudget("children/c", :pop, 0.1, 8, 8))
+    _report!(cell, FiringBudget("children/e", :up, 0.0, 4, 4))
+    _report!(cell, DeviceCrash(ErrorException("boom"), false))
+    batch = _take!(cell)
+    @test length(batch.ring) == 7
+    @test batch.ring[1] isa MalformedDatum && batch.ring[7] isa DeviceCrash
+    @test batch.suppressed == KindCounts()
+
+    # Past the bound, suppression counts by kind: the record answers "how many
+    # of what", not one blurred integer.
+    for k in 1:DIAG_RING
+        _report!(cell, MalformedDatum("datum $k"))
+    end
+    _report!(cell, MalformedDatum("late m"))
+    _report!(cell, DeviceCrash(ErrorException("late c"), true))
+    _report!(cell, DeviceCrash(ErrorException("later c"), true))
+    batch = _take!(cell)
+    @test length(batch.ring) == DIAG_RING
+    @test all(d isa MalformedDatum for d in batch.ring)
+    @test batch.suppressed.malformed == 1 && batch.suppressed.crash == 2
+    @test _total(batch.suppressed) == 3
+    # The take re-arms the sentinel: the next report allocates afresh on the
+    # writer's side, and the drained batch is frozen.
+    @test _take!(cell) === EMPTY_DIAG
+end
+
+@testset "the heartbeat rides in the cell, stored by the handle primitives (§11.8, §12.2)" begin
+    sim = Simulation(two_slots(); h = 1//10)
+    h = attach!(sim, Pad("p"), Enumerated("a"))
+    # A never-heartbeated cell reads its initial 0.0 — stale against any wall
+    # clock, which is what marks a failed init!'s device with no machinery
+    # (§12.4): dead is "no recent timestamp", recorded nowhere else.
+    @test _heartbeat(h.diag) == 0.0
+    before = time()
+    running(h)                            # any loop-pass primitive beats —
+    hb = _heartbeat(h.diag)               # (false here: no run has started)
+    @test hb ≥ before
+    stage!(h, "a" => 1.0)                 # and so does each of the others
+    @test _heartbeat(h.diag) ≥ hb
+end

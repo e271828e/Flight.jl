@@ -101,8 +101,14 @@ loop(dev::AbstractDevice, handle) = error(
 sticky stopped status — after the final snapshot, so a body observing false
 may still read a complete final world. The author's loop obligation is to
 check it between blocking points (§11.6).
+
+Every handle primitive that a loop pass touches — this one, `latest`,
+`stage!`, `wait_next_snapshot`, `gather`, `report!` — stores the liveness
+heartbeat on its way through (§11.8, §12.2): the framework observes activity
+without owning the loop body, and there is no separate liveness channel to
+remember to feed.
 """
-running(h::DeviceHandle) = !(@atomic h.ctl.stopped)
+running(h::DeviceHandle) = (_beat!(h.diag); !(@atomic h.ctl.stopped))
 
 """
     stop!(handle)
@@ -131,7 +137,7 @@ binding(h::DeviceHandle) = h.b
 The handle's primitive read (§11.6): acquire-load the most recently published
 snapshot — exactly `latest(sim)`, through the capability the handle carries.
 """
-latest(h::DeviceHandle) = @atomic :acquire h.published.latest
+latest(h::DeviceHandle) = (_beat!(h.diag); @atomic :acquire h.published.latest)
 
 """
     stage!(handle, "face" => value, ...)
@@ -144,6 +150,7 @@ any task, at any wall-clock moment; the batch lands at the top of the next
 frame `run!` advances.
 """
 function stage!(h::DeviceHandle, pairs::Pair...)
+    _beat!(h.diag)
     batch = _normalize(h.writer, pairs, h.plane.claimedby; device = h.who)
     batch === nothing || _stage!(h.writer, batch)
     nothing
@@ -162,6 +169,7 @@ here touches the running loop. On a handle whose binding declares no output
 side the call is a contract misuse, and throws by name.
 """
 function gather(h::DeviceHandle, s::Snapshot)
+    _beat!(h.diag)
     h.gatherer === nothing && error(
         "$(h.who)'s binding declares no output side — `gather` serves the compiled " *
         "`reads` enumeration (§11.6)")
@@ -184,7 +192,7 @@ The loop drains the cell at frame top and at the run's end, warning each
 retained value device-attributed and folding the counts into the per-run
 totals `diagnostics(sim)` reads (the framework-status stand-in, README).
 """
-report!(h::DeviceHandle, d::MalformedDatum) = _report!(h.diag, d)
+report!(h::DeviceHandle, d::MalformedDatum) = (_beat!(h.diag); _report!(h.diag, d))
 
 """
     wait_next_snapshot(handle)
@@ -200,6 +208,7 @@ waiter and the predicate routes it out. After a stop return the author's
 loop re-checks `running(handle)`, exactly as after any blocking call.
 """
 function wait_next_snapshot(h::DeviceHandle)
+    _beat!(h.diag)
     ctl = h.ctl
     lock(ctl.cond)
     try

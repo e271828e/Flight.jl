@@ -130,12 +130,13 @@ _who(e::RosterEntry) = "device $(e.id) ($(typeof(e.dev)))"
 function _drain_diag!(e::RosterEntry)
     batch = _take!(e.diag)
     batch === EMPTY_DIAG && return nothing
-    e.totals.malformed += length(batch.ring) + batch.suppressed
+    suppressed = _total(batch.suppressed)
+    e.totals.malformed += length(batch.ring) + suppressed
     for d in batch.ring
         @warn "MalformedDatum from $(_who(e)): $(d.cause) (§11.8)"
     end
-    batch.suppressed > 0 &&
-        @warn "MalformedDatum from $(_who(e)): $(batch.suppressed) more occurrence(s) " *
+    suppressed > 0 &&
+        @warn "MalformedDatum from $(_who(e)): $suppressed more occurrence(s) " *
               "past the ring's bound of $DIAG_RING, suppressed to the count (§11.8)"
     nothing
 end
