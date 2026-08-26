@@ -119,24 +119,26 @@ mutable struct StagingCell
 end
 ```
 
-The batch's shape is **fixed at attach**: a positional tuple over the
-writer's surface, `Union{Nothing, T}` per face, `nothing` meaning *not
-touched this time*. Authors never build it by hand — `map_input` returns
-sparse face ⇒ value pairs, and `stage!` normalizes them through the entry's
-attach-compiled schema:
+The batch's shape is **fixed at attach**: a pair of positional tuples over
+the writer's surface — a concretely typed values tuple, and a parallel
+`Bool` touched-mask whose set positions mean *staged this time*. Untouched
+positions carry placeholders and are never read. Authors never build it by
+hand — `map_input` returns sparse face ⇒ value pairs, and `stage!`
+normalizes them through the entry's attach-compiled schema:
 
 ```julia
 map_input(datum, binding)      # ⇒ (throttle = 0.70, elevator = -0.05)
 # stage! normalizes against the schema ("elevator" ⇒ 1, "throttle" ⇒ 2):
-(-0.05, 0.70)                  # positional over the claim set; nothing = untouched
+values = (-0.05, 0.70)         # positional over the claim set
+mask   = (true, true)          # false where the batch touched nothing
 ```
 
-**Staging** is depositing that tuple into your own cell. It happens at any
+**Staging** is depositing that batch into your own cell. It happens at any
 wall-clock moment, on the device's own task, and touches nothing the loop is
 using. Staging three times between frames leaves one batch: the incoming
-tuple **CAS-merges** into the pending one, positionally — `nothing` keeps
-the pending value, anything else wins as newest. Merge is the only policy
-because it is always correct: for a *complete* writer (a joystick: full
+batch **CAS-merges** into the pending one, positionally — a clear mask
+position keeps the pending value, a set one wins as newest. Merge is the only
+policy because it is always correct: for a *complete* writer (a joystick: full
 write-set every poll) merge and overwrite are provably the same operation,
 while for a *sparse* writer (the GUI: only what the user touched) overwrite
 would silently lose the untouched pending edits. Staged values are **levels,
@@ -147,9 +149,9 @@ idempotent and survive coalescing.
 
 At the top of each frame — and only there — the loop takes each cell's
 contents atomically and applies it through the entry's attach-compiled
-**scatter** (position → slot store, statically typed, `nothing` skips — the
-mirror of [§11.2][s11-2]'s output gather), in attachment order (the harness cell
-last, [section 5](#5-registers-modes-of-use-not-more-machinery)):
+**scatter** (position → slot store, statically typed, unmasked positions
+skipped — the mirror of [§11.2][s11-2]'s output gather), in attachment order
+(the harness cell last, [section 5](#5-registers-modes-of-use-not-more-machinery)):
 
 ```julia
 for entry in roster                                    # frame top, loop task

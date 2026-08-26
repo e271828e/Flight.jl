@@ -5077,41 +5077,54 @@ undiagnosable. A user-facing overwrite opt-in (`complete(binding)`) is closed
 attach. An enumerated writer's [claim](#g-claim) set and slot types are both
 known at attach, `claims(binding)` ([§11.6][s11-6]) read against the root
 [contract](#g-contract). So the framework fixes the cell's content type there:
-a positional tuple over the claim set, `Union{Nothing, T}` per face. Those
-unions are isbits, hence pointer-free. `nothing` means *not touched this
-time*, never "reset". The levels doctrine is therefore untouched, slots only
-ever receive the non-`nothing` positions, and the `Union` never reaches the
-model. The face-name → position schema lives in the [roster](#g-roster) entry.
+a pair of positional tuples over the claim set — a values tuple, concretely
+typed `Tuple{T₁, …, Tₙ}`, and a parallel `Bool` touched-mask. A set mask
+position means *staged this time*; a clear one means *not touched*, never
+"reset". Untouched positions carry placeholder values and are never read: the
+mask guards every consumer, so no placeholder ever reaches the model. The
+batch is therefore isbits with one concrete layout per writer. The levels
+doctrine is untouched, and slots only ever receive masked positions. The
+face-name → position schema lives in the [roster](#g-roster) entry.
 
 In sketch form:
 
 ```julia
 # claim set enumerated f₁ … fₙ; Tᵢ = declared type of the slot behind fᵢ
 
-# attach fixes the cell's content type:
-Tuple{Union{Nothing,T₁}, …, Union{Nothing,Tₙ}}
+# attach fixes the cell's content type — values and mask, both concrete:
+values :: Tuple{T₁, …, Tₙ};  mask :: NTuple{n, Bool}
 
 # stage!, on the device task: the shim turns the author's face ⇒ value pairs
-# into `incoming` — name → position, convert to Tᵢ, fill nothing
+# into `incoming` — name → position, convert to Tᵢ, set the mask
 
 # staging merges into the pending batch, newest wins per face:
-merged[i] = incoming[i] === nothing ? pending[i] : incoming[i]
+merged.values[i] = incoming.mask[i] ? incoming.values[i] : pending.values[i]
+merged.mask[i]   = incoming.mask[i] | pending.mask[i]
 
-# the drain scatters, nothing skipped:
-batch[i] === nothing || (the slot at position i receives batch[i])
+# the drain scatters, unmasked positions skipped:
+batch.mask[i] && (the slot at position i receives batch.values[i])
 ```
 
-The consequences are each mechanical. The merge is positional
-(`incoming[i] === nothing ? pending[i] : incoming[i]`), so it compiles
-straight-line and union-split. The drain applies each cell through an
-attach-compiled **scatter**: position → slot cell, statically typed, `nothing`
-skipped. That scatter is the exact mirror of the compiled output gather
-([§11.2][s11-2]).
+**Why.** One concrete layout is what makes the frame-top drain compilable. The
+alternative carrier — `Union{Nothing, Tᵢ}` per face, the marker riding in the
+value — has no such layout: tuple types are covariant, so each combination of
+touched faces is its own concrete type, and applying a batch would specialize
+at frame top on which faces it touched ([D-202][d-202]). The mask buys the layout back
+at the price of dead placeholders, filled from the declaration's
+[probe](#g-probe) values — constructible for every declared type, and
+unreachable behind the mask guard.
+
+The consequences are each mechanical. The merge is positional and mask-driven
+(the sketch above), so it compiles straight-line, leans on no small-tuple
+heuristic, and does not degrade with surface width ([D-202][d-202]). The drain applies
+each cell through an attach-compiled **scatter**: position → slot cell,
+statically typed, masked-off positions skipped. That scatter is the exact
+mirror of the compiled output gather ([§11.2][s11-2]).
 
 Authors never build the shape by hand. `map_input` returns face ⇒ value pairs
 for whatever the datum touched, and `stage!` normalizes those pairs through an
 attach-compiled shim. The shim does three things: name → position, convert to
-the slot's declared type, fill `nothing`. It thereby confines the residual
+the slot's declared type, set the mask. It thereby confines the residual
 name-shaped dynamism to one framework-owned conversion on the device task, at
 the boundary where wire-shaped data becomes system-shaped data.
 Author-built total tuples are rejected as a padding form, the same disease
@@ -5223,7 +5236,7 @@ devices or mappings present.
 **One record format: every batch is retained sparse.** At the
 [drain](#g-drain) — the frame-top swap that publishes staged device inputs
 into the root slots — each drained [cell](#g-staging-cell) is scanned. Its
-non-`nothing` entries are recorded as (position ⇒ value) pairs, against the
+masked (touched) entries are recorded as (position ⇒ value) pairs, against the
 writer's [face](#g-face)-name → position schema in the header (below). That is
 an O(surface-width) scan and one small allocation per drained batch.
 
@@ -10574,7 +10587,7 @@ position schema, and the deployment block — captured after `apply!` and the
 slot writes, before the boundary-zero sequence runs ([§11.5][s11-5], [§14.5][s14-5]).
 
 <a id="g-trace-record"></a>**trace record** — the retained form of a drained batch, uniform for every
-writer: (position ⇒ value) pairs for the non-`nothing` entries, converted at
+writer: (position ⇒ value) pairs for the masked (touched) entries, converted at
 the drain against the header's schema, so trace size tracks information
 rather than surface width and consumers meet one format and one replay path
 ([§11.5][s11-5], [D-176][d-176]).
@@ -10898,6 +10911,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-199]: framework_decisions.md#d-199--the-reads-enumeration-returns-a-labeled-namedtuple-of-selectors
 [d-200]: framework_decisions.md#d-200--the-harness-register-is-a-diagnostic-writer-with-its-own-cell
 [d-201]: framework_decisions.md#d-201--the-terminal-account-closes-at-the-final-frame-top
+[d-202]: framework_decisions.md#d-202--stage-batches-as-values-plus-touched-mask-never-union-tuples
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
