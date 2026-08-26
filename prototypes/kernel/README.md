@@ -96,6 +96,26 @@ the terminal one standing in as the latest published boundary while §12.4's
 run end is absent. The keywords are view policies, never
 trajectory-determining, and increment 9's publication stand-in retires.
 
+**Increment 12 — the device contract: tasks, the handle, and the run's end.**
+§11.6's authoring contract in full — `init!`/`loop`/`shutdown!`/`unblock!`
+with no-op resource defaults and an error-throwing `loop` fallback, the
+framework wrapper with its `DeviceCrash` catch, `shutdown!` guaranteed on
+every exit path and `should_abort` (now an `attach!` keyword) consulted at
+departure — behind the handle `attach!` constructs and returns: the
+capability carrier, read/stage/control and never the `Simulation`. `run!`
+takes §11.1's topology — the §12.4 pre-spawn init bracket in attachment
+order, one run-scoped task per live entry, the loop moving to a spawned task
+when a `needs_calling_task` holder is rostered while the calling task runs
+that body inline through the identical wrapper — and §12.4's tail closes
+every run: stop observed at frame top, final snapshot, sticky stopped, waits
+woken, `unblock!`, the join under `join_timeout` (the deployment keyword
+D-198 promoted, one shared deadline) with `DeviceJoinTimeout` abandonment.
+Beneath it, exactly the minimal §12 slices: §12.1's stop word alone, §12.3's
+counter-plus-condition wait with the normative publication order and the
+boundary ordinal riding in the snapshot, §12.2's per-frame yield with devices
+rostered. The device-staging stand-in retires; the log's terminal endpoint is
+now §12.4's run-end snapshot in fact.
+
     julia --project=. test/runtests.jl
 
 ## What is real here
@@ -113,8 +133,9 @@ trajectory-determining, and increment 9's publication stand-in retires.
 | the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazily-paid arrival derivative, bracketed trial evaluations over the seam's dense output under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
 | the data plane's core exchange: the compiled writer — one schema/shim/merge/scatter unit over any write surface, with every check at staging and the out-of-schema warning discriminated by writer — staging cells, the frame-top drain via `atomicswap` behind stopped-sim-compiled thunks, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
 | the roster and claims: `AbstractDevice`/`AbstractBinding` with the declared sides and the false root defaults, the enumeration contract and the bidirectional conformance check (`which` against the fallback), `attach!`/`detach!` behind the §11.3 freeze with the three-part admission in spec order, both claim sources with `EmptyGreedyClaim` for the staked empty remainder, monotonic never-reused device ids, per-device cells over claim sets, the harness register as the derived remainder — recompiled at every roster change, its pending batch renormalized (`ClaimedFaceEntry` at the seam), emptied outright by a rostered greedy (D-192) — and the attachment-order drain, harness last | §11.3, §11.4, §11.6 | `src/roster.jl`, `src/sim.jl` |
-| the log: publication at every boundary (`t*` included, before integration resumes), retention as a vector of the published references themselves under `log`/`log_every`/`log_max`, progressive re-decimation (the stride doubling at each fill, one release per retained append, once-per-generation compaction, the middle at consecutive multiples of `log_every · 2^k`), the two endpoints outside the bound — the terminal one being the latest published boundary, §12.4's run end being absent — and `logged(sim)` as the stopped-sim reader behind the §11.3 gate | §11.2, D-137, D-023, D-038 | `src/dataplane.jl`, `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity) and the `Enumerated`/`Greedy` bindings, one per claim source | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6 | `src/library.jl` |
+| the log: publication at every boundary (`t*` included, before integration resumes), retention as a vector of the published references themselves under `log`/`log_every`/`log_max`, progressive re-decimation (the stride doubling at each fill, one release per retained append, once-per-generation compaction, the middle at consecutive multiples of `log_every · 2^k`), the two endpoints outside the bound — the terminal one being §12.4's run-end snapshot, published before the sticky status — and `logged(sim)` as the stopped-sim reader behind the §11.3 gate | §11.2, §12.4, D-137, D-023, D-038 | `src/dataplane.jl`, `src/sim.jl` |
+| the device contract and its tasks: the four contract functions (no-op resource defaults, the error-throwing `loop` fallback), the handle as the capability carrier — `stage!`, `latest`, `wait_next_snapshot`, `running`, `stop!`, never the `Simulation` — the wrapper (crash → `DeviceCrash`, `shutdown!` on every exit path, `should_abort` at departure), §11.1's topology (run-scoped spawn per live entry, the movable loop, the inline calling-task body, topology derived after initialization), the §12.4 init bracket and tail (1)–(5) under the shared `join_timeout` deadline, and the §12 slices beneath them — the §12.1 stop word, §12.3's wait (counter mirrored under the condition's lock, release-store before increment, monotonic across runs, the ordinal in the snapshot) and §12.2's per-frame yield | §11.6, §11.1, §12.4, §12.1, §12.2, §12.3, D-198 | `src/devices.jl`, `src/sim.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity, immediate-return loop bodies) and the `Enumerated`/`Greedy` bindings, one per claim source | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
@@ -364,6 +385,41 @@ programming convenience:
   while the boundary-zero and latest snapshots outlive any policy, outside
   the bound. The off switch retains nothing; publication is upstream of it,
   so `latest` still sees every boundary.
+- **The handle is the device's whole world.** It carries read, stage and
+  control — never the `Simulation` — and a device staging through it from its
+  own spawned task changes nothing the drain can see: the frame's outcome
+  stays a pure function of the drained batches, and a device-requested stop
+  truncates the run at a frame top with the batch it staged still pending,
+  applied at the next run's first drain and nowhere earlier.
+- **The bracket holds on every exit path.** Voluntary return, a crash, and a
+  failed `init!` all run `shutdown!` exactly once — the crash warned as
+  `DeviceCrash` with the run continuing, the failed `init!` spawning no task
+  and never reaching `loop` — and in every case the claims persist to run
+  end: death is not detach, and the harness register still cannot take a dead
+  device's face. `should_abort` splits the run's disposition uniformly: a
+  flagged crash stops the run, a flagged `init!` failure leaves the stop
+  already pending and the run advances zero frames.
+- **The run's end is a protocol, not a return.** The stop word is observed at
+  frame top only, the final snapshot goes out before the sticky status is
+  set — so a body observing `running(handle)` false can still read a complete
+  final world — the waits wake, `unblock!` turns a parked blocking call into
+  a clean exit inside the cap, and a body that ignores the predicate is
+  abandoned under `join_timeout` with `DeviceJoinTimeout` naming it, `run!`
+  returning regardless. Abandonment is not a kill: the straggler's wrapper
+  still runs `shutdown!` when it finally returns. The word clears at the next
+  run's top, which owes nothing to the last one's stop.
+- **The calling task is pinned by trait, and the loop is the movable piece.**
+  A `needs_calling_task` device's body runs on exactly the task that invoked
+  `run!`, inside the same wrapper as any spawned loop, while the frame loop
+  runs spawned — and the trajectory is bitwise the deviceless one, topology
+  being scheduling, never semantics. A device with no `loop` method crashes
+  by name at its first spawn instead of idling as attached-but-inert.
+- **A waiter never wakes onto a stale snapshot.** The release-store of
+  `latest` precedes the counter increment under the condition's lock — the
+  §12.3 normative order — so the boundary ordinals a waiting consumer
+  observes only ever advance, each snapshot indexes itself, and the stop wake
+  hands the waiter the final world rather than nothing. While stopped the
+  wait returns at once; only a running loop can park it.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -408,29 +464,37 @@ with a good message, not the structured carrier, and runtime degradations are a
 plain `@warn` carrying the spec'd payload, not Appendix C's named advisory
 values), partial advance and the per-run overrides (§12.6 — `run!(sim, t_end)`
 takes `t_end` to the nearest step boundary), and the runtime periphery beyond
-increments 9–11's data plane:
+increments 9–12's data plane and device tasks:
 
-- **the device task machinery (§11.6) and §11.1's task topology:**
-  `init!`/`loop`/`shutdown!`/`unblock!`, the framework wrapper with its
-  `DeviceCrash` discrimination, handles and their primitives, `should_abort`,
-  `map_input`/`map_output` and the shipped `TableBinding`, the bad-datum
-  channel, device death and orphaned claims — a rostered device here is an
-  identity holding a claim and a staging cell, with no task behind it, and
-  `run!` blocks its caller: with no device tasks to spawn, that is §11.1's
-  calling-task register, not a deviation. The output side is absent wholesale —
-  a binding declaring `is_output` is rejected at attach, `reads` and the
-  compiled gather unbuilt;
+- **the binding's runtime half (§11.6):** `map_input`/`map_output` and the
+  shipped `TableBinding`, and the bad-datum channel — `report!`,
+  `MalformedDatum` and the diagnostic cell behind them (§11.8), which is why
+  `DeviceCrash`, `DeviceJoinTimeout` and their kin are plain `@warn`s here.
+  The output side is absent wholesale — a binding declaring `is_output` is
+  rejected at attach, `reads` and the compiled gather unbuilt. Two unguarded
+  edges ride on the same absences: staging through a handle whose device was
+  detached lands in an orphaned cell and is silently lost (handles are
+  run-scoped task equipment; a guard would put a roster scan back into
+  `stage!`), and an `InterruptException` in a device loop reports as
+  `DeviceCrash`, the discrimination belonging to the absent operator
+  interrupt;
 - **the snapshot's framework status** (§11.2, §11.8) — the snapshot carries
-  the table, `t` and the frame ordinal, no status value — along with §11.8's
-  diagnostics and liveness machinery wholesale;
+  the table, `t`, the frame ordinal and the §12.3 boundary ordinal, no status
+  value — along with §11.8's diagnostics and liveness machinery wholesale,
+  heartbeats included: a dead device is a task that has ended, marked nowhere;
 - **output-device bindings and the selectors** (§11.2, §14.4), the §11.5
   input trace, and the §11.7 GUI write path;
-- **all of §12 beyond `latest`'s inspection register:** control plane, loop
-  scheduling, the next-snapshot wait, shutdown, real-time pacing (§10.7) and
-  replay (§12.7). The §11.3 freeze is enforced by a single running flag —
-  §12.6's status machine is absent, so `built`, `initialized` and `stopped`
-  are indistinguishable here and every not-running point admits
-  `attach!`/`detach!`.
+- **§12 beyond increment 12's slices** (the §12.1 stop word, §12.2's yield,
+  §12.3's wait, §12.4's bracket and tail): pause and the rest of the control
+  plane's surface, real-time pacing (§10.7) with §12.2's thread-budget
+  warning, the operator interrupt and its sigint masking (the runs here are
+  test-driven), §13.6's loop-side failure tail — a loop-side throw still sets
+  the sticky status, wakes the waits and joins the devices through the
+  `finally` chain, but the failed-boundary discard and snapshot promotion are
+  absent — and replay (§12.7). The §11.3 freeze is enforced by a single
+  running flag beside the stop word — §12.6's status machine is absent, so
+  `built`, `initialized` and `stopped` are indistinguishable here and every
+  not-running point admits `attach!`/`detach!`.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 
@@ -447,13 +511,13 @@ enforcement.
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
 | slot initial values owned by the init/trim services (§11.3, §14.6); the running write path is the drain alone | `set_slot!` writes a root slot directly at any stopped-sim point | the §14 services increment |
-| a device stages through the handle `attach!` returned, `stage!(handle, batch)` on its own task (§11.6) | `stage!(sim, dev, pairs...)` addresses the rostered device's cell directly, and `attach!` returns the device id | the device-contract increment, when handles exist |
 
 (Every stand-in introduced through increment 5 was retired on 2026-08-20;
 increment 6's one row — localized guards detecting at boundary resolution —
 was retired by increment 7, and increment 9's publication row by increment 11,
-both on 2026-08-25. The `set_slot!` row above entered with increment 9, the
-device-staging row with increment 10.)
+both on 2026-08-25. The `set_slot!` row above entered with increment 9;
+increment 10's device-staging row was retired by increment 12 on 2026-08-26,
+`attach!` returning the handle.)
 
 ## Authoring caveat found while building this
 
@@ -479,8 +543,10 @@ declares nothing has no *class* to read either (§8.5), so the build names both
 families rather than reaching the probe at all. `DeadStage` itself is not built.
 
 The periphery's trait and enumeration methods (`is_input`, `is_greedy`,
-`claims`, `needs_calling_task`) are the same class of declaration and hit the
-same trap — a trait "declared" inside a `@testset` is a local function the
-conformance check never sees, presenting a binding that declares nothing. The
-malformed bindings in `test/test_roster.jl` sit at top level for exactly this
-reason.
+`claims`, `needs_calling_task`) and the device contract's four functions
+(`init!`, `loop`, `shutdown!`, `unblock!`) are the same class of declaration
+and hit the same trap — a trait "declared" inside a `@testset` is a local
+function the conformance check never sees, and a `loop` "declared" there
+leaves the global fallback in place, crashing the device by name. The
+malformed bindings in `test/test_roster.jl` and the devices in
+`test/test_devices.jl` sit at top level for exactly this reason.

@@ -586,25 +586,32 @@ sample_times(::MultiRate) = (fcs = Relative(1), gnss = Absolute(Hz(50)))
 """
     Pad(name)
 
-A stub device: no task, no hardware — the identity carrier for the roster.
-Mutable deliberately, because identity is the instance (`===`, §11.3): an
-immutable stub with equal fields would be egal to its twin, and two
-same-named `Pad`s are meant to be two devices.
+A stub device: no hardware — the identity carrier for the roster. Mutable
+deliberately, because identity is the instance (`===`, §11.3): an immutable
+stub with equal fields would be egal to its twin, and two same-named `Pad`s
+are meant to be two devices. Its loop body returns at once — §12.4(6)'s
+voluntary exit, honest for a stub with nothing to wait on — so a rostered
+`Pad` in a run is an identity holding a claim, its task already departed and
+its staging cell writable from any task through the handle.
 """
 mutable struct Pad <: AbstractDevice
     name::String
 end
+loop(::Pad, handle) = nothing
 
 """
     Panel(name)
 
 A stub device declaring the calling-task affinity (§11.6): at most one holder
 per roster, the calling task being a single-slot resource (§11.1, §11.3).
+Its loop body is `Pad`'s immediate voluntary return, run inline on the
+calling task by the wrapper.
 """
 mutable struct Panel <: AbstractDevice
     name::String
 end
 needs_calling_task(::Panel) = true
+loop(::Panel, handle) = nothing
 
 """
     Enumerated(faces...)

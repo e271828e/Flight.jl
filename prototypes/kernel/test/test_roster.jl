@@ -49,7 +49,7 @@ end
 @testset "admission is three checks in spec order (§11.3)" begin
     sim = Simulation(two_slots(); h = 1//10)
     d1 = Pad("d1")
-    @test attach!(sim, d1, Enumerated("a")) == 1
+    @test attach!(sim, d1, Enumerated("a")).id == 1
     # Identity before claims: the same instance re-attached — even under an
     # overlapping claim — is AlreadyAttached, never a self-ClaimConflict.
     err = failure(() -> attach!(sim, d1, Enumerated("a")))
@@ -59,7 +59,7 @@ end
     @test err isa BuildError && occursin("ClaimConflict", err.msg)
     @test occursin("device 1", err.msg)
     # Affinity: the calling task is a single-slot resource.
-    @test attach!(sim, Panel("p1"), Enumerated("b")) == 2
+    @test attach!(sim, Panel("p1"), Enumerated("b")).id == 2
     err = failure(() -> attach!(sim, Panel("p2"), Enumerated()))
     @test err isa BuildError && occursin("CallerTaskConflict", err.msg)
     # An enumeration drifted onto a nonexistent face is a diagnosable anomaly.
@@ -73,11 +73,11 @@ end
 @testset "a device writes inside its claim, every check at its own staging (§11.3, §11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
     da, db = Pad("da"), Pad("db")
-    attach!(sim, da, Enumerated("a"))
-    attach!(sim, db, Enumerated("b"))
+    ha = attach!(sim, da, Enumerated("a"))           # the handle is the write capability (§11.6)
+    hb = attach!(sim, db, Enumerated("b"))
     init!(sim)
-    stage!(sim, da, "a" => 1.0)
-    stage!(sim, db, "b" => 2)                        # the shim converts to the slot's Float64
+    stage!(ha, "a" => 1.0)
+    stage!(hb, "b" => 2)                             # the shim converts to the slot's Float64
     @test port(sim, "", :a) === 0.0                  # staged is pending, never applied (§11.1)
     run!(sim, 0.1)
     @test port(sim, "", :a) === 1.0
@@ -85,32 +85,28 @@ end
     # Out-of-claim is always OutOfClaimEntry for a device — naming the incumbent
     # when the face is claimed elsewhere — and the rest of the batch stands.
     @test_logs (:warn, r"OutOfClaimEntry: `b` is outside device 1 \(Pad\)'s claim.*claimed by device 2") #=
-        =# stage!(sim, da, "b" => 9.0, "a" => 3.0)
-    @test_logs (:warn, r"OutOfClaimEntry: `flaps`") stage!(sim, da, "flaps" => 1.0)
+        =# stage!(ha, "b" => 9.0, "a" => 3.0)
+    @test_logs (:warn, r"OutOfClaimEntry: `flaps`") stage!(ha, "flaps" => 1.0)
     run!(sim, 0.2)
     @test port(sim, "", :a) === 3.0
     @test port(sim, "", :b) === 2.0
     # The empty enumeration: an honest may-write-nothing degenerate (§11.6).
-    dc = Pad("dc")
-    attach!(sim, dc, Enumerated())
-    @test_logs (:warn, r"OutOfClaimEntry") stage!(sim, dc, "a" => 9.0)
-    # Staging against an unrostered device is an error, not a silent no-op.
-    err = failure(() -> stage!(sim, Pad("ghost"), "a" => 1.0))
-    @test err isa BuildError && occursin("not rostered", err.msg)
+    hc = attach!(sim, Pad("dc"), Enumerated())
+    @test_logs (:warn, r"OutOfClaimEntry") stage!(hc, "a" => 9.0)
 end
 
 @testset "the computed claim is the complement at the attach instant (§11.3, §11.6)" begin
     sim = Simulation(two_slots(); h = 1//10)
     d1, g = Pad("d1"), Pad("gui")
     attach!(sim, d1, Enumerated("a"))
-    attach!(sim, g, Greedy())                        # greedy last: exactly what is left
+    hg = attach!(sim, g, Greedy())                   # greedy last: exactly what is left
     @test sim.plane.roster[2].writer.faces == [:b]
     init!(sim)
-    stage!(sim, g, "b" => 5.0)
+    stage!(hg, "b" => 5.0)
     run!(sim, 0.1)
     @test port(sim, "", :b) === 5.0
     # Past the attach point nothing downstream tells the sources apart.
-    @test_logs (:warn, r"OutOfClaimEntry") stage!(sim, g, "a" => 9.0)
+    @test_logs (:warn, r"OutOfClaimEntry") stage!(hg, "a" => 9.0)
 
     # A rostered greedy claimant empties the harness surface: every harness
     # stage! in such a session is rejected by name (D-192).
@@ -169,19 +165,19 @@ end
 @testset "device ids are monotonic per Simulation and never reused (§11.3)" begin
     sim = Simulation(two_slots(); h = 1//10)
     d1 = Pad("d1")
-    @test attach!(sim, d1, Enumerated("a")) == 1
-    @test attach!(sim, Pad("d2"), Enumerated("b")) == 2
+    @test attach!(sim, d1, Enumerated("a")).id == 1
+    @test attach!(sim, Pad("d2"), Enumerated("b")).id == 2
     detach!(sim, d1)
     err = failure(() -> attach!(sim, Pad("dx"), Enumerated("b")))     # rejected: ClaimConflict
     @test err isa BuildError
-    @test attach!(sim, Pad("d3"), Enumerated("a")) == 3               # not 1, and no id burned
+    @test attach!(sim, Pad("d3"), Enumerated("a")).id == 3            # not 1, and no id burned
 end
 
 @testset "the roster is frozen per run: attach and detach are stopped-sim operations (§11.3)" begin
     sim = Simulation(chain3(); h = 1//100000)
     init!(sim)
     d = Pad("d")
-    @test attach!(sim, d, Enumerated("u")) == 1      # also warms both compile paths, so
+    @test attach!(sim, d, Enumerated("u")).id == 1   # also warms both compile paths, so
     detach!(sim, d)                                  # the mid-run checks below race no JIT
     t = Threads.@spawn run!(sim, 1.0)                # 100k frames: alive throughout the checks
     while !(@atomic sim.plane.running)
@@ -195,19 +191,19 @@ end
     @test err_a isa BuildError && occursin("ServiceLifecycle", err_a.msg)
     @test err_d isa BuildError && occursin("ServiceLifecycle", err_d.msg)
     # The freeze lifts with the run: the same operations are legal again.
-    @test attach!(sim, d, Enumerated("u")) == 2
+    @test attach!(sim, d, Enumerated("u")).id == 2
     detach!(sim, d)
 end
 
 @testset "the frame's outcome is a pure function of the drained batches, whoever staged them (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
     da, db = Pad("da"), Pad("db")
-    attach!(sim, da, Enumerated("a"))
-    attach!(sim, db, Enumerated("b"))
+    ha = attach!(sim, da, Enumerated("a"))
+    hb = attach!(sim, db, Enumerated("b"))
     init!(sim)
     run!(sim, 0.3)
-    stage!(sim, da, "a" => 0.7)
-    stage!(sim, db, "b" => -1.3)
+    stage!(ha, "a" => 0.7)
+    stage!(hb, "b" => -1.3)
     run!(sim, 0.8)
     ref = Simulation(two_slots(); h = 1//10)
     init!(ref)

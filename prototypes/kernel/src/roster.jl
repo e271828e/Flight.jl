@@ -1,8 +1,9 @@
 # The roster and claims (§11.3), with the attach-point slice of §11.6's device
 # contract: the periphery's two roots, the declared sides, the enumeration
 # contract with its bidirectional conformance check, the three-part admission,
-# both claim sources, and the harness register as the derived remainder. What
-# stands behind them in the spec — device tasks and their wrapper, handles,
+# both claim sources, and the harness register as the derived remainder. The
+# task side of the contract — the handle, the wrapper, the run's bracket and
+# tail — lives in devices.jl; what stands further out in the spec —
 # `map_input`/`TableBinding`, the output side's compiled gather, the trace,
 # heartbeats — is deliberately absent (README).
 #
@@ -87,10 +88,13 @@ end
 """
 One roster entry (§11.3): the device instance, its binding, the stable id
 assigned at `attach!` — monotonic per `Simulation`, never reused, living
-exactly as long as the entry — the compiled writer over its claim set, and
-the entry's drain thunk. Past the attach point nothing distinguishes a
-computed claim from a returned one: the source is exhausted there, and
-validation, storage and the drain treat the two identically.
+exactly as long as the entry — the compiled writer over its claim set, the
+entry's drain thunk, the per-attachment `should_abort` policy (§11.6: never
+a device property — the same joystick is advisory in one deployment and
+load-bearing in another), and the handle `attach!` constructed and returned.
+Past the attach point nothing distinguishes a computed claim from a returned
+one: the source is exhausted there, and validation, storage and the drain
+treat the two identically.
 """
 struct RosterEntry
     dev::AbstractDevice
@@ -98,6 +102,8 @@ struct RosterEntry
     id::Int
     writer::Writer
     drain::Function                 # the compiled (cell, scatter) pair as a callable, see _drain_thunk
+    should_abort::Bool              # the per-attachment failure policy (§11.6, §12.4)
+    handle::Any                     # the DeviceHandle; `Any` for include order only, read off the frame path
 end
 
 _who(e::RosterEntry) = "device $(e.id) ($(typeof(e.dev)))"

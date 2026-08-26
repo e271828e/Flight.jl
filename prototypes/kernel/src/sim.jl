@@ -17,6 +17,7 @@ struct Simulation{T,S,B,CL,EV,M}
     firing_budget::Int            # per-event firings per boundary (§10.6)
     localization_tol::Float64     # relative bracket-width stop (§10.4)
     localization_budget::Int      # t* boundaries permitted per frame (§10.4)
+    join_timeout::Float64         # the shutdown tail's join cap, seconds of wall clock (§12.4)
     has_localized::Bool           # any localized event compiled in: the frame loop's fast-path key
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
     sstores::Vector{Any}          # discrete state stores, by component index
@@ -26,14 +27,15 @@ struct Simulation{T,S,B,CL,EV,M}
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
     plane::DataPlane              # the §11.3 roster and harness register, mutable at stopped-sim points
     published::Published          # §11.2's `@atomic latest` holder
+    control::Control              # §12.1's stop word, §12.4's sticky status, §12.3's wait (devices.jl)
     log::SnapshotLog              # §11.2's retained snapshots, loop-task bookkeeping
 end
 
 """
     Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
                method = RK4, firing_budget = 4, localization_tol = 1e-6,
-               localization_budget = 8, log = true, log_every = 1,
-               log_max = 65536, chunk_size = 16)
+               localization_budget = 8, join_timeout = 5.0, log = true,
+               log_every = 1, log_max = 65536, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
 Deployment binding at construction (§9.1, §9.2): `Δt_base` from one of three
@@ -67,6 +69,14 @@ three are trajectory-determining and grid-independent: they stand beside `h`
 and `n`, validated here with their siblings, and enter none of the grid
 arithmetic.
 
+`join_timeout` is §12.4's: the shutdown tail's join cap in seconds of wall
+clock — a positive real defaulting to 5, generous for GUI teardown and socket
+closes, short enough that an abandoned join reads as a diagnosed timeout
+rather than a hang (D-198). It is the one *operational* keyword: never
+trajectory-determining, because the trajectory has ended at the final
+snapshot before any join begins, yet not a view policy either — it tunes the
+tail's wall-clock patience, nothing more.
+
 `log`, `log_every` and `log_max` are §11.2's retention keywords: the plain
 switch (default `true`), the keep-every-kth stride over published boundaries
 (an integer ≥ 1, default 1) and the bound on retained snapshot references (an
@@ -79,8 +89,8 @@ retention being reference bookkeeping over what publication already built.
 function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                     Δt_base = nothing, method = RK4, firing_budget = 4,
                     localization_tol = 1e-6, localization_budget = 8,
-                    log = true, log_every = 1, log_max = 65536,
-                    chunk_size::Int = 16) where {T}
+                    join_timeout = 5.0, log = true, log_every = 1,
+                    log_max = 65536, chunk_size::Int = 16) where {T}
     method isa Type && method <: AbstractStepper ||
         throw(BuildError("method must be a stepper type — RK4 or Heun — got $method (§10.2)"))
     firing_budget isa Integer && firing_budget ≥ 1 ||
@@ -89,6 +99,9 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         throw(BuildError("localization_tol must be a positive real, got $localization_tol (§10.4)"))
     localization_budget isa Integer && localization_budget ≥ 1 ||
         throw(BuildError("localization_budget must be an integer ≥ 1, got $localization_budget (§10.4)"))
+    join_timeout isa Real && join_timeout > 0 ||
+        throw(BuildError("join_timeout must be a positive real — the shutdown tail's " *
+                         "join cap in seconds of wall clock — got $join_timeout (§12.4)"))
     log isa Bool ||
         throw(BuildError("log must be true or false — the retention switch — got $log (§11.2)"))
     log_every isa Integer && log_every ≥ 1 ||
@@ -104,9 +117,9 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                typeof(stepper)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
-        Int(localization_budget), any(c.events.localized), bound.sched,
+        Int(localization_budget), Float64(join_timeout), any(c.events.localized), bound.sched,
         c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
-        DataPlane(act.layout, c.store), Published(nothing),
+        DataPlane(act.layout, c.store), Published(nothing), Control(),
         SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)))
 end
 
@@ -285,38 +298,104 @@ end
 
 """
 Advance to `t_end` one frame at a time, each frame §11.1's anatomy — drain,
-integrate, boundary sequence, publication. `frame!` carries each grid step
-`[tₖ₋₁, tₖ]` through the §10.4 localization loop, firing any `t*` boundaries it
-brackets on the way; the frame-top boundary (§10.3) is a base tick every `n`
-frames, where the gate reads the tick index, and the empty-due-set boundary in
-between. The drain runs at the frame top only, never at a `t*` boundary
-(§10.4), while publication follows *every* boundary sequence (§11.2) — the
-frame top's here, a `t*` boundary's inside the frame loop, before integration
-resumes. The grid is driven by the step counter, so `t_end` is taken to the
-nearest frame top; partial advance is the periphery's (§12.6) and absent here.
+integrate, boundary sequence, publication — under §11.1's task topology and
+§12.4's bracket and tail. The run's shape, in order: the §11.3 freeze rises;
+the stop word is cleared (a fresh run owes nothing to the last one's stop);
+the §12.4 init bracket runs per roster entry on the calling task; the
+topology is derived from the *live* entries — with a `needs_calling_task`
+holder among them the loop moves to a spawned task and the calling task runs
+that device's loop body inline, otherwise the loop runs here and one task is
+spawned per live entry — the loop advances until `t_end`'s frame or a stop
+observed at frame top; and the tail closes the run (devices.jl): sticky
+status after the final snapshot, waits woken, `unblock!`, the join under
+`join_timeout`. Either way `run!` blocks its caller until the run ends; what
+varies is what the calling task spends the run doing (§11.1).
+
+Inside the loop, `frame!` carries each grid step `[tₖ₋₁, tₖ]` through the
+§10.4 localization loop, firing any `t*` boundaries it brackets on the way;
+the frame-top boundary (§10.3) is a base tick every `n` frames, where the
+gate reads the tick index, and the empty-due-set boundary in between. The
+drain runs at the frame top only, never at a `t*` boundary (§10.4), while
+publication follows *every* boundary sequence (§11.2) — the frame top's here,
+a `t*` boundary's inside the frame loop, before integration resumes. The grid
+is driven by the step counter, so `t_end` is taken to the nearest frame top;
+partial advance is the periphery's (§12.6) and absent here.
 """
 function run!(sim::Simulation{T}, t_end::Real) where {T}
     target = round(Int, Float64(t_end) / sim.h)
-    plane = sim.plane
+    plane, ctl = sim.plane, sim.control
     @atomic plane.running = true      # the §11.3 freeze: the roster is fixed for the run
     try
-        while sim.clock.step < target
-            drain!(sim)
-            k = (sim.clock.step += 1)
-            frame!(sim, k)
-            k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
-            publish!(sim)
+        @atomic ctl.stop_requested = false
+        live = _init_devices!(sim)            # §12.4's pre-spawn bracket, attachment order
+        @atomic ctl.stopped = false
+        ct = findfirst(e -> needs_calling_task(e.dev), live)
+        if ct === nothing                     # the unattended register (§11.1)
+            tasks = _spawn!(live)
+            try
+                _loop!(sim, target)
+            finally
+                _finish!(sim)                 # tail (1)–(2), even off a loop-side throw
+                _tail!(sim, live, tasks)      # tail (3)–(5)
+            end
+        else                                  # the loop is the movable piece (§11.1)
+            e_ct = live[ct]
+            others = [live[i] for i in eachindex(live) if i != ct]
+            tasks = _spawn!(others)
+            e_ct.handle.last_seen = ctl.counter
+            loop_task = Threads.@spawn try
+                _loop!(sim, target)
+            finally
+                _finish!(sim)                 # the spawned loop wakes the inline body too
+            end
+            _wrap(e_ct)                       # the identical wrapper, inline (§11.6)
+            try
+                wait(loop_task)               # run! blocks until the run ends (§11.1)
+            finally
+                _tail!(sim, others, tasks)    # the calling-task device sits outside the join
+            end
         end
     finally
-        @atomic plane.running = false
+        @atomic ctl.stopped = true
+        @atomic plane.running = false         # the freeze lifts with the run
     end
     nothing
 end
 
+# The frame loop, stop-aware: the stop word is consulted at the frame top
+# (§12.1) and the loop never stops mid-frame — a stop observed here leaves the
+# last published boundary as the final snapshot (§12.4(1)). With devices
+# rostered every frame yields at least once (§12.2, the unpaced case): the
+# explicit yield is the co-resident device tasks' scheduling slot.
+function _loop!(sim::Simulation, target::Int)
+    plane, ctl = sim.plane, sim.control
+    while !(@atomic ctl.stop_requested) && sim.clock.step < target
+        isempty(plane.roster) || yield()
+        drain!(sim)
+        k = (sim.clock.step += 1)
+        frame!(sim, k)
+        k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
+        publish!(sim)
+    end
+    nothing
+end
+
+"""
+    stop!(sim)
+
+Request a control-plane stop from any task (§12.1) — the calling code's
+spelling of the stop a device handle issues with `stop!(handle)`. The loop
+observes the word at the next frame top, completes that boundary, publishes,
+and enters the tail (§12.4). Idempotent; inert while stopped, the word being
+cleared at the top of the next run.
+"""
+stop!(sim::Simulation) = (@atomic sim.control.stop_requested = true; nothing)
+
 # --- the roster (§11.3): stopped-sim configuration -----------------------------
 
 """
-    attach!(sim, dev::AbstractDevice, b::AbstractBinding) -> device id
+    attach!(sim, dev::AbstractDevice, b::AbstractBinding;
+            should_abort = false) -> DeviceHandle
 
 Roster a device under a binding — a stopped-sim configuration operation
 (`ServiceLifecycle` while running: the roster is frozen per run, pause
@@ -331,11 +410,21 @@ this instant and never recomputed, so attaching the greedy claimant last is
 the idiom and a second greedy stakes the empty remainder under an
 `EmptyGreedyClaim` warning (§11.6) — the entry's writer is compiled over it,
 and the harness register's surface is recompiled to the complement that
-remains, renormalizing any pending harness batch (§11.4). Returns the entry's
-stable device id. With handles absent, staging against the entry is spelled
-`stage!(sim, dev, pairs...)` — a stand-in (README).
+remains, renormalizing any pending harness batch (§11.4).
+
+`should_abort` is §11.6's per-attachment failure policy, never a device
+property: set, the device's departure — its loop body returning, a crash, or
+a failed `init!` — also requests a sim stop (§12.4(6)); clear, the run
+continues with the device's task absent and its claims held to run end.
+
+Returns the attachment's handle (devices.jl), carrying the entry's stable
+device id and the device's capabilities — read, stage, control access — the
+same object the wrapper passes to `loop(dev, handle)` on the device's task.
+`attach!` never spawns: it registers, and the task appears at the next
+`run!` (§11.1).
 """
-function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding)
+function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
+                 should_abort::Bool = false)
     plane = sim.plane
     assert_stopped(plane, "attach!")
     check_binding(b)
@@ -360,12 +449,15 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding)
     id = plane.next_id                             # assigned on admission alone: a
     plane.next_id += 1                             # rejected attach consumes no id
     w = Writer(sim.layout, claim)
-    push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.store, w)))
+    h = DeviceHandle(id, "device $id ($(typeof(dev)))", w, plane, sim.control,
+                     sim.published, sim.control.counter)
+    push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.store, w),
+                                    should_abort, h))
     reclaim!(plane, sim.layout)
     is_greedy(b) && isempty(claim) &&
         @warn "EmptyGreedyClaim: device $id ($(typeof(dev))) under $(typeof(b)) staked " *
               "the empty remainder — every root input face is already claimed (§11.6)"
-    id
+    h
 end
 
 """
@@ -393,39 +485,26 @@ end
 
 """
     stage!(sim, "face" => value, ...)          # the harness register (§11.3)
-    stage!(sim, dev, "face" => value, ...)     # a rostered device's cell (§11.4)
 
 Stage a batch of root-slot writes from any task, at any wall-clock moment,
 never touching a live slot (§11.1): the entries land in the writer's staging
 cell under the one coalescing policy — CAS merge, newest wins per face
 (§11.4). Untouched faces survive into the pending batch; re-staged faces take
 the newest level. Every check runs here, on the writer's side: a face outside
-the writer's surface is discarded with a warning — a device's under
-`OutOfClaimEntry` against its claim set, the harness register's under
-`ClaimedFaceEntry` naming the incumbent when a rostered claim covers the face
-(a rostered greedy claimant empties the harness surface outright, D-192) and
-`OutOfClaimEntry` when nothing does — an unconvertible value under
-`EntryTypeMismatch`, and the rest of the batch stands. The staged batch is
-applied by the drain at the top of the next frame `run!` advances. The device
-form is the stand-in for the handle's `stage!` (§11.6, README).
+the harness surface is discarded with a warning — `ClaimedFaceEntry` naming
+the incumbent when a rostered claim covers the face (a rostered greedy
+claimant empties the harness surface outright, D-192) and `OutOfClaimEntry`
+when nothing does — an unconvertible value under `EntryTypeMismatch`, and the
+rest of the batch stands. The staged batch is applied by the drain at the top
+of the next frame `run!` advances. A device stages through the handle its
+`attach!` returned — `stage!(handle, pairs...)`, devices.jl — the same shim
+against its own claim set.
 """
 function stage!(sim::Simulation, pairs::Pair...)
     plane = sim.plane
     w = plane.harness
     batch = _normalize(w, pairs, plane.claimedby)
     batch === nothing || _stage!(w, batch)
-    nothing
-end
-
-function stage!(sim::Simulation, dev::AbstractDevice, pairs::Pair...)
-    plane = sim.plane
-    i = findfirst(e -> e.dev === dev, plane.roster)
-    i === nothing && throw(BuildError(
-        "this $(typeof(dev)) instance is not rostered — a device stages into its " *
-        "own attached cell (§11.4)"))
-    e = plane.roster[i]
-    batch = _normalize(e.writer, pairs, plane.claimedby; device = _who(e))
-    batch === nothing || _stage!(e.writer, batch)
     nothing
 end
 
@@ -455,13 +534,25 @@ buffer copy, the framework side of §7.5's scope — then a single release-store
 to `latest`. Runs only after the boundary sequence completes, so every
 published table is boundary-consistent (§10.3), and the copy is what makes the
 binding rule hold: nothing reachable from a published snapshot is ever written
-again. Behind the store the snapshot enters the log (§11.2): logging dissolves
-into publication, retention being the only thing the log adds.
+again. Behind the store the snapshot enters the log (§11.2) — logging
+dissolves into publication, retention being the only thing the log adds — and
+the §12.3 counter increments under its lock, *after* the release-store: the
+normative order, so a waiter observing the new count finds at least this
+boundary in `latest`. The counter is read unlocked to stamp the snapshot's
+ordinal, the loop task being its only writer.
 """
 function publish!(sim::Simulation)
-    snap = Snapshot(sim.clock.t, sim.clock.step, capture(sim.store), sim.layout)
+    ctl = sim.control
+    snap = Snapshot(sim.clock.t, sim.clock.step, ctl.counter, capture(sim.store), sim.layout)
     @atomic :release sim.published.latest = snap
     log!(sim.log, snap)
+    lock(ctl.cond)
+    try
+        ctl.counter += 1
+        notify(ctl.cond)
+    finally
+        unlock(ctl.cond)
+    end
     nothing
 end
 

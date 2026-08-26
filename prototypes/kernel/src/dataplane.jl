@@ -2,8 +2,9 @@
 # and 2 of §11.1's replacement for the shared mutable model — snapshot
 # publication, plane 3, and the log riding behind it (§11.2). The cells'
 # owners — the roster's device entries and the harness register beside them —
-# live in roster.jl; what stands further out in the spec — device tasks, the
-# trace — is deliberately absent (README).
+# live in roster.jl, the device tasks that stage into them in devices.jl;
+# what stands further out in the spec — the trace, the snapshot's framework
+# status — is deliberately absent (README).
 #
 # This file holds the types and the pure mechanics; the `Simulation`-facing
 # surface — `stage!`, `drain!`, `publish!`, `latest` — lives in sim.jl, beside
@@ -152,17 +153,21 @@ end
 
 """
 A snapshot (§11.2): the boundary-consistent signal table — the *whole* table,
-root slots riding along as the source cells they are — with `t` and the frame
-ordinal. Built in private memory by copying the cell buffers, then handed out
-through one release-store; nothing reachable from a published snapshot is ever
-written again, which is what makes the lock-free read sound. The state stores
-(`x`, `s`, `m`) are deliberately not carried (§11.2) and the framework status
-is absent here (README). Read it with `port(snap, path, name)`, addressed
-exactly as the live table.
+root slots riding along as the source cells they are — with `t`, the frame
+ordinal and the §12.3 boundary ordinal, the counter-home rule: the index
+rides *in* the snapshot, so any holder of one — the log, a post-run
+inspector — indexes it without consulting the loop. Built in private memory
+by copying the cell buffers, then handed out through one release-store;
+nothing reachable from a published snapshot is ever written again, which is
+what makes the lock-free read sound. The state stores (`x`, `s`, `m`) are
+deliberately not carried (§11.2) and the framework status is absent here
+(README). Read it with `port(snap, path, name)`, addressed exactly as the
+live table.
 """
 struct Snapshot{T,S<:StoreBundle}
     t::T
     frame::Int
+    boundary::Int     # the §12.3 published-boundary ordinal; boundary zero = 0
     store::S
     layout::Layout    # build-frozen addressing, shared, never copied
 end
@@ -199,9 +204,9 @@ bound is respected *continuously*, the retained count never exceeding
 
 The endpoints ride outside the bounded middle — two extra references, never
 counted against it. `first` is the boundary-zero snapshot (§14.5); `last` is
-the latest published boundary, which at any stopped moment *is* the run-so-
-far's terminal snapshot — §12.4's shutdown protocol being absent (README),
-that register is what the spec's terminal endpoint faithfully degenerates to.
+the latest published boundary — which at any stopped moment is the tail's
+final snapshot, published before the sticky status was set (§12.4), the
+terminal snapshot the spec retains unconditionally.
 
 The middle re-decimates progressively (D-137: a rolling window was rejected —
 what coarsens is density, never extent), amortized: `snaps` holds one
