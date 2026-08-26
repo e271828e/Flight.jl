@@ -1,10 +1,11 @@
 # The data plane (§11): staging cells with their frame-top drain — planes 1
-# and 2 of §11.1's replacement for the shared mutable model — snapshot
+# and 2 of §11.1's replacement for the shared mutable model — the diagnostic
+# channel with the published framework status (§11.8, §13.2), snapshot
 # publication, plane 3, and the log riding behind it (§11.2). The cells'
 # owners — the roster's device entries and the harness register beside them —
 # live in roster.jl, the device tasks that stage into them in devices.jl;
-# what stands further out in the spec — the trace, the snapshot's framework
-# status — is deliberately absent (README).
+# what stands further out in the spec — the trace, the pacer diagnostics —
+# is deliberately absent (README).
 #
 # This file holds the types and the pure mechanics; the `Simulation`-facing
 # surface — `stage!`, `drain!`, `publish!`, `latest` — lives in sim.jl, beside
@@ -22,131 +23,6 @@ carries the other stager's entries), and must not be re-staged.
 """
 mutable struct StagingCell{B}
     @atomic pending::Union{Nothing,Base.RefValue{B}}
-end
-
-"""
-The compiled writer (§11.4): one write surface's staged representation, fixed
-at a stopped-sim point — a device's compiled at attach against its claim set,
-the harness register's at deployment binding and at every roster change
-against its *derived* surface, the unclaimed complement (§11.3). The batch is
-a positional tuple over the surface, `Union{Nothing, Tᵢ}` per face, isbits and
-pointer-free, with `nothing` meaning *not touched this time*, never "reset".
-The face-name → position schema, the slot types and the per-position cell
-addresses — the compiled scatter's data — live here beside the staging cell
-they describe; a roster entry carries one of these per device (roster.jl), and
-the harness register carries the one whose shape the framework derives rather
-than receives.
-"""
-struct Writer{B<:Tuple,A<:Tuple}
-    faces::Vector{Symbol}    # position → face name: the schema
-    types::Vector{Any}       # position → the slot's declared type Tᵢ
-    addrs::A                 # position → the slot's cell address
-    cell::StagingCell{B}
-end
-
-_port_type(::CellAddr{P,K}) where {P,K} = P
-
-function Writer(layout::Layout, faces::Vector{Symbol})
-    addrs = Tuple(layout.addr[("", f)] for f in faces)
-    types = Any[_port_type(a) for a in addrs]
-    B = Tuple{(Union{Nothing,T} for T in types)...}
-    Writer{B,typeof(addrs)}(faces, types, addrs, StagingCell{B}(nothing))
-end
-
-"""
-§11.4's shim, run at staging on the writer's own side: the author's face ⇒
-value pairs become a batch — name → position, convert to the slot's declared
-type, fill `nothing`. Every diagnostic site follows the compilation here, to
-staging: face validity, surface membership and value convertibility are all
-static facts of the run, so a face with no position in the schema is discarded
-with a warning and an unconvertible value with `EntryTypeMismatch`, while the
-rest of the batch stands. Nothing remains at the drain.
-
-The out-of-schema warning discriminates by writer (§11.3, Appendix C): a
-device's entry is always `OutOfClaimEntry` — naming the incumbent when the
-face is claimed elsewhere — while the harness register's is `ClaimedFaceEntry`
-naming the incumbent when a rostered claim covers the face, and
-`OutOfClaimEntry` only when the face names no root slot at all. `claimedby` is
-the exclusivity index the roster maintains; `device` identifies a device
-writer and `nothing` the harness; `site` distinguishes ordinary staging from
-an attach's renormalization in the `ClaimedFaceEntry` payload. Returns
-`nothing` for a batch with no surviving entry.
-"""
-function _normalize(w::Writer{B}, pairs, claimedby::Dict{Symbol,String};
-                    device::Union{Nothing,String} = nothing,
-                    site::String = "at staging") where {B}
-    vals = Any[nothing for _ in w.faces]
-    for (face, v) in pairs
-        s = Symbol(face)
-        i = findfirst(==(s), w.faces)
-        if i === nothing
-            incumbent = get(claimedby, s, nothing)
-            if device !== nothing
-                held = incumbent === nothing ? "" : " — the face is claimed by $incumbent"
-                @warn "OutOfClaimEntry: `$face` is outside $device's claim, whose set is " *
-                      "$(_facelist(w.faces))$held; the entry is discarded (§11.3)"
-            elseif incumbent !== nothing
-                @warn "ClaimedFaceEntry: `$face` is claimed by $incumbent, and the harness " *
-                      "register speaks only for unclaimed faces; the entry is discarded " *
-                      "$site (§11.3)"
-            else
-                @warn "OutOfClaimEntry: `$face` names no face on the staging surface — " *
-                      "the surface is $(_facelist(w.faces)); the entry is discarded (§11.4)"
-            end
-            continue
-        end
-        vals[i] = try
-            convert(w.types[i], v)
-        catch
-            @warn "EntryTypeMismatch: `$face` cannot take $(repr(v))::$(typeof(v)) — " *
-                  "its slot declares $(w.types[i]); the entry is discarded (§11.4)"
-            continue
-        end
-    end
-    all(isnothing, vals) ? nothing : convert(B, (vals...,))
-end
-
-_facelist(faces) = isempty(faces) ? "empty" : "{$(join(faces, ", "))}"
-
-# The one coalescing policy (§11.4): merge, newest wins per face. Untouched
-# faces survive; re-staged faces take the newest level — the per-face ZOH.
-# Positional, so it compiles straight-line and union-splits. Plain `::Tuple`
-# arguments, because a sparse batch's *runtime* type is the narrow tuple of
-# what it touched — covariantly inside `B`, but two batches rarely share it.
-_merge(pending::Tuple, incoming::Tuple) =
-    map((p, i) -> i === nothing ? p : i, pending, incoming)
-
-# The CAS merge loop (§11.4), on the writer's task.
-function _stage!(w::Writer{B}, batch::B) where {B}
-    cell = w.cell
-    while true
-        pending = @atomic cell.pending
-        merged = pending === nothing ? batch : _merge(pending[], batch)
-        (; success) = @atomicreplace cell.pending pending => Base.RefValue{B}(merged)
-        success && return nothing
-    end
-end
-
-# The drain's application (§11.4): the compiled scatter, position → slot cell,
-# statically typed, `nothing` skipped — pure application, no checks.
-@generated function _apply!(store, addrs::Tuple, batch::Tuple)
-    stmts = [:(batch[$i] === nothing || scatter!(store, addrs[$i], batch[$i]))
-             for i in 1:fieldcount(batch)]
-    quote
-        $(stmts...)
-        nothing
-    end
-end
-
-# One cell's drain (§11.4): the indivisible take by `atomicswap`, then the
-# compiled scatter. Reached at frame top through the stopped-sim-compiled
-# thunks (roster.jl's `_drain_thunk`), inside which both arguments are
-# concrete.
-function _drain!(store, w::Writer)
-    ref = @atomicswap w.cell.pending = nothing
-    ref === nothing && return nothing
-    _apply!(store, w.addrs, ref[])
-    nothing
 end
 
 # --- the diagnostic channel (§11.8, §13.2, Appendix C) -------------------------
@@ -331,15 +207,226 @@ _take!(cell::DiagCell) = @atomicswap cell.batch = EMPTY_DIAG
 _beat!(cell::DiagCell) = (@atomic :release cell.heartbeat = time(); nothing)
 _heartbeat(cell::DiagCell) = @atomic :acquire cell.heartbeat
 
+"The shared empty delta (§11.8): a quiet writer's `recent`, one object for all of them."
+const EMPTY_RECENT = DiagValue[]
+
 """
-The loop's per-run totals for one writer (§11.8): cumulative per-kind counts
-since the run began — one field, the kind set's one member — owned by the
-loop, reset at each run's top, and read while stopped by `diagnostics(sim)`
-(the stand-in for the published framework status the snapshot does not carry,
-README). Mutable in its own holder so the roster entry stays immutable.
+The loop's private account for one writer (§11.8): everything on the loop's
+side of the cell, owned by the loop task alone. `recent` and `suppressed` are
+the pending delta — what the frame-top drain took and no snapshot has carried
+yet; the first publication after the drain takes them, so a reader at any
+cadence sees each occurrence exactly once in `recent`. `totals` is the
+cumulative per-kind record since the run began, reset at each run's top and
+*copied* into every status (`KindCounts` being isbits, the read is the copy):
+delta plus total is what makes the status legible at any reading cadence —
+nothing is lost by not looking.
 """
-mutable struct DiagTotals
-    malformed::Int
+mutable struct WriterAccount
+    recent::Vector{DiagValue}
+    suppressed::KindCounts
+    totals::KindCounts
+end
+WriterAccount() = WriterAccount(EMPTY_RECENT, KindCounts(), KindCounts())
+
+function _reset!(a::WriterAccount)
+    a.recent = EMPTY_RECENT
+    a.suppressed = KindCounts()
+    a.totals = KindCounts()
+    nothing
+end
+
+# The frame-top fold (§11.8): the indivisible take, then — the batch
+# exclusively the loop's — retained values into the pending delta and every
+# occurrence, retained and suppressed alike, into the totals. The quiet path
+# is the sentinel coming back: no allocation, nothing touched.
+function _fold!(a::WriterAccount, cell::DiagCell)
+    batch = _take!(cell)
+    batch === EMPTY_DIAG && return nothing
+    counts = batch.suppressed
+    for d in batch.ring
+        counts = _bump(counts, _kind(d))
+    end
+    a.recent = a.recent === EMPTY_RECENT ? copy(batch.ring) : append!(a.recent, batch.ring)
+    a.suppressed = a.suppressed + batch.suppressed
+    a.totals = a.totals + counts
+    nothing
+end
+
+"""
+One writer's record in the published framework status (§11.8): `recent` — the
+ring the frame's drain took, at most `DIAG_RING` entries, riding exactly one
+snapshot; `suppressed` — the per-kind counts the ring refused alongside them;
+`totals` — the cumulative account since the run began, monotone across
+snapshots (so log decimation loses *which* boundary an occurrence fell on,
+never *how many*); and, for a rostered device, the liveness `heartbeat`
+(§12.2) beside the `task_state` the loop reads off the run's `Task` handle at
+publication (D-193) — `:none` when no task exists (a failed `init!`, or a
+stopped sim), `:running`, `:done`, or `:failed`. The harness register's and
+the loop's own records carry `nothing` for both: no task of their own to be
+alive or dead.
+"""
+struct WriterStatus
+    who::String
+    recent::Vector{DiagValue}
+    suppressed::KindCounts
+    totals::KindCounts
+    heartbeat::Union{Nothing,Float64}
+    task_state::Union{Nothing,Symbol}
+end
+
+"""
+The published framework status (§11.8, §11.2): a concrete frozen value, never
+a window onto live bookkeeping — per-writer records in the drain's own order,
+each rostered device in attachment order, then the harness register, then the
+loop itself. Built fresh in `publish!` and frozen into the snapshot; the
+binding rule holds because everything here is either immutable, a copy, or a
+vector the account has released.
+"""
+struct FrameworkStatus
+    writers::Vector{WriterStatus}
+end
+
+"§12.2's staleness threshold, in seconds of wall clock: advisory, a display rule, never a kill trigger."
+const STALE_S = 2.0
+
+"""
+    stale(w::WriterStatus; now = time())
+
+§12.2's liveness read: a device whose heartbeat is more than `STALE_S` behind
+wall clock — deliberately loose, tolerating a device legitimately parked in a
+blocking read between rare data. A starved, blocked or crashed device shows
+as a stale heartbeat with a name on it, not as mysteriously frozen physics;
+the never-heartbeated cell's `0.0` reads stale unconditionally. `false` for
+the harness's and the loop's records, which have no heartbeat to judge.
+"""
+stale(w::WriterStatus; now::Float64 = time()) =
+    w.heartbeat !== nothing && now - w.heartbeat > STALE_S
+
+_task_state(::Nothing) = :none
+_task_state(t::Task) = istaskfailed(t) ? :failed : istaskdone(t) ? :done : :running
+
+"""
+The compiled writer (§11.4): one write surface's staged representation, fixed
+at a stopped-sim point — a device's compiled at attach against its claim set,
+the harness register's at deployment binding and at every roster change
+against its *derived* surface, the unclaimed complement (§11.3). The batch is
+a positional tuple over the surface, `Union{Nothing, Tᵢ}` per face, isbits and
+pointer-free, with `nothing` meaning *not touched this time*, never "reset".
+The face-name → position schema, the slot types and the per-position cell
+addresses — the compiled scatter's data — live here beside the staging cell
+they describe; a roster entry carries one of these per device (roster.jl), and
+the harness register carries the one whose shape the framework derives rather
+than receives.
+"""
+struct Writer{B<:Tuple,A<:Tuple}
+    faces::Vector{Symbol}    # position → face name: the schema
+    types::Vector{Any}       # position → the slot's declared type Tᵢ
+    addrs::A                 # position → the slot's cell address
+    cell::StagingCell{B}
+end
+
+_port_type(::CellAddr{P,K}) where {P,K} = P
+
+function Writer(layout::Layout, faces::Vector{Symbol})
+    addrs = Tuple(layout.addr[("", f)] for f in faces)
+    types = Any[_port_type(a) for a in addrs]
+    B = Tuple{(Union{Nothing,T} for T in types)...}
+    Writer{B,typeof(addrs)}(faces, types, addrs, StagingCell{B}(nothing))
+end
+
+"""
+§11.4's shim, run at staging on the writer's own side: the author's face ⇒
+value pairs become a batch — name → position, convert to the slot's declared
+type, fill `nothing`. Every diagnostic site follows the compilation here, to
+staging: face validity, surface membership and value convertibility are all
+static facts of the run, so a face with no position in the schema is
+discarded under an `OutOfClaimEntry`/`ClaimedFaceEntry` and an unconvertible
+value under `EntryTypeMismatch`, while the rest of the batch stands. Nothing
+remains at the drain. The diagnostics are written into the writer's own cell
+(§11.8) — the device's for a handle staging, the harness register's
+otherwise — on the staging task, surfacing in the status at the next frame
+top's drain; a batch staged while stopped waits in the cell exactly as its
+entries wait in the staging cell.
+
+The out-of-schema kind discriminates by writer (§11.3, Appendix C): a
+device's entry is always `OutOfClaimEntry` — naming the incumbent when the
+face is claimed elsewhere — while the harness register's is `ClaimedFaceEntry`
+naming the incumbent when a rostered claim covers the face, and
+`OutOfClaimEntry` only when the face names no root slot at all. `claimedby` is
+the exclusivity index the roster maintains; `device` identifies a device
+writer and `nothing` the harness; `site` distinguishes ordinary staging from
+an attach's renormalization in the `ClaimedFaceEntry` payload. Returns
+`nothing` for a batch with no surviving entry.
+"""
+function _normalize(w::Writer{B}, pairs, claimedby::Dict{Symbol,String},
+                    cell::DiagCell; device::Union{Nothing,String} = nothing,
+                    site::Symbol = :staging) where {B}
+    vals = Any[nothing for _ in w.faces]
+    for (face, v) in pairs
+        s = Symbol(face)
+        i = findfirst(==(s), w.faces)
+        if i === nothing
+            incumbent = get(claimedby, s, nothing)
+            if device !== nothing
+                _report!(cell, OutOfClaimEntry(s, v, w.faces, incumbent))
+            elseif incumbent !== nothing
+                _report!(cell, ClaimedFaceEntry(s, incumbent, v, site))
+            else
+                _report!(cell, OutOfClaimEntry(s, v, w.faces, nothing))
+            end
+            continue
+        end
+        vals[i] = try
+            convert(w.types[i], v)
+        catch
+            _report!(cell, EntryTypeMismatch(s, v, w.types[i]))
+            continue
+        end
+    end
+    all(isnothing, vals) ? nothing : convert(B, (vals...,))
+end
+
+_facelist(faces) = isempty(faces) ? "empty" : "{$(join(faces, ", "))}"
+
+# The one coalescing policy (§11.4): merge, newest wins per face. Untouched
+# faces survive; re-staged faces take the newest level — the per-face ZOH.
+# Positional, so it compiles straight-line and union-splits. Plain `::Tuple`
+# arguments, because a sparse batch's *runtime* type is the narrow tuple of
+# what it touched — covariantly inside `B`, but two batches rarely share it.
+_merge(pending::Tuple, incoming::Tuple) =
+    map((p, i) -> i === nothing ? p : i, pending, incoming)
+
+# The CAS merge loop (§11.4), on the writer's task.
+function _stage!(w::Writer{B}, batch::B) where {B}
+    cell = w.cell
+    while true
+        pending = @atomic cell.pending
+        merged = pending === nothing ? batch : _merge(pending[], batch)
+        (; success) = @atomicreplace cell.pending pending => Base.RefValue{B}(merged)
+        success && return nothing
+    end
+end
+
+# The drain's application (§11.4): the compiled scatter, position → slot cell,
+# statically typed, `nothing` skipped — pure application, no checks.
+@generated function _apply!(store, addrs::Tuple, batch::Tuple)
+    stmts = [:(batch[$i] === nothing || scatter!(store, addrs[$i], batch[$i]))
+             for i in 1:fieldcount(batch)]
+    quote
+        $(stmts...)
+        nothing
+    end
+end
+
+# One cell's drain (§11.4): the indivisible take by `atomicswap`, then the
+# compiled scatter. Reached at frame top through the stopped-sim-compiled
+# thunks (roster.jl's `_drain_thunk`), inside which both arguments are
+# concrete.
+function _drain!(store, w::Writer)
+    ref = @atomicswap w.cell.pending = nothing
+    ref === nothing && return nothing
+    _apply!(store, w.addrs, ref[])
+    nothing
 end
 
 # --- publication (§11.2) -------------------------------------------------------
@@ -349,13 +436,13 @@ A snapshot (§11.2): the boundary-consistent signal table — the *whole* table,
 root slots riding along as the source cells they are — with `t`, the frame
 ordinal and the §12.3 boundary ordinal, the counter-home rule: the index
 rides *in* the snapshot, so any holder of one — the log, a post-run
-inspector — indexes it without consulting the loop. Built in private memory
-by copying the cell buffers, then handed out through one release-store;
-nothing reachable from a published snapshot is ever written again, which is
-what makes the lock-free read sound. The state stores (`x`, `s`, `m`) are
-deliberately not carried (§11.2) and the framework status is absent here
-(README). Read it with `port(snap, path, name)`, addressed exactly as the
-live table.
+inspector — indexes it without consulting the loop. The framework status
+rides beside the table (§11.8): the per-writer diagnostic account, frozen.
+Built in private memory by copying the cell buffers, then handed out through
+one release-store; nothing reachable from a published snapshot is ever
+written again, which is what makes the lock-free read sound. The state
+stores (`x`, `s`, `m`) are deliberately not carried (§11.2). Read it with
+`port(snap, path, name)`, addressed exactly as the live table.
 """
 struct Snapshot{T,S<:StoreBundle}
     t::T
@@ -363,6 +450,7 @@ struct Snapshot{T,S<:StoreBundle}
     boundary::Int     # the §12.3 published-boundary ordinal; boundary zero = 0
     store::S
     layout::Layout    # build-frozen addressing, shared, never copied
+    status::FrameworkStatus
 end
 
 port(s::Snapshot, path::String, name::Symbol) = gather(s.store, s.layout.addr[(path, name)])

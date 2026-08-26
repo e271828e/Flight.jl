@@ -94,26 +94,38 @@ end
     @test_logs run!(simt, 0.5)
     @test modes(simt, "children/s1").t_fired == modes(simt, "children/s2").t_fired
     @test modes(simt, "children/s1").t_fired ≈ 0.315 atol = 1e-6
+    @test writer_status(latest(simt), "loop").totals.chattering == 0
 
     # Distinct crossings under budget 1: the earliest localizes, the second
-    # spends nothing — it degrades to boundary granularity under the warning,
+    # spends nothing — it degrades to boundary granularity under the report,
     # stamping the frame top.
     simb = Simulation(m2(); h = 1//10, localization_budget = 1)
     init!(simb)
-    @test_logs (:warn, r"ChatteringBudget: event `cross` at `children/s2`") run!(simb, 0.5)
+    run!(simb, 0.5)                    # the degradation reports on the loop's cell (§11.8)
     @test modes(simb, "children/s1").t_fired ≈ 0.31 atol = 1e-6
     @test modes(simb, "children/s2").t_fired == 4 * simb.h
+    lw = writer_status(latest(simb), "loop")
+    cb = only(lw.recent)               # frame 4's report, folded at frame 5's top
+    @test cb isa ChatteringBudget
+    @test cb.path == "children/s2" && cb.event == :cross
+    @test cb.budget == 1 && cb.count == 1 && cb.t == 0.4
+    @test lw.totals.chattering == 1
 end
 
-@testset "budget exhaustion degrades to boundary granularity and warns (§10.4)" begin
+@testset "budget exhaustion degrades to boundary granularity, reported (§10.4, §11.8)" begin
     # The relaxer re-arms 1 ms below its level, so each remainder re-crosses
     # within the frame: 8 localizations at 50..57 ms spend the default budget,
-    # the 9th trigger warns — naming the event and the count — and fires in the
-    # frame top's ordinary iteration. The remainder had already completed, so
-    # the run proceeds, at boundary granularity for that frame alone.
+    # the 9th trigger reports — naming the event and the count — and fires in
+    # the frame top's ordinary iteration. The remainder had already completed,
+    # so the run proceeds, at boundary granularity for that frame alone.
     sim = Simulation(single(Relaxer(1.0, 0.05, 0.001)); h = 1//10)
     init!(sim)
-    @test_logs (:warn, r"ChatteringBudget: event `pop` at `children/c` has localized 8 times") run!(sim, 0.1)
+    # The report lands in the run's only frame, past that frame's own top: no
+    # later drain exists, so no snapshot can carry it — the run's-end sweep
+    # presents it through the logging backend instead, the tail's renderer of
+    # last resort (§11.8, README's stand-ins).
+    @test_logs (:warn, r"ChatteringBudget from loop, past the final snapshot's account.*children/c") #=
+        =# run!(sim, 0.1)
     @test modes(sim, "children/c").count == 9               # 8 at t*, 1 at the frame top
     @test state(sim, "children/c").q ≈ 0.049 atol = 1e-12   # the frame-top firing re-armed it
 end

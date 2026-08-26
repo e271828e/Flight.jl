@@ -62,13 +62,24 @@ end
 @testset "every check runs at staging, on the writer's side; the drain is pure (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
     init!(sim)
-    @test_logs (:warn, r"OutOfClaimEntry: `flaps` names no face") stage!(sim, "flaps" => 1.0)
-    @test_logs (:warn, r"EntryTypeMismatch: `a` cannot take") stage!(sim, "a" => "high")
+    # Each rejection is written into the harness register's diagnostic cell on
+    # the staging task (§11.8) — a stopped-sim staging waits there exactly as
+    # its surviving entries wait in the staging cell, both drained at the next
+    # run's first frame top.
+    stage!(sim, "flaps" => 1.0)
+    stage!(sim, "a" => "high")
     # A rejected entry is discarded; the rest of its batch stands.
-    @test_logs (:warn, r"OutOfClaimEntry") stage!(sim, "b" => 4.0, "gear" => 1.0)
+    stage!(sim, "b" => 4.0, "gear" => 1.0)
     run!(sim, 0.1)
     @test port(sim, "", :a) === 0.0          # nothing surviving ever named `a`
     @test port(sim, "", :b) === 4.0
+    hw = writer_status(latest(sim), "harness")
+    @test hw.totals.out_of_claim == 2 && hw.totals.type_mismatch == 1
+    @test length(hw.recent) == 3             # the one frame's snapshot carries the delta
+    ooc = only(d for d in hw.recent if d isa OutOfClaimEntry && d.face === :flaps)
+    @test ooc.value == 1.0 && ooc.incumbent === nothing   # no claim anywhere: no such face
+    etm = only(d for d in hw.recent if d isa EntryTypeMismatch)
+    @test etm.face === :a && etm.value == "high" && etm.declared === Float64
 end
 
 @testset "the shim converts to the activation's slot types (§11.4)" begin

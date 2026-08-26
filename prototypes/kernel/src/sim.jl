@@ -29,6 +29,8 @@ struct Simulation{T,S,B,CL,EV,M}
     published::Published          # §11.2's `@atomic latest` holder
     control::Control              # §12.1's stop word, §12.4's sticky status, §12.3's wait (devices.jl)
     log::SnapshotLog              # §11.2's retained snapshots, loop-task bookkeeping
+    loop_diag::DiagCell           # the loop's own diagnostic cell (§11.8): the budget degradations
+    loop_acct::WriterAccount      # and the account behind it
 end
 
 """
@@ -120,7 +122,8 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         Int(localization_budget), Float64(join_timeout), any(c.events.localized), bound.sched,
         c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
         DataPlane(act.layout, c.store), Published(nothing), Control(),
-        SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)))
+        SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)),
+        DiagCell(EMPTY_DIAG), WriterAccount())
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -230,10 +233,10 @@ function event_phase!(sim::Simulation, tick)
             edge = !es.last[i] && es.now[i]
             eligible = edge && es.count[i] < budget
             if edge && !eligible && !es.warned[i]
-                es.warned[i] = true
+                es.warned[i] = true       # at most one report per event per boundary
                 (path, name) = es.names[i]
-                @warn "FiringBudget: event `$name` at `$path` has fired $budget times at " *
-                      "the boundary t = $(sim.clock.t); its further edges here are lost (§10.6)"
+                _report!(sim.loop_diag,   # the loop's own cell (§11.8): folded at the next frame top
+                         FiringBudget(path, name, Float64(sim.clock.t), budget, es.count[i]))
             end
             firing = eligible && !es.comp_fired[es.owner[i]]
             es.fire[i] = firing
@@ -291,6 +294,7 @@ function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     sim.clock.step = 0
     fill!(sim.events.prior, false)
     _reset!(sim.log)
+    _reset_accounts!(sim)         # a new trajectory opens a fresh account (§11.8)
     boundary!(sim, 0)
     publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
     nothing
@@ -327,14 +331,13 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
     @atomic plane.running = true      # the §11.3 freeze: the roster is fixed for the run
     try
         @atomic ctl.stop_requested = false
-        for e in plane.roster
-            e.totals.malformed = 0    # §11.8: totals count since the run began
-        end
+        _reset_accounts!(sim)                 # §11.8: totals count since the run began
         live = _init_devices!(sim)            # §12.4's pre-spawn bracket, attachment order
         @atomic ctl.stopped = false
         ct = findfirst(e -> needs_calling_task(e.dev), live)
         if ct === nothing                     # the unattended register (§11.1)
             tasks = _spawn!(live)
+            _register_tasks!(plane, live, tasks)
             try
                 _loop!(sim, target)
             finally
@@ -345,6 +348,8 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
             e_ct = live[ct]
             others = [live[i] for i in eachindex(live) if i != ct]
             tasks = _spawn!(others)
+            _register_tasks!(plane, others, tasks)
+            plane.run_tasks[e_ct.id] = current_task()   # the inline body's task (§11.1)
             e_ct.handle.last_seen = ctl.counter
             loop_task = Threads.@spawn try
                 _loop!(sim, target)
@@ -360,13 +365,28 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
         end
     finally
         @atomic ctl.stopped = true
-        for e in plane.roster
-            _drain_diag!(e)                   # the run's last diagnostic drain (§11.8):
-        end                                   # what was reported after the last frame top
-        @atomic plane.running = false         # still lands in this run's warnings and totals
+        _sweep_tail!(sim)                     # the run's last take (§11.8): what landed past
+        empty!(plane.run_tasks)               # the final frame top — presented, never published
+        @atomic plane.running = false         # (devices.jl); tasks are run-scoped equipment
     end
     nothing
 end
+
+# The per-run reset (§11.8): every writer's account starts the run — and, from
+# init!, the trajectory — at zero. The cells are deliberately not touched: a
+# batch reported or staged while stopped waits for the first frame top's
+# drain, exactly as a staged input batch waits (§11.4).
+function _reset_accounts!(sim::Simulation)
+    for e in sim.plane.roster
+        _reset!(e.acct)
+    end
+    _reset!(sim.plane.harness_acct)
+    _reset!(sim.loop_acct)
+    nothing
+end
+
+_register_tasks!(plane::DataPlane, entries::Vector{RosterEntry}, tasks::Vector{Task}) =
+    (for (e, t) in zip(entries, tasks); plane.run_tasks[e.id] = t; end; nothing)
 
 # The frame loop, stop-aware: the stop word is consulted at the frame top
 # (§12.1) and the loop never stops mid-frame — a stop observed here leaves the
@@ -466,7 +486,7 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
     h = DeviceHandle(id, "device $id ($(typeof(dev)))", b, w, plane, sim.control,
                      sim.published, diag, rg, sim.control.counter)
     push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.store, w),
-                                    should_abort, diag, DiagTotals(0), h))
+                                    should_abort, diag, WriterAccount(), h))
     reclaim!(plane, sim.layout)
     is_greedy(b) && isempty(claim) &&
         @warn "EmptyGreedyClaim: device $id ($(typeof(dev))) under $(typeof(b)) staked " *
@@ -504,12 +524,13 @@ Stage a batch of root-slot writes from any task, at any wall-clock moment,
 never touching a live slot (§11.1): the entries land in the writer's staging
 cell under the one coalescing policy — CAS merge, newest wins per face
 (§11.4). Untouched faces survive into the pending batch; re-staged faces take
-the newest level. Every check runs here, on the writer's side: a face outside
-the harness surface is discarded with a warning — `ClaimedFaceEntry` naming
-the incumbent when a rostered claim covers the face (a rostered greedy
-claimant empties the harness surface outright, D-192) and `OutOfClaimEntry`
-when nothing does — an unconvertible value under `EntryTypeMismatch`, and the
-rest of the batch stands. The staged batch is applied by the drain at the top
+the newest level. Every check runs here, on the writer's side, its findings
+written into the harness register's diagnostic cell (§11.8): a face outside
+the harness surface is discarded — `ClaimedFaceEntry` naming the incumbent
+when a rostered claim covers the face (a rostered greedy claimant empties the
+harness surface outright, D-192) and `OutOfClaimEntry` when nothing does — an
+unconvertible value under `EntryTypeMismatch`, and the rest of the batch
+stands. The staged batch is applied by the drain at the top
 of the next frame `run!` advances. A device stages through the handle its
 `attach!` returned — `stage!(handle, pairs...)`, devices.jl — the same shim
 against its own claim set.
@@ -517,7 +538,7 @@ against its own claim set.
 function stage!(sim::Simulation, pairs::Pair...)
     plane = sim.plane
     w = plane.harness
-    batch = _normalize(w, pairs, plane.claimedby)
+    batch = _normalize(w, pairs, plane.claimedby, plane.harness_diag)
     batch === nothing || _stage!(w, batch)
     nothing
 end
@@ -537,9 +558,11 @@ function drain!(sim::Simulation)
     plane = sim.plane
     for e in plane.roster
         e.drain()
-        _drain_diag!(e)     # the diagnostic cells drain at the same point (§11.8)
-    end
-    plane.harness_drain()
+        _fold!(e.acct, e.diag)    # the diagnostic cells drain at the same point (§11.8):
+    end                           # retained values into the pending delta, every
+    plane.harness_drain()         # occurrence into the totals
+    _fold!(plane.harness_acct, plane.harness_diag)
+    _fold!(sim.loop_acct, sim.loop_diag)
     nothing
 end
 
@@ -549,16 +572,22 @@ buffer copy, the framework side of §7.5's scope — then a single release-store
 to `latest`. Runs only after the boundary sequence completes, so every
 published table is boundary-consistent (§10.3), and the copy is what makes the
 binding rule hold: nothing reachable from a published snapshot is ever written
-again. Behind the store the snapshot enters the log (§11.2) — logging
-dissolves into publication, retention being the only thing the log adds — and
-the §12.3 counter increments under its lock, *after* the release-store: the
-normative order, so a waiter observing the new count finds at least this
-boundary in `latest`. The counter is read unlocked to stamp the snapshot's
-ordinal, the loop task being its only writer.
+again. The framework status is built here too (§11.8): each writer's record
+takes the account's pending delta — so the drain's `recent` rides exactly one
+snapshot, the first published after the frame top — beside the totals copy,
+the heartbeat acquire-load and the `task_state` read off the run's `Task`
+handle (D-193), fresh at every publication. Behind the store the snapshot
+enters the log (§11.2) — logging dissolves into publication, retention being
+the only thing the log adds — and the §12.3 counter increments under its
+lock, *after* the release-store: the normative order, so a waiter observing
+the new count finds at least this boundary in `latest`. The counter is read
+unlocked to stamp the snapshot's ordinal, the loop task being its only
+writer.
 """
 function publish!(sim::Simulation)
     ctl = sim.control
-    snap = Snapshot(sim.clock.t, sim.clock.step, ctl.counter, capture(sim.store), sim.layout)
+    snap = Snapshot(sim.clock.t, sim.clock.step, ctl.counter, capture(sim.store),
+                    sim.layout, _status(sim))
     @atomic :release sim.published.latest = snap
     log!(sim.log, snap)
     lock(ctl.cond)
@@ -569,6 +598,32 @@ function publish!(sim::Simulation)
         unlock(ctl.cond)
     end
     nothing
+end
+
+# One writer's record (§11.8): the account's pending delta is *taken* — the
+# status owns the vector, the account re-arms the shared empty — and the
+# totals, isbits, copy by read. `hb` and `ts` are `nothing` for the two
+# writers with no task of their own.
+function _writer_status(who::String, a::WriterAccount, hb, ts)
+    ws = WriterStatus(who, a.recent, a.suppressed, a.totals, hb, ts)
+    a.recent = EMPTY_RECENT
+    a.suppressed = KindCounts()
+    ws
+end
+
+# The status assembly (§11.8, §11.2), on the publishing task: per-writer
+# records in the drain's order — devices in attachment order, then the
+# harness register, then the loop itself.
+function _status(sim::Simulation)
+    plane = sim.plane
+    ws = Vector{WriterStatus}(undef, length(plane.roster) + 2)
+    for (i, e) in enumerate(plane.roster)
+        t = get(plane.run_tasks, e.id, nothing)
+        ws[i] = _writer_status(_who(e), e.acct, _heartbeat(e.diag), _task_state(t))
+    end
+    ws[end-1] = _writer_status("harness", plane.harness_acct, nothing, nothing)
+    ws[end] = _writer_status("loop", sim.loop_acct, nothing, nothing)
+    FrameworkStatus(ws)
 end
 
 """
@@ -605,23 +660,6 @@ function logged(sim::Simulation)
     end
     L.last === out[end] || push!(out, L.last)
     out
-end
-
-"""
-    diagnostics(sim)
-
-The per-writer cumulative counts of the run that last ended (§11.8): one
-`"device id (Type)" => count` pair per rostered device, in attachment order,
-counting every `MalformedDatum` occurrence since that run began — retained
-and suppressed alike, so decimated presentation loses *which* frame, never
-*how many*. A stopped-sim read behind the §11.3 gate, and a stand-in
-(README): the spec folds these totals into the framework status every
-snapshot carries, which is absent here — what survives is the channel
-itself and the run-end account an unattended run still answers from.
-"""
-function diagnostics(sim::Simulation)
-    assert_stopped(sim.plane, "diagnostics")
-    [_who(e) => e.totals.malformed for e in sim.plane.roster]
 end
 
 # --- reading and writing the table outside the loop ---------------------------

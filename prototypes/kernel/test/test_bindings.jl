@@ -150,8 +150,11 @@ end
     sim2 = Simulation(two_slots(); h = 1//10)
     attach!(sim2, Poller((; wheel = 0.1)), TableBinding(stick = (face = "a",)))
     init!(sim2)
-    @test_logs (:warn, r"DeviceCrash: device 1 \(Poller\)") match_mode=:any run!(sim2, 0.2)
+    logs, _ = Test.collect_test_logs() do
+        run!(sim2, 0.2)
+    end
     @test sim2.clock.step == 2               # the crash is the device's alone
+    @test crash_accounted(sim2, logs, "device 1 (Poller)")
 end
 
 @testset "the output side completes the conformance check, both directions (§11.6)" begin

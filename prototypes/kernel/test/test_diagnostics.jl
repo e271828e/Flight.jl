@@ -1,8 +1,9 @@
-# --- the bad-datum channel and the diagnostic cell (§11.6, §11.8; increment 13) --
-# report! from the author's loop body, the per-device single-writer cell with
-# its ring-plus-counts bound, the frame-top sentinel-swap drain beside the
-# staging drain, and the per-run totals behind diagnostics(sim). The devices
-# below live at top level for the README's local-scope reason.
+# --- the diagnostic channel and the framework status (§11.8; increments 13–14) --
+# report! from the author's loop body, the per-writer single-writer cells with
+# their ring-plus-counts bound, the frame-top fold beside the staging drain,
+# the published status — delta plus totals, heartbeat and task_state — and the
+# run's-end sweep. The devices below live at top level for the README's
+# local-scope reason.
 
 # A datum-stream parser: the §11.6 tolerance idiom verbatim — catch its own
 # parser error, stage nothing for that datum, report, continue with the next.
@@ -27,8 +28,8 @@ function loop(d::Parser, h)
     nothing
 end
 
-# A late reporter: its one report lands after the last frame top the run
-# drains, so only the run-end drain can account for it.
+# A late reporter: its one report races the run's last frame top, so its
+# account may land in the terminal status or in the run's-end sweep.
 mutable struct LateReporter <: AbstractDevice
     fired::Bool
 end
@@ -41,6 +42,19 @@ function loop(d::LateReporter, h)
     nothing
 end
 
+# A snapshot consumer that stays in its loop: the liveness testset's device.
+mutable struct Ticker <: AbstractDevice
+    n::Int
+end
+Ticker() = Ticker(0)
+function loop(d::Ticker, h)
+    while running(h)
+        wait_next_snapshot(h)
+        (d.n += 1) ≥ 3 && return stop!(h)
+    end
+    nothing
+end
+
 @testset "a bad datum is tolerated: catch, stage nothing, report, continue (§11.6)" begin
     sim = Simulation(two_slots(); h = 1//10)
     dev = Parser(0.7, "garbage", 0.9)
@@ -50,54 +64,101 @@ end
         run!(sim, 1000.0)                        # ends by the device's stop
     end
     msgs = [string(l.message) for l in logs]
-    # The link survived its truncated datagram: no crash, and the report
-    # surfaced device-attributed, carrying the author's cause.
+    # The link survived its truncated datagram: no crash, and the report is
+    # accounted device-attributed exactly once — in the terminal status when a
+    # frame top folded it, in the run's-end sweep when none remained (§11.8).
     @test !any(occursin("DeviceCrash", m) for m in msgs)
-    @test count(occursin("MalformedDatum from device 1 (Parser)", m) for m in msgs) == 1
-    @test any(occursin("unparseable", m) for m in msgs)
-    @test diagnostics(sim) == ["device 1 (Parser)" => 1]
+    @test accounted(sim, logs, "device 1 (Parser)", :malformed, "MalformedDatum")
+    # The author's cause survives wherever the record landed: in some logged
+    # snapshot's recent, or in the sweep's presentation.
+    carried = any(d isa MalformedDatum && occursin("unparseable", string(d.cause))
+                  for s in logged(sim)
+                  for d in writer_status(s, "device 1 (Parser)").recent)
+    @test carried ⊻ any(occursin("unparseable", m) for m in msgs)
     # The stream's good datums reached the slot (newest wins within the staged
     # batch, applied at the next run's first drain).
     run!(sim, (sim.clock.step + 1) * sim.h)
     @test port(sim, "", :a) === 0.9
 end
 
-@testset "the ring's bound is the rate limit: 16 retained, excess to the count (§11.8)" begin
+@testset "the ring's bound is the rate limit: 16 retained, excess to the counts (§11.8)" begin
     sim = Simulation(two_slots(); h = 1//10)
     h = attach!(sim, Pad("p"), Enumerated("a"))
     init!(sim)
-    logs, _ = Test.collect_test_logs() do
-        for k in 1:20                            # one frame's flood, staged while pending
-            report!(h, MalformedDatum("datum $k"))
-        end
-        run!(sim, 0.1)                           # the first frame top drains the cell
+    for k in 1:20                                # one frame's flood, pending in the cell
+        report!(h, MalformedDatum("datum $k"))
     end
-    msgs = [string(l.message) for l in logs]
-    reports = [m for m in msgs if occursin("MalformedDatum", m)]
-    @test length(reports) == DIAG_RING + 1       # 16 retained + the suppression summary
+    run!(sim, 0.1)                               # the first frame top folds the cell
+    mw = writer_status(latest(sim), "device 1 (Pad)")
     # Earliest-in-frame retained: the first occurrences carry the diagnostic
-    # content, the excess becomes exactly a count.
-    @test any(occursin("datum 16", m) for m in reports)
-    @test !any(occursin("datum 17", m) for m in reports)
-    @test any(occursin("4 more occurrence", m) for m in reports)
+    # content, the excess becomes exactly a per-kind count beside them.
+    @test [d.cause for d in mw.recent] == ["datum $k" for k in 1:DIAG_RING]
+    @test mw.suppressed.malformed == 4
     # Nothing is lost by not looking: the totals carry the full account.
-    @test diagnostics(sim) == ["device 1 (Pad)" => 20]
+    @test mw.totals.malformed == 20
 end
 
-@testset "totals are per run, and the run's end drains what remains (§11.8, §12.4)" begin
+@testset "the status: the delta rides one snapshot, totals ride every one (§11.8, §11.2)" begin
+    sim = Simulation(two_slots(); h = 1//10)
+    h = attach!(sim, Pad("p"), Enumerated("a"))
+    init!(sim)
+    # Boundary zero's status: the writers in the drain's order — devices in
+    # attachment order, the harness register, the loop — every account zero,
+    # and no run task to be alive: device tasks are run-scoped observables.
+    st0 = latest(sim).status
+    @test [w.who for w in st0.writers] == ["device 1 (Pad)", "harness", "loop"]
+    @test all(w.totals == KindCounts() && isempty(w.recent) for w in st0.writers)
+    @test writer_status(latest(sim), "device 1 (Pad)").task_state === :none
+    # The harness's and the loop's records have no task and no heartbeat to
+    # judge: never stale, `nothing` for both fields.
+    @test writer_status(latest(sim), "loop").heartbeat === nothing
+    @test !stale(writer_status(latest(sim), "harness"))
+    report!(h, MalformedDatum("one"))            # pending before the run: folded at frame 1's top
+    run!(sim, 0.5)
+    snaps = logged(sim)                          # boundary zero, then frames 1..5
+    dw(s) = writer_status(s, "device 1 (Pad)")
+    # Exactly one snapshot carries the occurrence in `recent` — the first
+    # published after the fold — while `totals` is monotone from there on:
+    # a 60 Hz reader sees it once, an occasional sampler still reads the
+    # complete account, and log decimation loses *which* boundary, never
+    # *how many* (§11.8).
+    @test [length(dw(s).recent) for s in snaps] == [0, 1, 0, 0, 0, 0]
+    @test [dw(s).totals.malformed for s in snaps] == [0, 1, 1, 1, 1, 1]
+    @test only(dw(snaps[2]).recent).cause == "one"
+end
+
+@testset "liveness: heartbeat and task_state ride the device's record (§11.8, §12.2, §12.4)" begin
+    sim = Simulation(two_slots(); h = 1//10)
+    dev = Ticker()
+    attach!(sim, dev, Enumerated())
+    init!(sim)
+    run!(sim, 1000.0)                            # ends by the device's stop, ≥ 3 boundaries in
+    @test dev.n ≥ 3
+    tw = writer_status(latest(sim), "device 1 (Ticker)")
+    # The device consumed boundaries through the handle primitives, each pass
+    # storing the heartbeat: the terminal record reads fresh, with a live (or
+    # by now returned) task — never `:none`, never the stale silence of a
+    # device that was never there (§12.2: a starved or dead device shows as a
+    # stale heartbeat with a name on it).
+    @test tw.heartbeat > 0 && !stale(tw)
+    @test tw.task_state in (:running, :done)
+end
+
+@testset "the run's-end sweep: past the final frame top, loud rather than lost (§11.8, §12.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
     dev = LateReporter()
     attach!(sim, dev, Enumerated())
     init!(sim)
-    # The report lands between the run's last frame top and its stop: only the
-    # run-end drain can surface it within this run — and it does, the warning
-    # arriving inside run! and the totals counting it.
-    @test_logs (:warn, r"MalformedDatum from device 1 \(LateReporter\): late") #=
-        =# match_mode=:any run!(sim, 1000.0)
-    @test diagnostics(sim) == ["device 1 (LateReporter)" => 1]
-    # A fresh run starts a fresh account: totals count since the run began.
+    logs, _ = Test.collect_test_logs() do
+        run!(sim, 1000.0)
+    end
+    # The report races the last frame top: folded into the terminal status, or
+    # — no drain remaining — presented by the sweep, the tail's renderer of
+    # last resort. Exactly one account either way (§11.8, README's stand-ins).
+    @test accounted(sim, logs, "device 1 (LateReporter)", :malformed, "MalformedDatum")
+    # A fresh run opens a fresh account: totals count since the run began.
     run!(sim, (sim.clock.step + 2) * sim.h)
-    @test diagnostics(sim) == ["device 1 (LateReporter)" => 0]
+    @test writer_status(latest(sim), "device 1 (LateReporter)").totals.malformed == 0
 end
 
 @testset "the cell is kind-generic: mixed rings, per-kind suppression (§11.8, §13.2)" begin

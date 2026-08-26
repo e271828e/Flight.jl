@@ -134,6 +134,25 @@ compiled to the one gather `gather(handle, snap)` runs, `map_output`
 receiving exactly its NamedTuple, and the conformance check completed over
 both (trait, method) pairs. Two stand-ins enter the table.
 
+**Increment 14 — the diagnostic channel and the framework status.** §11.8
+completed over §13.2's runtime stream: the closed kind set as types over the
+fixed-shape isbits `KindCounts`, one cell per writer — the harness register
+gaining its own beside the devices' and the loop's — the heartbeat field
+stored by the handle primitives and judged against §12.2's 2 s threshold,
+`DeviceCrash` written through the cell (the wrapper's catch on the device
+task, the init bracket's on the calling task, §12.4's entry-addressed
+report), the budget degradations on the loop's cell, the frame-top fold into
+loop-owned accounts, and the `FrameworkStatus` every snapshot carries — the
+delta riding exactly one snapshot, totals monotone since the run began,
+`task_state` off the run's task registry (D-193). The two §11.8 presentation
+stand-ins retire; three rows enter: the harness cell (a spec-enumeration
+gap), the tail window (`DeviceJoinTimeout` and the post-final-frame-top
+residue present synchronously, no snapshot following them), and the status's
+per-publication vector against the spec's inline-allocation claim.
+`diagnostics(sim)` is deleted, its account subsumed by the status; the
+warning-matching tests convert to the spec's own doctrine — kind plus
+payload fields, never message text.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -433,8 +452,9 @@ Each of these is a spec claim rather than a programming convenience:
   classification is the author's, because only they know their parser. A
   twenty-report flood costs sixteen retained values — earliest-in-frame, the
   ones with diagnostic content — plus one integer, and nothing is lost by
-  not looking: the per-run totals carry the full account, run-end reports
-  included, because the tail drains the cells one last time.
+  not looking: the status's totals carry the full account (since increment
+  14; the per-run totals behind `diagnostics(sim)` before it), the tail
+  sweeping the cells one last time at the run's end.
 - **Binding drift fails at attach, never on the wire.** Every `reads`
   selector resolves against the build at the attach point — the unknown
   path, the unknown slot, the input face offered to `get_face` — so
@@ -444,6 +464,30 @@ Each of these is a spec claim rather than a programming convenience:
   producer's cell, so `get_face(:y)` and the deep `get_output` are bitwise
   equal in every observed snapshot. An output-only binding stakes no claim,
   and the harness register keeps every face.
+- **The delta rides exactly one snapshot; the totals ride every one.** A
+  drained occurrence appears in `recent` in precisely the first snapshot
+  published after its frame-top fold — `[0, 1, 0, 0, 0, 0]` across a
+  six-boundary log — while `totals` is monotone from that boundary on. That
+  is §11.8's any-cadence legibility made a vector equality: a 60 Hz reader
+  sees each occurrence once, an occasional sampler still reads the complete
+  account, and decimation loses *which* boundary, never *how many*.
+- **A diagnostic is accounted exactly once, wherever timing lands it.** A
+  device-task report races the run's last frame top, so the tests assert the
+  exclusive-or: in the terminal status's totals, or presented by the
+  run's-end sweep — never both, never neither (`accounted` in `utils.jl`).
+  The deterministic corners pin the two pure cases: a failed `init!` reports
+  pre-spawn and always makes the first fold; a `should_abort` init failure
+  runs zero frames and can only be swept.
+- **Dead-from-boundary-zero needs no machinery.** The failed-`init!` device's
+  record shows the never-stored heartbeat (`0.0`, stale against any clock)
+  and `task_state === :none` — §12.4's rule that the cell's silence *is* the
+  marking, asserted off the published status alone.
+- **Staging diagnostics wait like staged entries.** A rejection at stopped-sim
+  staging sits in the writer's cell — readable there, `(@atomic cell.batch)`
+  in the tests — and surfaces in the next run's first status, the same
+  lifecycle as the batch it was rejected from; the attach renormalization's
+  `ClaimedFaceEntry` carries `site = :renormalization` to tell it from an
+  ordinary staging rejection.
 
 ## Stand-in retirement history
 
@@ -453,4 +497,6 @@ was retired by increment 7, and increment 9's publication row by increment 11,
 both on 2026-08-25. The `set_slot!` row in the README's table entered with
 increment 9; increment 10's device-staging row was retired by increment 12 on
 2026-08-26, `attach!` returning the handle, and the two §11.8 presentation
-rows entered with increment 13.
+rows entered with increment 13. Increment 14 retired both presentation rows
+on 2026-08-26 and entered its own three: the harness register's cell, the
+tail window, and the status's per-publication allocation.

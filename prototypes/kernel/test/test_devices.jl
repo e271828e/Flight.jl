@@ -162,19 +162,27 @@ end
     dev = Crasher()
     attach!(sim, dev, Enumerated("a"))
     init!(sim)
-    @test_logs (:warn, r"DeviceCrash: device 1 \(Crasher\)") match_mode=:any run!(sim, 0.5)
+    logs, _ = Test.collect_test_logs() do
+        run!(sim, 0.5)
+    end
     @test sim.clock.step == 5                # the run reached t_end regardless
     @test dev.log == [:loop, :shutdown]      # the bracket held on the crash path
+    @test crash_accounted(sim, logs, "device 1 (Crasher)")
     # Death is not detach: the claim stands, and the harness cannot take the face.
-    @test_logs (:warn, r"ClaimedFaceEntry: `a` is claimed by device 1") stage!(sim, "a" => 9.0)
+    stage!(sim, "a" => 9.0)
+    cfe = only((@atomic sim.plane.harness_diag.batch).ring)
+    @test cfe isa ClaimedFaceEntry && cfe.incumbent == "device 1 (Crasher)"
 end
 
 @testset "a crash under should_abort requests the stop (§12.4(6))" begin
     sim = Simulation(two_slots(); h = 1//10)
     attach!(sim, Crasher(), Enumerated("a"); should_abort = true)
     init!(sim)
-    @test_logs (:warn, r"DeviceCrash") match_mode=:any run!(sim, 1000.0)
+    logs, _ = Test.collect_test_logs() do
+        run!(sim, 1000.0)
+    end
     @test sim.clock.step < 10000             # ended by the crash's stop, not t_end
+    @test crash_accounted(sim, logs, "device 1 (Crasher)")
 end
 
 @testset "a failed init! is bracketed: shutdown!, no task, claims persist (§12.4)" begin
@@ -182,17 +190,33 @@ end
     dev = BadInit()
     attach!(sim, dev, Enumerated("a"))
     init!(sim)
-    @test_logs (:warn, r"DeviceCrash: device 1 \(BadInit\)'s init!") match_mode=:any run!(sim, 0.5)
+    run!(sim, 0.5)
     @test dev.log == [:init, :shutdown]      # loop never ran: no task was spawned
     @test sim.clock.step == 5                # flag clear: the run proceeds without it
-    @test_logs (:warn, r"ClaimedFaceEntry") stage!(sim, "a" => 9.0)
+    # The report was written pre-spawn, addressed by the entry (§12.4), so it
+    # deterministically makes the first frame top's fold: the first frame's
+    # snapshot carries the delta, the terminal status the totals.
+    bw = writer_status(latest(sim), "device 1 (BadInit)")
+    @test bw.totals.crash == 1
+    dc = only(writer_status(logged(sim)[2], "device 1 (BadInit)").recent)
+    @test dc isa DeviceCrash && dc.cause isa ErrorException && dc.abort === false
+    # Dead from boundary zero, with no marking machinery (§12.4): the cell was
+    # never heartbeated — stale against any clock — and no task ever existed.
+    @test stale(bw) && bw.task_state === :none
+    stage!(sim, "a" => 9.0)                  # claims persist: death is not detach
+    @test only((@atomic sim.plane.harness_diag.batch).ring) isa ClaimedFaceEntry
     # With should_abort set the stop is already pending at the loop's start:
-    # the run advances zero frames and ends through the same tail.
+    # the run advances zero frames and ends through the same tail — no frame
+    # top ever folds the report, so only the run's-end sweep can present it.
     sim2 = Simulation(two_slots(); h = 1//10)
     attach!(sim2, BadInit(), Enumerated("a"); should_abort = true)
     init!(sim2)
-    @test_logs (:warn, r"DeviceCrash") match_mode=:any run!(sim2, 0.5)
+    logs, _ = Test.collect_test_logs() do
+        run!(sim2, 0.5)
+    end
     @test sim2.clock.step == 0
+    @test any(occursin("DeviceCrash from device 1 (BadInit), past the final", string(l.message))
+              for l in logs)
 end
 
 @testset "a body ignoring the predicate is abandoned under join_timeout, by name (§12.4(5))" begin
@@ -245,8 +269,11 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     attach!(sim, Loopless(), Enumerated())
     init!(sim)
-    @test_logs (:warn, r"DeviceCrash") match_mode=:any run!(sim, 0.2)
+    logs, _ = Test.collect_test_logs() do
+        run!(sim, 0.2)
+    end
     @test sim.clock.step == 2                # the crash is the device's alone
+    @test crash_accounted(sim, logs, "device 1 (Loopless)")
 end
 
 @testset "join_timeout is validated and never trajectory-determining (§12.4, D-198)" begin

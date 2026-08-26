@@ -84,15 +84,24 @@ end
     @test port(sim, "", :b) === 2.0
     # Out-of-claim is always OutOfClaimEntry for a device — naming the incumbent
     # when the face is claimed elsewhere — and the rest of the batch stands.
-    @test_logs (:warn, r"OutOfClaimEntry: `b` is outside device 1 \(Pad\)'s claim.*claimed by device 2") #=
-        =# stage!(ha, "b" => 9.0, "a" => 3.0)
-    @test_logs (:warn, r"OutOfClaimEntry: `flaps`") stage!(ha, "flaps" => 1.0)
+    # The rejection lands in the *staging* device's own cell (§11.8), folded
+    # into its record at the next run's first frame top.
+    stage!(ha, "b" => 9.0, "a" => 3.0)
+    stage!(ha, "flaps" => 1.0)
     run!(sim, 0.2)
     @test port(sim, "", :a) === 3.0
     @test port(sim, "", :b) === 2.0
+    dw = writer_status(latest(sim), "device 1 (Pad)")
+    @test dw.totals.out_of_claim == 2
+    ooc = only(d for d in dw.recent if d.face === :b)
+    @test ooc.incumbent == "device 2 (Pad)" && ooc.value == 9.0 && ooc.surface == [:a]
+    @test only(d for d in dw.recent if d.face === :flaps).incumbent === nothing
     # The empty enumeration: an honest may-write-nothing degenerate (§11.6).
     hc = attach!(sim, Pad("dc"), Enumerated())
-    @test_logs (:warn, r"OutOfClaimEntry") stage!(hc, "a" => 9.0)
+    stage!(hc, "a" => 9.0)
+    entry = only((@atomic hc.diag.batch).ring)       # pending in the cell until the next run
+    @test entry isa OutOfClaimEntry
+    @test entry.surface == Symbol[] && entry.incumbent == "device 1 (Pad)"
 end
 
 @testset "the computed claim is the complement at the attach instant (§11.3, §11.6)" begin
@@ -106,13 +115,19 @@ end
     run!(sim, 0.1)
     @test port(sim, "", :b) === 5.0
     # Past the attach point nothing downstream tells the sources apart.
-    @test_logs (:warn, r"OutOfClaimEntry") stage!(hg, "a" => 9.0)
+    stage!(hg, "a" => 9.0)
+    @test only((@atomic hg.diag.batch).ring) isa OutOfClaimEntry
 
     # A rostered greedy claimant empties the harness surface: every harness
-    # stage! in such a session is rejected by name (D-192).
+    # stage! in such a session is rejected by name into the harness register's
+    # own cell (D-192, §11.8).
     @test isempty(sim.plane.harness.faces)
-    @test_logs (:warn, r"ClaimedFaceEntry: `b` is claimed by device 2") stage!(sim, "b" => 9.0)
-    @test_logs (:warn, r"ClaimedFaceEntry: `a` is claimed by device 1") stage!(sim, "a" => 9.0)
+    stage!(sim, "b" => 9.0)
+    stage!(sim, "a" => 9.0)
+    hring = (@atomic sim.plane.harness_diag.batch).ring
+    @test [d.face for d in hring] == [:b, :a]
+    @test all(d isa ClaimedFaceEntry for d in hring)
+    @test hring[1].incumbent == "device 2 (Pad)" && hring[2].incumbent == "device 1 (Pad)"
 
     # A second greedy stakes the empty remainder: legal, useless, said out loud.
     g2 = Pad("gui2")
@@ -127,11 +142,14 @@ end
     attach!(sim, d, Enumerated("a"))
     @test sim.plane.harness.faces == [:b]
     init!(sim)
-    @test_logs (:warn, r"ClaimedFaceEntry: `a` is claimed by device 1 \(Pad\)") stage!(sim, "a" => 1.0)
+    stage!(sim, "a" => 1.0)                          # claimed: rejected into the harness cell
     stage!(sim, "b" => 2.0)
     run!(sim, 0.1)
     @test port(sim, "", :a) === 0.0
     @test port(sim, "", :b) === 2.0
+    cfe = only(writer_status(latest(sim), "harness").recent)
+    @test cfe isa ClaimedFaceEntry && cfe.face === :a
+    @test cfe.incumbent == "device 1 (Pad)" && cfe.site === :staging
     # Detach releases the claims: the surface regains the face from the next run.
     detach!(sim, d)
     @test sim.plane.harness.faces == [:a, :b]
@@ -144,13 +162,16 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     stage!(sim, "a" => 1.0, "b" => 2.0)              # staged while stopped, roster still empty
     # The attach reshapes the pending batch through the new schema, discarding
-    # the newly claimed face with the incumbent and the site named.
-    @test_logs (:warn, r"ClaimedFaceEntry: `a` is claimed by device 1.*renormalization") #=
-        =# attach!(sim, Pad("d"), Enumerated("a"))
+    # the newly claimed face into the harness cell with the incumbent and the
+    # site named.
+    attach!(sim, Pad("d"), Enumerated("a"))
     init!(sim)
     run!(sim, 0.1)
     @test port(sim, "", :a) === 0.0                  # discarded at the attach, never drained
     @test port(sim, "", :b) === 2.0                  # reshaped, re-staged, drained
+    cfe = only(writer_status(latest(sim), "harness").recent)
+    @test cfe isa ClaimedFaceEntry && cfe.face === :a
+    @test cfe.incumbent == "device 1 (Pad)" && cfe.site === :renormalization
     # At detach the surface only broadens: every pending entry survives.
     sim2 = Simulation(two_slots(); h = 1//10)
     d2 = Pad("d2")

@@ -189,22 +189,37 @@ end
     @test state(sim, "children/ctl").acc ≈ acc rtol = 1e-9
 end
 
-@testset "budget exhaustion degrades and warns; the rest iterates untouched (§10.6)" begin
+@testset "budget exhaustion degrades, reported on the loop's cell (§10.6, §11.8)" begin
     chatty() = Group((; chat = Chatterer(), trig = Trigger(0.5)), (),
                      ("in" => "children/trig/sig",), ())
     sim = Simulation(chatty(); h = 1//10)
     set_slot!(sim, "in", 1.0)
-    @test_logs (:warn, r"FiringBudget: event `up`") init!(sim)
+    init!(sim)                                           # exhaustion at boundary zero
     @test modes(sim, "children/chat").flips == 8         # 2 × the default budget of 4
     @test modes(sim, "children/trig").count == 1         # the sibling fired normally
+    # The report rides the loop's own diagnostic cell (§11.8), folded at the
+    # next frame top: boundary zero's snapshot shows nothing yet.
+    @test writer_status(latest(sim), "loop").totals.firing == 0
+    run!(sim, 0.1)                                       # one frame: its snapshot carries the delta
+    lw = writer_status(latest(sim), "loop")
+    fb = only(lw.recent)
+    @test fb isa FiringBudget
+    @test fb.path == "children/chat" && fb.event == :up
+    @test fb.budget == 4 && fb.count == 4 && fb.t == 0.0
+    @test lw.totals.firing == 1
     run!(sim, 0.3)                                       # the exhausted boundary's samples
     @test modes(sim, "children/chat").flips == 8         # became honest priors: quiescent now
+    lw = writer_status(latest(sim), "loop")              # a fresh run, quiescent throughout:
+    @test isempty(lw.recent) && lw.totals.firing == 0    # totals count since *this* run began
 
     # The budget is a deployment keyword, validated with its siblings.
     sim2 = Simulation(chatty(); h = 1//10, firing_budget = 2)
     set_slot!(sim2, "in", 1.0)
-    @test_logs (:warn, r"FiringBudget") init!(sim2)
+    init!(sim2)
     @test modes(sim2, "children/chat").flips == 4
+    run!(sim2, 0.1)
+    fb2 = only(writer_status(latest(sim2), "loop").recent)
+    @test fb2 isa FiringBudget && fb2.budget == 2 && fb2.count == 2
     @test occursin("firing_budget",
                    failure(() -> Simulation(chatty(); h = 1//10, firing_budget = 0)).msg)
 end

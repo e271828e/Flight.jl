@@ -4,8 +4,8 @@
 # both claim sources, and the harness register as the derived remainder. The
 # task side of the contract — the handle, the wrapper, the run's bracket and
 # tail — lives in devices.jl; what stands further out in the spec —
-# `map_input`/`TableBinding`, the output side's compiled gather, the trace,
-# heartbeats — is deliberately absent (README).
+# the trace — is deliberately absent (README); the binding conventions and
+# the compiled gather live in bindings.jl.
 #
 # This file holds the types and the pure mechanics; `attach!`/`detach!` and
 # the staging entry points live in sim.jl, beside the loop whose frames they
@@ -116,30 +116,11 @@ struct RosterEntry
     drain::Function                 # the compiled (cell, scatter) pair as a callable, see _drain_thunk
     should_abort::Bool              # the per-attachment failure policy (§11.6, §12.4)
     diag::DiagCell                  # the device's diagnostic cell (§11.8), shared with the handle
-    totals::DiagTotals              # the loop's per-run cumulative counts (§11.8)
+    acct::WriterAccount             # the loop's private account behind the cell (§11.8)
     handle::Any                     # the DeviceHandle; `Any` for include order only, read off the frame path
 end
 
 _who(e::RosterEntry) = "device $(e.id) ($(typeof(e.dev)))"
-
-# One entry's diagnostic drain (§11.8): the sentinel swap, then — with the
-# batch exclusively the loop's — the stand-in presentation (README): each
-# retained value is warned device-attributed, the suppressed excess as one
-# count, and both fold into the per-run totals. The quiet path is the sentinel
-# coming back: no allocation, nothing warned.
-function _drain_diag!(e::RosterEntry)
-    batch = _take!(e.diag)
-    batch === EMPTY_DIAG && return nothing
-    suppressed = _total(batch.suppressed)
-    e.totals.malformed += length(batch.ring) + suppressed
-    for d in batch.ring
-        @warn "MalformedDatum from $(_who(e)): $(d.cause) (§11.8)"
-    end
-    suppressed > 0 &&
-        @warn "MalformedDatum from $(_who(e)): $suppressed more occurrence(s) " *
-              "past the ring's bound of $DIAG_RING, suppressed to the count (§11.8)"
-    nothing
-end
 
 # The stopped-sim compile of one writer's drain (§11.4): a zero-argument thunk
 # capturing the store and the writer *concretely* — this dynamic dispatch is
@@ -152,17 +133,31 @@ _drain_thunk(store, w::Writer) = () -> _drain!(store, w)
 """
 The data plane's mutable holder: the roster in attachment order — which is the
 drain's application order — the harness register's writer and drain thunk, the
-exclusivity index behind the `ClaimedFaceEntry` message, the store the thunks
+exclusivity index behind the `ClaimedFaceEntry` payload, the store the thunks
 compile against, the id counter, and the §11.3 freeze flag. Mutable and
 abstractly typed deliberately: the harness writer's *type* changes at every
 roster change (its schema is recompiled), so it cannot be a `Simulation` type
 parameter, and everything here is stopped-sim configuration read behind
 function barriers.
+
+The harness register is a writer, so it owns a diagnostic cell and its
+account like any other (§11.8; the spec enumerates only the devices' cells
+and the loop's — the harness cell is the prototype's answer to where its
+staging diagnostics live, README's stand-ins). Unlike the writer, the cell
+survives roster changes: its diagnostics are the harness's, whatever surface
+it speaks for. `run_tasks` is the run's device-id → `Task` registry, filled
+at spawn and emptied at run end, which is what lets `publish!` read
+`task_state` off the handles the loop owns (D-193); while stopped it is
+empty, and every device reads `:none` — device tasks are run-scoped
+observables (§12.4).
 """
 mutable struct DataPlane
     roster::Vector{RosterEntry}     # attachment order (§11.3): the drain applies in it
     harness::Writer                 # the derived-surface writer, recompiled at roster changes
     harness_drain::Function         # its drain thunk, recompiled with it
+    harness_diag::DiagCell          # the harness register's diagnostic cell (§11.8)
+    harness_acct::WriterAccount     # and the loop's account behind it
+    run_tasks::Dict{Int,Task}       # the run's device tasks, by device id (§12.2, D-193)
     claimedby::Dict{Symbol,String}  # face → incumbent: the exclusivity index
     store::Any                      # the model's store bundle, captured into the drain thunks
     next_id::Int
@@ -171,7 +166,8 @@ end
 
 function DataPlane(layout::Layout, store)
     w = Writer(layout, Symbol[f for (f, _) in layout.slots])
-    DataPlane(RosterEntry[], w, _drain_thunk(store, w), Dict{Symbol,String}(), store, 1, false)
+    DataPlane(RosterEntry[], w, _drain_thunk(store, w), DiagCell(EMPTY_DIAG),
+              WriterAccount(), Dict{Int,Task}(), Dict{Symbol,String}(), store, 1, false)
 end
 
 """
@@ -235,8 +231,8 @@ function reclaim!(plane::DataPlane, layout::Layout)
     if pending !== nothing
         batch = pending[]
         entries = [old.faces[i] => batch[i] for i in 1:length(batch) if batch[i] !== nothing]
-        renorm = _normalize(plane.harness, entries, plane.claimedby;
-                            site = "at this attach's renormalization")
+        renorm = _normalize(plane.harness, entries, plane.claimedby, plane.harness_diag;
+                            site = :renormalization)
         renorm === nothing || _stage!(plane.harness, renorm)
     end
     nothing

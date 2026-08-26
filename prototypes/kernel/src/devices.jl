@@ -3,9 +3,12 @@
 # contract's four functions, the framework wrapper around the author-owned
 # loop body, the pre-spawn init bracket and the tail. The control surface here
 # is §12.1's stop word and §12.3's counter-plus-condition wait, nothing more:
-# pause, pacing, §11.8's diagnostic cells and the operator interrupt are
-# absent (README), so every degradation below is a plain @warn carrying the
-# spec'd payload.
+# pause, pacing and the operator interrupt are absent (README). A device
+# failure reports as `DeviceCrash` into the device's own diagnostic cell
+# (§11.8, §12.4); what the tail alone produces — the join timeout, and
+# whatever landed past the final frame top — presents through the logging
+# backend, the last snapshot having already been published (README's
+# stand-ins).
 #
 # This file holds the types, the contract and the per-run task mechanics;
 # `run!`'s frame anatomy and the Simulation-typed surface (`attach!`,
@@ -151,7 +154,7 @@ frame `run!` advances.
 """
 function stage!(h::DeviceHandle, pairs::Pair...)
     _beat!(h.diag)
-    batch = _normalize(h.writer, pairs, h.plane.claimedby; device = h.who)
+    batch = _normalize(h.writer, pairs, h.plane.claimedby, h.diag; device = h.who)
     batch === nothing || _stage!(h.writer, batch)
     nothing
 end
@@ -183,14 +186,15 @@ The bad-datum channel (§11.6, §11.8): the single-writer entry point into the
 device's own diagnostic cell, from the author's loop body after catching its
 own parser error — catch, stage nothing, report, continue. The tolerance is
 bounded by the cell (`DIAG_RING` retained values per frame, the excess a
-count), so a peer flooding malformed datagrams costs sixteen retained values
-and an integer increment, whatever it does, and no writer can starve another
-— the cells are disjoint. This is not a general user-diagnostics channel:
-`MalformedDatum` is the one thing it carries, and any exception the loop does
-*not* classify as a bad datum propagates to the wrapper as `DeviceCrash`.
-The loop drains the cell at frame top and at the run's end, warning each
-retained value device-attributed and folding the counts into the per-run
-totals `diagnostics(sim)` reads (the framework-status stand-in, README).
+per-kind count), so a peer flooding malformed datagrams costs sixteen
+retained values and an integer increment, whatever it does, and no writer can
+starve another — the cells are disjoint. This is not a general
+user-diagnostics channel: `MalformedDatum` is the one thing the *author* may
+put in it, and any exception the loop does *not* classify as a bad datum
+propagates to the wrapper as the `DeviceCrash` it is. The loop drains the
+cell at frame top, folding it into the published framework status —
+device-attributed, delta plus totals (§11.8) — and sweeps it once more at the
+run's end for whatever landed past the last frame top.
 """
 report!(h::DeviceHandle, d::MalformedDatum) = (_beat!(h.diag); _report!(h.diag, d))
 
@@ -240,20 +244,20 @@ end
 The framework wrapper (§11.6): the author owns the loop body, the framework
 owns the bracket. Every exit path — voluntary return, a crash, the
 stop-drained predicate — runs `shutdown!` and then consults the attachment's
-`should_abort`; a crash is caught here and reported as `DeviceCrash`, the
-run continuing with the device's task absent and its claims held to run end
-(§12.4(6)). A `needs_calling_task` device runs this identical wrapper inline
-on the calling task: the invocation site is its only difference (§11.1).
-With §11.8 absent there is no diagnostic cell to mark dead — death is the
-task having ended.
+`should_abort`; a crash is caught here and reported as `DeviceCrash` into
+the device's own diagnostic cell (§11.8, §12.4(6)) — on the device's task,
+the cell's writer — the run continuing with the device's task absent and its
+claims held to run end. A `needs_calling_task` device runs this identical
+wrapper inline on the calling task: the invocation site is its only
+difference (§11.1). Death is marked nowhere beyond the record: the task has
+ended, `task_state` says so at the next publication, and the heartbeat goes
+stale (§12.2).
 """
 function _wrap(e::RosterEntry)
     try
         loop(e.dev, e.handle)
     catch err
-        @warn "DeviceCrash: $(_who(e))'s task threw; the run continues with its " *
-              "task absent and its claims held to run end (§12.4)" #=
-            =# exception = (err, catch_backtrace())
+        _report!(e.diag, DeviceCrash(err, e.should_abort))
     finally
         _shutdown!(e)
         e.should_abort && stop!(e.handle)
@@ -283,10 +287,8 @@ function _init_devices!(sim)
             true
         catch err
             _shutdown!(e)
-            @warn "DeviceCrash: $(_who(e))'s init! threw; no task is spawned and " *
-                  "its claims persist to run end (§12.4)" #=
-                =# exception = (err, catch_backtrace())
-            e.should_abort && stop!(e.handle)
+            _report!(e.diag, DeviceCrash(err, e.should_abort))   # addressed by the entry:
+            e.should_abort && stop!(e.handle)                    # no task holds a handle yet (§12.4)
             false
         end
         ok && push!(live, e)
@@ -349,5 +351,42 @@ function _tail!(sim, entries::Vector{RosterEntry}, tasks::Vector{Task})
         joined || @warn "DeviceJoinTimeout: $(_who(e)) did not return within " *
                         "$(sim.join_timeout) s of the stop; its task is abandoned (§12.4)"
     end
+    nothing
+end
+
+"""
+The run's last sweep (§11.8), in `run!`'s outermost `finally`: one more take
+per cell, folding what landed after the final frame top — a crash caught on
+the way out, a report from a device's exit path — into the accounts, so the
+per-run record is complete and nothing leaks into the next run's status.
+The terminal snapshot is already out, so no snapshot can carry this residue:
+it is presented through the logging backend instead, the tail's renderer of
+last resort — the same window that keeps `DeviceJoinTimeout` a synchronous
+warning (README's stand-ins). The terminal status's account is therefore
+complete up to its own frame top, and the tail's remainder is loud rather
+than recorded.
+"""
+function _sweep_tail!(sim)
+    plane = sim.plane
+    for e in plane.roster
+        _fold!(e.acct, e.diag)
+        _present_residue!(_who(e), e.acct)
+    end
+    _fold!(plane.harness_acct, plane.harness_diag)
+    _present_residue!("harness", plane.harness_acct)
+    _fold!(sim.loop_acct, sim.loop_diag)
+    _present_residue!("loop", sim.loop_acct)
+    nothing
+end
+
+function _present_residue!(who::String, a::WriterAccount)
+    for d in a.recent
+        @warn "$(nameof(typeof(d))) from $who, past the final snapshot's account: $d (§11.8)"
+    end
+    s = _total(a.suppressed)
+    s > 0 && @warn "$s more suppressed occurrence(s) from $who past the final " *
+                   "snapshot's account (§11.8)"
+    a.recent = EMPTY_RECENT
+    a.suppressed = KindCounts()
     nothing
 end

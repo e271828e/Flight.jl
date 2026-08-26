@@ -68,11 +68,11 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
         if count ≥ sim.localization_budget
             for i in 1:n
                 (es.trig[i] && !es.loc_warned[i]) || continue
-                es.loc_warned[i] = true
+                es.loc_warned[i] = true   # at most one report per event per frame
                 (path, name) = es.names[i]
-                @warn "ChatteringBudget: event `$name` at `$path` has localized $count " *
-                      "times in the frame ending at t = $t_to; further crossings this " *
-                      "frame fire at boundary resolution (§10.4)"
+                _report!(sim.loop_diag,   # the loop's own cell (§11.8): folded at the next frame top
+                         ChatteringBudget(path, name, Float64(t_to),
+                                          sim.localization_budget, count))
             end
             return nothing
         end
