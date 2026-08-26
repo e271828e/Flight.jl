@@ -163,7 +163,6 @@ zero_value(::Type{P}, ::Type{T}) where {P,T} = reconstruct(P, zeros(T, nleaves(P
 """
 retype(::Type{T}, ::Type{Float64}) where {T} = T
 function retype(::Type{T}, ::Type{P}) where {T,P}
-    isconcretetype(P) && isempty(P.parameters) && return P
     isempty(P.parameters) && return P
     P.name.wrapper{(p isa Type ? retype(T, p) : p for p in P.parameters)...}
 end
