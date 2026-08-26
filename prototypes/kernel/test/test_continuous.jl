@@ -70,6 +70,23 @@ end
     end
 end
 
+@testset "the chunk walk is allocation-free at any width (§9.7)" begin
+    # Six independent loops at chunk_size = 1: sweep_2 walks 18 one-entry
+    # chunks — a chunk count no other fixture approaches — so the §7.5 canary
+    # covers the outer walk over the chunk tuple itself, not just the entry
+    # walks within one chunk.
+    six = Group(NamedTuple{ntuple(i -> Symbol(:m, i), 6)}(ntuple(_ -> feedback_model(), 6)),
+                (), ("ref" => ntuple(i -> "children/m$(i)/ref", 6),), ())
+    sim = Simulation(six; h = 1//100, chunk_size = 1)
+    @test length(sim.bodies.sweep_2.interior) > 16
+    for name in keys(phase_bodies(sim))
+        body = phase_bodies(sim)[name]
+        body(); body(0)
+        @test @ballocated($body()) == 0
+        @test @ballocated($body(1)) == 0
+    end
+end
+
 @testset "gate 1: stepping does not allocate (§7.5)" begin
     sim = Simulation(feedback_model(); h = 1//1000)
     init!(sim)

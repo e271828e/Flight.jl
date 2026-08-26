@@ -186,6 +186,11 @@ Each of these is a spec claim rather than a programming convenience:
   `ticks`, empty — it compiles to a no-op, and its `@ballocated` assertion
   passes vacuously, which is the point: consumers iterate the roster with no
   per-model branching.
+- **The allocation invariant is width-independent.** Chunking bounds compile
+  cost, never the runtime claim: a phase body of 18 one-entry chunks
+  (`chunk_size = 1`, a chunk count no other fixture approaches) walks both
+  variants at zero allocation, so the §7.5 canary covers the outer walk over
+  the chunk tuple itself, not just the entry walks within one chunk.
 - **Tier is read off the declaration shape, never announced.** For a stateful
   leaf the whole name family carries it — `init_x`/`h_x`/`h_xu`/`f` continuous
   against `init_s`/`h_s`/`h_su`/`g` discrete, the two disjoint (D-195), with
