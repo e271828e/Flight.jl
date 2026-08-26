@@ -327,6 +327,9 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
     @atomic plane.running = true      # the §11.3 freeze: the roster is fixed for the run
     try
         @atomic ctl.stop_requested = false
+        for e in plane.roster
+            e.totals.malformed = 0    # §11.8: totals count since the run began
+        end
         live = _init_devices!(sim)            # §12.4's pre-spawn bracket, attachment order
         @atomic ctl.stopped = false
         ct = findfirst(e -> needs_calling_task(e.dev), live)
@@ -357,7 +360,10 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
         end
     finally
         @atomic ctl.stopped = true
-        @atomic plane.running = false         # the freeze lifts with the run
+        for e in plane.roster
+            _drain_diag!(e)                   # the run's last diagnostic drain (§11.8):
+        end                                   # what was reported after the last frame top
+        @atomic plane.running = false         # still lands in this run's warnings and totals
     end
     nothing
 end
@@ -404,13 +410,18 @@ three-part admission in spec order (§11.3): identity — this instance already
 rostered is `AlreadyAttached`, rebinding being spelled `detach!` then
 `attach!` — affinity (`CallerTaskConflict`: at most one `needs_calling_task`
 holder), and claims (`ClaimConflict`, which the identity check having run
-first always makes two *distinct* devices). The claim is staked from its
-source — the enumeration called once, or the unclaimed complement computed at
-this instant and never recomputed, so attaching the greedy claimant last is
-the idiom and a second greedy stakes the empty remainder under an
-`EmptyGreedyClaim` warning (§11.6) — the entry's writer is compiled over it,
-and the harness register's surface is recompiled to the complement that
-remains, renormalizing any pending harness batch (§11.4).
+first always makes two *distinct* devices). On the input side the claim is
+staked from its source — the enumeration called once, or the unclaimed
+complement computed at this instant and never recomputed, so attaching the
+greedy claimant last is the idiom and a second greedy stakes the empty
+remainder under an `EmptyGreedyClaim` warning (§11.6) — the entry's writer is
+compiled over it, and the harness register's surface is recompiled to the
+complement that remains, renormalizing any pending harness batch (§11.4). On
+the output side `reads(b)` is called once, resolved against the build and
+compiled to the one gather `gather(handle, snap)` runs (§11.2, §14.4) — a
+binding that drifted from its model fails here, not with silent garbage on
+the wire. An output-only binding stakes no claim: its write surface is empty,
+and the harness register keeps every face.
 
 `should_abort` is §11.6's per-attachment failure policy, never a device
 property: set, the device's departure — its loop body returning, a crash, or
@@ -440,19 +451,22 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
             "CallerTaskConflict: $(typeof(dev)) declares `needs_calling_task`, and " *
             "$(_who(plane.roster[i])) already holds the calling task (§11.1, §11.3)"))
     end
-    claim = _claim(plane, sim.layout, b)
+    claim = is_input(b) ? _claim(plane, sim.layout, b) : Symbol[]
     for f in claim                                 # claims: face exclusivity
         haskey(plane.claimedby, f) && throw(BuildError(
             "ClaimConflict: `$f` is claimed by both $(typeof(dev)) and " *
             "$(plane.claimedby[f]) — one writer per slot at any time (§11.3)"))
     end
+    rg = is_output(b) ?                            # the output side: reads → one gather,
+        _compile_reads(sim.layout, reads(b), typeof(b)) : nothing   # resolved before admission commits
     id = plane.next_id                             # assigned on admission alone: a
     plane.next_id += 1                             # rejected attach consumes no id
     w = Writer(sim.layout, claim)
-    h = DeviceHandle(id, "device $id ($(typeof(dev)))", w, plane, sim.control,
-                     sim.published, sim.control.counter)
+    diag = DiagCell(EMPTY_DIAG)                    # the device's diagnostic cell (§11.8)
+    h = DeviceHandle(id, "device $id ($(typeof(dev)))", b, w, plane, sim.control,
+                     sim.published, diag, rg, sim.control.counter)
     push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.store, w),
-                                    should_abort, h))
+                                    should_abort, diag, DiagTotals(0), h))
     reclaim!(plane, sim.layout)
     is_greedy(b) && isempty(claim) &&
         @warn "EmptyGreedyClaim: device $id ($(typeof(dev))) under $(typeof(b)) staked " *
@@ -523,6 +537,7 @@ function drain!(sim::Simulation)
     plane = sim.plane
     for e in plane.roster
         e.drain()
+        _drain_diag!(e)     # the diagnostic cells drain at the same point (§11.8)
     end
     plane.harness_drain()
     nothing
@@ -590,6 +605,23 @@ function logged(sim::Simulation)
     end
     L.last === out[end] || push!(out, L.last)
     out
+end
+
+"""
+    diagnostics(sim)
+
+The per-writer cumulative counts of the run that last ended (§11.8): one
+`"device id (Type)" => count` pair per rostered device, in attachment order,
+counting every `MalformedDatum` occurrence since that run began — retained
+and suppressed alike, so decimated presentation loses *which* frame, never
+*how many*. A stopped-sim read behind the §11.3 gate, and a stand-in
+(README): the spec folds these totals into the framework status every
+snapshot carries, which is absent here — what survives is the channel
+itself and the run-end account an unattended run still answers from.
+"""
+function diagnostics(sim::Simulation)
+    assert_stopped(sim.plane, "diagnostics")
+    [_who(e) => e.totals.malformed for e in sim.plane.roster]
 end
 
 # --- reading and writing the table outside the loop ---------------------------

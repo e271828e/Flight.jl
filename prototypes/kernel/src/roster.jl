@@ -52,20 +52,32 @@ claims(b::AbstractBinding) = throw(BuildError(
     "`claims` enumeration — the enumeration is the interface (§11.6)"))
 
 """
+The output side's enumeration (§11.6, §14.4): an output-side binding's
+`reads(b)` is called once at attach and compiled to one gather — the labeled
+NamedTuple of selectors that fixes what `map_output` receives. The root's
+fallback is error-throwing for the same reason `claims`'s is: a declared side
+whose method was never written fails loudly at the attach point rather than
+degrading into silence.
+"""
+reads(b::AbstractBinding) = throw(BuildError(
+    "BindingContractMismatch: $(typeof(b)) declares an output side and defines no " *
+    "`reads` enumeration — the enumeration is the interface (§11.6)"))
+
+"""
 §11.6's bidirectional conformance check over each (trait, method) pair, run
 at the attach point: the same fact stated twice, in two registers, with the
 framework paid to compare them. The declared-but-missing direction is the
-`claims` fallback firing when the staking calls it; the defined-but-undeclared
-direction is one `which` against that fallback — the reflection class, run at
-a stopped-sim service point, never inside a frame. The output side
-(`is_output`, `reads`, the compiled gather) is outside this increment: a
-binding declaring it is rejected *after* the conformance clauses, so contract
-drift is still named before the absence is.
+`claims`/`reads` fallback firing when the attach calls it; the
+defined-but-undeclared direction is one `which` against that fallback — the
+reflection class, run at a stopped-sim service point, never inside a frame.
+Greediness stays orthogonal to `reads`: a greedy front end driving a compiled
+output gather is legal and currently uninstantiated (§11.6).
 """
 function check_binding(b::AbstractBinding)
     T = typeof(b)
     isin, isout, greedy = is_input(b), is_output(b), is_greedy(b)
     drifted = which(claims, Tuple{T}) !== which(claims, Tuple{AbstractBinding})
+    rdrifted = which(reads, Tuple{T}) !== which(reads, Tuple{AbstractBinding})
     greedy && !isin && throw(BuildError(
         "BindingContractMismatch: $T declares `is_greedy` without `is_input` — " *
         "greediness is a claim source within the input side, and a source without " *
@@ -79,9 +91,9 @@ function check_binding(b::AbstractBinding)
     isin || !drifted || throw(BuildError(
         "BindingContractMismatch: $T defines `claims` while `is_input` reads false — a " *
         "method written and never reached is exactly the drift this check catches (§11.6)"))
-    isout && throw(BuildError(
-        "$T declares an output side, and the output side — `reads` and the compiled " *
-        "gather — is outside this increment (README)"))
+    isout || !rdrifted || throw(BuildError(
+        "BindingContractMismatch: $T defines `reads` while `is_output` reads false — a " *
+        "method written and never reached is exactly the drift this check catches (§11.6)"))
     nothing
 end
 
@@ -103,10 +115,30 @@ struct RosterEntry
     writer::Writer
     drain::Function                 # the compiled (cell, scatter) pair as a callable, see _drain_thunk
     should_abort::Bool              # the per-attachment failure policy (§11.6, §12.4)
+    diag::DiagCell                  # the device's diagnostic cell (§11.8), shared with the handle
+    totals::DiagTotals              # the loop's per-run cumulative counts (§11.8)
     handle::Any                     # the DeviceHandle; `Any` for include order only, read off the frame path
 end
 
 _who(e::RosterEntry) = "device $(e.id) ($(typeof(e.dev)))"
+
+# One entry's diagnostic drain (§11.8): the sentinel swap, then — with the
+# batch exclusively the loop's — the stand-in presentation (README): each
+# retained value is warned device-attributed, the suppressed excess as one
+# count, and both fold into the per-run totals. The quiet path is the sentinel
+# coming back: no allocation, nothing warned.
+function _drain_diag!(e::RosterEntry)
+    batch = _take!(e.diag)
+    batch === EMPTY_DIAG && return nothing
+    e.totals.malformed += length(batch.ring) + batch.suppressed
+    for d in batch.ring
+        @warn "MalformedDatum from $(_who(e)): $(d.cause) (§11.8)"
+    end
+    batch.suppressed > 0 &&
+        @warn "MalformedDatum from $(_who(e)): $(batch.suppressed) more occurrence(s) " *
+              "past the ring's bound of $DIAG_RING, suppressed to the count (§11.8)"
+    nothing
+end
 
 # The stopped-sim compile of one writer's drain (§11.4): a zero-argument thunk
 # capturing the store and the writer *concretely* — this dynamic dispatch is

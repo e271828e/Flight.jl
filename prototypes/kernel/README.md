@@ -116,6 +116,20 @@ boundary ordinal riding in the snapshot, §12.2's per-frame yield with devices
 rostered. The device-staging stand-in retires; the log's terminal endpoint is
 now §12.4's run-end snapshot in fact.
 
+**Increment 13 — the binding's runtime half.** §11.6's mapping conventions
+with their framework-owned instances: `TableBinding` — the table in the type,
+the claim derived from it, deadzone/expo conditioning in the generic
+`map_input`, the shared pure helper with an owner — behind the handle's
+`binding` capability; the bad-datum channel — `report!(handle,
+MalformedDatum(cause))` into the per-device diagnostic cell, §11.8's ring of
+sixteen plus suppressed counts under the sentinel-swap drain at frame top and
+run end, its presentation standing in as loop-side warns and the per-run
+totals behind `diagnostics(sim)`; and the output side — §14.4's table
+selectors, `reads` fixed as a labeled NamedTuple resolved at attach and
+compiled to the one gather `gather(handle, snap)` runs, `map_output`
+receiving exactly its NamedTuple, and the conformance check completed over
+both (trait, method) pairs. Two stand-ins enter the table.
+
     julia --project=. test/runtests.jl
 
 ## What is real here
@@ -134,8 +148,10 @@ now §12.4's run-end snapshot in fact.
 | the data plane's core exchange: the compiled writer — one schema/shim/merge/scatter unit over any write surface, with every check at staging and the out-of-schema warning discriminated by writer — staging cells, the frame-top drain via `atomicswap` behind stopped-sim-compiled thunks, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
 | the roster and claims: `AbstractDevice`/`AbstractBinding` with the declared sides and the false root defaults, the enumeration contract and the bidirectional conformance check (`which` against the fallback), `attach!`/`detach!` behind the §11.3 freeze with the three-part admission in spec order, both claim sources with `EmptyGreedyClaim` for the staked empty remainder, monotonic never-reused device ids, per-device cells over claim sets, the harness register as the derived remainder — recompiled at every roster change, its pending batch renormalized (`ClaimedFaceEntry` at the seam), emptied outright by a rostered greedy (D-192) — and the attachment-order drain, harness last | §11.3, §11.4, §11.6 | `src/roster.jl`, `src/sim.jl` |
 | the log: publication at every boundary (`t*` included, before integration resumes), retention as a vector of the published references themselves under `log`/`log_every`/`log_max`, progressive re-decimation (the stride doubling at each fill, one release per retained append, once-per-generation compaction, the middle at consecutive multiples of `log_every · 2^k`), the two endpoints outside the bound — the terminal one being §12.4's run-end snapshot, published before the sticky status — and `logged(sim)` as the stopped-sim reader behind the §11.3 gate | §11.2, §12.4, D-137, D-023, D-038 | `src/dataplane.jl`, `src/sim.jl` |
-| the device contract and its tasks: the four contract functions (no-op resource defaults, the error-throwing `loop` fallback), the handle as the capability carrier — `stage!`, `latest`, `wait_next_snapshot`, `running`, `stop!`, never the `Simulation` — the wrapper (crash → `DeviceCrash`, `shutdown!` on every exit path, `should_abort` at departure), §11.1's topology (run-scoped spawn per live entry, the movable loop, the inline calling-task body, topology derived after initialization), the §12.4 init bracket and tail (1)–(5) under the shared `join_timeout` deadline, and the §12 slices beneath them — the §12.1 stop word, §12.3's wait (counter mirrored under the condition's lock, release-store before increment, monotonic across runs, the ordinal in the snapshot) and §12.2's per-frame yield | §11.6, §11.1, §12.4, §12.1, §12.2, §12.3, D-198 | `src/devices.jl`, `src/sim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity, immediate-return loop bodies) and the `Enumerated`/`Greedy` bindings, one per claim source | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6 | `src/library.jl` |
+| the device contract and its tasks: the four contract functions (no-op resource defaults, the error-throwing `loop` fallback), the handle as the capability carrier — `stage!`, `latest`, `wait_next_snapshot`, `running`, `stop!`, `binding`, `gather`, `report!`, never the `Simulation` — the wrapper (crash → `DeviceCrash`, `shutdown!` on every exit path, `should_abort` at departure), §11.1's topology (run-scoped spawn per live entry, the movable loop, the inline calling-task body, topology derived after initialization), the §12.4 init bracket and tail (1)–(5) under the shared `join_timeout` deadline, and the §12 slices beneath them — the §12.1 stop word, §12.3's wait (counter mirrored under the condition's lock, release-store before increment, monotonic across runs, the ordinal in the snapshot) and §12.2's per-frame yield | §11.6, §11.1, §12.4, §12.1, §12.2, §12.3, D-198 | `src/devices.jl`, `src/sim.jl` |
+| the binding's runtime half: `TableBinding` — the table in the type, the validating constructor, `claims` derived from the entries — with its generic `map_input` (sparse over the datum, an unknown channel a deliberate throw) and the conditioning helper (deadzone rescale, expo blend `(1−e)·a + e·a³`, endpoints fixed, pass-through where no parameter is declared), the loop-idiom conventions the framework never calls, §14.4's table selectors as deferred-read values (`get_output`/`get_slot`/`get_face`, whole cells), `reads` fixed as a labeled NamedTuple, resolved at attach (`ReadBindingUnresolved`, the two root registers discriminated) and compiled to one gather — the compiled scatter's mirror — behind `gather(handle, snap)`, the conformance check completed over both (trait, method) pairs with the error-throwing `reads` fallback, and the output-only attach staking no claim | §11.6, §11.4, §11.2, §14.4 | `src/bindings.jl`, `src/roster.jl`, `src/devices.jl` |
+| the bad-datum channel: `MalformedDatum` (the payload the cause, attribution the cell's), `report!` as the single-writer entry point — bounded, never a general diagnostics channel — the per-device diagnostic cell with its ring of `DIAG_RING` = 16 plus the suppressed count (earliest-in-frame retained, excess to the count), the CAS append mirroring the staging cell's, the shared-sentinel `atomicswap` drain at frame top and at the run's end, per-run totals, and `diagnostics(sim)` as the stopped-sim reader | §11.8, §11.6, §13.2 | `src/dataplane.jl`, `src/roster.jl`, `src/devices.jl`, `src/sim.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity, immediate-return loop bodies), the `Enumerated`/`Greedy` bindings, one per claim source, and `Readout`, the output side's coverage binding with the identity `map_output` | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6, §11.2 | `src/library.jl` |
 
 The properties the tests pin down, each of which is a spec claim rather than a
 programming convenience:
@@ -420,6 +436,32 @@ programming convenience:
   observes only ever advance, each snapshot indexes itself, and the stop wake
   hands the waiter the final world rather than nothing. While stopped the
   wait returns at once; only a running loop can park it.
+- **Conditioning runs upstream of the face, and the face never knows.** A
+  face carries post-conditioning semantics (§11.4's GUI-parity test):
+  `TableBinding`'s deadzone/expo run in `map_input` on the device task, so
+  the slot receives the conditioned level and the model output is bitwise the
+  directly-staged one — while an entry declaring no parameter passes its
+  value through untouched, which is what carries a throttle's `[0, 1]` level
+  or a press counter without ever meeting the axis convention. The claim is
+  the table: what the binding may write is exactly what its entries name.
+- **A bad datum and a bug have two fates, and the bound is the rate limit.**
+  The loop's tolerance idiom — catch its own parser error, stage nothing,
+  `report!`, continue — keeps the link alive with the stream's good datums
+  landing, while an unclassified throw is the wrapper's `DeviceCrash`; the
+  classification is the author's, because only they know their parser. A
+  twenty-report flood costs sixteen retained values — earliest-in-frame, the
+  ones with diagnostic content — plus one integer, and nothing is lost by
+  not looking: the per-run totals carry the full account, run-end reports
+  included, because the tail drains the cells one last time.
+- **Binding drift fails at attach, never on the wire.** Every `reads`
+  selector resolves against the build at the attach point — the unknown
+  path, the unknown slot, the input face offered to `get_face` — so
+  `map_output` receives exactly the compiled gather's labeled NamedTuple or
+  the device never rosters, and a rejected attach consumes nothing. The two
+  read registers agree by construction: an exported face aliases its
+  producer's cell, so `get_face(:y)` and the deep `get_output` are bitwise
+  equal in every observed snapshot. An output-only binding stakes no claim,
+  and the harness register keeps every face.
 
 **The store bundle is in, and with it the *plural* in "per-eltype stores".**
 The bench that settled the representation (D-162) measured exactly one buffer;
@@ -466,24 +508,27 @@ values), partial advance and the per-run overrides (§12.6 — `run!(sim, t_end)
 takes `t_end` to the nearest step boundary), and the runtime periphery beyond
 increments 9–12's data plane and device tasks:
 
-- **the binding's runtime half (§11.6):** `map_input`/`map_output` and the
-  shipped `TableBinding`, and the bad-datum channel — `report!`,
-  `MalformedDatum` and the diagnostic cell behind them (§11.8), which is why
-  `DeviceCrash`, `DeviceJoinTimeout` and their kin are plain `@warn`s here.
-  The output side is absent wholesale — a binding declaring `is_output` is
-  rejected at attach, `reads` and the compiled gather unbuilt. Two unguarded
-  edges ride on the same absences: staging through a handle whose device was
-  detached lands in an orphaned cell and is silently lost (handles are
-  run-scoped task equipment; a guard would put a roster scan back into
-  `stage!`), and an `InterruptException` in a device loop reports as
-  `DeviceCrash`, the discrimination belonging to the absent operator
-  interrupt;
-- **the snapshot's framework status** (§11.2, §11.8) — the snapshot carries
-  the table, `t`, the frame ordinal and the §12.3 boundary ordinal, no status
-  value — along with §11.8's diagnostics and liveness machinery wholesale,
-  heartbeats included: a dead device is a task that has ended, marked nowhere;
-- **output-device bindings and the selectors** (§11.2, §14.4), the §11.5
-  input trace, and the §11.7 GUI write path;
+- **§11.8 beyond the bad-datum channel:** the channel here is the per-device
+  cell alone. Still absent: the loop's own diagnostic cell — which is why
+  `ChatteringBudget`, `FiringBudget`, `DeviceCrash`, `DeviceJoinTimeout` and
+  their kin are plain `@warn`s here — the heartbeat timestamp and §12.2's
+  staleness threshold (a dead device is a task that has ended, marked
+  nowhere), the `task_state` read, the presentation-side maxlog threshold,
+  and the published framework status: the snapshot carries the table, `t`,
+  the frame ordinal and the §12.3 boundary ordinal, no status value (the two
+  presentation stand-ins below ride on this absence). Two unguarded edges
+  remain: staging through a handle whose device was detached lands in an
+  orphaned cell and is silently lost (handles are run-scoped task equipment;
+  a guard would put a roster scan back into `stage!`), and an
+  `InterruptException` in a device loop reports as `DeviceCrash`, the
+  discrimination belonging to the absent operator interrupt;
+- **the selector family beyond the binding client (§14.4):** the store
+  selectors `get_state`/`get_deriv`, whose holders — trim's reads,
+  linearization's taps, `capture` — are §14's and absent with it; sub-port
+  field and index addressing (`get_output(path, field, i)`: a selector here
+  reads whole cells, as every reader of this table does); and did-you-mean
+  candidate lists at resolution, per the general rule above;
+- **the §11.5 input trace and the §11.7 GUI write path**;
 - **§12 beyond increment 12's slices** (the §12.1 stop word, §12.2's yield,
   §12.3's wait, §12.4's bracket and tail): pause and the rest of the control
   plane's surface, real-time pacing (§10.7) with §12.2's thread-budget
@@ -511,13 +556,16 @@ enforcement.
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
 | slot initial values owned by the init/trim services (§11.3, §14.6); the running write path is the drain alone | `set_slot!` writes a root slot directly at any stopped-sim point | the §14 services increment |
+| the drained diagnostic rings fold into the published framework status every snapshot carries (§11.8, §11.2) | the loop `@warn`s each drained entry device-attributed and keeps per-run per-device totals, read while stopped by `diagnostics(sim)` | the framework-status increment |
+| the staging diagnostics — `OutOfClaimEntry`, `ClaimedFaceEntry`, `EntryTypeMismatch` — are written into the writer's diagnostic cell at staging (§11.8) | a synchronous `@warn` on the staging task, which also serves the stopped-sim staging no frame-top drain reaches | the framework-status increment |
 
 (Every stand-in introduced through increment 5 was retired on 2026-08-20;
 increment 6's one row — localized guards detecting at boundary resolution —
 was retired by increment 7, and increment 9's publication row by increment 11,
 both on 2026-08-25. The `set_slot!` row above entered with increment 9;
 increment 10's device-staging row was retired by increment 12 on 2026-08-26,
-`attach!` returning the handle.)
+`attach!` returning the handle, and the two §11.8 presentation rows entered
+with increment 13.)
 
 ## Authoring caveat found while building this
 
@@ -542,11 +590,13 @@ the trap lands, one stratum earlier and under the other rule: a component that
 declares nothing has no *class* to read either (§8.5), so the build names both
 families rather than reaching the probe at all. `DeadStage` itself is not built.
 
-The periphery's trait and enumeration methods (`is_input`, `is_greedy`,
-`claims`, `needs_calling_task`) and the device contract's four functions
-(`init!`, `loop`, `shutdown!`, `unblock!`) are the same class of declaration
+The periphery's trait and enumeration methods (`is_input`, `is_output`,
+`is_greedy`, `claims`, `reads`, `needs_calling_task`), the device contract's
+four functions (`init!`, `loop`, `shutdown!`, `unblock!`) and the mapping
+conventions (`map_input`, `map_output`) are the same class of declaration
 and hit the same trap — a trait "declared" inside a `@testset` is a local
 function the conformance check never sees, and a `loop` "declared" there
 leaves the global fallback in place, crashing the device by name. The
-malformed bindings in `test/test_roster.jl` and the devices in
-`test/test_devices.jl` sit at top level for exactly this reason.
+malformed bindings in `test/test_roster.jl` and `test/test_bindings.jl` and
+the devices in `test/test_devices.jl`, `test/test_bindings.jl` and
+`test/test_diagnostics.jl` sit at top level for exactly this reason.

@@ -638,3 +638,20 @@ the shipped GUI binding's shape (§11.6, §11.7).
 struct Greedy <: AbstractBinding end
 is_input(::Greedy) = true
 is_greedy(::Greedy) = true
+
+"""
+    Readout(; label = selector, ...)
+
+The output side's coverage binding (§11.2, §11.6): `reads` names exactly the
+labeled selectors it was built with — the enumeration is the interface — and
+its `map_output` is the identity, the wire datum being the gather's
+NamedTuple itself. A snapshot-consuming telemetry peer differs only in what
+its own `map_output` does with the same NamedTuple.
+"""
+struct Readout{R<:NamedTuple} <: AbstractBinding
+    r::R
+end
+Readout(; sel...) = Readout(NamedTuple(sel))
+is_output(::Readout) = true
+reads(b::Readout) = b.r
+map_output(nt, ::Readout) = nt

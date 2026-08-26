@@ -46,20 +46,26 @@ exactly the primitive capabilities — read (`latest`, `wait_next_snapshot`),
 stage (`stage!`) and control access (`running`, `stop!`) — and deliberately
 *not* the `Simulation`: what a device may touch is what the handle holds.
 `attach!` constructs it and returns it, and the same handle is what the
-wrapper passes to `loop(dev, handle)` on the device's task. `last_seen` is
-the §12.3 waiter's private register, refreshed at spawn so a run's first
-wait observes that run's boundaries. One unguarded edge (README): staging
-through a handle whose device was detached lands in an orphaned cell and is
-silently lost — handles are run-scoped task equipment, and guarding would
-put a roster scan back into `stage!`.
+wrapper passes to `loop(dev, handle)` on the device's task. It also carries
+the attachment's binding, read back by `binding(handle)`: the loop's own
+`map_input`/`map_output` calls take it from the handle instead of the device
+carrying its configuration (§11.6). `last_seen` is the §12.3 waiter's private
+register, refreshed at spawn so a run's first wait observes that run's
+boundaries. One unguarded edge (README): staging through a handle whose
+device was detached lands in an orphaned cell and is silently lost — handles
+are run-scoped task equipment, and guarding would put a roster scan back
+into `stage!`.
 """
 mutable struct DeviceHandle
     const id::Int
     const who::String
+    const b::AbstractBinding
     const writer::Writer
     const plane::DataPlane
     const ctl::Control
     const published::Published
+    const diag::DiagCell
+    const gatherer::Union{Nothing,ReadGather}   # the compiled reads; nothing without an output side
     last_seen::Int
 end
 
@@ -108,6 +114,18 @@ and enters the tail (§12.4). Idempotent, and inert while already stopped.
 stop!(h::DeviceHandle) = (@atomic h.ctl.stop_requested = true; nothing)
 
 """
+    binding(handle)
+
+The attachment's binding (§11.6), for the author-owned loop idiom —
+`stage!(handle, map_input(datum, binding(handle))...)`. The framework never
+calls `map_input`/`map_output` itself: they are conventions of the loop
+body, and the handle carrying the binding is what keeps the device struct
+free of its per-deployment configuration (the binding stays an `attach!`
+argument, never a device field).
+"""
+binding(h::DeviceHandle) = h.b
+
+"""
     latest(handle)
 
 The handle's primitive read (§11.6): acquire-load the most recently published
@@ -130,6 +148,43 @@ function stage!(h::DeviceHandle, pairs::Pair...)
     batch === nothing || _stage!(h.writer, batch)
     nothing
 end
+
+"""
+    gather(handle, snap)
+
+The output side's read (§11.2, §11.6): run the attachment's compiled gather —
+`reads(b)`, resolved at attach — over a snapshot, returning the labeled
+NamedTuple `map_output` receives. The loop idiom is
+`send(dev.socket, map_output(gather(handle, snap), binding(handle)))`, on the
+device's own task, against the snapshot §12.3's wait handed it: the compiled
+addresses read the frozen store, so no name is resolved per datum and nothing
+here touches the running loop. On a handle whose binding declares no output
+side the call is a contract misuse, and throws by name.
+"""
+function gather(h::DeviceHandle, s::Snapshot)
+    h.gatherer === nothing && error(
+        "$(h.who)'s binding declares no output side — `gather` serves the compiled " *
+        "`reads` enumeration (§11.6)")
+    _gather(h.gatherer, s)
+end
+
+"""
+    report!(handle, MalformedDatum(cause))
+
+The bad-datum channel (§11.6, §11.8): the single-writer entry point into the
+device's own diagnostic cell, from the author's loop body after catching its
+own parser error — catch, stage nothing, report, continue. The tolerance is
+bounded by the cell (`DIAG_RING` retained values per frame, the excess a
+count), so a peer flooding malformed datagrams costs sixteen retained values
+and an integer increment, whatever it does, and no writer can starve another
+— the cells are disjoint. This is not a general user-diagnostics channel:
+`MalformedDatum` is the one thing it carries, and any exception the loop does
+*not* classify as a bad datum propagates to the wrapper as `DeviceCrash`.
+The loop drains the cell at frame top and at the run's end, warning each
+retained value device-attributed and folding the counts into the per-run
+totals `diagnostics(sim)` reads (the framework-status stand-in, README).
+"""
+report!(h::DeviceHandle, d::MalformedDatum) = _report!(h.diag, d)
 
 """
     wait_next_snapshot(handle)

@@ -149,6 +149,88 @@ function _drain!(store, w::Writer)
     nothing
 end
 
+# --- the diagnostic cell (§11.8) -----------------------------------------------
+
+"""
+The one diagnostic value of the prototype's device channel: a datum that could
+not be mapped for environmental reasons — a truncated datagram, malformed
+JSON, an out-of-range field — reported by the author's own loop body via
+`report!(handle, MalformedDatum(cause))` after catching its own parser error
+(§11.6: catch, stage nothing, report, continue). The classification is the
+author's — only they know their parser — and any *other* exception
+propagates to the wrapper as the `DeviceCrash` it is. The payload is the
+cause (Appendix C: the exception, or any diagnostic-content value); device
+attribution is the cell's, the channel being per-writer.
+"""
+struct MalformedDatum
+    cause::Any
+end
+
+"The ring's capacity (§11.8): the channel's normative bound, which *is* the rate limit."
+const DIAG_RING = 16
+
+"""
+One frame's bounded accumulation (§11.8): a small ring of diagnostic values,
+capacity `DIAG_RING`, plus a count of what the ring could not hold — the
+per-kind record collapsed to one integer, the closed kind set having exactly
+one member here (`MalformedDatum`; the staging kinds warn synchronously as a
+stand-in, README). The drop policy is earliest-in-frame retained, excess
+becomes counts: the first occurrences are the ones with diagnostic content,
+the hundredth is noise the count already reports. Immutable, because the CAS
+handoff below needs value semantics: an append builds a new batch, and a
+drained batch is frozen — never written again — with the writer allocating
+afresh at its next emission, on its own task (§11.8's GC-over-reuse trade).
+"""
+struct DiagBatch
+    ring::Vector{MalformedDatum}
+    suppressed::Int
+end
+
+"The shared empty sentinel (§11.8): what the drain swaps *in*, and what a quiet frame gets back."
+const EMPTY_DIAG = DiagBatch(MalformedDatum[], 0)
+
+"""
+The diagnostic cell (§11.8): one per rostered device, single writer — the
+device's own task, the same ownership argument as the staging cells: no
+locking, no arbitration, no new primitive. The CAS mirrors `_stage!`'s: a
+failed replace means the loaded batch was intercepted by the drain, and the
+retry re-reads what is pending now — the intercepted entries are already
+taken, and the entry in hand merges against the fresh (sentinel) state.
+"""
+mutable struct DiagCell
+    @atomic batch::DiagBatch
+end
+
+# The writer's side (§11.8), on the device task: append under the bound, or
+# count past it. Reached through `report!(handle, …)` (devices.jl).
+function _report!(cell::DiagCell, d::MalformedDatum)
+    while true
+        cur = @atomic cell.batch
+        next = length(cur.ring) < DIAG_RING ?
+            DiagBatch(push!(copy(cur.ring), d), cur.suppressed) :
+            DiagBatch(cur.ring, cur.suppressed + 1)
+        (; success) = @atomicreplace cell.batch cur => next
+        success && return nothing
+    end
+end
+
+# The indivisible take (§11.8): one `atomicswap` per cell at frame top, at the
+# same point and under the same argument as the staging drain. A quiet frame
+# swaps the sentinel in and gets the sentinel back — no allocation, and no
+# load-only code path that goes untested on healthy runs.
+_take!(cell::DiagCell) = @atomicswap cell.batch = EMPTY_DIAG
+
+"""
+The loop's per-run totals for one writer (§11.8): cumulative per-kind counts
+since the run began — one field, the kind set's one member — owned by the
+loop, reset at each run's top, and read while stopped by `diagnostics(sim)`
+(the stand-in for the published framework status the snapshot does not carry,
+README). Mutable in its own holder so the roster entry stays immutable.
+"""
+mutable struct DiagTotals
+    malformed::Int
+end
+
 # --- publication (§11.2) -------------------------------------------------------
 
 """
