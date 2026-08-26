@@ -1,14 +1,3 @@
-# Acceptance tests for the kernel prototype: the continuous-tier walking
-# skeleton (increment 2), the discrete tier at one rate (increment 3), the
-# hierarchy (increment 4), the multi-rate grid (increment 5), events at
-# boundaries (increment 6), localization (increment 7), the stepper seam
-# with its second backend (increment 8), the data plane's core exchange
-# (increment 9), the roster and claims (increment 10), the log
-# (increment 11), the device contract (increment 12) and the binding's
-# runtime half (increment 13).
-#
-#   julia --project=. test/runtests.jl
-
 using Test, StaticArrays, LinearAlgebra, BenchmarkTools, ForwardDiff
 
 include("../src/leaves.jl")
