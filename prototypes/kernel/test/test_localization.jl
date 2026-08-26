@@ -123,7 +123,7 @@ end
     # The report lands in the run's only frame, past that frame's own top: no
     # later drain exists, so no snapshot can carry it — the run's-end sweep
     # presents it through the logging backend instead, the tail's renderer of
-    # last resort (§11.8, README's stand-ins).
+    # last resort (§11.8, D-201).
     @test_logs (:warn, r"ChatteringBudget from loop, past the final snapshot's account.*children/c") #=
         =# run!(sim, 0.1)
     @test modes(sim, "children/c").count == 9               # 8 at t*, 1 at the frame top

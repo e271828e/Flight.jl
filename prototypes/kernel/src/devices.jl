@@ -7,8 +7,7 @@
 # failure reports as `DeviceCrash` into the device's own diagnostic cell
 # (§11.8, §12.4); what the tail alone produces — the join timeout, and
 # whatever landed past the final frame top — presents through the logging
-# backend, the last snapshot having already been published (README's
-# stand-ins).
+# backend, the last snapshot having already been published (D-201).
 #
 # This file holds the types, the contract and the per-run task mechanics;
 # `run!`'s frame anatomy and the Simulation-typed surface (`attach!`,
@@ -362,7 +361,7 @@ per-run record is complete and nothing leaks into the next run's status.
 The terminal snapshot is already out, so no snapshot can carry this residue:
 it is presented through the logging backend instead, the tail's renderer of
 last resort — the same window that keeps `DeviceJoinTimeout` a synchronous
-warning (README's stand-ins). The terminal status's account is therefore
+warning (D-201). The terminal status's account is therefore
 complete up to its own frame top, and the tail's remainder is loud rather
 than recorded.
 """

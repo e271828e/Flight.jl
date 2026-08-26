@@ -115,8 +115,6 @@ enforcement.
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
 | slot initial values owned by the init/trim services (§11.3, §14.6); the running write path is the drain alone | `set_slot!` writes a root slot directly at any stopped-sim point | the §14 services increment |
-| one diagnostic cell per writer, enumerated as the rostered devices' and the loop's own (§11.8) | a third cell for the harness register: its staging diagnostics (`ClaimedFaceEntry` and kin) are emitted on arbitrary staging tasks and need a single-writer home the spec's enumeration omits | the §11.8 amendment (decision entry pending) |
-| the runtime warning stream surfaces through the published status, `DeviceJoinTimeout` among its kinds (§13.2, Appendix C), the terminal snapshot "the complete warning account" (§12.4) | the tail's diagnostics can reach no snapshot — the terminal one precedes the joins — so `DeviceJoinTimeout` stays a synchronous `@warn` and the run's-end sweep presents the post-final-frame-top residue through the logging backend; the terminal account is complete up to its own frame top | the tail-window decision entry (pending) |
 | the per-writer status rides inline in the snapshot's one per-boundary allocation — zero additional heap allocation on a quiet frame (§11.8) | a `Vector` of per-writer records built at each publication, the small extra allocation the simple shape costs | an allocation-tightening pass (an `NTuple` status type fixed per run) |
 
 (The retirement history of past stand-ins is in `NOTES.md`.)

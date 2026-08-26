@@ -141,9 +141,9 @@ parameter, and everything here is stopped-sim configuration read behind
 function barriers.
 
 The harness register is a writer, so it owns a diagnostic cell and its
-account like any other (§11.8; the spec enumerates only the devices' cells
-and the loop's — the harness cell is the prototype's answer to where its
-staging diagnostics live, README's stand-ins). Unlike the writer, the cell
+account like any other (§11.8, D-200: the harness register is a
+diagnostic writer, its staging diagnostics needing a single-writer home).
+Unlike the writer, the cell
 survives roster changes: its diagnostics are the harness's, whatever surface
 it speaks for. `run_tasks` is the run's device-id → `Task` registry, filled
 at spawn and emptied at run end, which is what lets `publish!` read

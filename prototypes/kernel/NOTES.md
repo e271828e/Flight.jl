@@ -499,4 +499,6 @@ increment 9; increment 10's device-staging row was retired by increment 12 on
 2026-08-26, `attach!` returning the handle, and the two §11.8 presentation
 rows entered with increment 13. Increment 14 retired both presentation rows
 on 2026-08-26 and entered its own three: the harness register's cell, the
-tail window, and the status's per-publication allocation.
+tail window, and the status's per-publication allocation. The harness-cell and
+tail-window rows were retired the same day by the D-200/D-201 spec amendment,
+leaving `set_slot!` and the status allocation.

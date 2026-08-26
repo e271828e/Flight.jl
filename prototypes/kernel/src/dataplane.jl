@@ -36,7 +36,7 @@ they are small. These are the kinds whose sources the prototype has built;
 the four whose features are absent — `DebtReanchor`, `ThreadBudget`,
 `ReplayDiscardedStaging`, `UnboundedRun` — are absent with them (README), and
 `DeviceJoinTimeout` presents synchronously from the tail, past the last
-snapshot any status can ride (README's stand-ins). Writer attribution is
+snapshot any status can ride (D-201). Writer attribution is
 never a payload field: the channel is per-writer, so the cell supplies it
 (§11.8, §12.4: no call passes a device id).
 

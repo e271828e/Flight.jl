@@ -4806,8 +4806,9 @@ snapshot simply keeps it alive.
 ([§14.5][s14-5]) and the terminal snapshot ([§12.4][s12-4], [§13.5][s13-5]) survive any `log_every` and
 any `log_max`, and do not count against the bound — two extra references. The
 terminal snapshot's status carries the run's final cumulative diagnostic
-counters ([§11.8][s11-8]). A run's two endpoints and its complete diagnostic account
-therefore always outlive whatever retention did to the middle.
+counters ([§11.8][s11-8]). A run's two endpoints and its diagnostic account —
+complete to the final frame top ([D-201][d-201]) — therefore always outlive whatever
+retention did to the middle.
 
 Two compositions are worth stating once. The `totals` monotonicity across logged
 snapshots ([§11.8][s11-8]) is untouched: re-decimation, like decimation, loses *which*
@@ -5758,19 +5759,25 @@ loop; and assembly panels compose children by path.
 
 The chapter's two data channels are specified down to their memory ordering.
 The runtime warning stream ([§13.2][s13-2]) and the liveness heartbeat ([§12.2][s12-2]) are
-a third, and they cross the same task boundaries: they are written by the
-[device](#g-device) tasks — `OutOfClaimEntry`, `ClaimedFaceEntry` and `EntryTypeMismatch`
-at staging ([§11.4][s11-4]), `MalformedDatum` from the author's loop body via
-`report!(handle, …)` ([§11.6][s11-6]) — and by the loop itself (`ChatteringBudget`,
-`FiringBudget`, `DebtReanchor`), and read by the loop, which folds them into
+a third, and they cross the same task boundaries: they are written at staging
+by whichever task stages — `OutOfClaimEntry`, `ClaimedFaceEntry` and
+`EntryTypeMismatch` ([§11.4][s11-4]), on a [device](#g-device) task or through the harness
+register ([D-200][d-200]) — by the device tasks (`MalformedDatum` from the author's
+loop body via `report!(handle, …)`, [§11.6][s11-6]), and by the loop itself
+(`ChatteringBudget`, `FiringBudget`, `DebtReanchor`), and read by the loop, which folds them into
 the published [framework status](#g-framework-status) ([§11.2][s11-2]) and hence into every [snapshot](#g-snapshot). An
 unspecified structure with those writers is exactly the arbitrary shared
 mutable state the two rules ([§11.1][s11-1]) exist to eliminate, so it gets the mechanism
 [§11.4][s11-4] already established, not one of its own.
 
-**One [diagnostic cell](#g-diagnostic-cell) per writer — one per rostered device, one for the loop
-itself.** Each [cell](#g-diagnostic-cell) has a single writer, the same ownership argument as the
-[staging cells](#g-staging-cell): no locking, no arbitration, no new primitive. The cell holds a
+**One [diagnostic cell](#g-diagnostic-cell) per writer — one per rostered device, one for the
+harness register, one for the loop itself ([D-200][d-200]).** A device's [cell](#g-diagnostic-cell) and the
+loop's have a single writer, the same ownership argument as the
+[staging cells](#g-staging-cell): no locking, no arbitration, no new primitive. The harness
+register's is written from whichever task stages, exactly as its staging
+cell is, and the same CAS append arbitrates; it carries no heartbeat, and
+its status record no `task_state` — no task of its own to be alive or dead.
+The cell holds a
 **bounded accumulation** — a small ring of diagnostic values, capacity **16**,
 plus a per-kind count of what the ring could not hold — and one atomic
 liveness timestamp.
@@ -5830,7 +5837,13 @@ is normative.
 **The terminal snapshot carries the run's final cumulative counters**
 ([§12.4][s12-4], [§13.5][s13-5]), so an [unattended run](#g-unattended-run) (a run with empty staging and no snapshot
 readers) that nobody watched still answers "what went wrong, and how often"
-from the value its own shutdown published.
+from the value its own shutdown published. Final means final at the last
+frame top ([D-201][d-201]): the account closes with the drain that preceded the
+terminal publication. What lands after it — a report from a device's exit
+path, the tail's own `DeviceJoinTimeout` ([§12.4][s12-4]) — can reach no snapshot,
+so the loop takes each cell once more at the run's end, keeping the next
+run's account clean, and emits the residue through the standard logging
+backend: loud rather than recorded.
 
 **Allocation.** On a quiet frame there is **zero additional heap
 allocation**: the sentinel swap allocates nothing and the per-writer status
@@ -6066,7 +6079,8 @@ loop itself ends first.
    keyword: a positive real in seconds of wall clock, defaulting to 5
    ([Appendix B][sB]). A device task exceeding it is reported *by name*, through the
    [§12.2][s12-2] heartbeat. It is then abandoned with a `DeviceJoinTimeout`
-   warning ([Appendix C][sC]) rather than left to hang `run!`.
+   warning ([Appendix C][sC]) rather than left to hang `run!` — emitted through the
+   logging backend, the terminal snapshot preceding the join ([D-201][d-201]).
 6. **Device-initiated paths.** A device exits voluntarily when its loop body
    returns, at a window ✕ or a peer EOT. No `should_close` hook exists
    ([§11.6][s11-6]). With `should_abort` set, the wrapper's exit path also
@@ -6096,7 +6110,10 @@ The ordered part, in one line:
 **Why the final snapshot goes out before the status is set.** Publishing first
 guarantees that output devices can flush the true final state. The status in
 that terminal snapshot carries the run's cumulative diagnostic counters
-([§11.8][s11-8]) — the complete warning account of a run nobody watched.
+([§11.8][s11-8]) — the warning account of a run nobody watched, complete up to that
+snapshot's own frame top. What the tail itself produces comes later by
+construction and is presented through the logging backend, never published
+([D-201][d-201]).
 
 **Rule.** That terminal snapshot is retained in the log unconditionally, under
 any `log_every` and any `log_max` ([§11.2][s11-2]).
@@ -6794,7 +6811,9 @@ place:
 - **thread-budget tightness** ([§12.2][s12-2]) — once per `run!`, against the frozen
   [roster](#g-roster);
 - **device join timeout** ([§12.4][s12-4]) — a device task exceeding the shutdown
-  join timeout, abandoned by name rather than hanging `run!`;
+  join timeout, abandoned by name rather than hanging `run!`; it arises after
+  the terminal snapshot, so it is emitted through the logging backend, never
+  carried into a status ([D-201][d-201]);
 - **device crash** ([§12.4][s12-4], [§13.4][s13-4]) — a device task's failure caught by the
   framework wrapper, the sim continuing with the device absent;
 - **unbounded run** ([Appendix B][sB]) — no finite `t_end`, no `stop_on` faces,
@@ -9830,7 +9849,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value; the site (staging, or a stopped-sim attach's renormalization). Harness-register only — a device's out-of-surface entry is `OutOfClaimEntry` | [§11.3][s11-3], [§11.4][s11-4] | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§11.3][s11-3] | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count | [§12.2][s12-2] | warning (runtime), at `run!` |
-| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§12.4][s12-4] | warning (runtime) |
+| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§12.4][s12-4] | warning (runtime), at the shutdown tail — through the logging backend, past the terminal snapshot ([D-201][d-201]) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§12.4][s12-4], [§11.6][s11-6], [§13.4][s13-4] | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§12.7][s12-7] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
 | `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§11.6][s11-6], [§13.4][s13-4] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
@@ -10399,8 +10418,8 @@ contract (`init!`/`loop`/`shutdown!`, optional `unblock!` and
 `needs_calling_task`) and one handle; input-only and output-only are
 degenerate uses, and the GUI is an ordinary device ([§11.6][s11-6]).
 
-<a id="g-diagnostic-cell"></a>**diagnostic cell** — the single-writer cell each rostered device and the loop
-itself owns for runtime diagnostics and liveness: a bounded ring (capacity 16)
+<a id="g-diagnostic-cell"></a>**diagnostic cell** — the per-writer cell each rostered device, the harness
+register and the loop itself own for runtime diagnostics and liveness: a bounded ring (capacity 16)
 of diagnostic values plus per-kind suppressed counts — the bound being the
 rate limit itself — and an atomic heartbeat timestamp, taken by the loop with
 `atomicswap` at the frame-top drain and frozen into the published status
@@ -10877,6 +10896,8 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-197]: framework_decisions.md#d-197--reject-discrete-stores-in-linearizations-x-tap-list
 [d-198]: framework_decisions.md#d-198--promote-the-shutdown-join-timeout-to-a-deployment-keyword
 [d-199]: framework_decisions.md#d-199--the-reads-enumeration-returns-a-labeled-namedtuple-of-selectors
+[d-200]: framework_decisions.md#d-200--the-harness-register-is-a-diagnostic-writer-with-its-own-cell
+[d-201]: framework_decisions.md#d-201--the-terminal-account-closes-at-the-final-frame-top
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop

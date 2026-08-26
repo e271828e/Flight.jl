@@ -154,7 +154,7 @@ end
     end
     # The report races the last frame top: folded into the terminal status, or
     # — no drain remaining — presented by the sweep, the tail's renderer of
-    # last resort. Exactly one account either way (§11.8, README's stand-ins).
+    # last resort. Exactly one account either way (§11.8, D-201).
     @test accounted(sim, logs, "device 1 (LateReporter)", :malformed, "MalformedDatum")
     # A fresh run opens a fresh account: totals count since the run began.
     run!(sim, (sim.clock.step + 2) * sim.h)
