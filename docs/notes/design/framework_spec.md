@@ -1011,7 +1011,9 @@ the ports left unconnected.
 `input_connections` entry routes a face to an immediate child's face, and an
 `output_connections` entry sources a face from an immediate child's face.
 [Container children](#g-container-children) ([§8.5][s8-5]) keep their key segment, so
-`"aircraft/2/face"` is one level and not two.
+`"aircraft/2/face"` is one level and not two. A container declared
+name-transparent ([§8.5][s8-5]) is the exception: its elements go by bare key, so
+`"ctl/face"` reads exactly as a plain child's endpoint does, the same one level.
 
 Routing across several levels is therefore declared level by level, each
 assembly speaking only of its own children. `Cessna172` hands its `trn` input to
@@ -1665,7 +1667,7 @@ module therefore opens with
 ```julia
 import Flight: init_x, init_s, init_m, workspace, input_types, output_types,
     events, h_x, h_xu, h_s, h_su, f, g, project, child_connections,
-    input_connections, output_connections, sample_times
+    input_connections, output_connections, sample_times, transparent_container
 ```
 
 **Why the explicit list: `using Flight` alone is a silent trap.** After a bare
@@ -2285,7 +2287,9 @@ Field names are path segments. Substitutability and variants use ordinary
 parametric fields — exactly today's `Cessna172X{K, A}` shape. Alongside the
 struct come the well-known declarations: `child_connections(::A)`, mandatory
 even when empty, plus `input_connections(::A)`, `output_connections(::A)` and
-`sample_times(::A)`.
+`sample_times(::A)`. One more is optional: `transparent_container(::A)`,
+default `nothing`. Naming a container field there drops that field's segment
+from its children's names, the rule the next subsection states.
 
 #### Container children
 
@@ -2311,6 +2315,18 @@ worlds ([§14.9][s14-9]) consume it directly, and so does
 [mounting](#g-mounting), the relocation of a whole problem or tap set with
 [`at`](#g-at)`("aircraft/red", problem)`.
 
+**Rule.** A component may declare at most one of its container fields
+**name-transparent**: `transparent_container(::MyType) = :field`, default
+`nothing`. That field's elements are then contributed under their bare keys —
+`"key"` and `"1"` in place of `"field/key"` and `"field/1"` — everywhere a child
+name appears ([D-211][d-211]): wiring endpoints, `sample_times` keys, read paths, `at`
+prefixes, diagnostics.
+
+Naming is the only thing the declaration changes. The elements are the parent's
+children exactly as before, laid out in declaration order, and the container
+keeps its transparency of contract: no `child_connections`, no faces, no rate
+scope.
+
 The edges of the container form are fixed by rule:
 
 - A container mixing [component](#g-component) and non-component elements is a
@@ -2325,6 +2341,10 @@ The edges of the container form are fixed by rule:
   fields — directly concrete, or concrete through type-parameter bounds. That
   is the [generic holding](#g-generic-holding) — a parent holding a child
   through a non-concrete field type — that [§8.8][s8-8] allows.
+- A bare key from a name-transparent container colliding with any sibling child
+  name is a build error naming both. `transparent_container` must name a
+  container field of the type, and declaring two transparent containers on one
+  type is a declaration error.
 
 `sample_times` needs no rule change. Element names are immediate child names,
 hence legal keys, and the bare field name is sugar for a uniform declaration
@@ -2342,9 +2362,9 @@ comprehensions build the returned tuple.
 
 The *immutable* version of "grouping components by plain calls" needs no
 builder. It is already expressible under this section's rules as a single
-library component (the starting inventory, [§13.7][s13-7]): the
-container-children rule makes a `NamedTuple` field contribute its elements as
-path-named children, and declarations are ordinary functions of the *instance*,
+library component (the starting inventory, [§13.7][s13-7]): a `NamedTuple` field's
+elements are its children by the container rule, name-transparent so they go by
+bare key ([D-211][d-211]), and declarations are ordinary functions of the *instance*,
 free to read its fields:
 
 ```julia
@@ -2354,15 +2374,17 @@ struct Group{C <: NamedTuple, W, I, O} <: AbstractComponent
     inputs::I
     outputs::O
 end
-child_connections(g::Group)  = g.wires
-input_connections(g::Group)  = g.inputs
-output_connections(g::Group) = g.outputs
+child_connections(g::Group)    = g.wires
+input_connections(g::Group)    = g.inputs
+output_connections(g::Group)   = g.outputs
+transparent_container(::Group) = :children
+
+Group(children; wires = (), inputs = (), outputs = ()) =
+    Group(children, wires, inputs, outputs)
 
 world = Group(
-    (; plant = Plant(), ctrl = PID(kp = 2.0)),
-    ("children/ctrl/u" => "children/plant/u", "children/plant/y" => "children/ctrl/y"),
-    (;),
-    (;),
+    (; plant = Plant(), ctrl = PID(kp = 2.0));
+    wires = ("ctrl/u" => "plant/u", "plant/y" => "ctrl/y"),
 )
 ```
 
@@ -2383,7 +2405,10 @@ The reach of the builder rejection is fixed by [D-184][d-184]: it targets mutabl
 recipes, not type-based *semantics*. `Group` is the library's anonymous
 assembly form beside the named types, shipped the way Julia ships anonymous
 functions alongside named ones, and it serves the model assembler with a
-library addition and zero new declaration rules.
+library addition riding one opt-in declaration, `transparent_container`
+([D-211][d-211]). What that declaration buys is that a `Group`'s wiring and rate
+declarations read exactly like a named assembly's — child and face, no
+`children/` boilerplate.
 
 #### Class by declaration shape
 
@@ -2443,7 +2468,9 @@ unwritable.
 one canonical form, shared verbatim by
 declarations, error messages, [device](#g-device)/[trace](#g-trace) addressing ([§11.3][s11-3]) and the HDF5 log
 tree. [Container children](#g-container-children) ([§8.5][s8-5]) add index and key segments — `"aircraft/2"`,
-`"aircraft/red"` — ordinary segments, resolved against the container field. Instance navigation,
+`"aircraft/red"` — ordinary segments, resolved against the container field. A
+container declared name-transparent ([§8.5][s8-5]) adds no segment of its own: its
+elements go by bare key. Instance navigation,
 tuples of symbols and dotted paths were all rejected ([D-040][d-040]); a path-tracking
 proxy remains addable sugar. The three wiring declarations use only the short
 case of that form — one child segment and one [face](#g-face) name
@@ -9592,7 +9619,8 @@ lifecycle:
 - Discrete leaf: `init_s`, `workspace(::C)`,
   `input_types`/`output_types` — stages `h_s`, `h_su`, `g`.
 - Assembly: `child_connections` (mandatory — the class marker),
-  `input_connections`, `output_connections`, `sample_times`.
+  `input_connections`, `output_connections`, `sample_times`,
+  `transparent_container` (optional, default `nothing`).
 - Shipped conditions: `condition(::C; kw)` fragment functions ([§14.2][s14-2]).
 
 Bundle contents by function family (the maximal legal sets, [§5.2][s5-2] — signatures
@@ -10027,7 +10055,8 @@ root input (`AbstractAtRoot`) ([§8.2][s8-2]).
 
 <a id="g-assembly"></a>**assembly** — pure composition: component-typed fields as children, plus
 `child_connections` (mandatory, the class marker), `input_connections`,
-`output_connections` and `sample_times`, with no
+`output_connections`, `sample_times` and the optional
+`transparent_container`, with no
 dynamics of its own; flattened away for scheduling, retained as the
 navigation hierarchy and as declaration-level rate scopes ([§3.3][s3-3], [§8.5][s8-5]).
 
@@ -10054,8 +10083,9 @@ interchangeably for the non-assembly classes ([§3][s3]).
 
 <a id="g-container-children"></a>**container children** — a `Tuple`/`NamedTuple` field whose elements are all
 components, contributing them as children path-named `"field/1"` or
-`"field/key"`. Transparent grouping, not an assembly: no contract, no
-`child_connections`, no rate scope ([§8.5][s8-5]).
+`"field/key"` — or by bare key, `"1"` or `"key"`, where the field is declared
+name-transparent via `transparent_container`. Transparent grouping, not an
+assembly: no contract, no `child_connections`, no rate scope ([§8.5][s8-5]).
 
 <a id="g-continuous-component"></a>**continuous component** — the hybrid primitive: continuous state `x`, modes
 `m`, flow `f`, two output stages, events (guards + handlers) and optional
@@ -10077,7 +10107,7 @@ at its own anchor.
 <a id="g-declaration-inventory"></a>**declaration inventory** — the closed set of well-known functions a component
 or assembly defines — `init_x`/`init_s`/`init_m`, `workspace`,
 `input_types`/`output_types`, `events`, the stages, `f`/`g`/
-`project`, and `child_connections`/`input_connections`/`output_connections`/`sample_times` — each declared in a stated
+`project`, and `child_connections`/`input_connections`/`output_connections`/`sample_times`/`transparent_container` — each declared in a stated
 register of authority: by value, by type, by allocation ([§8.2][s8-2]).
 
 <a id="g-derived-contract"></a>**derived contract** — the checkable surface an assembly or the
@@ -11059,6 +11089,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-208]: framework_decisions.md#d-208--root-inputs-are-the-root-components-input-faces-whatever-its-class
 [d-209]: framework_decisions.md#d-209--build-output_passthrough
 [d-210]: framework_decisions.md#d-210--tighten-the-input-boundary-class-uniform-face-uniqueness-and-no-empty-routing
+[d-211]: framework_decisions.md#d-211--let-a-component-declare-one-container-name-transparent
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop

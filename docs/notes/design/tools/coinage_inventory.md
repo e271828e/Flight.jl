@@ -33,6 +33,7 @@ owning entry's anchor; no new entries needed.
 | levels doctrine | the levels-never-deltas doctrine — verify owning entry; D-024 carries it |
 | interior sweep, boundary sweep | sweep (both variants are bold-defined inside that one entry; such in-entry sub-terms could be given their own anchors) |
 | bundle law | bundle (the entry states the law: a name is present iff the store exists) |
+| name-transparent container | container children (the entry states the naming opt-out `transparent_container` declares) |
 
 Compositional uses of the §D.10 meta-vocabulary ("didactic register",
 "inspection register", "what-if register", "device contract", "face
