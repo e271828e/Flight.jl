@@ -91,67 +91,48 @@ function children(path::String, c)
     kids
 end
 
-"""
-Is the field `name` of `C` **generically held** (§8.8): a `TypeVar` or a
-non-concrete type where the *generic struct* declares it? The judgement is about
-the declaration's knowledge, not about the instance in hand — a concrete
-instantiation resolves deeper than its declaration is allowed to reach.
-"""
-function generically_held(C::DataType, name::Symbol)
-    FT = fieldtype(Base.unwrap_unionall(C.name.wrapper), name)
-    !(FT isa Type) || !isconcretetype(FT)
-end
-
 # --- paths (§8.6, §6.1) -------------------------------------------------------
 # Slash-separated, relative to the declaring assembly, no leading slash: the one
 # canonical form, used verbatim in declarations and in error messages. A terminal
-# path's last segment is a port or face name; the prefix walks children.
+# path's last segment is a port or face name; the prefix names one child. Deep
+# structural paths survive on the read side — inspection, provenance, the table
+# accessors — and nowhere in the three wiring declarations (D-207).
 
 """
 Resolve terminal `path` against assembly `asm` at `base`, returning the component
 it names, that component's absolute path, and the final segment.
 
-§6.1's reach rule lives here: a path may traverse any chain of concretely-declared
-component fields and **stops at the first generically-held child**, whose faces are
-the only things addressable beyond it. Resolving *to* a generic child is
-face-level access and legal (§13.3): the terminal hop is exempt, so a route
-through concretely-declared structure may end at a generic child's face, and a
-container's elements are addressable by their parent's own declarations.
+§6.1's one-level rule lives here (D-207): a connection endpoint names an
+**immediate child and one of its faces** — one child segment, plus the key
+segment where the child is a container element (`"units/1/e"` is one level, not
+two), and one face name. Anything deeper is a build error whatever the declared
+field types along it, which is why the generic-holding question never arises in
+this register: an endpoint stops before any field it could traverse past
+(§13.3). Faces are the only currency crossing a boundary, so a route through
+several levels is declared level by level, each assembly speaking of its own
+children alone.
 """
 function resolve_terminal(entry::String, base::String, asm, path::AbstractString)
     segs = String.(split(path, '/'))
     length(segs) > 1 ||
         throw(BuildError("$entry: `$path` is not an endpoint — a terminal path names a child " *
                          "and one of its ports or faces (§8.6)"))
-    cur, curpath, i = asm, base, 1
-    crossed = Tuple{String,DataType,Symbol}[]      # child path, owner type, field crossed
-    while i < length(segs)
-        kids = children(curpath, cur)
-        j = findfirst(kid -> first(kid) == segs[i], kids)
-        consumed = 1
-        if j === nothing && i + 1 < length(segs)
-            j = findfirst(kid -> first(kid) == segs[i] * "/" * segs[i+1], kids)
-            consumed = 2
-        end
-        j === nothing &&
-            throw(BuildError("$entry: `$path` names no child `$(segs[i])` of $(_at(curpath))" *
-                             (isempty(kids) ? " — it has no children" :
-                              " — its children are $(join((first(k) for k in kids), ", "))")))
-        seg, kid = kids[j]
-        push!(crossed, (_join(curpath, seg), typeof(cur), Symbol(segs[i])))
-        cur, curpath, i = kid, _join(curpath, seg), i + consumed
-    end
-    # Resolving *to* a generic child is face-level access and legal (§13.3);
-    # the traversals the rule polices are the hops before the terminal
-    # component, so the last crossed entry is exempt.
-    for (childpath, C, field) in crossed[1:end-1]
-        generically_held(C, field) &&
-            throw(BuildError("$entry: `$path` reaches past `$childpath`, which is held " *
-                             "generically — a path traverses concretely-declared fields only " *
-                             "and stops at the first generically-held child, whose faces are " *
-                             "the only things addressable beyond it (§6.1)"))
-    end
-    cur, curpath, Symbol(segs[end])
+    kids = children(base, asm)
+    j = findfirst(kid -> first(kid) == segs[1], kids)
+    j === nothing && length(segs) > 2 &&
+        (j = findfirst(kid -> first(kid) == segs[1] * "/" * segs[2], kids))
+    j === nothing &&
+        throw(BuildError("$entry: `$path` names no child `$(segs[1])` of $(_at(base))" *
+                         (isempty(kids) ? " — it has no children" :
+                          " — its children are $(join((first(k) for k in kids), ", "))")))
+    seg, kid = kids[j]
+    count(==('/'), seg) + 2 == length(segs) ||
+        throw(BuildError("$entry: `$path` reaches past `$(_join(base, seg))` — a connection " *
+                         "endpoint names an immediate child and one of its faces, so an " *
+                         "endpoint path is one child segment (plus the key segment where the " *
+                         "child is a container element) and one face name; route through " *
+                         "`$seg`'s own face instead, declared level by level (§6.1)"))
+    kid, _join(base, seg), Symbol(segs[end])
 end
 
 # The key set of a contract declaration, whichever arity declares it: the keys are
@@ -225,15 +206,20 @@ end
 
 """
 What the pipeline consumes: primitives by absolute path, one resolved producer
-per declared input, the root's input faces (the [root inputs](§11.3)) and the
-assembly faces the periphery may read, aliased onto the cells they derive from.
+per declared input, the root's input faces (the [root inputs](§11.3)) and §9.2's
+two-sided face table — the assembly faces the periphery may read, aliased onto
+the cells they derive from, and beside them every input face at every level with
+the producer it routes to. The input side is total: one-level routing gives
+every signal crossing a boundary a declared face there (D-207), so a fragment's
+`inputs` payload resolves from any authoring level (§14.2).
 """
 struct Flat
     paths::Vector{String}
     comps::Vector{Any}
     conns::Vector{Vector{Pair{Symbol,Tuple{String,Symbol}}}}   # face => (producer path, port)
     root_inputs::Vector{Symbol}                                # root input faces, in order
-    faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}   # (path, face) => producer
+    in_faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}   # (path, face) => producer
+    out_faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}  # (path, face) => producer
     triples::Vector{NTuple{3,Int}}      # per component: (anchor, m, c), anchor 0 the base grid
     anchors::Vector{NTuple{2,Rational{Int}}}   # anchors 1…K: the exact (T, τ) pairs
     aprov::Vector{String}               # per anchor, the declaring scope and key
@@ -251,7 +237,8 @@ struct _Walk
     feeds::Dict{Tuple{String,Symbol},Tuple{String,Symbol}}
     claims::Dict{Tuple{String,Symbol},String}                  # who claimed it, for the message
     root_inputs::Vector{Symbol}
-    faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}
+    routes::Vector{Tuple{String,Symbol,Vector{Tuple{String,Symbol}}}}   # (path, face, consumers)
+    out_faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}
     triples::Vector{NTuple{3,Int}}
     anchors::Vector{NTuple{2,Rational{Int}}}
     aprov::Vector{String}
@@ -337,14 +324,14 @@ end
 The tree walk of Stratum A (§9.1): components collected by path, classes read,
 wiring resolved to absolute leaf terminals, sample times folded to `(anchor, m,
 c)` triples, the one-producer-per-input and whole-tree obligation rules
-enforced.
+enforced. Any component may be the root (D-208) — a primitive one flattens to
+the single leaf at the root path, its `input_types` keys the model's root
+inputs.
 """
 function flatten(root)
-    classify("", root) === PRIMITIVE &&
-        throw(BuildError("the root component is a primitive — a model's root is an assembly, " *
-                         "whose input faces are the root inputs (§9.1)"))
     w = _Walk(String[], Any[], Dict{Tuple{String,Symbol},Tuple{String,Symbol}}(),
               Dict{Tuple{String,Symbol},String}(), Symbol[],
+              Tuple{String,Symbol,Vector{Tuple{String,Symbol}}}[],
               Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[],
               NTuple{3,Int}[], NTuple{2,Rational{Int}}[], String[])
     _walk!(w, "", root, (0, 1, 0))          # the root scope: anchor 0, the base grid itself
@@ -365,7 +352,22 @@ function flatten(root)
         end
         push!(conns, cs)
     end
-    Flat(w.paths, w.comps, conns, w.root_inputs, w.faces, w.triples, w.anchors, w.aprov)
+
+    # §9.2's input side, derived once the obligation pass has proved every input
+    # fed exactly once: an assembly's face and the leaf entries behind it are
+    # claimed together by the one route above them, so the consumers of a face
+    # share a producer and `(path, face) => producer` is well defined. A
+    # primitive's own entries complete the record, so the graph carries every
+    # input face at every level, whatever the level's class.
+    in_faces = Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[]
+    for (path, face, consumers) in w.routes
+        isempty(consumers) || push!(in_faces, (path, face) => w.feeds[first(consumers)])
+    end
+    for (path, cs) in zip(w.paths, conns), (face, producer) in cs
+        push!(in_faces, (path, face) => producer)
+    end
+    Flat(w.paths, w.comps, conns, w.root_inputs, in_faces, w.out_faces,
+         w.triples, w.anchors, w.aprov)
 end
 
 function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
@@ -373,6 +375,16 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         push!(w.paths, path)
         push!(w.comps, comp)
         push!(w.triples, scope)
+        # A primitive at the root: its `input_types` keys are the model's root
+        # inputs, each face its own consuming entry (§8.6, §11.3, D-208), fed by
+        # the same pseudo-producer an assembly root's faces get.
+        if isempty(path)
+            for face in keys(_contract(input_types, comp))
+                push!(w.root_inputs, face)
+                _claim!(w, (path, face), ("", face),
+                        "the root component's `input_types` entry `$face`")
+            end
+        end
         return nothing
     end
     _check_face_names(path, comp)
@@ -406,6 +418,7 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
     for (face, inner) in input_connections(comp)
         entry = _entry("input_connections", path, face => inner)
         consumers = _fanout(entry, path, comp, inner)
+        push!(w.routes, (path, Symbol(face), consumers))
         isempty(path) || continue
         push!(w.root_inputs, Symbol(face))
         for consumer in consumers
@@ -414,7 +427,7 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
     end
     for (src, face) in output_connections(comp)
         entry = _entry("output_connections", path, src => face)
-        push!(w.faces, (path, Symbol(face)) => resolve_source(entry, path, comp, src))
+        push!(w.out_faces, (path, Symbol(face)) => resolve_source(entry, path, comp, src))
     end
     nothing
 end

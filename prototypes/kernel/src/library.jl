@@ -516,7 +516,9 @@ end
 
 """
 The sampled loop as a *named* assembly, holding its three children in concretely
-declared fields — so an ancestor may deep-route into them (§6.1).
+declared fields. An ancestor reaches none of them: every signal leaving this
+level does so through a face declared here (§6.1, D-207), which is why the
+plant's `power` port is re-exported below beside `y` and `cmd`.
 
 `ctl_rate` is §10.5's exposed-multiplier idiom: a deployment preference surfaces
 as a constructor parameter, the declaration stays the assembly's own
@@ -536,16 +538,17 @@ SampledLoop(; kI = 3.0, ω = 2.0, ζ = 0.1, ctl_rate = Relative(1)) =
 child_connections(::SampledLoop) =
     ("ctl/u" => "plant/u", "sum/e" => "ctl/e", "plant/y" => "sum/b")
 input_connections(::SampledLoop) = ("ref" => "sum/a",)
-output_connections(::SampledLoop) = ("plant/y" => "y", "ctl/u" => "cmd")
+output_connections(::SampledLoop) =
+    ("plant/y" => "y", "ctl/u" => "cmd", "plant/power" => "power")
 sample_times(l::SampledLoop) = (ctl = l.ctl_rate,)
 
 """
     Vehicle(; k, kI, ω, ζ)
 
 Two levels: the vehicle scales its own `"ref"` face and hands the product to the
-loop's input face, and re-exports three of the loop's signals — two of them
-through the loop's own faces, the third by deep-routing to `"loop/plant/power"`,
-a grandchild's port reached through concretely declared fields.
+loop's input face, and re-exports three of the loop's signals — each through the
+loop's own face, one level at a time, the plant's `power` having acquired a face
+on the loop's boundary to be re-exported through (§6.1, D-207).
 
 Its faces are the mixed-tier set: `"y"` derives from the continuous plant, `"cmd"`
 from the discrete controller, and neither is declared anywhere — a face's type and
@@ -561,7 +564,7 @@ Vehicle(; k = 1.0, kI = 3.0, ω = 2.0, ζ = 0.1) = Vehicle(SampledLoop(; kI, ω,
 child_connections(::Vehicle) = ("trim/out" => "loop/ref",)
 input_connections(::Vehicle) = ("ref" => "trim/e",)
 output_connections(::Vehicle) =
-    ("loop/y" => "y", "loop/cmd" => "cmd", "loop/plant/power" => "power")
+    ("loop/y" => "y", "loop/cmd" => "cmd", "loop/power" => "power")
 
 # --- the fragment-function idiom (§14.2) ----------------------------------------
 # User-idiom material, not framework API: `condition` is an ordinary function

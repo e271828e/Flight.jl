@@ -11,6 +11,11 @@ tri() = Group((; plant = Plant(), ctl = DiscreteIntegrator(3.0), trig = Trigger(
               ("children/plant/y" => "children/trig/sig",),
               ("u" => "children/plant/u", "e" => "children/ctl/e"), ())
 
+# A named assembly one level down, its input face fed from the root's: the
+# per-level `at` addressing D-207's total face graph makes resolvable.
+nested() = Group((; loop = SampledLoop()), (), ("in" => "children/loop/ref",),
+                 ("children/loop/y" => "y",))
+
 # A workspace declarer, for the "never workspace" half of §14.1's rule.
 scratchy() = Group((; sm = Smoother(0.5)), (),
                    ("a" => "children/sm/a", "b" => "children/sm/b"), ())
@@ -175,6 +180,32 @@ end
                                             fragment(inputs = (nope = 1.0,))), b)).msg)
     @test occursin("no root input face",
                    failure(() -> resolve(fragment(inputs = (nope = 1.0,)), b)).msg)
+end
+
+@testset "an `at` prefix stopping at an assembly resolves its faces (§14.2, D-207)" begin
+    b = build(nested())
+    # The face graph is total, so a prefix may stop at *any* child's faces: the
+    # sub-assembly's own `ref` is looked up at that level and followed to the
+    # root input the chain ends at. The plan is the one the root spelling
+    # produces, entry for entry — two spellings of one root input.
+    p = resolve(at("children/loop", fragment(inputs = (ref = 1.0,))), b)
+    q = resolve(fragment(inputs = (in = 1.0,)), b)
+    @test p.inputs == q.inputs && p.faces == q.faces == [:in]
+
+    # A component-fed face is still unpokeable, at an assembly prefix as at a
+    # primitive's: `Vehicle` feeds the loop's `ref` from its own `trim`.
+    @test occursin("reaches no root input",
+                   failure(() -> resolve(at("loop", fragment(inputs = (ref = 1.0,))),
+                                         build(Vehicle()))).msg)
+
+    # A face the level does not declare, with the level's face list in hand.
+    e = failure(() -> resolve(at("children/loop", fragment(inputs = (nope = 1.0,))), b))
+    @test occursin("declares no input face `nope`", e.msg) && occursin("`ref`", e.msg)
+
+    # State at an assembly prefix stays refused: assemblies own no state, and
+    # only the `inputs` payload gained a level to resolve at.
+    e = failure(() -> resolve(at("children/loop", fragment(x = (q = 1.0,))), b))
+    @test occursin("is an assembly", e.msg) && occursin("components and root inputs", e.msg)
 end
 
 @testset "root-input totality is checked pre-write, and a rejection changes nothing (§14.6, D-068)" begin

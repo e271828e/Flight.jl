@@ -349,12 +349,13 @@ function _component(flat::Flat, e::CEntry, viol::Vector{String})
     nothing
 end
 
-# An `inputs` payload names a face of the authoring level's contract;
-# resolution walks the export chain to the root input and errors if the face
-# never surfaces (§14.2). The chain is what the flat list already holds: an
-# input's resolved producer is either a root input or an internal port, and an
-# internally wired input reaches none — writing it would be meaningless,
-# because the first sweep overwrites it.
+# An `inputs` payload names a face of the authoring level's contract, whatever
+# that level's class; resolution walks the export chain to the root input and
+# errors if the face never surfaces (§14.2). The chain is the `Build`'s own
+# input-side face graph, total under one-level routing (§9.2, D-207): a face's
+# producer is either a root input or an internal port, and a component-fed face
+# reaches none — writing it would be meaningless, because the first sweep
+# overwrites it.
 function _root_input(flat::Flat, e::CEntry, viol::Vector{String})
     if isempty(e.path)
         e.field in flat.root_inputs && return e.field
@@ -362,23 +363,30 @@ function _root_input(flat::Flat, e::CEntry, viol::Vector{String})
                     "inputs are $(_names(flat.root_inputs)) (§14.2) [$(e.prov)]")
         return nothing
     end
-    ci = _component(flat, e, viol)
-    ci === nothing && return nothing
-    conns = flat.conns[ci]
-    k = findfirst(p -> first(p) === e.field, conns)
+    k = findfirst(p -> first(p) === (e.path, e.field), flat.in_faces)
     if k === nothing
-        push!(viol, "ConditionResolution: $(_at(e.path)) declares no input face " *
-                    "`$(e.field)` — its input faces are " *
-                    "$(_names([first(p) for p in conns])) (§14.2) [$(e.prov)]")
+        here = [f for ((p, f), _) in flat.in_faces if p == e.path]
+        push!(viol, isempty(here) && !_addresses_level(flat, e.path) ?
+                    "ConditionResolution: the condition addresses $(_at(e.path)), which is " *
+                    "no component of this build (§14.3) [$(e.prov)]" :
+                    "ConditionResolution: $(_at(e.path)) declares no input face " *
+                    "`$(e.field)` — its input faces are $(_names(here)) (§14.2) [$(e.prov)]")
         return nothing
     end
-    (path, port) = last(conns[k])
+    (path, port) = last(flat.in_faces[k])
     isempty(path) && return port
     push!(viol, "ConditionResolution: $(_at(e.path))'s input face `$(e.field)` reaches no " *
                 "root input — it is wired internally, to `$path`.$port, and the first sweep " *
                 "overwrites it; unexported stays unpokeable (§14.2) [$(e.prov)]")
     nothing
 end
+
+# Does the path name a level of this build at all — a component, or an assembly
+# some component sits under? Assemblies leave no row of their own in the flat
+# list, so an empty face list alone does not tell a bare typo from an assembly
+# that declares no input face.
+_addresses_level(flat::Flat, path::String) =
+    any(p == path || startswith(p, path * "/") for p in flat.paths)
 
 _names(ns) = isempty(ns) ? "none" : join(("`$n`" for n in ns), ", ")
 

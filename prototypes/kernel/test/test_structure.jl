@@ -34,10 +34,37 @@ h_x(::BothFamilies, (; t)) = (a = 1.0,)
     err = failure(() -> classify("c", BothFamilies(Gain(1.0))))
     @test err isa BuildError && occursin("output_types", err.msg)
 
-    # A primitive at the root is a Stratum A error (§9.1): a model's root is an
-    # assembly, whose input faces are the root inputs.
-    err = failure(() -> build(Plant()))
-    @test err isa BuildError && occursin("root", err.msg)
+    # Any component may be the root (D-208): a primitive one flattens to the
+    # single leaf at the root path, its `input_types` keys the root inputs.
+    b = build(Plant())
+    @test b.flat.paths == [""]
+    @test b.flat.root_inputs == [:u]
+end
+
+@testset "a primitive root is the whole model (§8.2, §9.1, D-208)" begin
+    # The bare leaf, deployed and driven: the same second-order plant the
+    # feedback model wraps, now with `u` a root input rather than a wired port.
+    # Under a step `u` held from `t₀`, ẋ = A x + B u integrates exactly.
+    ω, ζ, u = 2.0, 0.1, 0.7
+    A = SMatrix{2,2}(0.0, -ω^2, 1.0, -2ζ * ω)
+    B = SVector(0.0, 1.0)
+    exact(t) = exp(A * t) * (A \ (B * u)) - A \ (B * u)
+
+    sim = Simulation(Plant(; ω, ζ); h = 1//1000)
+    init!(sim, fragment(inputs = (u = u,)))
+    @test port(sim, "", :u) === u              # the root input's own cell
+    run!(sim; t_end = 2.0)
+
+    @test state(sim, "").q ≈ exact(2.0) rtol = 1e-8
+    @test port(sim, "", :y) ≈ exact(2.0)[1] rtol = 1e-8
+    @test port(sim, "", :power) ≈ u * exact(2.0)[2] rtol = 1e-8
+
+    # Totality reaches it like any other root input, and the condition's own
+    # vocabulary composes at the root with no `at` prefix in sight.
+    @test occursin("UninitializedInputs", failure(() -> init!(sim)).msg)
+    sim2 = Simulation(Plant(; ω, ζ); h = 1//1000)
+    init!(sim2, combine(condition(Plant(); y = 1.0), fragment(inputs = (u = 0.0,))))
+    @test state(sim2, "").q === SVector(1.0, 0.0)
 end
 
 # --- container children (§8.5) ------------------------------------------------
@@ -89,72 +116,63 @@ output_connections(::TupleRoster) = ("units/2/out" => "y",)
     @test occursin("mixes components", err.msg) && occursin("units", err.msg)
 end
 
-# --- paths and the reach rule (§6.1, §8.6) ------------------------------------
-# The same instance, held two ways: the deep route is legal through concretely
-# declared fields and a build error past a generically held child, which is the
-# rule being about the declaration's knowledge rather than the build's.
+# --- paths and the one-level rule (§6.1, §8.6) --------------------------------
+# The same instance, held two ways. Under D-207 a wiring endpoint names an
+# immediate child and one of its faces, so the route is declared level by level
+# and the declaration's knowledge of its own field is no longer the question:
+# the concrete and the generic holder wire identically, and neither may reach
+# past the child it names.
 
 struct ConcreteHold <: AbstractComponent
     inner::SampledLoop
 end
 child_connections(::ConcreteHold) = ()
-input_connections(::ConcreteHold) = ("ref" => "inner/sum/a",)
-output_connections(::ConcreteHold) = ("inner/plant/y" => "y",)
+input_connections(::ConcreteHold) = ("ref" => "inner/ref",)
+output_connections(::ConcreteHold) = ("inner/y" => "y",)
 
 struct GenericHold{L <: AbstractComponent} <: AbstractComponent
     inner::L
 end
 child_connections(::GenericHold) = ()
-input_connections(::GenericHold) = ("ref" => "inner/sum/a",)
-output_connections(::GenericHold) = ("inner/plant/y" => "y",)
+input_connections(::GenericHold) = ("ref" => "inner/ref",)
+output_connections(::GenericHold) = ("inner/y" => "y",)
 
-@testset "a path stops at the first generically held child (§6.1)" begin
-    # Two levels down into declared structure, bypassing the sub-assembly's own
-    # face: legal, and the routed input is fed exactly once.
+struct PastReach <: AbstractComponent            # one segment further: past it
+    inner::SampledLoop
+end
+child_connections(::PastReach) = ()
+input_connections(::PastReach) = ("ref" => "inner/sum/a",)
+output_connections(::PastReach) = ("inner/y" => "y",)
+
+struct PastGenericReach{L <: AbstractComponent} <: AbstractComponent   # the same, generic
+    inner::L
+end
+child_connections(::PastGenericReach) = ()
+input_connections(::PastGenericReach) = ("ref" => "inner/sum/a",)
+output_connections(::PastGenericReach) = ("inner/y" => "y",)
+
+@testset "a wiring endpoint names one child and one of its faces (§6.1, D-207)" begin
+    # Routed through the sub-assembly's own face: legal, the routed input is fed
+    # exactly once, and the re-exported face aliases the port behind it.
     sim = Simulation(ConcreteHold(SampledLoop()); h = 1//50)
     init!(sim, fragment(inputs = (ref = 1.0,)))
     @test port(sim, "", :y) === port(sim, "inner/plant", :y)
 
-    # The identical paths against the identical instance, held generically: the
-    # concrete child would resolve them, and the declaration may not.
-    err = failure(() -> build(GenericHold(SampledLoop())))
-    @test err isa BuildError
-    @test occursin("generically", err.msg) && occursin("inner", err.msg)
-end
+    # The identical declarations against the identical instance, held
+    # generically: substitutability now holds at *every* boundary, so the
+    # generic holder builds too, and the concrete/generic distinction has left
+    # this register entirely.
+    gsim = Simulation(GenericHold(SampledLoop()); h = 1//50)
+    init!(gsim, fragment(inputs = (ref = 1.0,)))
+    @test port(gsim, "", :y) === port(sim, "", :y)
 
-# The rule's other half (§13.3): resolving *to* a generic child is face-level
-# access. `mid` is concretely declared and `inner` generically, so a route from
-# the outer type may end at `inner`'s faces and may not go past them.
-
-struct MidHold{L <: AbstractComponent} <: AbstractComponent
-    inner::L
-end
-child_connections(::MidHold) = ()
-input_connections(::MidHold) = ("ref" => "inner/ref",)
-output_connections(::MidHold) = ("inner/y" => "y",)
-
-struct FaceReach <: AbstractComponent            # ends at the generic child's face
-    mid::MidHold{SampledLoop}
-end
-child_connections(::FaceReach) = ()
-input_connections(::FaceReach) = ("ref" => "mid/inner/ref",)
-output_connections(::FaceReach) = ("mid/inner/y" => "y",)
-
-struct PastReach <: AbstractComponent            # one segment further: past it
-    mid::MidHold{SampledLoop}
-end
-child_connections(::PastReach) = ()
-input_connections(::PastReach) = ("ref" => "mid/inner/sum/a",)
-output_connections(::PastReach) = ("mid/inner/plant/y" => "y",)
-
-@testset "a route may end at a generic child's face, never go past it (§6.1, §13.3)" begin
-    sim = Simulation(FaceReach(MidHold(SampledLoop())); h = 1//50)
-    init!(sim, fragment(inputs = (ref = 1.0,)))
-    @test port(sim, "", :y) === port(sim, "mid/inner/plant", :y)
-
-    err = failure(() -> build(PastReach(MidHold(SampledLoop()))))
-    @test err isa BuildError
-    @test occursin("generically", err.msg) && occursin("mid/inner", err.msg)
+    # One segment further — the grandchild's own port, bypassing `inner`'s face
+    # — is the build error, whatever the field's declared type.
+    for bad in (PastReach(SampledLoop()), PastGenericReach(SampledLoop()))
+        err = failure(() -> build(bad))
+        @test err isa BuildError
+        @test occursin("reaches past `inner`", err.msg) && occursin("§6.1", err.msg)
+    end
 end
 
 # --- the three connection declarations (§8.6) ---------------------------------
@@ -211,30 +229,40 @@ struct Starved <: AbstractComponent              # an obligation chain that neve
 end
 child_connections(::Starved) = ()
 
-struct DoubleFed <: AbstractComponent            # handed up *and* wired
+struct DoubleFed <: AbstractComponent            # two producers onto one face
     loop::SampledLoop
     src::ModedSource
+    src2::ModedSource
 end
-child_connections(::DoubleFed) = ("src/out" => "loop/ref", "src/out" => "loop/sum/a")
+child_connections(::DoubleFed) = ("src/out" => "loop/ref", "src2/out" => "loop/ref")
+
+struct Doubler <: AbstractComponent              # its own wire onto the input its face routes to
+    s::ModedSource
+    g::Gain
+end
+child_connections(::Doubler) = ("s/out" => "g/e",)
+input_connections(::Doubler) = ("in" => "g/e",)
+output_connections(::Doubler) = ("g/out" => "y",)
 
 struct DoubleFedSibling <: AbstractComponent     # an ancestor's route onto a wired input
-    loop::SampledLoop
+    loop::Doubler
     src::ModedSource
 end
-child_connections(::DoubleFedSibling) = ("src/out" => "loop/sum/b",)
+child_connections(::DoubleFedSibling) = ("src/out" => "loop/in",)
 
 @testset "every input is fed exactly once, across levels (§6.1)" begin
     err = failure(() -> build(Starved(Gain(1.0))))
     @test err isa BuildError
     @test occursin("fed by nothing", err.msg) && occursin("g", err.msg)
 
-    err = failure(() -> build(DoubleFed(SampledLoop(), ModedSource())))
+    err = failure(() -> build(DoubleFed(SampledLoop(), ModedSource(), ModedSource())))
     @test err isa BuildError
     @test occursin("fed twice", err.msg) && occursin("loop/sum", err.msg)
 
     # The same rule one level down: the sub-assembly's own wire against the
-    # ancestor's deep route, and the message names both entries.
-    err = failure(() -> build(DoubleFedSibling(SampledLoop(), ModedSource())))
+    # ancestor's route through the face, and the message names both entries.
+    err = failure(() -> build(DoubleFedSibling(Doubler(ModedSource(), Gain(1.0)),
+                                               ModedSource())))
     @test err isa BuildError
     @test occursin("child_connections at `loop`", err.msg) &&
           occursin("child_connections at the root component", err.msg)

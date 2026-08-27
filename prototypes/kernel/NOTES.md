@@ -303,6 +303,56 @@ that genuinely needed a *mid-trajectory* direct write (the drain's
 counterfactual in test_dataplane and test_roster) keep it as a test-local
 `poke!` in `test/utils.jl`, which is test equipment and not framework API.
 
+**Increment 19 — D-206 to D-208, in two commits.** The first is vocabulary
+alone: "slot" / "root slot" become **root input** across identifiers, error
+messages, comments and both markdown files, with the four API spellings
+D-206 fixes — `fragment(; x, s, m, inputs)`, `get_input(face)`,
+`UninitializedInputs`, and `RootInputTypeConflict`, which this prototype never
+had. Six English other-sense uses survive on purpose (a "single-slot
+resource", a "released slot" of a vector, a "scheduling slot"), as does the
+retired `set_slot!` stand-in's own name in the retirement history below: the
+rename runs forward, never over the log.
+
+The second commit is the semantics. **The reach rule collapses to one level**
+(D-207): a wiring endpoint names an immediate child — plus the key segment
+where the child is a container element — and one of its faces, and anything
+deeper is a build error naming the entry and the offending path.
+`resolve_terminal` loses its walk loop and `generically_held` goes with it:
+under one-level routing an endpoint stops before any field it could traverse
+past, so the generic-holding diagnostic has nothing left to police in the
+structural register (§13.3), and the concrete/generic distinction leaves it
+entirely — the same declarations now build under either holder, which is
+D-207's point. One library spelling and `test_structure.jl`'s reach-rule and
+double-feed fixtures were deep and are re-spelled per level; the one that
+carries a lesson is `Vehicle`, which used to source `"loop/plant/power"` and
+now re-exports `power` from `SampledLoop`'s own boundary, the re-export entry
+per level being exactly the ceremony D-207 costs.
+
+**The face graph becomes total, and the `Flat` retains both sides** (§9.2):
+`faces` is now `out_faces`, and `in_faces` beside it records every input face
+at every level with the producer it routes to. The derivation waits for the
+obligation pass, which is the moment it becomes well defined: a face and the
+leaf entries behind it are claimed together by the one route above them, so
+the consumers of a face share a producer. A primitive's own entries complete
+the record, so the graph is uniform in the level's class.
+
+**Any component may be the root** (D-208). A primitive root flattens to the
+single leaf at the root path `""`, its `input_types` keys pushed as root
+inputs and claimed by the same `("", face)` pseudo-producer an assembly root's
+faces get — after which every downstream site was already right: the stage-2
+schedule skips the empty producer path, the probe reads the synthesized value
+from the layout, `input_addr` finds the root input's own cell, and totality
+covers it like any other. Abstract-at-root needed no clause either, the type
+derivation being the one it always was.
+
+**Per-level `at` addressing falls out of the retained graph** (D-207's second
+ruling): `_root_input` looks the authored face up at `(path, face)` in
+`in_faces` rather than in the addressed component's flat entry list, so a
+prefix stopping at an *assembly* resolves through that level's face to the
+root input behind it, and the component-fed face keeps its own refusal at
+every level. State payloads at an assembly prefix stay refused — assemblies
+own no state, and only the `inputs` payload gained a level to resolve at.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -341,23 +391,21 @@ Each of these is a spec claim rather than a programming convenience:
   discrete cell mid-step: the interior sweep is compiled from continuous
   entries alone, so the hot path carries no gating test, and a discrete cell
   cannot move across a step because nothing in that walk writes it.
-- **A path reaches exactly as far as the declaration knows.** The reach rule is
-  about the declaring type's knowledge, not the instance's: the same
-  `"inner/sum/a"` against the same `SampledLoop` value resolves when the field
-  is declared `::SampledLoop` and is a build error when it is declared `::L`,
-  because deep-routing *past* a generically held child hard-codes one
-  implementation. Resolving *to* one is face-level access and legal (§13.3): a
-  route through concretely-declared structure may end at a generic child's
-  face, and a single hop always may — which is what lets a container's
-  elements be addressed by their parent's own declarations.
+- **A wiring endpoint reaches exactly one level.** The same `"inner/sum/a"`
+  against the same `SampledLoop` value is a build error whether the field is
+  declared `::SampledLoop` or `::L` — the declaring type's knowledge stopped
+  being the question with D-207 — and `"inner/ref"`, the sub-assembly's own
+  face, builds under either holder to the same trajectory. A container's key
+  segment rides along inside the one level (`"units/1/e"`), which is what lets
+  a container's elements be addressed by their parent's own declarations.
 - **Being fed is a whole-tree obligation, not a per-declaration one.** An unfed
   child input inside one assembly is merely awaiting a claim from above — a
-  sibling wire, an ancestor's deep route, or an `input_connections` entry
-  handing it up a level. The error fires at the root, for the chain that never
-  terminates; the one legitimate terminus is a root input face, which is a
-  root input. The one-producer rule spans levels the same way, so an
-  ancestor's route onto an input a sub-assembly already wires is caught where
-  the two claims meet, with both entries named.
+  sibling wire, or an `input_connections` entry handing it up a level, which
+  an ancestor's route then feeds through the face. The error fires at the root,
+  for the chain that never terminates; the one legitimate terminus is the root
+  component's own input face. The one-producer rule spans levels the same way,
+  so an ancestor's route onto an input a sub-assembly already wires is caught
+  where the two claims meet, with both entries named.
 - **A face is derived, never declared.** It owns no cell: it resolves — through
   as many levels of re-export as there are — to its ultimate internal endpoint,
   and takes that endpoint's type and tier. `Vehicle`'s `y` and `cmd` are one
@@ -759,6 +807,30 @@ Each of these is a spec claim rather than a programming convenience:
   vehicle scopes the loop's fragment under `at("loop", …)`, the loop scopes
   the plant's under `at("plant", …)`, and nothing anywhere writes
   `"loop/plant"`: the deep path exists only in the flattened entry list.
+- **One-level routing is class-blind and holder-blind.** A route through the
+  sub-assembly's own face builds identically whether the field is declared
+  concretely or generically, and both holders are rejected identically one
+  segment further in — the endpoint stops before any field the old rule could
+  have policed. The message names the child it reaches past, so the repair
+  (declare the face on that child's boundary) reads off the error.
+- **The cross-level one-producer rule survives the reach rule that used to
+  demonstrate it.** An ancestor can no longer route deep onto an input a
+  sub-assembly already wires; it feeds that input *through the face*, and the
+  two claims still meet with both entries named — `child_connections` at the
+  sub-assembly and at the root component.
+- **A primitive root is the whole model.** `build(Plant())` flattens to one
+  leaf at the root path, its `input_types` keys the root inputs, and the
+  deployed bare leaf integrates `ẋ = A x + B u` against the matrix-exponential
+  reference under a root-input-held `u` — no wrapper assembly, no vocabulary
+  the assembly root does not already use. Totality reaches it identically, and
+  the leaf's own `condition` fragment composes at the root with no `at` prefix.
+- **An `at` prefix stopping at an assembly resolves to the same plan the root
+  spelling produces.** `at("children/loop", fragment(inputs = (ref = …)))`
+  and `fragment(inputs = (in = …))` compile entry for entry, because the face
+  graph the `Build` retains has a name to follow at every level. The two
+  refusals that flank it are unchanged in kind: a component-fed face reaches
+  no root input, and a state payload at an assembly prefix has nothing to
+  write.
 
 ## Stand-in retirement history
 

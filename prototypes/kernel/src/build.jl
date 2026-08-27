@@ -278,7 +278,7 @@ function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
         place!("", "root input", face, P)
         push!(root_inputs, (face, probe_value(P)))
     end
-    for (alias, target) in flat.faces
+    for (alias, target) in flat.out_faces
         addr[alias] = addr[target]
     end
     sizes = sort!([L => n for (L, n) in offs]; by = p -> string(first(p)))
