@@ -22,7 +22,7 @@ the story.
 
 ## 1. Root inputs and faces: *what* can be written
 
-The root assembly exports input faces ([§8.6][s8-6]) — named, typed inputs that no
+The root component exports input faces ([§8.6][s8-6]) — named, typed inputs that no
 component inside the model produces. Say our aircraft's root exports four:
 
 ```julia

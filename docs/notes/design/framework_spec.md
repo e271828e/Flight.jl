@@ -997,7 +997,7 @@ hierarchy rules; [§6.2][s6-2] gives the aggregation idiom they force.
 ### 6.1 Connections and hierarchy
 
 A wire names its two endpoints by path, and those paths run down the hierarchy
-of children. How deep a path may reach decides whether a parent addresses a
+of children. How far a path may reach decides whether a parent addresses a
 grandchild's [port](#g-port) directly or every intermediate level must re-export it;
 that question comes first here, followed by what type-checks a wire once both
 endpoints resolve, how many connections each side may take, and what becomes of
@@ -1005,26 +1005,41 @@ the ports left unconnected.
 
 #### How far a path may reach
 
-**Rule.** Deep connection paths are allowed, with one structural rule: both
-endpoints must resolve **within the [assembly](#g-assembly) type being defined**.
+**Rule.** Every connection endpoint names an **immediate child and one of its
+[faces](#g-face)** ([D-207][d-207]). The rule covers all three wiring declarations
+([§8.6][s8-6]): a `child_connections` pair wires one child's face to another's, an
+`input_connections` entry routes a face to an immediate child's face, and an
+`output_connections` entry sources a face from an immediate child's face.
+[Container children](#g-container-children) ([§8.5][s8-5]) keep their key segment, so
+`"aircraft/2/face"` is one level and not two.
 
-The rule has two halves. You may deep-route into structure you declared:
-`Cessna172` routes its single `trn` input to
-`systems/ldg/{left,right,nose}/trn_field` in one visible block, with no
-per-level re-exports. You may only connect port-level into submodels held
-**generically**: `World` connects `terrain/field => aircraft/trn` and knows
-nothing more.
+Routing across several levels is therefore declared level by level, each
+assembly speaking only of its own children. `Cessna172` hands its `trn` input to
+`systems`, `Systems` hands it to `ldg`, and `Ldg` fans it out to its three legs
+— the fan-out declared at the level where the paths diverge:
 
-**Why.** The rule kills the re-export ceremony where it is ceremony, and
-preserves substitutability where the boundary is load-bearing.
+```julia
+input_connections(::Cessna172) = ("trn" => "systems/trn", …)
+input_connections(::Systems)   = ("trn" => "ldg/trn", …)
+input_connections(::Ldg)       = ("trn" => ("left/trn_field", "right/trn_field",
+                                            "nose/trn_field"), …)
+```
 
-The permission and the restriction meet in a single traversal: a path may
-traverse any chain of concretely-typed fields, and it stops at the first
-generically-held child, whose [faces](#g-face) are the only things addressable
-beyond that point. This is a rule about the *declaration's* knowledge, not the
-build's. A deep path into a generic child is forbidden even where the concrete
-instantiation would resolve it, because it hard-codes one implementation and
-breaks on substitution.
+**Why.** [Faces](#g-face) become the only currency crossing an assembly boundary, so
+substitutability holds at *every* boundary rather than only at generic ones —
+[§8.3][s8-3]'s contract-is-the-interface with its one leak closed. The second
+consequence is that the face graph is **total**: every signal crossing a
+boundary bears a declared face there, at every level it crosses. Totality is
+what the condition algebra addresses against, an `at` prefix stopping at a
+child's face having a name to resolve through ([§14.2][s14-2]).
+
+The ceremony this costs is the re-export entry per level, and it is the
+ceremony the design already pays almost everywhere: every level of a realistic
+tree is a generic [seam](#g-seam), where one-level routing was mandatory in any case
+([§8.8][s8-8]). Where the entries multiply, they are computed rather than typed —
+`input_passthrough`/`output_passthrough` over a single authored feed list
+([§8.8][s8-8]) — and parallel routes threading many boundaries are the signal to
+gather them into a component of their own.
 
 Enforcement lives in the path-resolution primitive itself (`resolve`,
 [§13.3][s13-3]), which walks declared field types alongside instances. Paths are
@@ -1075,9 +1090,9 @@ Fan-out is free: one producer, many consumers. The converse is strict.
 **Rule.** Every input port takes **exactly one** connection, no exceptions;
 aggregation is junctions ([§6.2][s6-2]).
 
-The rule spans levels: an input fed both inside a sub-assembly and by an
-ancestor's deep route is a two-producers build error. Deep routing cannot
-silently double-feed.
+The rule spans levels: a child input fed by a sibling wire at its own level
+*and* handed up through its parent's `input_connections` is a two-producers
+build error. Routing a face upward cannot silently double-feed.
 
 #### Unconnected ports
 
@@ -1087,10 +1102,10 @@ ports are a build error, with no silent defaults.
 
 **The check is a whole-tree property, not a per-declaration one.** Within a
 single assembly declaration an unfed child input is simply *awaiting a claim from
-above*: a sibling wire, an ancestor's deep route, or an `input_connections` entry
-handing the obligation up one level ([§8.6][s8-6]). The error fires at the root
+above*: a sibling wire, or an `input_connections` entry handing the obligation up
+one level ([§8.6][s8-6]). The error fires at the root
 build for any input whose obligation chain never terminates. The one legitimate
-terminus fed by no [component](#g-component) is the root assembly's own input face
+terminus fed by no [component](#g-component) is the root component's own input face
 — a root input ([§11.3][s11-3]).
 
 ### 6.2 Aggregation: explicit summing junctions
@@ -1172,8 +1187,9 @@ Each [assembly](#g-assembly) that *owns* contributors aggregates them with an
 internal junction and **exports the total** — the junction is a component inside
 the assembly, and the assembly exports its `Σ` port ([§3.3][s3-3]).
 
-**Why.** The [§6.1][s6-1] connection rules force this shape: a generically-held
-submodel is opaque, so every such submodel must export its aggregate.
+**Why.** The [§6.1][s6-1] connection rules force this shape: a child is opaque to
+wiring at every boundary, so every assembly that owns contributors must export
+its aggregate.
 
 **Example.** `Ldg` sums its three struts and exports `wr_b`; the systems assembly
 sums `aero + ldg + pwp`; the vehicle wires the systems totals into Newton–Euler.
@@ -1224,7 +1240,8 @@ assembly-declared, the author writing the child and the wire, both inspectable.
 
 #### The cost, recorded
 
-Adding a deep contributor edits one assembly level (its owner's wiring) instead
+Adding a contributor from another subtree edits the assembly levels between its
+producer and the junction ([§6.1][s6-1]) instead
 of zero. In exchange, explicit wiring buys per-contributor values and
 intermediate totals as observable ports, with every silence inverted into a
 warning or error ([D-007][d-007], [D-037][d-037]).
@@ -2161,14 +2178,20 @@ under the plain ones — and [§13.7][s13-7] records why one stateless continuou
 leaf already serves consumers on both tiers. Members of both families,
 or of neither, are the [§8.5][s8-5] class errors.
 
-**The root of a build is an [assembly](#g-assembly).** [Root inputs](#g-root-input)
-are the root's input [faces](#g-face) declared through `input_connections`
-([§6.1][s6-1], [§11.3][s11-3]), and only assemblies declare
-interface connections ([§8.6][s8-6]). A primitive root
-therefore has no root inputs — its faces are just its own [port](#g-port) names
-— and every input it declares is an unconnected-input error. Exercising a leaf
-alone is what the [component test rig](#g-component-test-rig)
-([§13.7][s13-7]) is for: it supplies the one-child assembly.
+**Any component may be the root of a build, and the model's
+[root inputs](#g-root-input) are the root's own input [faces](#g-face)** ([D-208][d-208]).
+For an [assembly](#g-assembly) those are the faces declared through
+`input_connections`, each traced through the face chain ([§6.1][s6-1],
+[§11.3][s11-3]) to the leaf entries consuming it. For a primitive they are its
+`input_types` keys directly, a leaf's faces being its own [port](#g-port) names
+([§8.6][s8-6]); each is then its own consuming entry. The type derivation is one
+rule across both cases: the tight bound at the ultimate consuming entry, above.
+
+Abstract-at-root is what the uniform doctrine does not relax. A leaf declaring an
+[abstract entry](#g-abstract-entry) (`terrain = AbstractTerrainField`) still cannot be
+built bare, because a root input must resolve to a concrete declaration. The
+[component test rig](#g-component-test-rig) ([§13.7][s13-7]) is the idiom for that
+case: it satisfies the entry with a stub child *inside* the rig.
 
 ### 8.3 Visibility: the contract is the interface
 
@@ -2413,25 +2436,32 @@ unwritable.
 
 ### 8.6 Paths, wiring and faces
 
-**Paths are slash-separated strings** — `"systems/ldg/left/trn"` — relative to the
-[assembly](#g-assembly) being declared, no leading slash; one canonical form, shared verbatim by
+**Paths are slash-separated strings**, relative to the
+[assembly](#g-assembly) or model root they are read from, no leading slash;
+one canonical form, shared verbatim by
 declarations, error messages, [device](#g-device)/[trace](#g-trace) addressing ([§11.3][s11-3]) and the HDF5 log
 tree. [Container children](#g-container-children) ([§8.5][s8-5]) add index and key segments — `"aircraft/2"`,
 `"aircraft/red"` — ordinary segments, resolved against the container field. Instance navigation,
 tuples of symbols and dotted paths were all rejected ([D-040][d-040]); a path-tracking
-proxy remains addable sugar. One fact from that adjudication is load-bearing
+proxy remains addable sugar. The three wiring declarations use only the short
+case of that form — one child segment and one [face](#g-face) name
+([§6.1][s6-1]) — while the read side walks the full depth
+(`"systems/ldg/left/trn"` in a [snapshot](#g-snapshot) or the log tree): the
+inspection [register](#g-register) and `resolve` as a provenance primitive
+([§13.3][s13-3]).
+One fact from that adjudication is load-bearing
 downstream: symmetric immutable siblings are `===`-identical, so a path is
 unrecoverable from an instance — which is why the helpers ([§8.8][s8-8]) name the child
 by path.
 
-**`child_connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
-pairs, strictly child-port → child-port; the rules ([§6.1][s6-1]) apply (one wire per input,
-deep paths through concretely-typed fields only, stopping at a generic child's
-[faces](#g-face)). The assembly's **boundary** is declared by two further methods, one per
+**`child_connections(::A)`** is an ordered collection of `"src/face" => "dst/face"`
+pairs, strictly child-face → child-face; the rules ([§6.1][s6-1]) apply (one wire per
+input, and every endpoint an immediate child and one of its [faces](#g-face), container
+key segments included). The assembly's **boundary** is declared by two further methods, one per
 direction. **`input_connections(::A)`** is an ordered collection of pairs, face
 name => internal endpoint path — or a tuple of paths for an input face routed to
-several internal endpoints (fan-out through the boundary)
-(`"trn" => ("systems/ldg/left/trn", …)`). **`output_connections(::A)`** runs the
+several immediate children (fan-out through the boundary)
+(`"trn" => ("left/trn_field", "right/trn_field", …)`). **`output_connections(::A)`** runs the
 other way, internal source path => face name
 (`"aircraft/pose" => "view_pose"`), so that its pairs, like every other pair in
 the three declarations, read along the flow.
@@ -2477,9 +2507,11 @@ face list. Publicity is never implicit ([§8.3][s8-3]).
 
 **[Root inputs](#g-root-input) fall out with no vocabulary**: at every non-root level an input face
 declared through `input_connections` is fed by the parent's wire; at the root there
-is no parent, and the root's input faces *are* the
+is no parent, and the root component's input faces *are* the
 [write surface](#g-write-surface), the set of faces a writer's batch entries may
-reach ([§11.3][s11-3]). The whole-tree
+reach ([§11.3][s11-3]). Which declaration supplies them follows the root's
+[class](#g-class) — `input_connections` keys for an assembly, `input_types` keys for a
+primitive ([§8.2][s8-2]) — and nothing downstream distinguishes the two. The whole-tree
 obligation model ([§6.1][s6-1]) states the complementary error rule. An
 assembly never declares its external connections — those live in the parent
 that instantiates it, exactly as a leaf's do.
@@ -2612,18 +2644,29 @@ auto-bubble: the author wrote down "every input face of this child that I don't
 feed, I expose under this prefix" — explicit at the type level, evaluated at
 build.
 
-**The name carries the direction.** `input_passthrough` reads
+**The name carries the direction, so the helpers come in pairs.**
+`input_passthrough` reads
 `input_faces(child)` and `except`/`only` filter *face names* within that set;
 the helper exists for the pass-through case, where an assembly hands a child's
-unfed requirements up one level. Computed *output* re-export — a sibling
-`output_passthrough` splatted into `output_connections`, with the predicate
-selection [§13.7][s13-7]
-records for `except`/`only` — is a **[guarded addition](#g-guarded-addition)**: plausibly wanted by the
-conventional-surface work ([§11.2][s11-2], [§16][s16]) and by test rigs, cheap to add, and not
-adopted here, because every output face in the worked assemblies is an explicit
-pair and no consumer has yet demonstrated the computed form. It could not be a
-keyword on one helper in any case: after the boundary split a single call cannot
-emit entries into two different declarations.
+unfed requirements up one level. **`output_passthrough` is its sibling**
+([D-209][d-209]): splatted into `output_connections`, reading `output_faces(child)`,
+with the same `prefix`/`sep`/`except`/`only` surface and the same
+declaration-time error set.
+
+```julia
+output_connections(sys::Systems) = (
+    output_passthrough(sys, "ldg"; only = ("damaged",))...,   # "ldg.damaged"
+    "aero/wrench" => "wrench",
+)
+```
+
+Its consumer is one-level routing ([§6.1][s6-1]): every level re-exports the outputs
+it surfaces, so the output side needs the computed spelling the input side
+already has. Both helpers take `child_path` naming an **immediate** child,
+container key segments included; a deeper path meets `resolve`'s one-level
+rejection like any other wiring endpoint ([§13.3][s13-3]). Two helpers rather
+than one keyword, because after the boundary
+split a single call cannot emit entries into two different declarations.
 
 **One authored list, two declarations.** The `World` example's two-entry
 `except` understates the real shape. Every level of a realistic tree is a
@@ -2734,7 +2777,8 @@ The stratum is a tree walk from the root instance, in this order:
    read off declaration shape ([§8.5][s8-5]).
 3. Leaf contracts are collected: `input_types`, `output_types`, `init_*`
    values, `events`.
-4. Face derivation runs bottom-up.
+4. Face derivation runs bottom-up, recording at every level the input and
+   output [faces](#g-face) it declares and the chain each one routes through.
 5. Global wiring resolution then runs, resolving wires to absolute leaf
    terminals.
 
@@ -2748,7 +2792,8 @@ Resolution runs these checks:
 - the closed leaf vocabulary ([§7.1][s7-1]), checked on every `init_x` because
   the walk in [§8.2][s8-2] rests on it (`init_s` is exempt, pinning wholesale).
 
-[Root inputs](#g-root-input) fall out here too, as the root's input faces.
+[Root inputs](#g-root-input) fall out here too, as the root component's input faces
+([§8.2][s8-2]).
 
 **The bound check** is the first type clause, and it applies at nominal faces:
 the producer's declaration at `Float64` must be `<:` the entry at `Float64`.
@@ -2763,8 +2808,8 @@ stage code runs.
 
 Stratum A also checks the declaration-completeness rules ([§8.2][s8-2]): a
 store without its update, an event missing a [guard](#g-guard) or handler
-method, a leaf mixing [tier](#g-tier) families, a contract signature whose form
-contradicts the leaf's tier ([§8.5][s8-5]), and a primitive at the root.
+method, a leaf mixing [tier](#g-tier) families, and a contract signature whose form
+contradicts the leaf's tier ([§8.5][s8-5]).
 
 `sample_times` validation is Stratum A's too, and it has two parts. The first
 is per-entry validity against the constraints of [§10.5][s10-5]: wrapper-typed
@@ -2918,7 +2963,14 @@ is shared. The one mutable thing on the artifact is the lazily populated
 [activation](#g-activation) cache, whose insertion [§9.4][s9-4] makes torn-state-free.
 The `Build` is the
 inspectable derived contract of the instantiation [§8.8][s8-8] gestures at — wire list, face
-table, [schedule](#g-schedule), [root inputs](#g-root-input) as plain printable data. CI checks a model by
+table, [schedule](#g-schedule), [root inputs](#g-root-input) as plain printable data.
+**The face table is two-sided.** Beside each level's output faces and their
+provenance it retains that level's *input* faces with the chain each routes
+through, down to the leaf entries consuming it — a total record, because
+one-level routing gives every signal a declared face at every boundary it
+crosses ([§6.1][s6-1], [D-207][d-207]). The input side is what a [fragment](#g-fragment)'s
+`inputs` payload resolves against from any authoring level ([§14.2][s14-2],
+[§14.3][s14-3]). CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
 `attach!` validates [device](#g-device) [bindings](#g-binding) against it. Build living only inside the
 `Simulation` constructor was rejected ([D-049][d-049]).
@@ -3514,8 +3566,8 @@ budget, the shutdown protocol, the five run states, and replay.
 
 Part III assumes the schedule rather than deriving it. The boundary sequence it
 dispatches is fixed in [§5.3][s5-3], the executor it dispatches through is built in
-[§9.7][s9-7], and the root inputs the periphery writes into are declared through
-`input_connections` in [§8.6][s8-6]. What Part III adds is timing, concurrency and
+[§9.7][s9-7], and the root inputs the periphery writes into are the root
+component's input [faces](#g-face) ([§8.6][s8-6]). What Part III adds is timing, concurrency and
 orchestration around machinery the earlier parts already settled.
 
 ## 10. Time and execution
@@ -4869,9 +4921,11 @@ not a drift.
 ### 11.3 Inbound: root inputs, claims and the frozen roster
 
 **The [write surface](#g-write-surface) (the set of faces a writer's batch entries may reach)
-is [root inputs](#g-root-input).** A root input *is* the root [assembly](#g-assembly)'s own input
-[face](#g-face), declared through `input_connections` ([§8.6][s8-6]): routed inward to
-consumers, produced by no [component](#g-component). At every non-root level an input face
+is [root inputs](#g-root-input).** A root input *is* the root
+[component](#g-component)'s own input
+[face](#g-face) — an assembly's `input_connections` key, a primitive's `input_types`
+key ([§8.2][s8-2], [§8.6][s8-6]): routed inward to
+consumers, produced by no component. At every non-root level an input face
 is fed by the parent's wire, and at the root there is no parent. No dedicated
 vocabulary is needed.
 
@@ -6867,8 +6921,12 @@ below without defining them. All three are normative in the forms given here:
   unambiguous because [face](#g-face) names may contain dots, never slashes
   ([§8.6][s8-6]).
 
-**Enforcing the generic-holding rule is the one non-obvious duty
-in `resolve`** ([§6.1][s6-1]). The walk follows *declared field types* alongside
+**Two duties ride on the walk, and they belong to different clients.** The
+first is the one-level rule ([§6.1][s6-1]): a connection endpoint resolves to an
+immediate child and one of its [faces](#g-face), and a wiring path reaching further
+is a build error whatever the declared field types along it. The second is the
+generic-holding rule, which governs the deep paths the read side still writes:
+the walk follows *declared field types* alongside
 instances, and a segment that traverses **past** a generically-held field — one
 whose declared type is non-concrete — is a diagnostic even though the concrete
 instance in hand would resolve it. Resolving *to* a generic child is
@@ -6882,12 +6940,14 @@ same arrangement as the two application registers over one plan
 
 | register | who resolves under it | what the walk enforces |
 |---|---|---|
-| **structural** | wiring resolution, in [Stratum](#g-stratum) A (one of the build's three phases: structure, schedule, activation) | the strict rule above, verbatim |
+| **structural** | wiring resolution, in [Stratum](#g-stratum) A (one of the build's three phases: structure, schedule, activation) | the one-level rule: an immediate child and one of its faces |
 | **load-bearing** | [condition](#g-condition) entries (the path-addressed sparse overlay that sets a build's state), trim `reads`, [taps](#g-taps) ([§14.3][s14-3], [§14.7][s14-7], [§14.10][s14-10]) | strict, evaluated **at the authoring or mount level** |
 | **diagnostic** | [device](#g-device) read [bindings](#g-binding), GUI panels, [snapshot](#g-snapshot) and log inspection ([§11.2][s11-2], [§11.7][s11-7]) | the instance walk |
 
 Each register's treatment has its own warrant. The structural register is the
-one the law ([§6.1][s6-1]) lives in, so it applies that law verbatim. The
+one the law ([§6.1][s6-1]) lives in, so it applies that law verbatim — and under
+one-level routing the generic-holding question never arises there, because an
+endpoint stops before any field it could traverse past. The
 load-bearing register evaluates at the authoring or mount level for two
 reasons: the locality law is an authoring-level law, absolute paths being a
 compiled derivative ([§14.2][s14-2]); and a mount prefix is checked by the
@@ -6905,14 +6965,17 @@ the registers is not how far a client is trusted; it is what a violation
 costs, and where the cost lands. A diagnostic client claims no
 substitutability: it addresses one build's instances, and a broken binding
 fails at attach, at its own site, harming only the observer. A wiring entry is
-carried by the declaring *type* and compiled into every instantiation. A wire
-reaching past a generic seam therefore fails at substitution time, at a
+carried by the declaring *type* and compiled into every instantiation, which is
+why its endpoints stop at the boundary: a wire reaching past one would fail at
+substitution time, at a
 different site, for whoever exercised the substitution the field advertised —
 the non-local failure class the error discipline exists to eliminate ([§8.4][s8-4]).
 The rule is strict exactly where a promise depends on it, and relaxed exactly
-where none is made ([D-083][d-083], [D-130][d-130]). Strictness forbids nothing outright:
-declaring the field's concrete type restores the deep route legally, with the
-hard-coding visible in the declaration itself ([§6.1][s6-1]).
+where none is made ([D-083][d-083], [D-130][d-130]). Strictness forbids nothing outright
+in the load-bearing register: declaring the field's concrete type restores the
+deep read legally, with the hard-coding visible in the declaration itself. For
+wiring there is no deep route left to restore — the face chain is the route
+([§6.1][s6-1]).
 
 Which register a client resolves under is internal framework fact, never
 user-facing API — the same status as the two `apply!` registers
@@ -7038,12 +7101,14 @@ termination is model *state*, reaching the loop through declared machinery:
   handler sets `m.crashed`, and the [snapshot](#g-snapshot) at the crossing
   instant carries the touchdown state.
 - **Publication** is an ordinary `Bool` output [face](#g-face), exported to
-  the root. Within concretely-declared structure, deep wires gather the
-  condition at its owning boundary in one visible block ([§6.1][s6-1]): `Ldg`
+  the root. The condition is gathered at its owning boundary in one visible
+  block: `Ldg`
   ORs its three legs through a junction (the ownership idiom, [§6.2][s6-2];
-  the library, [§13.7][s13-7]) and exports one `damaged` face; intermediate
-  [assemblies](#g-assembly) are untouched. Each *generic* [seam](#g-seam)
-  costs one output connection entry. That hop is the substitutability
+  the library, [§13.7][s13-7]) and exports one `damaged` face. Each
+  [assembly](#g-assembly) above it re-exports that single face, one
+  `output_connections` entry per level ([§6.1][s6-1]) and `output_passthrough`
+  where a level re-exports a child's surface wholesale ([§8.8][s8-8]). That hop is
+  the substitutability
   [contract](#g-contract) doing its job, not plumbing (the imposed derived
   contract, [§8.8][s8-8]).
 - **Policy** binds at deployment: `Simulation(world; …, stop_on = (…))`
@@ -7217,8 +7282,9 @@ interface connections, after generic-holding
 [contracts](#g-contract). Computed connections are therefore prominent in this
 section, and two commitments follow: a library and an idiom.
 
-**The `input_passthrough` helper family grows deliberately.** Predicate-based
-selection — an `endswith`-style filter alongside `except`/`only` — is a natural
+**The passthrough helper pair grows deliberately.** Predicate-based
+selection — an `endswith`-style filter alongside `except`/`only`, on
+`input_passthrough` and `output_passthrough` alike ([D-209][d-209]) — is a natural
 extension: still explicit at the declaration site, still evaluated at build,
 still printable. That is the [blessed](#g-blessed) side of the auto-bubbling
 line, where the author writes down the *rule* and the build evaluates it into
@@ -7314,14 +7380,16 @@ migration-phase deliverable.
 #### The component test rig
 
 **The [component test rig](#g-component-test-rig) is the library's companion
-idiom.** It is a one-child assembly whose `input_connections` surface the
+idiom.** Exercising a leaf alone needs no rig of its own: any component may be
+the root of a build, its input [faces](#g-face) becoming the model's root inputs
+([§8.2][s8-2], [D-208][d-208]) — fed by ordinary conditions and [devices](#g-device),
+with every output observable in the [snapshot](#g-snapshot) table. The rig is a
+one-child assembly whose `input_connections` surface the
 child's entire input face set — `input_passthrough(rig, "child")` verbatim
-([§8.8][s8-8]). Any component can therefore be built and simulated in
-isolation: every input becomes a root input fed by ordinary conditions and
-[devices](#g-device), and every output is observable in the
-[snapshot](#g-snapshot) table.
+([§8.8][s8-8]) — and what it buys is a place to wire something *beside* the
+component under test.
 
-One qualification comes from the root-input rule ([§8.2][s8-2]). An *abstract*
+The demonstrated need is the root-input rule ([§8.2][s8-2]). An *abstract*
 input entry (`terrain = AbstractTerrainField`, [§4.4][s4-4]) cannot surface as a
 root input, because abstract-at-root is a build error. The rig therefore
 satisfies that entry *inside* the rig: a concrete stub child (a
@@ -7491,7 +7559,10 @@ property of today's `assign!` loop, preserved structurally.
 addressing children is exclusively `at`'s job (one way to say everything). An
 `inputs` payload names faces *of the authoring level's [contract](#g-contract)*.
 Resolution walks the export chain to the root input and errors if the face never
-surfaces. An internally-wired input has no root input behind it, and writing it would be
+surfaces. That walk always has a name to follow: one-level routing gives every
+level a declared face for every signal crossing its boundary, so the chain a
+sub-assembly's face routes through is in the `Build` ([§6.1][s6-1], [§9.2][s9-2]).
+An internally-wired input has no root input behind it, and writing it would be
 meaningless because the first sweep overwrites it. Unexported stays unpokeable
 for init exactly as it does for the GUI ([§11.7][s11-7], [§15.4][s15-4]).
 
@@ -7499,8 +7570,10 @@ for init exactly as it does for the GUI ([§11.7][s11-7], [§15.4][s15-4]).
 its third instance — child connections, computed interface
 connections, conditions. Each level speaks its own fields, its declared
 children's names, and its own faces; delegation runs by dispatch at every
-genericity [seam](#g-seam); deep `at` paths are legitimate exactly where deep
-connections are, within an owned concrete subtree. Absolute paths exist only in
+genericity [seam](#g-seam); an `at` prefix may stop at *any* child's faces, owned
+or generically held, the face graph being total ([D-207][d-207]), while a deep `at`
+path into structure stays legitimate exactly where a deep [condition](#g-condition)
+path is, within an owned concrete subtree ([§13.3][s13-3]). Absolute paths exist only in
 the flattened entry list, a *compiled derivative* of the composition, as cell
 offsets are of `child_connections`. Substituting a component invalidates
 precisely the fragments its owner shipped, nothing else. The enforcement status
@@ -8843,8 +8916,9 @@ The demo line by line:
   `HorizontalTerrain`'s elevation is a plain field (parameter), its surface type
   an input [port](#g-port): the parameter/port split FlightCore kept implicit in
   `U()`-vs-field convention is now the declaration itself. The aircraft's
-  `input_connections` block carries the `pilot.*` [face](#g-face) group in one place, deep routes
-  spanning avionics *and* systems — today's mapping writes flaps/brakes directly
+  `input_connections` block carries the `pilot.*` [face](#g-face) group in one place,
+  handed one level down to avionics and systems and re-routed at each level below
+  ([§6.1][s6-1]) — today's mapping writes flaps/brakes directly
   into `act`, bypassing avionics; that bypass becomes a declared route.
 - `Simulation(world; algorithm = RK4(), h = 0.02, n = 1, t_end = 1000)` — `n`
   binds `Δt_base = n·h` ([§10.5][s10-5]; default 1: base [tick](#g-tick) every step). The entire
@@ -9539,11 +9613,14 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   probe scalar, [§9.4][s9-4]), and pre-materializes activations so a parallel
   sweep shares a fully immutable `Build` ([§11.1][s11-1], [§9.4][s9-4]).
 - `resolve(asm, path) → AbstractComponent` — the getfield walk along `/`
-  segments, enforcing the generic-holding rule ([§6.1][s6-1]) at the primitive ([§13.3][s13-3]).
+  segments, enforcing the one-level rule for wiring ([§6.1][s6-1]) and the
+  generic-holding rule for deep reads, at the primitive ([§13.3][s13-3]).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
   face names ([§13.3][s13-3]).
-- `input_passthrough(asm, path; prefix, sep, except, only)` — the declaration-site
-  helper for computed input connections ([§8.8][s8-8]).
+- `input_passthrough(asm, path; prefix, sep, except, only)` /
+  `output_passthrough(asm, path; prefix, sep, except, only)` — the
+  declaration-site helpers for computed interface connections; `path` names an
+  immediate child ([§8.8][s8-8]).
 
 **Deployment.**
 
@@ -9828,16 +9905,15 @@ Severities, in the vocabulary [§13][s13] fixes:
 |---|---|---|---|
 | `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1][s6-1], [§8.4][s8-4] w1 | build (collected) |
 | `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1][s6-1], [§8.4][s8-4] w2 | build (collected) |
-| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / interface connection entry) | [§6.1][s6-1], [§8.8][s8-8] | build (collected) |
+| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / interface connection entry) | [§6.1][s6-1], [§8.8][s8-8] | build (collected) |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1][s6-1], [§8.2][s8-2], [§8.4][s8-4] w4 | build (collected) |
 | `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1][s6-1], [§8.2][s8-2] | build (collected) |
-| `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | [§6.1][s6-1], [§13.3][s13-3] | build (collected) |
+| `PathResolution` | path, offending segment, sibling field list; for a wiring endpoint reaching past the immediate child, the level it stopped at; for a read-side traversal past a generically-held field, that field's declared type | [§6.1][s6-1], [§13.3][s13-3] | build (collected) |
 | `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, [§13.7][s13-7]) | [§8.2][s8-2] | build (collected) |
 | `RootInputTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — the meet, [§8.2][s8-2]) | [§8.2][s8-2] | build (collected) |
 | `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | [§7.1][s7-1], [§8.2][s8-2] | build (collected) |
 | `StoreWithoutUpdate` | component path, the `init_x` or `init_s` store, the missing update (no `f` for the one, no `g` for the other); shadowing note when the parent module defines its own `f`/`g` ([§8.1][s8-1]) | [§8.2][s8-2] | build (collected) |
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | [§8.2][s8-2] | build (collected) |
-| `PrimitiveAtRoot` | root path, component type | [§8.2][s8-2] | build (collected) |
 | `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions ([§8.1][s8-1]) | [§8.5][s8-5] | build (collected) |
 | `ClassMixed` | component path, the `child_connections` declaration and the offending leaf declarations | [§8.5][s8-5] | build (collected) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | [§8.5][s8-5] | build (collected) |
@@ -10105,9 +10181,10 @@ root input, one staged write, one device claim, one trace address, one GUI
 liveness verdict. Wiring is port-granular, and which stage computes a port is
 invisible outside the component ([§4.2][s4-2], [§4.3][s4-3]).
 
-<a id="g-root-input"></a>**root input** — the root assembly's own input face,
+<a id="g-root-input"></a>**root input** — the root component's own input face —
+an assembly's `input_connections` key, a primitive's `input_types` key —
 produced by no component, constant within a frame, and the only thing the
-periphery may write ([§11.3][s11-3], [§8.6][s8-6]).
+periphery may write ([§11.3][s11-3], [§8.2][s8-2], [§8.6][s8-6]).
 
 <a id="g-signal-table"></a>**signal table** — the framework-owned collection of cells holding every
 produced signal of the flattened model; consumers gather views from it, and
@@ -10667,9 +10744,9 @@ nodes: a duplicate leaf is an error naming both provenance chains, and blending
 a node with a bare `NamedTuple` is a directive error method ([§14.2][s14-2]).
 
 <a id="g-component-test-rig"></a>**component test rig** — a one-child assembly exporting the child's entire
-input face set, so any component can be built and simulated in isolation; an
-abstract entry is satisfied *inside* the rig by a concrete **stub child**
-wired to that face ([§13.7][s13-7]).
+input face set; the idiom for exercising a leaf that needs something wired
+beside it, an abstract entry being satisfied *inside* the rig by a concrete
+**stub child** wired to that face ([§13.7][s13-7]).
 
 <a id="g-condition"></a>**condition** — the datum that says "set this build to this state": a
 path-addressed sparse overlay on the declared defaults, covering `x`, `s` and
@@ -10962,6 +11039,9 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-203]: framework_decisions.md#d-203--the-termination-record-carries-typed-sources-and-the-tail-residue
 [d-204]: framework_decisions.md#d-204--rename-the-condition-algebras-symmetric-combinator-to-combine
 [d-205]: framework_decisions.md#d-205--boundary-zero-publishes-every-discrete-output-stage-due-or-not
+[d-207]: framework_decisions.md#d-207--route-every-connection-one-level-faces-are-the-only-cross-boundary-currency
+[d-208]: framework_decisions.md#d-208--root-inputs-are-the-root-components-input-faces-whatever-its-class
+[d-209]: framework_decisions.md#d-209--build-output_passthrough
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop

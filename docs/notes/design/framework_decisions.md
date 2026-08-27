@@ -33,7 +33,7 @@ were derived.
 | [D-006][d-006] | Two-stage structural feedthrough via `h_x`/`h_xu` | ratified |
 | [D-007][d-007] | Aggregation mechanism | superseded → [D-037][d-037] |
 | [D-008][d-008] | Function-valued environment signals with the handle pattern | ratified |
-| [D-009][d-009] | Restrict deep paths to owned assembly types | ratified |
+| [D-009][d-009] | Restrict deep paths to owned assembly types | superseded → [D-207][d-207] |
 | [D-010][d-010] | Structure continuous state as immutable values over a flat backing | ratified |
 | [D-011][d-011] | Eltype genericity on the continuous path | ratified |
 | [D-012][d-012] | Set-propagation tracers and SCC-based cycle diagnostics | ratified |
@@ -231,6 +231,9 @@ were derived.
 | [D-204][d-204] | Rename the condition algebra's symmetric combinator to `combine` | ratified |
 | [D-205][d-205] | Boundary zero publishes every discrete output stage, due or not | ratified |
 | [D-206][d-206] | Rename root slots to root inputs | ratified |
+| [D-207][d-207] | Route every connection one level: faces are the only cross-boundary currency | ratified |
+| [D-208][d-208] | Root inputs are the root component's input faces, whatever its class | ratified |
+| [D-209][d-209] | Build `output_passthrough` | ratified |
 
 ### D-001 — Hybrid causal formalism with two-tier events and projection
 
@@ -366,7 +369,7 @@ all-inputs `h_xu`, named per [D-075][d-075]); component split as the refinement.
 
 ### D-009 — Restrict deep paths to owned assembly types
 
-**Status.** ratified
+**Status.** superseded → [D-207][d-207]
 
 **Position.** Deep paths within owned assembly types only.
 
@@ -7149,20 +7152,119 @@ rename rule — forward, never the log. Four API spellings follow:
 **Spec.** [§4.1][s4-1], [§11.3][s11-3], [§14.2][s14-2], [§14.4][s14-4], [§14.6][s14-6], [Appendix C][sC]
 
 **Rationale.** "Slot" was opaque coinage: it demanded a recall step on every
-read, where "root input" decodes itself — and under the uniform root
-doctrine the definition collapses to near-tautology (a root input is the
-root component's input face), which is what vocabulary should do. The
-qualifier "root" carries the real distinction against the input ports, faces
-and entries that exist at every level. The bare spellings `inputs` and
-`get_input` are safe in their scopes — nothing else in a fragment payload or
-the selector family could be meant — and `get_input`/`get_output` gain
-symmetry, with the inherent addressing asymmetry (face name vs structural
-path, [§11.3][s11-3]'s write-surface rule) accepted.
+read, where "root input" decodes itself — and under [D-208][d-208] the definition
+collapses to near-tautology (a root input is the root component's input
+face), which is what vocabulary should do. The qualifier "root" carries the
+real distinction against the input ports, faces and entries that exist at
+every level. The bare spellings `inputs` and `get_input` are safe in their
+scopes — nothing else in a fragment payload or the selector family could be
+meant — and `get_input`/`get_output` gain symmetry, with the inherent
+addressing asymmetry (face name vs structural path, [§11.3][s11-3]'s write-surface
+rule) accepted.
 
 **Rejected.**
 - *Keeping "slot":* brevity was its only virtue; it never carried its
   meaning.
 - *`get_root_input`:* precise but heavy in the selector family's register.
+
+### D-207 — Route every connection one level: faces are the only cross-boundary currency
+
+**Status.** ratified
+
+**Position.** Deep connection paths are removed: every endpoint in the three
+wiring declarations addresses an immediate child (container elements
+included) and one of its faces. Supersedes [D-009][d-009]. The bundled rulings:
+
+- `child_connections` wires sibling faces, `input_connections` routes each
+  face to immediate children's faces, `output_connections` sources each face
+  from an immediate child's face — the generic-seam stop becomes the
+  universal rule.
+- The face graph is therefore total — every signal crossing an assembly
+  boundary bears a declared face there — and the `Build` retains it, input
+  side beside the output side, so per-level `at` addressing of a fragment's
+  `inputs` payload resolves (amending [D-065][d-065]'s "deep `at` only within owned
+  concrete subtrees" clause: a prefix stops at faces on every child, owned
+  or not).
+- Deep structural paths survive on the read side — inspection, logging,
+  provenance — untouched.
+
+**Spec.** [§6.1][s6-1], [§8.6][s8-6], [§8.8][s8-8], [§9.2][s9-2], [§13.3][s13-3], [§14.2][s14-2], [§14.3][s14-3]
+
+**Rationale.** The deep-path privilege made the face graph structurally
+partial: a root claim could cross intermediate boundaries without acquiring
+a face at any of them, leaving those levels blind to the signals traversing
+them — surfaced by the condition algebra, where
+`at("sub", fragment(inputs = …))` had no name to resolve against, and
+whether it could resolve depended on how an ancestor happened to spell a
+route. The privilege had meanwhile lost most of its value to the design's
+own growth: every level of a realistic tree is a generic seam ([§8.8][s8-8]), where
+one-level routing was already mandatory, and the worked assemblies route per
+level via `input_passthrough` and the single-authored feed list. Clarity and
+symmetry outrank convenience: the residual ceremony has sanctioned computed
+spellings ([§8.8][s8-8]), parallel routes proliferating through several boundaries
+are the signal to gather them into a custom type, and convenience remains
+recoverable a posteriori as sugar where clarity does not.
+
+**Rejected.**
+- *Deep paths within owned assembly types ([D-009][d-009]'s position):* the bypass
+  is the one place structure leaks across a boundary [§8.3][s8-3] declares closed,
+  and the partiality it induces in the face graph is invisible from a
+  fragment author's seat.
+- *Keeping deep paths, retaining the partial face graph:* fixes the
+  literal `at` refusal; leaves resolvability an accident of ancestor
+  spelling.
+- *Bundled faces as the universal ceremony mitigation:* bundling serves
+  component-fed signal highways; at a root input it collides with [§4.3][s4-3]'s
+  write-side granularity and forfeits partial scripting ([§8.8][s8-8]).
+
+### D-208 — Root inputs are the root component's input faces, whatever its class
+
+**Status.** ratified
+
+**Position.** The build accepts any component as root, and the model's root
+inputs are the root's input faces uniformly. The bundled rulings:
+
+- For an assembly they are its `input_connections` keys, each traced
+  through the total face chain ([D-207][d-207]) to leaf input entries; for a
+  primitive, its `input_types` keys directly — [D-172][d-172]'s kind-blind faces
+  applied at the root.
+- Types keep their derivation (the ultimate consuming entry at the
+  activation scalar, [§8.2][s8-2]'s tight-bound rule; a primitive root's face is its
+  own consuming entry), and [§8.2][s8-2]'s primitive-root refusal is retired.
+- Abstract-at-root is unchanged: a primitive with an abstract input entry
+  still cannot be built bare, and the component test rig ([§13.7][s13-7]) keeps its
+  stubbing role, losing only its gate status.
+
+**Spec.** [§8.2][s8-2], [§8.6][s8-6], [§9.1][s9-1], [§9.3][s9-3], [§11.3][s11-3], [§13.7][s13-7]
+
+**Rationale.** The refusal existed because no rule made a primitive root's
+unfed inputs root inputs; the uniform doctrine supplies one with no new
+vocabulary, and the one-child wrapper it forced on leaf exercise added a
+level of ceremony without adding information.
+
+**Rejected.**
+- *Keeping the assembly-only root:* with the doctrine uniform, the
+  remaining justification was the rig idiom, which survives on its own
+  merits.
+
+### D-209 — Build `output_passthrough`
+
+**Status.** ratified
+
+**Position.** `output_passthrough` is promoted from guarded addition to
+built helper (annotating [D-171][d-171]): the sibling of `input_passthrough`,
+splatted into `output_connections`, reading `output_faces(child)` with the
+same `prefix`/`sep`/`except`/`only` surface.
+
+**Spec.** [§8.8][s8-8], [Appendix B][sB]
+
+**Rationale.** [D-171][d-171] kept it guarded for want of a demonstrated consumer.
+[D-207][d-207] supplies one: with deep sourcing removed, every level re-exports the
+outputs it surfaces, and the output side needs the computed spelling the
+input side already has.
+
+**Rejected.**
+- *Keeping it guarded:* the consumer has arrived.
 
 <!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
 [d-001]: #d-001--hybrid-causal-formalism-with-two-tier-events-and-projection
@@ -7371,6 +7473,9 @@ path, [§11.3][s11-3]'s write-surface rule) accepted.
 [d-204]: #d-204--rename-the-condition-algebras-symmetric-combinator-to-combine
 [d-205]: #d-205--boundary-zero-publishes-every-discrete-output-stage-due-or-not
 [d-206]: #d-206--rename-root-slots-to-root-inputs
+[d-207]: #d-207--route-every-connection-one-level-faces-are-the-only-cross-boundary-currency
+[d-208]: #d-208--root-inputs-are-the-root-components-input-faces-whatever-its-class
+[d-209]: #d-209--build-output_passthrough
 [s10-1]: framework_spec.md#101-loop-ownership-the-framework-owns-the-simulation-loop
 [s10-2]: framework_spec.md#102-the-stepper-seam
 [s10-3]: framework_spec.md#103-signal-table-consistency-is-a-boundary-property

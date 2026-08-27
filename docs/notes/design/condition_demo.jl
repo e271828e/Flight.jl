@@ -12,7 +12,10 @@
 #faithful implementations of §14.2/§14.3/§14.6; the one stand-in is root-input
 #resolution, which here uses the demo rule «root input = mount prefix with
 #slashes → dots, then the face name» ("throttle" at "wing" → "wing.throttle",
-#§14.9's own example) in place of the Build's export-chain walk.
+#§14.9's own example) in place of the Build's export-chain walk. That walk is
+#total under D-207: one-level routing gives every level a declared face for
+#every signal crossing its boundary, so a face authored at any level resolves
+#upward through the chain the Build retains (§6.1, §9.2).
 #
 #NOT COVERED BY THE CHECK BATTERY: tools/check_refs.jl and tools/linkify.jl
 #scan the COMPANIONS .md roster only, so every § here is hand-verified.
@@ -135,7 +138,8 @@ function resolve(node)      #the §14.3 flatten + the validation batch's collisi
 end
 
 #demo stand-in for the Build's export-chain walk from the mount point (§14.9);
-#the real resolution errors if the face never surfaces at the root
+#the real resolution follows each level's declared input faces and errors if the
+#face never surfaces at the root
 root_input(e::Entry) = isempty(e.path) ? String(e.field) :
     replace(e.path, "/" => ".") * "." * String(e.field)
 
