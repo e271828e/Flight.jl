@@ -34,11 +34,12 @@ plain data — paths and names as strings and symbols, never component
 instances; the declared/observed *port* types are the payload exception, and
 they are small. These are the kinds whose sources the prototype has built;
 the four whose features are absent — `DebtReanchor`, `ThreadBudget`,
-`ReplayDiscardedStaging`, `UnboundedRun` — are absent with them (README), and
-`DeviceJoinTimeout` presents synchronously from the tail, past the last
-snapshot any status can ride (D-201). Writer attribution is
-never a payload field: the channel is per-writer, so the cell supplies it
-(§11.8, §12.4: no call passes a device id).
+`ReplayDiscardedStaging`, `UnboundedRun` — are absent with them (README).
+Writer attribution is never a payload field: the channel is per-writer, so
+the cell supplies it (§11.8, §12.4: no call passes a device id).
+`DeviceJoinTimeout`'s `who` is not that attribution — it is the payload's
+subject per Appendix C, the abandoned device; the *writer* is the loop,
+whose own cell carries it (§12.4, D-203).
 
 `MalformedDatum` is the author's kind: a datum that could not be mapped for
 environmental reasons — a truncated datagram, malformed JSON, an
@@ -103,9 +104,23 @@ struct DeviceCrash
     abort::Bool
 end
 
+"""
+§12.4(5)'s join-timeout abandonment, written to the loop's own cell at the
+tail and collected by the run's-end sweep into the termination record
+(D-203). `who` names the abandoned device — Appendix C's payload, beside the
+cap and the final snapshot's boundary time and index at shutdown.
+"""
+struct DeviceJoinTimeout
+    who::String
+    timeout::Float64
+    t::Float64
+    boundary::Int
+end
+
 "The closed set as a union: what a ring holds, and what `_report!` admits."
 const DiagValue = Union{MalformedDatum,OutOfClaimEntry,ClaimedFaceEntry,
-                        EntryTypeMismatch,ChatteringBudget,FiringBudget,DeviceCrash}
+                        EntryTypeMismatch,ChatteringBudget,FiringBudget,
+                        DeviceCrash,DeviceJoinTimeout}
 
 """
 The per-kind counter record (§11.8): a **fixed-shape isbits record, never a
@@ -122,8 +137,9 @@ struct KindCounts
     chattering::Int
     firing::Int
     crash::Int
+    join_timeout::Int
 end
-KindCounts() = KindCounts(0, 0, 0, 0, 0, 0, 0)
+KindCounts() = KindCounts(0, 0, 0, 0, 0, 0, 0, 0)
 
 _kind(::MalformedDatum)   = :malformed
 _kind(::OutOfClaimEntry)  = :out_of_claim
@@ -132,6 +148,7 @@ _kind(::EntryTypeMismatch) = :type_mismatch
 _kind(::ChatteringBudget) = :chattering
 _kind(::FiringBudget)     = :firing
 _kind(::DeviceCrash)      = :crash
+_kind(::DeviceJoinTimeout) = :join_timeout
 
 _bump(c::KindCounts, k::Symbol) =
     KindCounts((getfield(c, f) + (f === k) for f in fieldnames(KindCounts))...)

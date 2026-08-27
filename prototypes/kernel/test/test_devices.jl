@@ -113,7 +113,9 @@ mutable struct Loopless <: AbstractDevice end
     @test sim.clock.step < 10000             # the stop truncated the run
     @test dev.log[1:3] == [:init, :loop, :shutdown]
     @test !running(h)                        # the sticky status, read off the handle
-    @test termination(sim).source === :control_stop  # the record names the channel (§13.5)
+    # The record names the channel and its issuer (§13.5, D-203): the stop
+    # rode the departing device's should_abort, so the device is the issuer.
+    @test termination(sim).source === ControlRequestedStop("device 1 (OneShot)")
     # The staged batch was applied by a drain the stop did not beat, or still
     # pends in the cell — exactly one of the two, timing's choice — and init!
     # clears whatever pends with the trajectory it predates (§12.6).
@@ -156,7 +158,9 @@ end
     wait(stopper)
     @test sim.clock.step < 10^7              # truncated, and stopped is sticky:
     @test !running(sim.plane.roster[1].handle)
-    @test termination(sim).source === :control_stop  # one tag, whichever task spoke (§13.5)
+    # One channel, and the record names who spoke (§13.5, D-203): stop!(sim)
+    # is calling code from any task, issuer :code.
+    @test termination(sim).source === ControlRequestedStop(:code)
     # A fresh trajectory owes nothing to this stop: init! clears the word.
     init!(sim)
     @test step!(sim; frames = 3) == 3
@@ -223,6 +227,12 @@ end
     @test sim2.clock.step == 0
     @test any(occursin("DeviceCrash from device 1 (BadInit), past the final", string(l.message))
               for l in logs)
+    # The same crash is recorded, not just presented (D-203): the residue
+    # carries the device's record, and the abort's stop names it as issuer.
+    t = termination(sim2)
+    @test t.source === ControlRequestedStop("device 1 (BadInit)")
+    rr = only(r for r in t.residue if r.writer == "device 1 (BadInit)")
+    @test only(rr.recent) isa DeviceCrash
 end
 
 @testset "a body ignoring the predicate is abandoned under join_timeout, by name (§12.4(5))" begin
@@ -231,9 +241,18 @@ end
     attach!(sim, dev, Enumerated())
     init!(sim)
     t0 = time()
-    @test_logs (:warn, r"DeviceJoinTimeout: device 1 \(Stubborn\)") match_mode=:any run!(sim; t_end = 0.3)
+    # The abandonment is written to the loop's own cell and presented by the
+    # run's-end sweep, the record's renderer (§12.4(5), D-203).
+    @test_logs (:warn, r"DeviceJoinTimeout from loop, past the final snapshot's account:.*Stubborn") #=
+        =# match_mode=:any run!(sim; t_end = 0.3)
     @test time() - t0 < 0.6                  # abandoned at ~0.2 s, not the sleep's 0.8 s
     @test :woke ∉ dev.log                    # the straggler had not returned when run! did
+    # Recorded, not just loud (D-203): the termination record's residue holds
+    # the structured kind, by name, with the cap and the final boundary.
+    rr = only(r for r in termination(sim).residue if r.writer == "loop")
+    jt = only(d for d in rr.recent if d isa DeviceJoinTimeout)
+    @test jt.who == "device 1 (Stubborn)" && jt.timeout == 0.2
+    @test jt.t == termination(sim).t ≈ 0.3 && jt.boundary == latest(sim).boundary
     # Abandonment is not a kill: let the straggler expire inside this testset —
     # its wrapper still runs shutdown! — rather than leave it parked in the
     # timer wheel across process teardown.
@@ -252,6 +271,7 @@ end
     end
     @test time() - t0 < 1.5                  # joined promptly, well inside the cap
     @test !any(occursin("DeviceJoinTimeout", string(l.message)) for l in logs)
+    @test isempty(termination(sim).residue)  # nothing landed past the account (D-203)
     @test dev.log == [:shutdown]
 end
 

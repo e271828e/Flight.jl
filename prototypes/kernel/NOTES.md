@@ -199,6 +199,31 @@ otherwise guarantee its batch drained before the run ends. New coverage:
 `Overload` (§13.5's touchdown archetype) and `Exploder` (§13.6's specimen).
 No stand-ins enter or retire.
 
+**Increment 17 — D-203: the typed termination record and the recorded tail.**
+The spec amendment applied the day it landed (commit 81c3cba7): the flat
+`Termination` with its `nothing`-padded per-source fields becomes
+`TerminationRecord{T}` — the final boundary time in the deployment's own
+scalar with `nothing` the out-of-band no-boundary arm (D-202's anti-sentinel
+argument retiring the old `NaN`), a `TerminationSource` in §13.2's
+kind-is-identity convention (`EndTimeReached`, `ModelRequestedStop(face)`,
+`ControlRequestedStop(issuer)`, `LoopError(exception)`), and the tail residue
+per writer (`ResidueRecord`: the final ring plus suppressed counts). The
+§12.1 stop word becomes an issuer word — `Union{Nothing,Symbol,String}`
+under a first-wins CAS from `nothing`, `:code` from `stop!(sim)`, the
+device's name from `stop!(handle)`, the `:interrupt` arm absent with its
+machinery — so every control stop names its initiator, the init bracket's
+`should_abort` included. `DeviceJoinTimeout` joins the built kind set
+(`who`/`timeout`/`t`/`boundary`, per Appendix C), written to the loop's own
+cell at tail step (5) instead of warned inline; the run's-end sweep now
+*returns* what it takes, and both advance entries assemble the record once,
+in their outermost `finally`, after the sweep — the terminal lifecycle
+release-store following the record write on the errored path too, which the
+old code ordered the other way. `_advance!` returns bare sources, the
+record-per-return-site construction dissolving. Presentation is unchanged in
+shape (the sweep still warns per entry, now as the record's renderer), so
+the `accounted` either-status-or-sweep invariant held without edits. No
+stand-ins enter or retire.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -547,13 +572,19 @@ Each of these is a spec claim rather than a programming convenience:
   and a 34-face surface (past the 32-wide threshold where Base's tuple `map`
   leaves its inlined path, which the generated merge never touches) drains
   as free as a two-face one.
-- **Termination is a state with a record, never an exception.** Every ended
-  run answers "why did it stop?" through `termination(sim)`: `:t_end` with
-  the final frame top, `:stop_on` with the first holding face in declaration
-  order and the boundary time of the very snapshot that held it,
-  `:control_stop` one tag whichever task spoke the word, `:error` with the
-  cause retained. The record is `nothing` unless the lifecycle is terminal,
-  and `init!` clears it with the trajectory.
+- **Termination is a state with a typed record, never an exception (D-203).**
+  Every ended run answers "why did it stop?" and "how did the stop go?"
+  through `termination(sim)`: `EndTimeReached` with the final frame top,
+  `ModelRequestedStop` carrying the first holding face in declaration order
+  and the boundary time of the very snapshot that held it,
+  `ControlRequestedStop` carrying its issuer — `:code` for calling code, the
+  device's name when a handle or its `should_abort` spoke, first CAS wins —
+  and `LoopError` with the cause retained. The record is `nothing` unless
+  the lifecycle is terminal, `init!` clears it with the trajectory, and its
+  residue holds what landed past the final account: the tests pin the
+  `DeviceJoinTimeout` entry (who/timeout/t/boundary) on the loop's record
+  for an abandoned join, the pre-spawn `DeviceCrash` on a `should_abort`
+  init failure's zero-frame run, and the empty vector on a clean tail.
 - **A stop face ends the run at its own boundary — `t*` included.** The
   boundary-detected face ends the run at the sweep that saw it (frame 4 for
   a ramp crossing 0.35 at h = 0.1, never t_end's frame); the localized one

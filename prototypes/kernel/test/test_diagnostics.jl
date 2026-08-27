@@ -184,9 +184,10 @@ end
     _report!(cell, ChatteringBudget("children/c", :pop, 0.1, 8, 8))
     _report!(cell, FiringBudget("children/e", :up, 0.0, 4, 4))
     _report!(cell, DeviceCrash(ErrorException("boom"), false))
+    _report!(cell, DeviceJoinTimeout("device 9 (Ghost)", 5.0, 1.0, 10))
     batch = _take!(cell)
-    @test length(batch.ring) == 7
-    @test batch.ring[1] isa MalformedDatum && batch.ring[7] isa DeviceCrash
+    @test length(batch.ring) == 8
+    @test batch.ring[1] isa MalformedDatum && batch.ring[8] isa DeviceJoinTimeout
     @test batch.suppressed == KindCounts()
 
     # Past the bound, suppression counts by kind: the record answers "how many

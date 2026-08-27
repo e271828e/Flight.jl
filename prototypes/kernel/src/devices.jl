@@ -7,8 +7,9 @@
 # operator interrupt are absent (README). A device
 # failure reports as `DeviceCrash` into the device's own diagnostic cell
 # (§11.8, §12.4); what the tail alone produces — the join timeout, and
-# whatever landed past the final frame top — presents through the logging
-# backend, the last snapshot having already been published (D-201).
+# whatever landed past the final frame top — is folded into the termination
+# record and presented through the logging backend, the last snapshot having
+# already been published (D-201, D-203).
 #
 # This file holds the types, the contract and the per-run task mechanics;
 # `run!`'s frame anatomy and the Simulation-typed surface (`attach!`,
@@ -16,35 +17,74 @@
 # include order only — they run once per run, never inside a frame.
 
 """
-§13.5's termination record: the run's *outcome*, where the deployment carries
-its policy — which source ended the run, so a stopped simulation answers "why
-did it stop?" without its consumer reconstructing the answer from the clock.
-`source` is `:t_end`, `:stop_on` — with `face` the first named face observed
-holding, in the declaration order — `:control_stop` — the wall-clock channel,
-one tag whether the word came from a device handle or calling code — or
-`:error`, §13.6's abnormal entry, with `exception` the retained cause (raw:
-§13.4's `StepError` wrap and its cursor are absent, README). `t` is the final
-snapshot's boundary time. The fourth spec source, the operator interrupt, is
-absent with its machinery. `init!` clears the record with the trajectory.
-`t` is untyped because it is the snapshot's own boundary time, in whatever
-scalar the deployment bound (§7.2).
+§13.5's termination sources (D-203): the diagnostic convention applied to the
+run's outcome — each kind is its identity, its payload plain data — without
+joining Appendix C's diagnostic set, the record being outcome, not warning.
+`EndTimeReached` carries nothing: the record's own `t` is the fact, and the
+configured bound lives with the policy. `ModelRequestedStop` carries the
+first named `stop_on` face observed holding, in declaration order.
+`ControlRequestedStop` carries its issuer — `:code` from `stop!(sim)`, or the
+requesting device's name from `stop!(handle)`; the spec's `:interrupt` arm is
+absent with the interrupt's machinery (README). `LoopError` is §13.6's
+abnormal entry, `exception` the retained cause (raw: §13.4's `StepError` wrap
+and its cursor are absent, README).
 """
-struct Termination
-    source::Symbol
-    face::Union{Nothing,Symbol}
-    t::Any
+abstract type TerminationSource end
+
+struct EndTimeReached <: TerminationSource end
+
+struct ModelRequestedStop <: TerminationSource
+    face::Symbol
+end
+
+struct ControlRequestedStop <: TerminationSource
+    issuer::Union{Symbol,String}
+end
+
+struct LoopError <: TerminationSource
     exception::Any
 end
 
 """
-The control surface — §12.1's stop and §12.6's lifecycle. `stop_requested` is
-the control-plane stop word: set by `stop!` from any task, consulted by the
-loop at frame top, cleared at the top of the next run (which is what lets an
-init bracket's `should_abort` failure leave a stop *already pending* at the
-run's start, §12.4) and at `init!` (a fresh trajectory owes nothing to the
-last one's stop). `stopped` is §12.4(1)'s sticky status: set only after the
-final snapshot is published, and read by `running(handle)`, which is how loop
-bodies observe the run's end.
+One writer's share of the tail residue (§11.8, D-203): what the run's-end
+sweep took past the final frame top — the final ring, at most `DIAG_RING`
+entries, and the per-kind counts the ring refused. A quiet writer contributes
+no record.
+"""
+struct ResidueRecord
+    writer::String
+    recent::Vector{DiagValue}
+    suppressed::KindCounts
+end
+
+"""
+§13.5's termination record: the run's *outcome*, where the deployment carries
+its policy — so a stopped simulation answers "why did it stop?", and "how did
+the stop go?", without its consumer reconstructing either from the clock or
+the log stream (D-203). `t` is the final snapshot's boundary time in the
+deployment's own scalar (§7.2), `nothing` when no boundary ever ran; `source`
+is the typed source above; `residue` is what the run's-end sweep collected —
+recorded here and presented through the logging backend, never published
+(D-201, D-203). `init!` clears the record with the trajectory.
+"""
+struct TerminationRecord{T}
+    t::Union{Nothing,T}
+    source::TerminationSource
+    residue::Vector{ResidueRecord}
+end
+
+"""
+The control surface — §12.1's stop and §12.6's lifecycle. `stop_issuer` is
+the control-plane stop word, and it carries its issuer (D-203): set by
+`stop!` from any task through a compare-and-swap from `nothing` — the first
+writer wins, so the recorded issuer is the request that actually initiated
+the tail — consulted for non-empty by the loop at frame top, cleared at the
+top of the next run (which is what lets an init bracket's `should_abort`
+failure leave a stop *already pending* at the run's start, §12.4) and at
+`init!` (a fresh trajectory owes nothing to the last one's stop). `stopped`
+is §12.4(1)'s sticky status: set only after the final snapshot is published,
+and read by `running(handle)`, which is how loop bodies observe the run's
+end.
 
 `lifecycle` is §12.6's five-state machine: `:built`, `:initialized`,
 `:running`, and terminally `:stopped` or `:errored` (§13.6). `:running` is
@@ -64,14 +104,20 @@ nowhere normative, and monotonicity keeps the predicate sound with no
 per-run reset.
 """
 mutable struct Control
-    @atomic stop_requested::Bool
+    @atomic stop_issuer::Union{Nothing,Symbol,String}
     @atomic stopped::Bool
     cond::Threads.Condition
     counter::Int
     @atomic lifecycle::Symbol
-    termination::Union{Nothing,Termination}
+    termination::Union{Nothing,TerminationRecord}
 end
-Control() = Control(false, true, Threads.Condition(), 0, :built, nothing)
+Control() = Control(nothing, true, Threads.Condition(), 0, :built, nothing)
+
+# The stop word's one write path (§12.1, D-203): first CAS from empty wins —
+# the same arbitration as the loop reacting to the first holding stop face —
+# and a later issuer is dropped, the tail already having its initiator.
+_request_stop!(ctl::Control, issuer::Union{Symbol,String}) =
+    (@atomicreplace ctl.stop_issuer nothing => issuer; nothing)
 
 """
 The §11.3 freeze, keyed on the lifecycle (§12.6): `attach!`, `detach!` and the
@@ -158,11 +204,13 @@ running(h::DeviceHandle) = (_beat!(h.diag); !(@atomic h.ctl.stopped))
 """
     stop!(handle)
 
-Request a control-plane stop (§12.1): sets the stop word from any task; the
+Request a control-plane stop (§12.1): sets the stop word from any task, the
+device's name riding as its issuer into the termination record (D-203); the
 loop observes it at the next frame top, completes that boundary, publishes,
-and enters the tail (§12.4). Idempotent, and inert while already stopped.
+and enters the tail (§12.4). Idempotent — a second request loses the CAS and
+changes nothing — and inert while already stopped.
 """
-stop!(h::DeviceHandle) = (@atomic h.ctl.stop_requested = true; nothing)
+stop!(h::DeviceHandle) = _request_stop!(h.ctl, h.who)
 
 """
     binding(handle)
@@ -371,9 +419,12 @@ the sticky status and woken the waits: `unblock!` per spawned entry — the
 override's own blocking call returns; a throw out of the hook is warned and
 the tail proceeds — then the join under one shared `join_timeout` deadline,
 D-198's one patience for the whole tail. A task exceeding what remains of
-the deadline is reported by name under `DeviceJoinTimeout` and abandoned
-rather than left to hang `run!`. The calling-task device sits outside the
-join: nothing can abandon the task `run!` stands on.
+the deadline is abandoned rather than left to hang `run!`, reported by name
+under `DeviceJoinTimeout` into the loop's own cell (D-203): the terminal
+snapshot precedes the join by construction, so the run's-end sweep — not a
+drain — is what collects it, into the termination record and the logging
+backend. The calling-task device sits outside the join: nothing can abandon
+the task `run!` stands on.
 """
 function _tail!(sim, entries::Vector{RosterEntry}, tasks::Vector{Task})
     for e in entries
@@ -390,8 +441,11 @@ function _tail!(sim, entries::Vector{RosterEntry}, tasks::Vector{Task})
         joined = istaskdone(t) ||
             (remaining > 0 &&
              timedwait(() -> istaskdone(t), remaining; pollint = min(0.01, remaining)) === :ok)
-        joined || @warn "DeviceJoinTimeout: $(_who(e)) did not return within " *
-                        "$(sim.join_timeout) s of the stop; its task is abandoned (§12.4)"
+        if !joined
+            s = latest(sim)                  # after init!, never nothing (§14.5)
+            _report!(sim.loop_diag, DeviceJoinTimeout(_who(e), sim.join_timeout,
+                                                      Float64(s.t), s.boundary))
+        end
     end
     nothing
 end
@@ -399,33 +453,40 @@ end
 """
 The run's last sweep (§11.8), in `run!`'s outermost `finally`: one more take
 per cell, folding what landed after the final frame top — a crash caught on
-the way out, a report from a device's exit path — into the accounts, so the
-per-run record is complete and nothing leaks into the next run's status.
-The terminal snapshot is already out, so no snapshot can carry this residue:
-it is presented through the logging backend instead, the tail's renderer of
-last resort — the same window that keeps `DeviceJoinTimeout` a synchronous
-warning (D-201). The terminal status's account is therefore
-complete up to its own frame top, and the tail's remainder is loud rather
-than recorded.
+the way out, a report from a device's exit path, the tail's own
+`DeviceJoinTimeout` — into the accounts, so the per-run record is complete
+and nothing leaks into the next run's status. The terminal snapshot is
+already out, so no snapshot can carry this residue: it is collected into the
+returned `ResidueRecord`s — the termination record's third field — and
+presented through the logging backend, the record's renderer (D-201, D-203).
+The terminal status's account is therefore complete up to its own frame top,
+and the tail's remainder is loud *and* recorded, still never published.
 """
 function _sweep_tail!(sim)
     plane = sim.plane
+    residue = ResidueRecord[]
     for e in plane.roster
         _fold!(e.acct, e.diag)
-        _present_residue!(_who(e), e.acct)
+        _residue!(residue, _who(e), e.acct)
     end
     _fold!(plane.harness_acct, plane.harness_diag)
-    _present_residue!("harness", plane.harness_acct)
+    _residue!(residue, "harness", plane.harness_acct)
     _fold!(sim.loop_acct, sim.loop_diag)
-    _present_residue!("loop", sim.loop_acct)
-    nothing
+    _residue!(residue, "loop", sim.loop_acct)
+    residue
 end
 
-function _present_residue!(who::String, a::WriterAccount)
-    for d in a.recent
+# One writer's take: a quiet account contributes no record; a noisy one hands
+# its pending vector over — the account re-arms the shared empty, so the
+# record's vector is never written again — and is rendered entry by entry.
+function _residue!(out::Vector{ResidueRecord}, who::String, a::WriterAccount)
+    isempty(a.recent) && _total(a.suppressed) == 0 && return nothing
+    r = ResidueRecord(who, a.recent, a.suppressed)
+    push!(out, r)
+    for d in r.recent
         @warn "$(nameof(typeof(d))) from $who, past the final snapshot's account: $d (§11.8)"
     end
-    s = _total(a.suppressed)
+    s = _total(r.suppressed)
     s > 0 && @warn "$s more suppressed occurrence(s) from $who past the final " *
                    "snapshot's account (§11.8)"
     a.recent = EMPTY_RECENT

@@ -207,20 +207,28 @@ lifecycle(sim::Simulation) = @atomic :acquire sim.control.lifecycle
 """
     termination(sim)
 
-§13.5's termination record (devices.jl) — the run's outcome, `nothing` unless
-the lifecycle is terminal: which source ended the run (`:t_end`, `:stop_on`
-with the face named, `:control_stop`, or `:error` with the cause retained),
-and the final snapshot's boundary time.
+§13.5's termination record (devices.jl, D-203) — the run's outcome, `nothing`
+unless the lifecycle is terminal: the final snapshot's boundary time, the
+typed source that ended the run (`EndTimeReached`, `ModelRequestedStop` with
+the face, `ControlRequestedStop` with its issuer, or `LoopError` with the
+cause retained), and the tail residue the run's-end sweep collected.
 """
 function termination(sim::Simulation)
     lc = @atomic :acquire sim.control.lifecycle
     lc === :stopped || lc === :errored ? sim.control.termination : nothing
 end
 
-# The final snapshot's boundary time, for the record: after `init!` a snapshot
-# always exists; the NaN arm covers a failure before boundary zero ever ran.
-_t_latest(sim::Simulation) =
-    (s = latest(sim); s === nothing ? NaN : s.t)
+# The record's assembly (§13.5, D-203), once per advance entry in its
+# outermost `finally`, after the sweep has the residue in hand. `t` is the
+# final snapshot's boundary time in the deployment's own scalar: after
+# `init!` a snapshot always exists, and the `nothing` arm — no boundary ever
+# ran — is the out-of-band spelling of absence (never an in-band NaN, D-202's
+# argument applied here by D-203).
+function _record(sim::Simulation{T}, src::TerminationSource,
+                 residue::Vector{ResidueRecord}) where {T}
+    s = latest(sim)
+    TerminationRecord{T}(s === nothing ? nothing : s.t, src, residue)
+end
 
 # §13.5's sampling read, after every publication: the named faces off the
 # just-published snapshot, first holding face wins, in declaration order.
@@ -441,7 +449,7 @@ function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
         @atomic e.writer.cell.pending = nothing   # trajectory it predates
     end
     @atomic sim.plane.harness.cell.pending = nothing
-    @atomic ctl.stop_requested = false
+    @atomic ctl.stop_issuer = nothing
     ctl.termination = nothing
     boundary!(sim, 0)
     publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
@@ -506,9 +514,9 @@ function run!(sim::Simulation; t_end = nothing, stop_on = nothing)
     pol = sim.policy
     pol.faces, pol.addrs, pol.hit = faces, addrs, nothing
     @atomic :release ctl.lifecycle = :running   # the §11.3 freeze: the roster is fixed for the run
-    term = nothing
+    term, err_src = nothing, nothing
     try
-        @atomic ctl.stop_requested = false
+        @atomic ctl.stop_issuer = nothing
         _reset_accounts!(sim)                 # §11.8: totals count since the run began
         live = _init_devices!(sim)            # §12.4's pre-spawn bracket, attachment order
         @atomic ctl.stopped = false
@@ -544,19 +552,21 @@ function run!(sim::Simulation; t_end = nothing, stop_on = nothing)
     catch err
         # §13.6's abnormal entry: the failed boundary is discarded by
         # construction — publication is a boundary's last act, so it published
-        # nothing and the previous snapshot is already final. The record
+        # nothing and the previous snapshot is already final. The source
         # retains the cause raw (§13.4's wrap is absent, README), unwrapped
-        # from the spawned loop's task failure where the topology moved it.
-        ctl.termination = Termination(:error, nothing, _t_latest(sim),
-                                      err isa TaskFailedException ? err.task.exception : err)
-        @atomic :release ctl.lifecycle = :errored
+        # from the spawned loop's task failure where the topology moved it;
+        # the record itself is assembled below, after the sweep (D-203).
+        err_src = LoopError(err isa TaskFailedException ? err.task.exception : err)
         rethrow()
     finally
         @atomic ctl.stopped = true
-        _sweep_tail!(sim)                     # the run's last take (§11.8): what landed past
-        empty!(plane.run_tasks)               # the final frame top — presented, never published
-        if (@atomic ctl.lifecycle) === :running   # (devices.jl); tasks are run-scoped equipment
-            ctl.termination = term
+        residue = _sweep_tail!(sim)           # the run's last take (§11.8): what landed past
+        empty!(plane.run_tasks)               # the final frame top — recorded and presented,
+        if err_src !== nothing                # never published (D-201, D-203); tasks are
+            ctl.termination = _record(sim, err_src, residue)   # run-scoped equipment
+            @atomic :release ctl.lifecycle = :errored
+        elseif (@atomic ctl.lifecycle) === :running
+            ctl.termination = _record(sim, term, residue)
             @atomic :release ctl.lifecycle = :stopped
         end
     end
@@ -581,28 +591,27 @@ _register_tasks!(plane::DataPlane, entries::Vector{RosterEntry}, tasks::Vector{T
 
 # The frame loop, shared by both advance entries (§12.6: a stepped frame is
 # bit-identical to a run frame because this is the same code) — returns
-# `(termination, frames advanced)`, the termination `nothing` exactly when the
-# frame budget `upto` ran out, which only `step!` binds finitely. The §13.5
-# sources in consultation order: the stop word at frame top (§12.1 — the loop
-# never stops mid-frame, so a stop observed here leaves the last published
-# boundary as the final snapshot, §12.4(1)); `t_end`'s frame completed; and
-# the stop faces at every publication — the entry check first (a boundary-zero
-# or authored condition already terminal advances nothing, §13.5), then after
-# each frame's own publications, where a mid-frame `t*` hit arrives through
-# `pol.hit` with the frame's remainder already abandoned. With devices
-# rostered every frame yields at least once (§12.2, the unpaced case): the
-# explicit yield is the co-resident device tasks' scheduling slot.
+# `(source, frames advanced)`, the §13.5 source `nothing` exactly when the
+# frame budget `upto` ran out, which only `step!` binds finitely. The
+# consultation order is normative (D-203; the recorded source of a boundary
+# where two sources hold is the first in it): the stop word at frame top
+# (§12.1 — the loop never stops mid-frame, so a stop observed here leaves the
+# last published boundary as the final snapshot, §12.4(1)); `t_end`'s frame
+# completed; and the stop faces at every publication — the entry check first
+# (a boundary-zero or authored condition already terminal advances nothing,
+# §13.5), then after each frame's own publications, where a mid-frame `t*`
+# hit arrives through `pol.hit` with the frame's remainder already abandoned.
+# With devices rostered every frame yields at least once (§12.2, the unpaced
+# case): the explicit yield is the co-resident device tasks' scheduling slot.
 function _advance!(sim::Simulation, pol::RunPolicy, upto::Int, t_end_frame::Int)
     plane, ctl = sim.plane, sim.control
     adv = 0
     face = _stop_hit(sim, pol)
-    face === nothing ||
-        return (Termination(:stop_on, face, _t_latest(sim), nothing), adv)
+    face === nothing || return (ModelRequestedStop(face), adv)
     while true
-        (@atomic ctl.stop_requested) &&
-            return (Termination(:control_stop, nothing, _t_latest(sim), nothing), adv)
-        sim.clock.step < t_end_frame ||
-            return (Termination(:t_end, nothing, _t_latest(sim), nothing), adv)
+        issuer = @atomic ctl.stop_issuer
+        issuer === nothing || return (ControlRequestedStop(issuer), adv)
+        sim.clock.step < t_end_frame || return (EndTimeReached(), adv)
         sim.clock.step < upto || return (nothing, adv)
         isempty(plane.roster) || yield()
         drain!(sim)
@@ -616,8 +625,7 @@ function _advance!(sim::Simulation, pol::RunPolicy, upto::Int, t_end_frame::Int)
         else
             face = pol.hit        # a t* publication hit (§13.5): that snapshot is final
         end
-        face === nothing ||
-            return (Termination(:stop_on, face, _t_latest(sim), nothing), adv)
+        face === nothing || return (ModelRequestedStop(face), adv)
     end
 end
 
@@ -669,24 +677,22 @@ function step!(sim::Simulation; frames = nothing, t_plus = nothing)
     pol.faces, pol.addrs, pol.hit = sim.stop_on, sim.stop_addrs, nothing
     t_end_frame = sim.t_end === nothing ? typemax(Int) : round(Int, sim.t_end / sim.h)
     @atomic :release ctl.lifecycle = :running   # the freeze holds within the call
-    term, adv = nothing, 0
+    term, adv, err_src = nothing, 0, nothing
     try
         (term, adv) = _advance!(sim, pol, sim.clock.step + nf, t_end_frame)
     catch err
-        ctl.termination = Termination(:error, nothing, _t_latest(sim), err)
-        @atomic :release ctl.lifecycle = :errored
-        rethrow()
+        err_src = LoopError(err)              # the record is assembled below,
+        rethrow()                             # after the sweep (D-203)
     finally
-        lc = @atomic ctl.lifecycle
-        if lc === :errored                    # §13.6, the stepped register: same tail,
+        if err_src !== nothing                # §13.6, the stepped register: same tail,
             _finish!(sim)                     # deviceless — waits woken, accounts swept
-            _sweep_tail!(sim)
+            ctl.termination = _record(sim, err_src, _sweep_tail!(sim))
+            @atomic :release ctl.lifecycle = :errored
         elseif term === nothing
             @atomic :release ctl.lifecycle = :initialized
         else                                  # a §13.5 source fired inside the call:
             _finish!(sim)                     # the deviceless §12.4 tail, then terminal
-            _sweep_tail!(sim)
-            ctl.termination = term
+            ctl.termination = _record(sim, term, _sweep_tail!(sim))
             @atomic :release ctl.lifecycle = :stopped
         end
     end
@@ -697,12 +703,13 @@ end
     stop!(sim)
 
 Request a control-plane stop from any task (§12.1) — the calling code's
-spelling of the stop a device handle issues with `stop!(handle)`. The loop
-observes the word at the next frame top, completes that boundary, publishes,
-and enters the tail (§12.4). Idempotent; inert while stopped, the word being
-cleared at the top of the next run.
+spelling of the stop a device handle issues with `stop!(handle)`, `:code`
+riding as its issuer into the termination record (D-203). The loop observes
+the word at the next frame top, completes that boundary, publishes, and
+enters the tail (§12.4). Idempotent — a later issuer loses the first-wins
+CAS; inert while stopped, the word being cleared at the top of the next run.
 """
-stop!(sim::Simulation) = (@atomic sim.control.stop_requested = true; nothing)
+stop!(sim::Simulation) = _request_stop!(sim.control, :code)
 
 # --- the roster (§11.3): stopped-sim configuration -----------------------------
 

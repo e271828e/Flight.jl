@@ -73,14 +73,17 @@ end
     @test err_i isa BuildError && occursin("ServiceLifecycle", err_i.msg)
     @test err_r isa BuildError && occursin("already running", err_r.msg)
     @test lifecycle(sim) === :stopped
-    @test termination(sim).source === :t_end
+    @test termination(sim).source === EndTimeReached()
 end
 
 @testset "t_end: constructor default, run! override, and a bound owed from some site (§13.5)" begin
     sim = Simulation(feedback_model(); h = 1//50, t_end = 1.0)
     init!(sim)
     run!(sim)                                        # the constructor's default
-    @test termination(sim) === Termination(:t_end, nothing, 1.0, nothing)
+    t = termination(sim)
+    @test t isa TerminationRecord{Float64}           # the deployment's own scalar (§7.2, D-203)
+    @test t.source === EndTimeReached() && t.t == 1.0
+    @test isempty(t.residue)                         # a quiet tail contributes no record
     @test sim.clock.step == 50
 
     init!(sim)
@@ -117,7 +120,7 @@ end
     init!(sim)
     run!(sim)
     t = termination(sim)
-    @test t.source === :stop_on && t.face === :hit
+    @test t.source === ModelRequestedStop(:hit)      # kind + payload, one typed value (D-203)
     @test t.t == 4 * sim.h                           # the sweep at boundary 4 saw 0.4 ≥ 0.35
     @test sim.clock.step == 4                        # the run ended there, not at t_end
     @test latest(sim).t === t.t                      # that snapshot is the final one
@@ -129,7 +132,7 @@ end
     init!(sim)                                       # boundary zero derives the firing (§10.6)
     run!(sim)
     t = termination(sim)
-    @test t.source === :stop_on && t.face === :stop && t.t == 0.0
+    @test t.source === ModelRequestedStop(:stop) && t.t == 0.0
     @test sim.clock.step == 0                        # zero frames: the check precedes the first step
 end
 
@@ -138,7 +141,7 @@ end
     init!(sim)
     run!(sim)
     t = termination(sim)
-    @test t.source === :stop_on && t.face === :tripped
+    @test t.source === ModelRequestedStop(:tripped)
     @test t.t ≈ 0.315 atol = 1e-6                    # the analytic crossing, not a frame top
     @test t.t == sim.clock.t                         # the frame's remainder was abandoned
     @test latest(sim).t === t.t
@@ -149,10 +152,10 @@ end
     sim = Simulation(monitored(); h = 1//10, t_end = 1.0)    # no default stop faces
     init!(sim)
     run!(sim; stop_on = ("hit",))
-    @test termination(sim).source === :stop_on
+    @test termination(sim).source isa ModelRequestedStop
     init!(sim)
     run!(sim)                                        # the constructor's (), again
-    @test termination(sim) === Termination(:t_end, nothing, 1.0, nothing)
+    @test termination(sim).source === EndTimeReached() && termination(sim).t == 1.0
 end
 
 @testset "step! advances whole frames and returns the count actually advanced (§12.6)" begin
@@ -164,7 +167,7 @@ end
     @test lifecycle(sim) === :initialized            # between calls: ready to advance
     @test step!(sim; frames = 100) == 20             # t_end truncates at frame 50
     @test lifecycle(sim) === :stopped
-    @test termination(sim).source === :t_end
+    @test termination(sim).source === EndTimeReached()
 
     # A stepped trajectory is bit-identical to the same frames under run!.
     ref = Simulation(feedback_model(); h = 1//50, t_end = 1.0)
@@ -187,7 +190,7 @@ end
     @test lifecycle(sim) === :initialized
     @test step!(sim; frames = 10) == 2               # the face holds at boundary 4
     @test lifecycle(sim) === :stopped
-    @test termination(sim).face === :hit
+    @test termination(sim).source === ModelRequestedStop(:hit)
 end
 
 @testset "§13.6: a loop-side throw discards the failed boundary and promotes the last one" begin
@@ -200,7 +203,7 @@ end
                                                      # synchronous rethrow, after the tail)
     @test lifecycle(sim) === :errored
     t = termination(sim)
-    @test t.source === :error && t.exception isa Exploded
+    @test t.source isa LoopError && t.source.exception isa Exploded
     # The failed boundary published nothing: boundary zero is the promoted
     # final snapshot, and the published record ends at it.
     @test t.t == 0.0 && latest(sim).t == 0.0
