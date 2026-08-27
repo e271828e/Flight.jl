@@ -1,5 +1,5 @@
 #Runnable demo of the §14 condition algebra (framework_spec.md):
-#fragment/at/merge/override lazy trees, flattening with provenance, the
+#fragment/at/combine/override lazy trees, flattening with provenance, the
 #duplicate-leaf error, and §14.9 mounting — a TrimProblem relocated whole by
 #at(prefix, problem). Written as the inspection aid for the mounting
 #semantics: every step prints the tree or the flattened entry list.
@@ -35,10 +35,10 @@ struct Scoped{N}                    #at(prefix, node): stores, never applies
 end
 at(prefix::AbstractString, node) = Scoped(String(prefix), node)
 
-struct Merged{T<:Tuple}             #merge(ns...): collects; order = diagnostics only
+struct Combined{T<:Tuple}           #combine(ns...): collects; order = diagnostics only
     nodes::T
 end
-merge(nodes...) = Merged(nodes)
+combine(nodes...) = Combined(nodes)
 
 struct Override{B, P}               #override(base, patch): ordered, asymmetric (§14.6)
     base::B
@@ -97,9 +97,9 @@ end
 flatten!(out, sc::Scoped, path, prov) =
     flatten!(out, sc.node, join_path(path, sc.prefix), prov * "at(\"$(sc.prefix)\") → ")
 
-function flatten!(out, m::Merged, path, prov)
+function flatten!(out, m::Combined, path, prov)
     for (i, n) in enumerate(m.nodes)
-        flatten!(out, n, path, prov * "merge[$i] → ")
+        flatten!(out, n, path, prov * "combine[$i] → ")
     end
 end
 
@@ -149,12 +149,12 @@ function label(f::Fragment)
     "fragment(" * join(parts, ", ") * ")"
 end
 label(sc::Scoped) = "at \"$(sc.prefix)\""
-label(::Merged) = "merge"
+label(::Combined) = "combine"
 label(::Override) = "override (base, patch — patch wins)"
 
 children(::Fragment) = ()
 children(sc::Scoped) = (sc.node,)
-children(m::Merged) = m.nodes
+children(m::Combined) = m.nodes
 children(o::Override) = (o.base, o.patch)
 
 function print_tree(node, prefix = "", islast = true, isroot = true)
@@ -201,12 +201,12 @@ struct SimpleWorld; lead::Cessna172X; wing::Cessna172X; end
 condition(eng::PistonEngine; n_eng) =
     fragment(x = (ω = n_eng * eng.ω_rated,), m = (phase = :running,))
 
-condition(sys::C172XSystems; n_eng, α_a, β_a) = merge(
+condition(sys::C172XSystems; n_eng, α_a, β_a) = combine(
     at("pwp/engine", condition(sys.pwp.engine; n_eng)),
     at("aero",       fragment(x = (α_filt = α_a, β_filt = β_a))))
 
 #aircraft-shipped baseline (§14.6): full slot coverage, one authoritative home
-ready_for_taxi(ac::Cessna172X) = merge(
+ready_for_taxi(ac::Cessna172X) = combine(
     at("sys", condition(ac.sys; n_eng = 0.25, α_a = 0.0, β_a = 0.0)),
     fragment(slots = (throttle = 0.0, elevator = 0.0, mixture = 0.5)))
 
@@ -248,7 +248,7 @@ trim_problem(ac::Cessna172X) = TrimProblem(
     (throttle = 0.5,  θ = 0.05, n_eng = 0.7),
     (throttle = 0.0,  θ = -0.3, n_eng = 0.4),
     (throttle = 1.0,  θ = 0.3,  n_eng = 1.2),
-    d -> merge(
+    d -> combine(
         at("sys", condition(ac.sys; n_eng = d.n_eng, α_a = d.θ, β_a = 0.0)),
         at("kin", fragment(x = (θ = d.θ,))),
         fragment(slots = (throttle = d.throttle,))),
@@ -275,7 +275,7 @@ function main()
     print_entries(resolve(taxi))
 
     banner("3. Duplicate leaf in one layer: error with both provenance chains")
-    bad = merge(taxi, at("sys/pwp/engine", fragment(x = (ω = 0.0,))))
+    bad = combine(taxi, at("sys/pwp/engine", fragment(x = (ω = 0.0,))))
     try
         resolve(bad)
     catch e
@@ -304,7 +304,7 @@ function main()
     println("  resolves from the mount point → root slot \"wing.throttle\"")
 
     banner("7. Commit = override(baseline, at(mount, condition(d*))) (§14.9)")
-    baseline = merge(
+    baseline = combine(
         at("lead", ready_for_taxi(world.lead)),
         at("wing", ready_for_taxi(world.wing)),
         fragment(slots = (wind_N = 0.0,)))          #environment: world-level face

@@ -7463,7 +7463,7 @@ condition(eng::PistonEngine; n_eng) =
 Fragments are composed by *pull* from the structure's owner:
 
 ```julia
-condition(sys::C172XSystems; n_eng, α_a, β_a) = merge(
+condition(sys::C172XSystems; n_eng, α_a, β_a) = combine(
     at("pwp/engine", condition(sys.pwp.engine; n_eng)),
     at("aero",       fragment(x = (α_filt = α_a, β_filt = β_a))))
 ```
@@ -7475,7 +7475,7 @@ split costs no upstream edits. The three combinators are constructors of an
 ```julia
 struct Fragment{X,S,M,L}  x::X; s::S; m::M; slots::L  end  #self-vocabulary payloads; no paths
 struct Scoped{N}  prefix::String; node::N  end             #at(prefix, node): stores, never applies
-struct Merged{T<:Tuple}  nodes::T  end                     #merge(ns...): collects; order = diagnostics only
+struct Combined{T<:Tuple}  nodes::T  end                   #combine(ns...): collects; order = diagnostics only
 ```
 
 Every node is isbits except the interned literal prefixes, so **rebuilding
@@ -7501,27 +7501,27 @@ offsets are of `child_connections`. Substituting a component invalidates
 precisely the fragments its owner shipped, nothing else. The enforcement status
 carries over from [§6.1][s6-1] as well: the law is convention. Ownership is a
 fact about who maintains the code and the build cannot see it, so the law is
-available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
+available and idiomatic rather than machine-checked. `fragment`/`at`/`combine`
 are [§13.7][s13-7] standard-library material — ordinary artifacts, no privileges.
 
-A [merge](#g-merge) collision is two entries on one leaf. Collisions are errors
+A [combine](#g-combine) collision is two entries on one leaf. Collisions are errors
 at resolution, and the error reports *both* provenance chains. The message
-names the layering combinator: "`merge` is collision-intolerant by design — use
-`override(base, patch)` to layer." Last-writer-wins was rejected ([D-065][d-065]). That
-rejection is exactly where this `merge` parts company with `Base.merge`, which
-is last-wins on NamedTuples; the two share a name and not a semantics, and
-dispatch on the node types keeps them apart mechanically. The mixed call is
-closed explicitly. A `merge(::Fragment, ::NamedTuple)` — or any other blend of a
-condition node with a bare NamedTuple — is an **error method**, defined so the
-call cannot fall through to `Base.merge`'s last-wins semantics on a payload that
-looks plausible. Its message is directive: wrap the NamedTuple in
-`fragment(…)` (or `at(prefix, fragment(…))`) and merge nodes with nodes. The
-rejection carries a [kind](#g-kind) like every other: `ConditionNodeMisuse`
-([Appendix C][sC]), carrying the offending argument's type and the node kinds in
-hand. It is raised at composition time, before any resolution pass or provenance
-chain exists. That is why it is its own kind and not a `ConditionResolution`
-sub-kind ([§14.3][s14-3]). The explicit, *ordered* layering spelling —
-`override` — belongs with the use case [slot totality](#g-slot-totality)
+names the layering combinator: "`combine` is collision-intolerant by design —
+use `override(base, patch)` to layer." Last-writer-wins was rejected ([D-065][d-065]).
+That rejection is also why the combinator is not `Base.merge`, and no longer
+named after it ([D-204][d-204]): `Base.merge` is last-wins on NamedTuples — the exact
+semantics rejected here — and its own name should not promise them. Because
+`combine` is its own function, a bare NamedTuple blended into a node cannot
+fall through to any last-wins method. The blend is still closed explicitly. A
+`combine(::Fragment, ::NamedTuple)` — or any other blend of a condition node
+with a bare NamedTuple — is an **error method**, its message directive: wrap
+the NamedTuple in `fragment(…)` (or `at(prefix, fragment(…))`) and combine
+nodes with nodes. The rejection carries a [kind](#g-kind) like every other:
+`ConditionNodeMisuse` ([Appendix C][sC]), carrying the offending argument's type
+and the node kinds in hand. It is raised at composition time, before any
+resolution pass or provenance chain exists. That is why it is its own kind and
+not a `ConditionResolution` sub-kind ([§14.3][s14-3]). The explicit, *ordered*
+layering spelling — `override` — belongs with the use case [slot totality](#g-slot-totality)
 produces ([§14.6][s14-6]).
 
 ### 14.3 Resolution: flatten, validate, compile once
@@ -7843,7 +7843,7 @@ successor is ordinary user math in one authoritative home —
 conditions. But "baseline plus tweaks" collides with the duplicate-leaf error
 ([§14.2][s14-2]) by design: the collision *is* the intent. Hence the
 fourth node kind, **`override(base, patch)`** — ordered and asymmetric
-where `merge` is symmetric and collision-intolerant. At resolution a leaf
+where `combine` is symmetric and collision-intolerant. At resolution a leaf
 present in both takes the patch's value, with provenance recording both
 sources ("patch overrode base's `throttle`"); collisions *within* one
 layer remain errors; variadic layering
@@ -8328,7 +8328,7 @@ linearization's input surface and the [trace header](#g-trace-header) already sp
 **Swarm doctrine.** The service solves *one problem at a time*. Sequential
 independent trims (trim lead, commit, trim wing against the committed
 world) cover weak/one-way coupling. A joint trim is user-side value
-composition: concatenate decision NamedTuples under prefixed names, merge
+composition: concatenate decision NamedTuples under prefixed names, combine
 the scoped condition trees, stack the residuals. If joint trims become
 routine, a `product(p₁ => "lead", p₂ => "wing")` helper belongs in the
 [§13.7][s13-7] library. That helper is [recorded, not built](#g-recorded-not-built) (a worked-out
@@ -9234,13 +9234,13 @@ field becomes a plain scalar, its clamp respelled as dynamics or
 [projection](#g-projection), never as construction.
 
 **The exported-name surface.** This surface is to be decided deliberately
-rather than by accident. `condition`, `fragment`, `at`, `capture` and the
-`merge` overload ([§14.2][s14-2]) are generic names sharing a namespace with
-FlightPhysics domain code. `merge` in particular is a piracy surface, and its
-mixed-argument methods must stay error methods. For the readers, the `get_`
-prefix of the [selector](#g-selector) family already settles the question
-([§14.4][s14-4]). Whether the [condition](#g-condition) algebra ships behind a
-submodule is the packaging question.
+rather than by accident. `condition`, `fragment`, `at`, `capture` and
+`combine` ([§14.2][s14-2]) are generic names sharing a namespace with
+FlightPhysics domain code. The `Base.merge` piracy surface the combinator once
+presented is retired with its rename ([D-204][d-204]); the mixed-argument methods stay
+error methods. For the readers, the `get_` prefix of the [selector](#g-selector) family
+already settles the question ([§14.4][s14-4]). Whether the [condition](#g-condition) algebra ships
+behind a submodule is the packaging question.
 
 The audit is a full-surface sweep (per user, 2026-08-01). Every API
 method name is either specific enough to export, or gets renamed, or is left
@@ -9662,9 +9662,9 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   level; `slots` names faces of that level's contract.
 - `at(prefix, node)` — scoping; stores, never applies. Also lifts whole
   `TrimProblem`s and linearization tap sets ([§14.9][s14-9], [§14.10][s14-10]).
-- `merge(nodes...)` — symmetric collection; duplicate leaves error with dual
-  provenance; mixing a node with a bare NamedTuple is an error method, not
-  `Base.merge` ([§14.2][s14-2]).
+- `combine(nodes...)` — symmetric collection; duplicate leaves error with dual
+  provenance; blending a node with a bare NamedTuple is a directive error
+  method ([§14.2][s14-2]).
 - `override(base, patches...)` — ordered layering; patch wins, provenance
   keeps both ([§14.6][s14-6]).
 - `condition(comp; kw)` — the shipped fragment-function idiom; aircraft
@@ -10652,6 +10652,10 @@ slots back as a condition value, returning `(condition, t)`; the gather twin
 of `apply!`, and what makes warm restart need no second semantics ([§14.1][s14-1],
 [§14.10][s14-10]).
 
+<a id="g-combine"></a>**combine** — the symmetric, collision-intolerant combinator over condition
+nodes: a duplicate leaf is an error naming both provenance chains, and blending
+a node with a bare `NamedTuple` is a directive error method ([§14.2][s14-2]).
+
 <a id="g-component-test-rig"></a>**component test rig** — a one-child assembly exporting the child's entire
 input face set, so any component can be built and simulated in isolation; an
 abstract entry is satisfied *inside* the rig by a concrete **stub child**
@@ -10672,12 +10676,8 @@ slots)` payloads speaking only about the component at the authoring point
 (**self-vocabulary**), with addressing left entirely to `at` ([§14.2][s14-2]).
 
 <a id="g-fragment-tree"></a>**fragment tree** — the inert, lazy composition of `Fragment`/`Scoped`/
-`Merged`/override nodes; isbits but for the interned prefixes, so rebuilding
+`Combined`/override nodes; isbits but for the interned prefixes, so rebuilding
 it per trim iteration is stack-only construction ([§14.2][s14-2]).
-
-<a id="g-merge"></a>**merge** — the symmetric, collision-intolerant combinator over condition
-nodes: a duplicate leaf is an error naming both provenance chains, and mixing
-a node with a bare `NamedTuple` is an error method, not `Base.merge` ([§14.2][s14-2]).
 
 <a id="g-mounting"></a>**mounting** — relocating a whole problem or tap set with `at(prefix, …)`:
 every field is either condition-producing (path-relative, post-composed) or
@@ -10950,6 +10950,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-201]: framework_decisions.md#d-201--the-terminal-account-closes-at-the-final-frame-top
 [d-202]: framework_decisions.md#d-202--stage-batches-as-values-plus-touched-mask-never-union-tuples
 [d-203]: framework_decisions.md#d-203--the-termination-record-carries-typed-sources-and-the-tail-residue
+[d-204]: framework_decisions.md#d-204--rename-the-condition-algebras-symmetric-combinator-to-combine
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
