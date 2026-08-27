@@ -4,7 +4,7 @@
 # The devices below live at top level for the README's local-scope reason.
 
 # A fed plant exporting its output: the root face set the output side reads —
-# one slot (`u`), one exported output face (`y`).
+# one root input (`u`), one exported output face (`y`).
 outfaced() = Group((; p = Plant()), (), ("u" => "children/p/u",), ("children/p/y" => "y",))
 
 # A boundary-driven output device (§11.2): the loop idiom verbatim — wait,
@@ -29,10 +29,10 @@ is_output(::NoReads) = true
 struct ReadsUndeclared <: AbstractBinding end    # enumeration written, trait false
 is_input(::ReadsUndeclared) = true
 claims(::ReadsUndeclared) = ("a",)
-reads(::ReadsUndeclared) = (; x = get_slot("a"))
+reads(::ReadsUndeclared) = (; x = get_input("a"))
 struct BadReadsShape <: AbstractBinding end      # the wrong return shape
 is_output(::BadReadsShape) = true
-reads(::BadReadsShape) = [get_slot("a")]
+reads(::BadReadsShape) = [get_input("a")]
 struct BadReadsEntry <: AbstractBinding end      # a non-selector entry
 is_output(::BadReadsEntry) = true
 reads(::BadReadsEntry) = (; x = 1.0)
@@ -40,7 +40,7 @@ struct Duplex <: AbstractBinding end             # both sides, one binding
 is_input(::Duplex) = true
 is_output(::Duplex) = true
 claims(::Duplex) = ("a",)
-reads(::Duplex) = (; echo = get_slot("a"), e = get_output("children/s", "e"))
+reads(::Duplex) = (; echo = get_input("a"), e = get_output("children/s", "e"))
 
 # A poll-once input device: assembles one datum, stages it through the loop
 # idiom — map_input against the handle's own binding — then holds its loop
@@ -84,7 +84,7 @@ end
     @test sort(claims(b)) == ["a", "b"]
     # Two channels onto one face collapse to one claim, like any enumeration's
     # duplicates (§11.3).
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     attach!(sim, Pad("p"), TableBinding(x = (face = "a",), y = (face = "a",)))
     @test sim.plane.roster[1].writer.faces == [:a]
 end
@@ -133,19 +133,19 @@ end
 end
 
 @testset "the loop idiom end to end: poll → map_input(binding(handle)) → stage! (§11.6)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     dev = Poller((; stick = 0.55, thr = 0.7))
     h = attach!(sim, dev, TableBinding(stick = (face = "a", deadzone = 0.1),
                                        thr   = (face = "b",)))
     @test binding(h) === sim.plane.roster[1].binding
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 1000.0)                # ends by the device's stop, past its observed apply
     @test port(sim, "", :a) ≈ 0.5            # (0.55 − 0.1) / 0.9: conditioned at staging
     @test port(sim, "", :b) === 0.7          # pass-through, bitwise
     # The device-staged trajectory is the directly-staged one: conditioning ran
     # upstream, so the model consumed post-conditioning levels (§11.4).
-    ref = Simulation(two_slots(); h = 1//10)
-    init!(ref, fragment(slots = (a = 0.0, b = 0.0)))
+    ref = Simulation(two_root_inputs(); h = 1//10)
+    init!(ref, fragment(inputs = (a = 0.0, b = 0.0)))
     ref_val = last(only(map_input((; stick = 0.55),
                                   TableBinding(stick = (face = "a", deadzone = 0.1)))))
     stage!(ref, "a" => ref_val, "b" => 0.7)
@@ -153,9 +153,9 @@ end
     @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
     # An unknown channel in a real loop body crashes the device by name, the
     # run continuing (§11.6: any non-datum exception propagates to the wrapper).
-    sim2 = Simulation(two_slots(); h = 1//10)
+    sim2 = Simulation(two_root_inputs(); h = 1//10)
     attach!(sim2, Poller((; wheel = 0.1)), TableBinding(stick = (face = "a",)))
-    init!(sim2, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim2, fragment(inputs = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim2; t_end = 0.2)
     end
@@ -164,7 +164,7 @@ end
 end
 
 @testset "the output side completes the conformance check, both directions (§11.6)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     err = failure(() -> attach!(sim, Pad("p"), NoReads()))
     @test err isa BuildError && occursin("defines no `reads`", err.msg)
     err = failure(() -> attach!(sim, Pad("p"), ReadsUndeclared()))
@@ -181,9 +181,9 @@ end
     err = failure(() -> attach!(sim, Pad("t"), Readout(alt = get_output("children/q", "y"))))
     @test err isa BuildError && occursin("ReadBindingUnresolved", err.msg) &&
           occursin("children/q", err.msg)
-    err = failure(() -> attach!(sim, Pad("t"), Readout(v = get_slot("nope"))))
+    err = failure(() -> attach!(sim, Pad("t"), Readout(v = get_input("nope"))))
     @test err isa BuildError && occursin("ReadBindingUnresolved", err.msg) &&
-          occursin("{u}", err.msg)               # the slot list, in hand
+          occursin("{u}", err.msg)               # the root-input list, in hand
     err = failure(() -> attach!(sim, Pad("t"), Readout(v = get_face("u"))))
     @test err isa BuildError && occursin("root *input* face", err.msg)
     err = failure(() -> attach!(sim, Pad("t"), Readout(v = get_face("nope"))))
@@ -200,8 +200,8 @@ end
     dev = Telemetry()
     h = attach!(sim, dev, Readout(alt = get_face("y"),
                                   raw = get_output("children/p", "y"),
-                                  cmd = get_slot("u")))
-    init!(sim, fragment(slots = (u = 0.0,)))
+                                  cmd = get_input("u")))
+    init!(sim, fragment(inputs = (u = 0.0,)))
     stage!(sim, "u" => 2.0)
     run!(sim; t_end = 0.5)
     @test !isempty(dev.wire)
@@ -219,21 +219,21 @@ end
 end
 
 @testset "gather without an output side is a contract misuse, by name (§11.6)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     h = attach!(sim, Pad("p"), Enumerated("a"))
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     err = failure(() -> gather(h, latest(sim)))
     @test err isa ErrorException && occursin("declares no output side", err.msg)
 end
 
 @testset "a bidirectional binding composes both halves (§11.6)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     h = attach!(sim, Pad("p"), Duplex())
     @test sim.plane.roster[1].writer.faces == [:a]     # the input half: the claim staked
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     stage!(h, "a" => 0.4)
     run!(sim; t_end = 0.2)
     nt = gather(h, latest(sim))                        # the output half: the gather compiled
-    @test nt.echo === 0.4                              # the slot read back through get_slot
+    @test nt.echo === 0.4                        # the root input read back through get_input
     @test nt.e === port(sim, "children/s", :e)
 end

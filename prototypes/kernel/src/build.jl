@@ -206,7 +206,7 @@ function schedule_stage2(flat::Flat, tiers::Vector{Tier}, stage1::Vector)
     for ci in 1:n
         has_stage(stage2_of(tiers[ci]), flat.comps[ci]) || continue
         for (_, (ppath, pport)) in flat.conns[ci]
-            isempty(ppath) && continue                   # a root slot: no producer to wait for
+            isempty(ppath) && continue                   # a root input: no producer to wait for
             pi = index_of(flat, ppath)
             haskey(stage1[pi], pport) && continue        # stage-1 port: no dependence
             push!(deps[ci], pi)
@@ -250,13 +250,13 @@ end
 
 struct Layout
     addr::Dict{Tuple{String,Symbol},Any}     # (path, port|face) => CellAddr
-    slots::Vector{Tuple{Symbol,Any}}         # root slots, with their probe values
+    root_inputs::Vector{Tuple{Symbol,Any}}   # root inputs, with their probe values
     sizes::Vector{Pair{DataType,Int}}        # leaf eltype => buffer length, name-sorted
 end
 
 function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
     addr = Dict{Tuple{String,Symbol},Any}()
-    slots = Tuple{Symbol,Any}[]
+    root_inputs = Tuple{Symbol,Any}[]
     offs = Dict{DataType,Int}()
     function place!(path, kind, name, ::Type{P}) where {P}
         lts = leaf_types(P)
@@ -273,29 +273,29 @@ function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
             place!(path, "port", port, P)
         end
     end
-    for face in flat.slots
-        P = _slot_type(flat, decls, face)
-        place!("", "root slot", face, P)
-        push!(slots, (face, probe_value(P)))
+    for face in flat.root_inputs
+        P = _root_input_type(flat, decls, face)
+        place!("", "root input", face, P)
+        push!(root_inputs, (face, probe_value(P)))
     end
     for (alias, target) in flat.faces
         addr[alias] = addr[target]
     end
     sizes = sort!([L => n for (L, n) in offs]; by = p -> string(first(p)))
-    Layout(addr, slots, sizes)
+    Layout(addr, root_inputs, sizes)
 end
 
-# A root slot's cell follows the same derivation an assembly face does: it is the
+# A root input's cell follows the same derivation an assembly face does: it is the
 # internal endpoint's. With fan-out there are several, and the first one decides —
 # a divergent sibling then meets the ordinary entry check at its own probe.
-function _slot_type(flat::Flat, decls::Vector{Decls}, face::Symbol)
+function _root_input_type(flat::Flat, decls::Vector{Decls}, face::Symbol)
     for (ci, conns) in enumerate(flat.conns), (f, producer) in conns
         producer === ("", face) && return decls[ci].ins[f]
     end
     throw(BuildError("root input face `$face` routes to no input"))
 end
 
-"""Address of the cell feeding `face`: its resolved producer's port, or a root slot."""
+"""Address of the cell feeding `face`: its resolved producer's port, or a root input."""
 input_addr(layout::Layout, conns::Vector{Pair{Symbol,Tuple{String,Symbol}}}, face::Symbol) =
     layout.addr[last(conns[findfirst(p -> first(p) === face, conns)])]
 
@@ -775,8 +775,8 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
         isempty(act.products[ci]) ||
             scatter_group!(store, addr_group(path, keys(act.products[ci])), act.products[ci])
     end
-    # Root slots hold their synthesized values until a writer replaces them.
-    for (face, v) in layout.slots
+    # Root inputs hold their synthesized values until a writer replaces them.
+    for (face, v) in layout.root_inputs
         scatter!(store, layout.addr[("", face)], v)
     end
 
@@ -878,7 +878,7 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
 end
 
 # A probed input value: the producer's product, or the synthesized value of the
-# root slot the obligation chain ends at. Stage-2 probing runs in topological
+# root input the obligation chain ends at. Stage-2 probing runs in topological
 # order, so upstream products exist by construction.
 #
 # The entry is a *bound*, read permissively (D-167): a `T` entry is tolerant of
@@ -889,13 +889,13 @@ function _probe_input(flat::Flat, layout::Layout, products, ci, face, P, ::Type{
     path = flat.paths[ci]
     (ppath, pport) = last(flat.conns[ci][findfirst(p -> first(p) === face, flat.conns[ci])])
     v = if isempty(ppath)
-        last(layout.slots[findfirst(s -> first(s) === pport, layout.slots)])
+        last(layout.root_inputs[findfirst(s -> first(s) === pport, layout.root_inputs)])
     else
         products[index_of(flat, ppath)][pport]
     end
     _accepts(P, typeof(v), T) ||
         throw(BuildError("`$path`.$face declared $P, fed from " *
-                         "$(isempty(ppath) ? "root slot `$pport`" : "`$ppath`.$pport")" *
+                         "$(isempty(ppath) ? "root input `$pport`" : "`$ppath`.$pport")" *
                          "::$(typeof(v))" * _pin_hint(P, typeof(v), T)))
     v
 end

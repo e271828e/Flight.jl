@@ -27,7 +27,7 @@ end
 
 @testset "the log is the publications themselves: full density, zero copies (§11.2)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10)
-    init!(sim, fragment(slots = (in = 1.0,)))
+    init!(sim, fragment(inputs = (in = 1.0,)))
     step!(sim; t_plus = 1.0)
     snaps = logged(sim)
     @test [s.frame for s in snaps] == collect(0:10)      # boundary zero + every frame top
@@ -41,7 +41,7 @@ end
 
 @testset "log_every thins retention, never publication (§11.2)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10, log_every = 3)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     step!(sim; frames = 1)
     @test latest(sim).frame == 1                         # published to live readers…
     @test [s.frame for s in logged(sim)] == [0, 1]       # …not retained: `last` alone holds it
@@ -51,7 +51,7 @@ end
 
 @testset "the endpoints are unconditional and outside the bound (§11.2)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10, log_every = 4, log_max = 2)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     run!(sim; t_end = 4.0)
     snaps = logged(sim)
     @test [s.frame for s in snaps] == [0, 16, 32, 40]    # two generations in
@@ -60,7 +60,7 @@ end
 
 @testset "re-decimation: stride doubles, coverage stays global, the bound holds continuously (§11.2, D-137)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10, log_max = 8)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     ok_bound = ok_ends = ok_sorted = true
     for k in 1:128                                       # one frame at a time: every
         step!(sim; frames = 1)                           # intermediate state is checked
@@ -80,7 +80,7 @@ end
 
     # The effective stride composes with the authored one: log_every · 2^k.
     sim2 = Simulation(fed(Plant(), "u"); h = 1//10, log_every = 2, log_max = 4)
-    init!(sim2, fragment(slots = (in = 0.0,)))
+    init!(sim2, fragment(inputs = (in = 0.0,)))
     run!(sim2; t_end = 4.0)
     @test [s.frame for s in logged(sim2)] == [0, 8, 16, 24, 32, 40]
     @test sim2.log.stride == 16                          # 2 · 2³
@@ -88,7 +88,7 @@ end
 
 @testset "log = false retains nothing; publication is upstream of the switch (§11.2)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10, log = false)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     run!(sim; t_end = 0.5)
     @test isempty(logged(sim))
     @test latest(sim).frame == 5
@@ -111,16 +111,16 @@ end
 
 @testset "a warm restart is a new trajectory: the log starts over (§11.2)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     run!(sim; t_end = 1.0)
     @test length(logged(sim)) == 11
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     @test [s.frame for s in logged(sim)] == [0]          # the new boundary zero, alone
 end
 
 @testset "logged is a stopped-sim read behind the §11.3 gate" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//100000, log_max = 16)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     logged(sim)                                          # warms the compile path, so the
                                                          # mid-run check below races no JIT
     t = Threads.@spawn run!(sim; t_end = 1.0)
@@ -140,7 +140,7 @@ end
     @test occursin("log_max", failure(() -> Simulation(m; h = 1//10, log_max = 0)).msg)
     @test occursin("log_max", failure(() -> Simulation(m; h = 1//10, log_max = 1.5)).msg)
     sim = Simulation(m; h = 1//10, log_max = Inf)        # the explicit opt-out
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     run!(sim; t_end = 1.0)
     @test length(logged(sim)) == 11
 end

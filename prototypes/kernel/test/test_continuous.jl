@@ -44,7 +44,7 @@ end
     exact(t) = exp(Acl * t) * (Acl \ (B * k * r)) - Acl \ (B * k * r)
 
     sim = Simulation(feedback_model(; k, ω, ζ); h = 1//1000)
-    init!(sim, fragment(slots = (ref = r,)))
+    init!(sim, fragment(inputs = (ref = r,)))
     run!(sim; t_end = 2.0)
 
     # Tolerance, never `==` (D-163): RK4 truncation dominates at ~1e-12 here.
@@ -88,7 +88,7 @@ end
 
 @testset "gate 1: stepping does not allocate (§7.5)" begin
     sim = Simulation(feedback_model(); h = 1//1000)
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     step!(sim, 1e-3)
     @test @ballocated(step!($sim, 1e-3)) == 0
     @test @ballocated(evaluate!($sim)) == 0
@@ -96,7 +96,7 @@ end
 
 @testset "the whole continuous path is generic over the scalar (§7.2)" begin
     sim = Simulation(feedback_model(), D8; h = 1//1000)
-    init!(sim, fragment(slots = (ref = D8(0.7),)))
+    init!(sim, fragment(inputs = (ref = D8(0.7),)))
     run!(sim; t_end = 0.05)
     @test state(sim, "children/plant").q isa SVector{2,D8}
     @test ForwardDiff.value(port(sim, "children/plant", :y)) != 0.0

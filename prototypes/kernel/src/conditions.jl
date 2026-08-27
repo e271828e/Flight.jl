@@ -14,14 +14,14 @@
 
 """
 Self-vocabulary payloads at one authoring level (§14.2): `x`, `s` and `m`
-fields of the component addressed there, and `slots` naming faces of *that
+fields of the component addressed there, and `inputs` naming faces of *that
 level's* contract. No paths — addressing children is exclusively `at`'s job.
 """
 struct Fragment{X,S,M,L}
     x::X
     s::S
     m::M
-    slots::L
+    inputs::L
 end
 
 """`at(prefix, node)`: scoping. Stores the prefix, never applies it (§14.2)."""
@@ -50,20 +50,20 @@ end
 const ConditionNode = Union{Fragment,Scoped,Combined,Override}
 
 """
-    fragment(; x = (;), s = (;), m = (;), slots = (;))
+    fragment(; x = (;), s = (;), m = (;), inputs = (;))
 
 The leaf constructor of the condition tree (§14.2, Appendix B). Payloads are
 NamedTuples in the authoring level's own vocabulary; a condition speaks state
-(`x`, `s`), modes (`m`) and root slots, never outputs and never workspace
+(`x`, `s`), modes (`m`) and root inputs, never outputs and never workspace
 (§14.1).
 """
-function fragment(; x = (;), s = (;), m = (;), slots = (;))
-    for (name, p) in ((:x, x), (:s, s), (:m, m), (:slots, slots))
+function fragment(; x = (;), s = (;), m = (;), inputs = (;))
+    for (name, p) in ((:x, x), (:s, s), (:m, m), (:inputs, inputs))
         p isa NamedTuple || throw(BuildError(
             "ConditionNodeMisuse: `fragment`'s `$name` payload is $(typeof(p)) — every " *
             "payload is a NamedTuple of the authoring level's own names (§14.2)"))
     end
-    Fragment(x, s, m, slots)
+    Fragment(x, s, m, inputs)
 end
 
 """
@@ -103,9 +103,10 @@ layer's value, with provenance recording both sources. The use case is
 "baseline plus tweaks" — the collision with `combine`'s duplicate-leaf error
 *is* the intent — and trim commits `override(baseline, solution)`.
 
-A slot's leaf is the *root slot* it resolves to, not the face it was written
-with, so a full-coverage baseline authored at the root layers cleanly under a
-patch a component's own `condition` method ships against its local face.
+An input entry's leaf is the *root input* it resolves to, not the face it was
+written with, so a full-coverage baseline authored at the root layers cleanly
+under a patch a component's own `condition` method ships against its local
+face.
 """
 override(base::ConditionNode, patches::ConditionNode...) = Override((base, patches...))
 override(layers...) = _misuse_in(layers)
@@ -124,37 +125,37 @@ _node_misuse(v, kinds) = throw(BuildError(
 # accumulator, carrying the provenance chain beside it — the `at` prefixes and
 # the payload position, which is what a collision diagnostic reports.
 #
-# A slot entry's *leaf* is the root slot its face resolves to, not the face it
-# was written with, so the export chain is walked here, at the same moment the
-# paths join, and the resolved face becomes the entry's key. Two spellings of
-# one root slot are then one leaf everywhere it matters: `override` layers them
-# and `combine` collides on them, which is what §14.6's central use case —
+# An input entry's *leaf* is the root input its face resolves to, not the face
+# it was written with, so the export chain is walked here, at the same moment
+# the paths join, and the resolved face becomes the entry's key. Two spellings
+# of one root input are then one leaf everywhere it matters: `override` layers
+# them and `combine` collides on them, which is what §14.6's central use case —
 # a root-level baseline under a component-local patch — requires.
 
 struct CEntry
     path::String
-    store::Symbol        # :x | :s | :m | :slot
+    store::Symbol        # :x | :s | :m | :input
     field::Symbol
     value::Any
     prov::String
-    face::Union{Nothing,Symbol}   # slot entries: the root slot the chain lands on
+    face::Union{Nothing,Symbol}   # input entries: the root input the chain lands on
 end
 
-_key(e::CEntry) = e.face === nothing ? (e.path, e.store, e.field) : ("", :slot, e.face)
-_leaf(e::CEntry) = e.face !== nothing ? "root slot `$(e.face)`" :
-                   e.store === :slot ? "slot face `$(e.field)` of $(_at(e.path))" :
+_key(e::CEntry) = e.face === nothing ? (e.path, e.store, e.field) : ("", :input, e.face)
+_leaf(e::CEntry) = e.face !== nothing ? "root input `$(e.face)`" :
+                   e.store === :input ? "input face `$(e.field)` of $(_at(e.path))" :
                                        "`$(e.store).$(e.field)` at $(_at(e.path))"
 _step(prov::String, s::String) = isempty(prov) ? s : prov * " → " * s
 
 function _flat(n::Fragment, path::String, prov::String, flat::Flat, viol::Vector{String})
     out = CEntry[]
     for (store, label, payload) in ((:x, "x", n.x), (:s, "s", n.s),
-                                    (:m, "m", n.m), (:slot, "slots", n.slots))
+                                    (:m, "m", n.m), (:input, "inputs", n.inputs))
         for (field, v) in pairs(payload)
             e = CEntry(path, store, field, v, _step(prov, "fragment($label).$field"), nothing)
-            store === :slot &&
+            store === :input &&
                 (e = CEntry(e.path, e.store, e.field, e.value, e.prov,
-                            _root_slot(flat, e, viol)))
+                            _root_input(flat, e, viol)))
             push!(out, e)
         end
     end
@@ -212,17 +213,17 @@ end
 What a resolved condition compiles to (§14.3): per continuous-state leaf its
 `xbuf` offset, per discrete or mode store the whole value the write installs —
 `merge(defaults, overlay)`, the genuine last-wins NamedTuple merge baked here
-(§14.1's fork, not the condition combinator) — and per root slot its compiled
+(§14.1's fork, not the condition combinator) — and per root input its compiled
 cell address. Every value has been through its leaf's converter already, so
 application is a walk with no decisions left in it.
 
-`faces` is the plan's slot coverage, in entry order: the resolution-time
+`faces` is the plan's root-input coverage, in entry order: the resolution-time
 operand of §14.6's totality check.
 """
 struct ConditionPlan
     xs::Vector{Tuple{Int,Any}}             # (xbuf offset, value)
     stores::Vector{Tuple{Symbol,Int,Any}}  # (:s | :m, component index, whole store value)
-    slots::Vector{Tuple{Symbol,Any,Any}}   # (root face, cell address, value)
+    inputs::Vector{Tuple{Symbol,Any,Any}}  # (root face, cell address, value)
     faces::Vector{Symbol}
 end
 
@@ -237,9 +238,10 @@ compile what survives to a plan.
 
 The checks are §14.3's: the path resolves to a component, the field is
 declared in that component's `init_x`/`init_s`/`init_m`, the value converts to
-the declared leaf type, a slot face resolves through the export chain to a
-root slot, and no leaf is written twice — a slot's leaf being the *root slot*
-it resolves to, so two spellings of one slot are one leaf. Schema is the
+the declared leaf type, an input face resolves through the export chain to a
+root input, and no leaf is written twice — an input entry's leaf being the
+*root input* it resolves to, so two spellings of one root input are one leaf.
+Schema is the
 authority on *may you write this, at what type*; the activation's layout
 supplies the destination.
 """
@@ -253,17 +255,17 @@ function resolve(node::ConditionNode, b::Build, ::Type{T} = Float64) where {T}
 
     x_offs = _x_offsets(decls, tiers)
     xs = Tuple{Int,Any}[]
-    slots = Tuple{Symbol,Any,Any}[]
+    inputs = Tuple{Symbol,Any,Any}[]
     faces = Symbol[]
     overlays = Dict{Tuple{Symbol,Int},Vector{Pair{Symbol,Any}}}()
 
     for e in entries
-        if e.store === :slot
+        if e.store === :input
             e.face === nothing && continue     # the chain was reported at flattening
             addr = layout.addr[("", e.face)]
             (ok, v) = _convert(_port_type(addr), e.value)
             ok || (push!(viol, _unconvertible(e, e.value, _port_type(addr))); continue)
-            push!(slots, (e.face, addr, v))
+            push!(inputs, (e.face, addr, v))
             push!(faces, e.face)
             continue
         end
@@ -297,7 +299,7 @@ function resolve(node::ConditionNode, b::Build, ::Type{T} = Float64) where {T}
         defaults = store === :s ? decls[ci].s : init_m(flat.comps[ci])
         push!(stores, (store, ci, convert(typeof(defaults), merge(defaults, (; ov...)))))
     end
-    ConditionPlan(xs, stores, slots, faces)
+    ConditionPlan(xs, stores, inputs, faces)
 end
 
 # Anything that is not a node reaching a service entry point is the §14.2
@@ -333,7 +335,7 @@ _convert(::Type{P}, v) where {P} =
         (false, nothing)
     end
 
-# The component a non-slot entry addresses. Assemblies are virtual for
+# The component a non-input entry addresses. Assemblies are virtual for
 # execution (§10.5) and own no state, so an `at` prefix stopping at one has
 # nothing to write — and saying so beats "no such path".
 function _component(flat::Flat, e::CEntry, viol::Vector{String})
@@ -342,22 +344,22 @@ function _component(flat::Flat, e::CEntry, viol::Vector{String})
     push!(viol, "ConditionResolution: the condition addresses $(_at(e.path)), which is " *
                 (any(startswith(p, e.path * "/") for p in flat.paths) ?
                  "an assembly — assemblies own no state, and a condition addresses " *
-                 "components and root slots (§14.1, §8.5)" :
+                 "components and root inputs (§14.1, §8.5)" :
                  "no component of this build (§14.3)") * " [$(e.prov)]")
     nothing
 end
 
-# A slot payload names a face of the authoring level's contract; resolution
-# walks the export chain to the root slot and errors if the face never
-# surfaces (§14.2). The chain is what the flat list already holds: an input's
-# resolved producer is either a root slot or an internal port, and an
-# internally wired input has no slot — writing it would be meaningless,
+# An `inputs` payload names a face of the authoring level's contract;
+# resolution walks the export chain to the root input and errors if the face
+# never surfaces (§14.2). The chain is what the flat list already holds: an
+# input's resolved producer is either a root input or an internal port, and an
+# internally wired input reaches none — writing it would be meaningless,
 # because the first sweep overwrites it.
-function _root_slot(flat::Flat, e::CEntry, viol::Vector{String})
+function _root_input(flat::Flat, e::CEntry, viol::Vector{String})
     if isempty(e.path)
-        e.field in flat.slots && return e.field
+        e.field in flat.root_inputs && return e.field
         push!(viol, "ConditionResolution: `$(e.field)` is no root input face — the root's " *
-                    "slots are $(_names(flat.slots)) (§14.2) [$(e.prov)]")
+                    "inputs are $(_names(flat.root_inputs)) (§14.2) [$(e.prov)]")
         return nothing
     end
     ci = _component(flat, e, viol)
@@ -373,7 +375,7 @@ function _root_slot(flat::Flat, e::CEntry, viol::Vector{String})
     (path, port) = last(conns[k])
     isempty(path) && return port
     push!(viol, "ConditionResolution: $(_at(e.path))'s input face `$(e.field)` reaches no " *
-                "root slot — it is wired internally, to `$path`.$port, and the first sweep " *
+                "root input — it is wired internally, to `$path`.$port, and the first sweep " *
                 "overwrites it; unexported stays unpokeable (§14.2) [$(e.prov)]")
     nothing
 end
@@ -392,7 +394,7 @@ _no_store(e::CEntry, c, tier::Tier) =
     " (§14.3) [$(e.prov)]"
 
 # An undeclared field, discriminated against the component's other name
-# families: a condition specifies state, modes and root slots — never outputs,
+# families: a condition specifies state, modes and root inputs — never outputs,
 # which are derived data, and never workspace (§14.1).
 function _undeclared(e::CEntry, c, tier::Tier, declared::NamedTuple, ::Type{T}) where {T}
     role = haskey(declared_at(output_types, c, tier), e.field) ? "an output port" :
@@ -403,7 +405,7 @@ function _undeclared(e::CEntry, c, tier::Tier, declared::NamedTuple, ::Type{T}) 
     "$(_at(e.path)) declares $(_names(keys(declared)))" *
     (role === nothing ? "" :
      "; `$(e.field)` is $role, and a condition specifies state, modes and root " *
-     "slots — never outputs, never workspace (§14.1)") * " (§14.3) [$(e.prov)]"
+     "inputs — never outputs, never workspace (§14.1)") * " (§14.3) [$(e.prov)]"
 end
 
 _declared_workspace(c, tier::Tier, ::Type{T}) where {T} =
@@ -421,27 +423,27 @@ function _report_violations(viol::Vector{String})
                      "(§14.3, §13.1):\n  " * join(viol, "\n  ")))
 end
 
-# --- slot totality (§14.6) ------------------------------------------------------
+# --- root-input totality (§14.6) ------------------------------------------------
 
 """
 §14.6's precondition of starting, checked by the service and *not* a property
 of conditions, which are legitimately partial: an application establishing a
-complete world over virgin stores covers every root slot. Coverage is a
+complete world over virgin stores covers every root input. Coverage is a
 plan-level fact — both operands are resolution-time data — so the check is one
 comparison and runs before any evaluation, not merely before any write. A
-shortfall is one collected, declaration-ordered `UninitializedSlots` naming
+shortfall is one collected, declaration-ordered `UninitializedInputs` naming
 every uncovered face (D-068).
 
-The services path contains no call to `probe_value`: a slot gets a condition
-value or the application errors, and there is no third branch. A fabricated
-zero is a fine probe input and a terrible flight condition.
+The services path contains no call to `probe_value`: a root input gets a
+condition value or the application errors, and there is no third branch. A
+fabricated zero is a fine probe input and a terrible flight condition.
 """
 function assert_total(plan::ConditionPlan, flat::Flat, op::String)
     covered = Set(plan.faces)
-    uncovered = [f for f in flat.slots if !(f in covered)]
+    uncovered = [f for f in flat.root_inputs if !(f in covered)]
     isempty(uncovered) && return nothing
-    throw(BuildError("UninitializedSlots: the condition given to `$op` covers no value for " *
-                     "root input slot(s) $(_names(uncovered)) — slots are the one " *
+    throw(BuildError("UninitializedInputs: the condition given to `$op` covers no value for " *
+                     "root input(s) $(_names(uncovered)) — root inputs are the one " *
                      "initialized datum with no declared default (§11.3), so an application " *
                      "establishing a complete world authors every one of them; nothing was " *
                      "written (§14.6, D-068)"))
@@ -467,7 +469,7 @@ function apply!(sim::Simulation, plan::ConditionPlan)
     for (store, ci, v) in plan.stores
         (store === :s ? sim.sstores : sim.mstores)[ci][] = v
     end
-    for (_, addr, v) in plan.slots
+    for (_, addr, v) in plan.inputs
         scatter!(sim.store, addr, v)
     end
     nothing

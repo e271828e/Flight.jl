@@ -10,7 +10,7 @@ monitored() = Group((; src = Ramp(0.0), trig = Trigger(0.35)),
                     ("children/src/out" => "children/trig/sig",), (),
                     ("children/trig/on" => "hit",))
 
-# A slot-fed trigger exporting its flag: the boundary-zero stop's model.
+# A root-input-fed trigger exporting its flag: the boundary-zero stop's model.
 armed() = Group((; c = Trigger(0.5)), (), ("in" => "children/c/sig",),
                 ("children/c/on" => "stop",))
 
@@ -46,22 +46,22 @@ claims(::NoClaim) = ()
     @test e isa BuildError && occursin("`init!` is mandatory", e.msg)
     @test occursin("mandatory", failure(() -> step!(sim)).msg)
 
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     @test lifecycle(sim) === :initialized
-    init!(sim, fragment(slots = (ref = 0.0,)))  # a warm restart from initialized is legal
+    init!(sim, fragment(inputs = (ref = 0.0,)))  # a warm restart from initialized is legal
     run!(sim)
     @test lifecycle(sim) === :stopped
     e = failure(() -> run!(sim))
     @test e isa BuildError && occursin("stopped → init! → run!", e.msg)
     @test occursin("stopped → init! → run!", failure(() -> step!(sim)).msg)
-    init!(sim, fragment(slots = (ref = 0.0,)))  # the supported cycle reopens it
+    init!(sim, fragment(inputs = (ref = 0.0,)))  # the supported cycle reopens it
     @test lifecycle(sim) === :initialized
     @test termination(sim) === nothing               # the record cleared with the trajectory
 end
 
 @testset "the freeze is the lifecycle's :running — init! and run! refuse it too (§12.6)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//100000)
-    total = fragment(slots = (in = 0.0,))
+    total = fragment(inputs = (in = 0.0,))
     init!(sim, total)
     init!(sim, total)                                # warms init!'s path — including this
     #                                                  condition's resolution shape (§14.3):
@@ -81,7 +81,7 @@ end
 
 @testset "t_end: constructor default, run! override, and a bound owed from some site (§13.5)" begin
     sim = Simulation(feedback_model(); h = 1//50, t_end = 1.0)
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     run!(sim)                                        # the constructor's default
     t = termination(sim)
     @test t isa TerminationRecord{Float64}           # the deployment's own scalar (§7.2, D-203)
@@ -89,15 +89,15 @@ end
     @test isempty(t.residue)                         # a quiet tail contributes no record
     @test sim.clock.step == 50
 
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     run!(sim; t_end = 0.5)                           # this run only
     @test termination(sim).t == 0.5
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     run!(sim)                                        # nothing was mutated: the default again
     @test termination(sim).t == 1.0
 
     unbound = Simulation(feedback_model(); h = 1//50)
-    init!(unbound, fragment(slots = (ref = 0.0,)))
+    init!(unbound, fragment(inputs = (ref = 0.0,)))
     e = failure(() -> run!(unbound))
     @test e isa BuildError && occursin("neither at the constructor nor here", e.msg)
     # The override is validated exactly as the constructor validates the default.
@@ -106,10 +106,10 @@ end
 end
 
 @testset "stop_on names root-exported Bool output faces, validated at both sites (§13.5)" begin
-    m = feedback_model()                             # "ref" a slot, "y" a Float64 export
+    m = feedback_model()                        # "ref" a root input, "y" a Float64 export
     sim = Simulation(m; h = 1//50, t_end = 1.0)
-    init!(sim, fragment(slots = (ref = 0.0,)))
-    for (bad, frag) in (("nope", "no root face"), ("ref", "root input slot"), ("y", "Bool"))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
+    for (bad, frag) in (("nope", "no root face"), ("ref", "a root input"), ("y", "Bool"))
         ec = failure(() -> Simulation(m; h = 1//50, stop_on = (bad,)))
         er = failure(() -> run!(sim; stop_on = (bad,)))
         @test ec isa BuildError && occursin(frag, ec.msg)
@@ -131,7 +131,7 @@ end
 
 @testset "an authored condition already terminal ends the run at t₀, integrating nothing (§13.5)" begin
     sim = Simulation(armed(); h = 1//10, t_end = 5.0, stop_on = ("stop",))
-    init!(sim, fragment(slots = (in = 1.0,)))        # holds in the authored state:
+    init!(sim, fragment(inputs = (in = 1.0,)))        # holds in the authored state:
     #                                                boundary zero derives the firing (§10.6)
     run!(sim)
     t = termination(sim)
@@ -163,7 +163,7 @@ end
 
 @testset "step! advances whole frames and returns the count actually advanced (§12.6)" begin
     sim = Simulation(feedback_model(); h = 1//50, t_end = 1.0)
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     @test step!(sim) == 1                            # the frames = 1 default
     @test step!(sim; frames = 4) == 4
     @test step!(sim; t_plus = 0.5) == 25             # the duration spelling
@@ -174,13 +174,13 @@ end
 
     # A stepped trajectory is bit-identical to the same frames under run!.
     ref = Simulation(feedback_model(); h = 1//50, t_end = 1.0)
-    init!(ref, fragment(slots = (ref = 0.0,)))
+    init!(ref, fragment(inputs = (ref = 0.0,)))
     run!(ref)
     @test port(sim, "children/plant", :y) === port(ref, "children/plant", :y)
     @test state(sim, "children/plant").q === state(ref, "children/plant").q
 
     sim2 = Simulation(feedback_model(); h = 1//50)
-    init!(sim2, fragment(slots = (ref = 0.0,)))
+    init!(sim2, fragment(inputs = (ref = 0.0,)))
     @test occursin("not both", failure(() -> step!(sim2; frames = 1, t_plus = 0.1)).msg)
     @test occursin("integer ≥ 1", failure(() -> step!(sim2; frames = 0)).msg)
     @test occursin("t_plus", failure(() -> step!(sim2; t_plus = 0.0)).msg)
@@ -200,7 +200,7 @@ end
     sim = Simulation(fed(Exploder(), "arm"); h = 1//10, t_end = 5.0)
     probe = TailProbe()
     attach!(sim, probe, NoClaim())
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     stage!(sim, "in" => true)                        # armed: frame 1's drain applies it,
     @test_throws Exploded run!(sim)                  # frame 1's integration throws (§13.4's
                                                      # synchronous rethrow, after the tail)

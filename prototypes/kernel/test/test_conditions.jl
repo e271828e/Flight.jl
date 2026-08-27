@@ -1,12 +1,12 @@
 # --- the condition algebra and `init!` (§14.1–§14.6; increment 18) ---------------
-# The inert lazy tree, its resolution against a build, slot totality, and the
-# service that puts all three together. The fixtures live at top level for the
+# The inert lazy tree, its resolution against a build, root-input totality, and
+# the service that puts all three together. The fixtures live at top level for the
 # README's local-scope reason.
 
-# Every store a condition can address, and two root slots in declaration order:
+# Every store a condition can address, and two root inputs in declaration order:
 # a continuous `x` (the plant's `q`), a discrete `s` (the integrator's `acc`), a
-# mode set (the trigger's), and the `u`, `e` slots whose ordering is what
-# `UninitializedSlots` has to report.
+# mode set (the trigger's), and the `u`, `e` root inputs whose ordering is what
+# `UninitializedInputs` has to report.
 tri() = Group((; plant = Plant(), ctl = DiscreteIntegrator(3.0), trig = Trigger(0.5)),
               ("children/plant/y" => "children/trig/sig",),
               ("u" => "children/plant/u", "e" => "children/ctl/e"), ())
@@ -16,7 +16,7 @@ scratchy() = Group((; sm = Smoother(0.5)), (),
                    ("a" => "children/sm/a", "b" => "children/sm/b"), ())
 
 # An offset pair, one stage shape each, both at `Relative(2, 1)` so neither is
-# due at boundary zero: `hold` samples the root slot through `h_su`, `off`
+# due at boundary zero: `hold` samples the root input through `h_su`, `off`
 # publishes its own `s` through `h_s` and accumulates in `g`. What D-205 rules
 # on is exactly what these two read at `t₀`.
 offset_pair() = Group((; hold = ZOH(), off = DiscreteIntegrator(1.0)),
@@ -39,7 +39,7 @@ offset_pair() = Group((; hold = ZOH(), off = DiscreteIntegrator(1.0)),
     @test n.nodes[2].node.nodes[1].prefix == "plant"    # unconcatenated with "children"
     # Every node is isbits but for the prefix strings (§14.2): rebuilding the
     # tree per iteration is stack-only construction.
-    @test isbits(fragment(x = (q = 1.0,), slots = (u = 2.0,)))
+    @test isbits(fragment(x = (q = 1.0,), inputs = (u = 2.0,)))
     @test isbits(combine(fragment(), fragment()))
     # It fails at resolution, where the build is finally in hand.
     @test failure(() -> resolve(n, build(tri()))) isa BuildError
@@ -61,46 +61,46 @@ end
 @testset "`override` layers: the patch wins, untouched leaves pass through (§14.6)" begin
     b = build(tri())
     base = combine(at("children/plant", fragment(x = (q = SVector(1.0, 2.0),))),
-                   fragment(slots = (u = 1.0, e = 2.0)))
-    slot(p, f) = only(v for (face, _, v) in p.slots if face === f)
+                   fragment(inputs = (u = 1.0, e = 2.0)))
+    input(p, f) = only(v for (face, _, v) in p.inputs if face === f)
 
-    p = resolve(override(base, fragment(slots = (u = 9.0,))), b)
-    @test slot(p, :u) === 9.0                      # the patch wins on the shared leaf
-    @test slot(p, :e) === 2.0                      # untouched leaves pass through
+    p = resolve(override(base, fragment(inputs = (u = 9.0,))), b)
+    @test input(p, :u) === 9.0                     # the patch wins on the shared leaf
+    @test input(p, :e) === 2.0                     # untouched leaves pass through
     @test only(v for (_, v) in p.xs) === SVector(1.0, 2.0)
-    @test length(p.slots) == 2                     # the overridden leaf is replaced, not doubled
+    @test length(p.inputs) == 2                     # the overridden leaf is replaced, not doubled
 
     # Layering is variadic, and the last layer wins.
-    p3 = resolve(override(base, fragment(slots = (u = 9.0,)), fragment(slots = (u = 7.0,))), b)
-    @test slot(p3, :u) === 7.0
+    p3 = resolve(override(base, fragment(inputs = (u = 9.0,)), fragment(inputs = (u = 7.0,))), b)
+    @test input(p3, :u) === 7.0
 
     # Provenance keeps both sources: the patch's own chain, and the base's
     # beside it — surfaced here through a violation on the overridden leaf.
-    e = failure(() -> resolve(override(fragment(slots = (u = 1.0,)),
-                                       fragment(slots = (u = "high",))), b))
-    @test occursin("override[patch 1] → fragment(slots).u", e.msg)
-    @test occursin("overrode override[base] → fragment(slots).u", e.msg)
+    e = failure(() -> resolve(override(fragment(inputs = (u = 1.0,)),
+                                       fragment(inputs = (u = "high",))), b))
+    @test occursin("override[patch 1] → fragment(inputs).u", e.msg)
+    @test occursin("overrode override[base] → fragment(inputs).u", e.msg)
 
     # A collision *within* one layer is still an error (§14.6).
-    e = failure(() -> resolve(override(combine(fragment(slots = (u = 1.0,)),
-                                               fragment(slots = (u = 2.0,))),
-                                       fragment(slots = (u = 3.0,))), b))
+    e = failure(() -> resolve(override(combine(fragment(inputs = (u = 1.0,)),
+                                               fragment(inputs = (u = 2.0,))),
+                                       fragment(inputs = (u = 3.0,))), b))
     @test occursin("DuplicateConditionLeaf", e.msg)
 
     # §14.6's central use case: a full-coverage baseline authored at the root,
     # under a patch a component's own `condition` method ships against its own
-    # face. Two spellings of one root slot are one leaf, so they layer.
-    p4 = resolve(override(fragment(slots = (u = 1.0, e = 2.0)),
-                          at("children/plant", fragment(slots = (u = 9.0,)))), b)
-    @test slot(p4, :u) === 9.0 && slot(p4, :e) === 2.0
-    @test length(p4.slots) == 2
+    # face. Two spellings of one root input are one leaf, so they layer.
+    p4 = resolve(override(fragment(inputs = (u = 1.0, e = 2.0)),
+                          at("children/plant", fragment(inputs = (u = 9.0,)))), b)
+    @test input(p4, :u) === 9.0 && input(p4, :e) === 2.0
+    @test length(p4.inputs) == 2
 
     # The same two spellings under `combine` still collide — and with layering
     # no longer reaching this branch, its directive is advice that works.
-    e = failure(() -> resolve(combine(fragment(slots = (u = 1.0,)),
+    e = failure(() -> resolve(combine(fragment(inputs = (u = 1.0,)),
                                       at("children/plant",
-                                         fragment(slots = (u = 9.0,)))), b))
-    @test occursin("DuplicateConditionLeaf", e.msg) && occursin("root slot `u`", e.msg)
+                                         fragment(inputs = (u = 9.0,)))), b))
+    @test occursin("DuplicateConditionLeaf", e.msg) && occursin("root input `u`", e.msg)
     @test occursin("use `override(base, patch)`", e.msg)
 end
 
@@ -129,9 +129,9 @@ end
     bad = combine(at("nope", fragment(x = (q = 1.0,))),                  # unknown path
                   at("children/plant", fragment(x = (nope = 1.0,))),     # undeclared field
                   at("children/ctl", fragment(s = (acc = "high",))),     # unconvertible
-                  at("children/trig", fragment(slots = (sig = 1.0,))),   # never a root slot
-                  fragment(slots = (u = 1.0,)),
-                  at("children/plant", fragment(slots = (u = 2.0,))))    # one root slot, twice
+                  at("children/trig", fragment(inputs = (sig = 1.0,))),  # never a root input
+                  fragment(inputs = (u = 1.0,)),
+                  at("children/plant", fragment(inputs = (u = 2.0,))))   # one root input, twice
     e = failure(() -> resolve(bad, b))
     @test e isa BuildError
     @test occursin("5 violations", e.msg)                  # the full list, one throw
@@ -139,7 +139,7 @@ end
     @test occursin("`init_x` at `children/plant` declares `q`", e.msg)
     @test occursin("does not convert", e.msg)
     @test occursin("wired internally", e.msg)
-    @test occursin("root slot `u` is written twice", e.msg)
+    @test occursin("root input `u` is written twice", e.msg)
 
     # An assembly path owns no state, and saying so beats "no such path".
     e = failure(() -> resolve(at("loop", fragment(x = (q = 1.0,))), build(Vehicle())))
@@ -151,44 +151,44 @@ end
     @test occursin("continuous component and declares no `init_s`", e.msg)
 end
 
-@testset "a condition names state, modes and root slots — never outputs, never workspace (§14.1)" begin
+@testset "a condition names state, modes and root inputs — never outputs, never workspace (§14.1)" begin
     e = failure(() -> resolve(at("children/plant", fragment(x = (y = 1.0,))), build(tri())))
     @test occursin("`y` is an output port", e.msg)
     e = failure(() -> resolve(at("children/sm", fragment(s = (tmp = 1.0,))), build(scratchy())))
     @test occursin("`tmp` is a workspace entry", e.msg)
 end
 
-@testset "slot faces resolve through the export chain to a root slot (§14.2)" begin
+@testset "input faces resolve through the export chain to a root input (§14.2)" begin
     b = build(tri())
     # The authoring level names a face of its own contract; resolution walks
-    # the chain and lands on the root slot the obligation ends at.
-    p = resolve(combine(at("children/plant", fragment(slots = (u = 1.0,))),
-                        fragment(slots = (e = 2.0,))), b)
+    # the chain and lands on the root input the obligation ends at.
+    p = resolve(combine(at("children/plant", fragment(inputs = (u = 1.0,))),
+                        fragment(inputs = (e = 2.0,))), b)
     @test Set(p.faces) == Set([:u, :e])
-    # An internally wired input has no slot: writing it would be meaningless,
-    # the first sweep overwriting it. Unexported stays unpokeable.
-    @test occursin("reaches no root slot",
+    # An internally wired input reaches no root input: writing it would be
+    # meaningless, the first sweep overwriting it. Unexported stays unpokeable.
+    @test occursin("reaches no root input",
                    failure(() -> resolve(at("children/trig",
-                                            fragment(slots = (sig = 1.0,))), b)).msg)
+                                            fragment(inputs = (sig = 1.0,))), b)).msg)
     @test occursin("declares no input face",
                    failure(() -> resolve(at("children/plant",
-                                            fragment(slots = (nope = 1.0,))), b)).msg)
+                                            fragment(inputs = (nope = 1.0,))), b)).msg)
     @test occursin("no root input face",
-                   failure(() -> resolve(fragment(slots = (nope = 1.0,)), b)).msg)
+                   failure(() -> resolve(fragment(inputs = (nope = 1.0,)), b)).msg)
 end
 
-@testset "slot totality is checked pre-write, and a rejection changes nothing (§14.6, D-068)" begin
+@testset "root-input totality is checked pre-write, and a rejection changes nothing (§14.6, D-068)" begin
     sim = Simulation(tri(); h = 1//10)
-    init!(sim, fragment(slots = (u = 1.0, e = 2.0)))
+    init!(sim, fragment(inputs = (u = 1.0, e = 2.0)))
     snap, q = latest(sim), state(sim, "children/plant").q
     acc, lc = state(sim, "children/ctl").acc, lifecycle(sim)
 
     e = failure(() -> init!(sim, combine(at("children/plant",
                                             fragment(x = (q = SVector(5.0, 5.0),))),
-                                         fragment(slots = (u = 3.0,)))))
-    @test e isa BuildError && occursin("UninitializedSlots", e.msg)
+                                         fragment(inputs = (u = 3.0,)))))
+    @test e isa BuildError && occursin("UninitializedInputs", e.msg)
     @test occursin("`e`", e.msg) && !occursin("`u`", e.msg)   # only the uncovered face
-    # All-or-nothing: the plan's x write and its slot write both stayed home.
+    # All-or-nothing: the plan's x write and its root-input write both stayed home.
     @test state(sim, "children/plant").q === q
     @test state(sim, "children/ctl").acc === acc
     @test port(sim, "", :u) === 1.0
@@ -200,18 +200,18 @@ end
     @test lifecycle(fresh) === :built
 end
 
-@testset "`init!(sim)` is legal exactly where the build has no root slots (§14.6)" begin
+@testset "`init!(sim)` is legal exactly where the build has no root inputs (§14.6)" begin
     free = Simulation(single(Sawtooth(1.0)); h = 1//10)
     init!(free)                                    # nothing to cover: total by construction
     @test lifecycle(free) === :initialized
-    @test isempty(free.flat.slots)
+    @test isempty(free.flat.root_inputs)
 end
 
 @testset "a sparse overlay lands on the declared defaults (§14.1, §14.3)" begin
     sim = Simulation(tri(); h = 1//10)
     init!(sim, combine(at("children/ctl", fragment(s = (acc = 4.0,))),
                        at("children/trig", fragment(m = (count = 7,))),
-                       fragment(slots = (u = 1.0, e = 0.0))))
+                       fragment(inputs = (u = 1.0, e = 0.0))))
     # Authored fields land; the fields no fragment named hold their declared
     # defaults, the overlay being `merge(defaults, overlay)` and nothing more.
     @test port(sim, "children/ctl", :u) === 4.0              # `s`, published before `g`
@@ -222,7 +222,7 @@ end
 
 @testset "fresh run: `init!` restarts from the declared defaults, not the trajectory (D-063)" begin
     sim = Simulation(tri(); h = 1//10)
-    init!(sim, fragment(slots = (u = 4.0, e = 1.0)))
+    init!(sim, fragment(inputs = (u = 4.0, e = 1.0)))
     run!(sim; t_end = 2.0)
     @test lifecycle(sim) === :stopped
     @test state(sim, "children/plant").q !== SVector(0.0, 0.0)
@@ -231,7 +231,7 @@ end
 
     # The overlay base is always the declared defaults, never the last
     # trajectory's final state: bitwise the `init_*` values again.
-    init!(sim, fragment(slots = (u = 0.0, e = 0.0)))
+    init!(sim, fragment(inputs = (u = 0.0, e = 0.0)))
     @test state(sim, "children/plant").q === SVector(0.0, 0.0)
     @test port(sim, "children/ctl", :u) === 0.0
     @test modes(sim, "children/trig") === (state = :armed, count = 0)
@@ -240,10 +240,10 @@ end
 @testset "boundary zero publishes every output stage, due or not (§14.5, D-205)" begin
     # Neither component is due at boundary zero — first tick at Φ·Δt_base — and
     # both publish there all the same, evaluated from the authored world: the
-    # ZOH from the condition's slot value, the integrator from its authored `s`.
+    # ZOH from the condition's root-input value, the integrator from its authored `s`.
     # The probe's synthesized 0.0 reaches no published cell.
     total = combine(at("children/off", fragment(s = (acc = 7.0,))),
-                    fragment(slots = (in = 3.0,)))
+                    fragment(inputs = (in = 3.0,)))
     sim = Simulation(offset_pair(); h = 1//100)
     init!(sim, total)
     @test port(sim, "", :held) === 3.0             # u(t₀), not the probe's 0.0
@@ -274,7 +274,7 @@ end
     m = tri()
     sim = Simulation(m; h = 1//10)
     init!(sim, combine(at("children/plant", condition(m.children.plant; y = 1.0)),
-                       fragment(slots = (u = 0.0, e = 0.0))))
+                       fragment(inputs = (u = 0.0, e = 0.0))))
     @test modes(sim, "children/trig") === (state = :fired, count = 1)
     @test port(sim, "children/trig", :on) === true
     @test latest(sim).t == 0.0 && sim.clock.step == 0
@@ -291,7 +291,7 @@ end
     @test port(sim, "", :ref) === 1.0
 
     # And the baseline-plus-tweak spelling the same function supports (§14.6).
-    init!(sim, override(condition(veh; ref = 1.0), fragment(slots = (ref = 5.0,))))
+    init!(sim, override(condition(veh; ref = 1.0), fragment(inputs = (ref = 5.0,))))
     @test port(sim, "", :ref) === 5.0
     @test state(sim, "loop/plant").q === SVector(0.0, 0.0)   # the baseline's own defaults
 end

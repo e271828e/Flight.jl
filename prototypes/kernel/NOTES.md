@@ -26,7 +26,7 @@ slash-separated paths into flat primitives with one producer per input.
 Assemblies are virtual for execution: what reaches the executor is exactly what
 increment 3 already ran. The whole-tree obligation model replaces the silent
 unwired face — an input fed by nothing is a build error, and the root
-assembly's own input faces are the slots.
+assembly's own input faces are the root inputs.
 
 **Increment 5 — the multi-rate grid.** The two-register `sample_times`
 declaration folds to one `(anchor, m, c)` triple per component in Stratum A;
@@ -73,8 +73,8 @@ frame-top drain by one `atomicswap` and a compiled scatter, and snapshot
 publication, one buffer copy per frame-top boundary behind a release/acquire
 `@atomic latest` read by `latest(sim)`. `run!`'s frame takes its §11.1
 anatomy — drain, integrate, boundary sequence, publication — and the epoch
-tests' slot writes move onto the machinery the θ = 0 discriminator was built
-expecting. Two stand-ins enter the table.
+tests' root-input writes move onto the machinery the θ = 0 discriminator was
+built expecting. Two stand-ins enter the table.
 
 **Increment 10 — the roster and claims.** §11.3 wholesale over increment 9's
 cell machinery: `attach!`/`detach!` as stopped-sim operations behind the run
@@ -234,20 +234,20 @@ application register, all in `src/conditions.jl`. Composition is inert: `at`
 stores a prefix and flattening at resolution is the only place path strings
 join, so the deep tree a misaddressed fragment function builds constructs
 fine and fails with the build in hand. The collecting pass (§13.1) checks
-path, declared field, convertibility, slot-face reachability and leaf
+path, declared field, convertibility, input-face reachability and leaf
 uniqueness, and throws once with the full list; the plan it compiles bakes
 `xbuf` offsets, cell addresses and the `merge(defaults, overlay)` store
 values — the *other* merge, §14.1's fork, and the reason D-204 wanted the
 combinator's name back.
 
 One design point inside the algebra is worth naming because it is not the
-literal reading of §14.3's `(path, store, field)` duplicate rule: **a slot
-entry's leaf is the root slot it resolves to**, not the face it was written
+literal reading of §14.3's `(path, store, field)` duplicate rule: **an input
+entry's leaf is the root input it resolves to**, not the face it was written
 with. The export chain is therefore walked during flattening, at the same
 moment the paths join, and the resolved face becomes the entry's key. That is
 what makes §14.6's central use case work — a full-coverage baseline authored
 at the root, layered under a patch a component's own `condition` method ships
-against its own local face — while keeping two spellings of one slot a
+against its own local face — while keeping two spellings of one root input a
 `combine` collision, which they plainly are.
 
 Three integration facts are worth naming. **`init!` now resets the declared
@@ -273,10 +273,11 @@ updates keep the `Φ` gate. So `establish_cells!` was retired the day it was
 written, and the prototype is the better for it — the virgin-table
 precondition is gone, every published cell at `t₀` is boundary-zero-derived at
 the deployment activation, and §14.6's barrier now covers the whole table
-rather than the slots alone. The declared world has **three** establishment
-registers, not four: `init!` resets the state homes, boundary zero derives the
-cells, totality supplies the slots. Root slots are pointedly not re-seeded in
-any of them — re-seeding would put `probe_value` back on the services path,
+rather than the root inputs alone. The declared world has **three**
+establishment registers, not four: `init!` resets the state homes, boundary
+zero derives the cells, totality supplies the root inputs. Root inputs are
+pointedly not re-seeded in any of them — re-seeding would put `probe_value`
+back on the services path,
 which is precisely what §14.6 removed.
 
 The mechanism is one dispatch. `Establish` is a singleton marker the boundary
@@ -292,10 +293,10 @@ activation they have no compiled entries at all (§9.4's executable set), so
 there is nothing for the wide gate to admit and their pinned cells stand.
 **The `Simulation` gained a `build` field** — §14.3 says resolution takes the
 root node plus a `Build`, and the schema (declared fields, leaf types) lives
-nowhere else. **Slot totality is structural**, so the probe-value barrier bit
-immediately: every test whose model has root slots now authors them, which is
-most of the churn in this increment's diff. The `condition(comp; kw)` idiom
-ships in `src/library.jl` as user material — `Plant`, `DiscreteIntegrator`,
+nowhere else. **Root-input totality is structural**, so the probe-value barrier
+bit immediately: every test whose model has root inputs now authors them,
+which is most of the churn in this increment's diff. The `condition(comp; kw)`
+idiom ships in `src/library.jl` as user material — `Plant`, `DiscreteIntegrator`,
 and `SampledLoop`/`Vehicle` composing them by pull — and no framework code
 knows the name exists. The `set_slot!` stand-in retires here; the two tests
 that genuinely needed a *mid-trajectory* direct write (the drain's
@@ -354,9 +355,9 @@ Each of these is a spec claim rather than a programming convenience:
   sibling wire, an ancestor's deep route, or an `input_connections` entry
   handing it up a level. The error fires at the root, for the chain that never
   terminates; the one legitimate terminus is a root input face, which is a
-  slot. The one-producer rule spans levels the same way, so an ancestor's route
-  onto an input a sub-assembly already wires is caught where the two claims
-  meet, with both entries named.
+  root input. The one-producer rule spans levels the same way, so an
+  ancestor's route onto an input a sub-assembly already wires is caught where
+  the two claims meet, with both entries named.
 - **A face is derived, never declared.** It owns no cell: it resolves — through
   as many levels of re-export as there are — to its ultimate internal endpoint,
   and takes that endpoint's type and tier. `Vehicle`'s `y` and `cmd` are one
@@ -443,8 +444,8 @@ Each of these is a spec claim rather than a programming convenience:
   complement — its boundary states are firing-resolution-invariant, so the
   boundary recursion stays its exact reference.
 - **The θ = 0 validation discriminates the edge's cause, before any
-  interpolant cost.** A slot write between runs is the frame-top epoch seam:
-  the re-measured σ₀ holds under the frame's own `u`, so the edge is the
+  interpolant cost.** A root-input write between runs is the frame-top epoch
+  seam: the re-measured σ₀ holds under the frame's own `u`, so the edge is the
   drain's, no in-frame crossing exists, and the event falls through to fire at
   the frame top *exactly* — the indexed grid time, no budget spent, nothing
   warned. The gate idiom's `Bool` flip is the same story. And a crossing
@@ -480,11 +481,11 @@ Each of these is a spec claim rather than a programming convenience:
   discrete solution's O(h²) through the same Hermite trials, and the
   frame-top stamps stay bitwise, having never depended on the method.
 - **A staged write is pending, never applied.** `stage!` from any task touches
-  no live slot; the batch lands at the top of the next frame `run!` advances —
-  and nowhere earlier. A batch staged while stopped waits through boundary
-  zero (`init!` runs on the un-drained slot — the contrast with `set_slot!`
-  before `init!`, which makes a holding predicate fire at `t₀`), and the
-  frame's outcome is a pure function of the drained batch: the staged
+  no live root input; the batch lands at the top of the next frame `run!`
+  advances — and nowhere earlier. A batch staged while stopped waits through
+  boundary zero (`init!` runs on the un-drained root input — the contrast with
+  `set_slot!` before `init!`, which makes a holding predicate fire at `t₀`),
+  and the frame's outcome is a pure function of the drained batch: the staged
   trajectory is bitwise the directly-written one.
 - **Merge is the only coalescing policy, and every check runs at staging.**
   Newest wins per face and untouched faces survive — a sparse `b` batch cannot
@@ -493,20 +494,20 @@ Each of these is a spec claim rather than a programming convenience:
   position in the schema is discarded under `OutOfClaimEntry`, an
   unconvertible value under `EntryTypeMismatch`, the rest of the batch stands,
   and the drain is pure application — the shim having already converted to the
-  activation's slot types, so a `Dual` deployment stages plain reals. The
+  activation's root-input types, so a `Dual` deployment stages plain reals. The
   empty drain is allocation-free: a quiet loop's frame top costs nothing.
 - **Nothing reachable from a published snapshot is ever written again.**
   Publication is one buffer copy and one release-store after the boundary
   sequence completes — boundary zero included, off-tick frame tops included —
-  and the snapshot is the whole table, root slots riding along as the source
+  and the snapshot is the whole table, root inputs riding along as the source
   cells they are, state stores deliberately absent (§11.2). The run moves on;
   the snapshot holds. A concurrent reader acquire-loading `latest` sees only
   coherent worlds — the in-lockstep pair `g2 = 2·g1` holds bitwise in every
   observed snapshot, and `t` never decreases — and a task staging against
   running frames loses nothing to the CAS merge: the last staged level is what
   stands.
-- **One writer per slot at any time, structurally.** Claims are disjoint by
-  admission, so cross-writer races on a slot cannot arise and no drain-order
+- **One writer per root input at any time, structurally.** Claims are disjoint
+  by admission, so cross-writer races on one cannot arise and no drain-order
   arbitration policy exists to need. The admission's order is itself pinned:
   the same instance re-attached under an overlapping claim is
   `AlreadyAttached`, never a self-`ClaimConflict`, because identity runs before
@@ -594,11 +595,12 @@ Each of these is a spec claim rather than a programming convenience:
 - **Conditioning runs upstream of the face, and the face never knows.** A
   face carries post-conditioning semantics (§11.4's GUI-parity test):
   `TableBinding`'s deadzone/expo run in `map_input` on the device task, so
-  the slot receives the conditioned level and the model output is bitwise the
-  directly-staged one — while an entry declaring no parameter passes its
-  value through untouched, which is what carries a throttle's `[0, 1]` level
-  or a press counter without ever meeting the axis convention. The claim is
-  the table: what the binding may write is exactly what its entries name.
+  the root input receives the conditioned level and the model output is
+  bitwise the directly-staged one — while an entry declaring no parameter
+  passes its value through untouched, which is what carries a throttle's
+  `[0, 1]` level or a press counter without ever meeting the axis convention.
+  The claim is the table: what the binding may write is exactly what its
+  entries name.
 - **A bad datum and a bug have two fates, and the bound is the rate limit.**
   The loop's tolerance idiom — catch its own parser error, stage nothing,
   `report!`, continue — keeps the link alive with the stream's good datums
@@ -611,7 +613,7 @@ Each of these is a spec claim rather than a programming convenience:
   sweeping the cells one last time at the run's end.
 - **Binding drift fails at attach, never on the wire.** Every `reads`
   selector resolves against the build at the attach point — the unknown
-  path, the unknown slot, the input face offered to `get_face` — so
+  path, the unknown root input, the input face offered to `get_face` — so
   `map_output` receives exactly the compiled gather's labeled NamedTuple or
   the device never rosters, and a rejected attach consumes nothing. The two
   read registers agree by construction: an exported face aliases its
@@ -699,18 +701,18 @@ Each of these is a spec claim rather than a programming convenience:
   leaves through, composes variadically, and still refuses a collision
   *within* a layer. The dual provenance is asserted through a violation on
   the overridden leaf, which is where the chain surfaces.
-- **Layering is keyed on the root slot, not on the spelling.** A root-level
-  baseline under a component-local patch on the same slot resolves to the
-  patch's value, with the baseline's other slots untouched — §14.6's central
+- **Layering is keyed on the root input, not on the spelling.** A root-level
+  baseline under a component-local patch on the same root input resolves to the
+  patch's value, with the baseline's others untouched — §14.6's central
   use case, which a literal `(path, store, field)` key would reject with the
   very advice it was following. The same two spellings under `combine` still
   collide, so the directive that branch prints is advice that works.
 - **Boundary zero publishes every output stage, due or not (D-205).** Two
   components at `Relative(2, 1)` — neither due at `t₀` — both publish there:
-  the ZOH from the condition's slot value, the integrator from its authored
-  `s`, and the probe's synthesized `0.0` reaches no published cell, live table
-  or `t₀` snapshot. Dueness still governs the updates: the authored `s`
-  survives boundary zero untouched and the first sample the integrator
+  the ZOH from the condition's root-input value, the integrator from its
+  authored `s`, and the probe's synthesized `0.0` reaches no published cell,
+  live table or `t₀` snapshot. Dueness still governs the updates: the authored
+  `s` survives boundary zero untouched and the first sample the integrator
   *consumes* is its own `Φ·Δt_base` tick's, pinned analytically as one period
   times one sample. Cold and warm `init!` agree exactly, the authored
   condition determining the `t₀` table outright — which is what retired the
@@ -727,21 +729,23 @@ Each of these is a spec claim rather than a programming convenience:
   which is exactly why it is its own kind rather than a `ConditionResolution`
   sub-kind.
 - **Resolution collects.** Five different violations in one condition —
-  unknown path, undeclared field, unconvertible value, a slot face wired
-  internally, one root slot written twice — come back as one throw naming all
+  unknown path, undeclared field, unconvertible value, an input face wired
+  internally, one root input written twice — come back as one throw naming
+  all
   five. The undeclared-field message discriminates outputs and workspace by
   name, because "conditions never specify outputs" is the rule the author is
   most likely to test.
-- **A slot face is resolved through the export chain, not guessed.** A face
-  authored at the component that declares it lands on the root slot its
+- **An input face is resolved through the export chain, not guessed.** A face
+  authored at the component that declares it lands on the root input its
   obligation chain ends at; an internally wired input is refused, because the
   first sweep would overwrite it and unexported stays unpokeable.
 - **Totality is pre-write, and "pre-write" is asserted by inspection.** A
-  condition short one root slot is rejected with every uncovered face named in
+  condition short one root input is rejected with every uncovered face named in
   declaration order, and the simulation is then checked to be bit-for-bit what
-  it was: same `x`, same stores, same slot cells, same lifecycle, the same
+  it was: same `x`, same stores, same root-input cells, same lifecycle, the
+  same
   published snapshot *object*. `init!(sim)` with no condition stays legal
-  exactly where the build has no root slots.
+  exactly where the build has no root inputs.
 - **The overlay base is the declared defaults, always.** A sparse condition
   leaves unnamed fields at their `init_*` values, and a second `init!` after a
   full run restores them bitwise — `SVector(0.0, 0.0)` and `(state = :armed,
@@ -770,7 +774,7 @@ tail window, and the status's per-publication allocation. The harness-cell and
 tail-window rows were retired the same day by the D-200/D-201 spec amendment,
 leaving `set_slot!` and the status allocation. Increment 18 retired
 `set_slot!` on 2026-08-27, the §14 services increment it was booked against:
-slot initial values now arrive through `init!`'s condition (stopped) or
+root-input initial values now arrive through `init!`'s condition (stopped) or
 `stage!` (running), and the function is gone. What survives it is `poke!` in
 `test/utils.jl`, used at two sites where the *counterfactual to the drain* is
 the point — a mid-trajectory direct write, which neither framework path can

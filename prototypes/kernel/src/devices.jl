@@ -362,7 +362,7 @@ order, on the calling task, each call in its own bracket. A throw goes
 straight back to `shutdown!` — which is why `shutdown!` owes tolerance of a
 partially initialized device — is reported as the ordinary `DeviceCrash`,
 and spawns no task: the device is dead from the run's first frame, its
-claims persisting to run end and the orphaned slots holding their values.
+claims persisting to run end and the orphaned root inputs holding their values.
 With `should_abort` set the failure requests a stop, already pending when
 the loop would start: the run advances zero frames and ends through the same
 tail, every remaining entry still getting its `init!`/`shutdown!` pair

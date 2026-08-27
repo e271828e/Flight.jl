@@ -15,7 +15,7 @@
 
     sim = Simulation(Vehicle(; k, kI, ω, ζ); h = 1//50)
     @test sim.flat.paths == ["loop/plant", "loop/ctl", "loop/sum", "trim"]
-    init!(sim, fragment(slots = (ref = r,)))
+    init!(sim, fragment(inputs = (ref = r,)))
     run!(sim; t_end = N * Δt)
     @test state(sim, "loop/plant").q ≈ q rtol = 1e-6
     @test port(sim, "loop", :cmd) ≈ s rtol = 1e-6
@@ -23,7 +23,7 @@ end
 
 @testset "a face's type and tier are its internal endpoint's (§8.6)" begin
     sim = Simulation(Vehicle(); h = 1//50)
-    init!(sim, fragment(slots = (ref = 1.0,)))
+    init!(sim, fragment(inputs = (ref = 1.0,)))
     run!(sim; t_end = 0.1)
     # A face is its endpoint: no cell of its own, at any level of re-export.
     @test port(sim, "loop", :y) === port(sim, "loop/plant", :y)
@@ -57,7 +57,7 @@ h_x(::PinnedGetsDual, (; t)) = (frozen = t,)
     # through a branch not taken, the `SVector` wholesale.
     sim = Simulation(Group((; c = ConstantBranch()), (), ("in" => "children/c/in",), ()),
                      D8; h = 1//100)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     # What the table holds is the cell's type, the constant embedded into it.
     @test port(sim, "children/c", :out) isa D8
     @test port(sim, "children/c", :vec) isa SVector{2,D8}

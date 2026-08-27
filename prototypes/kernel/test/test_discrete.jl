@@ -20,7 +20,7 @@
     s_next = s + kI * Δt * (r - q[1])   # the update boundary N itself performs
 
     sim = Simulation(sampled_loop(; kI, ω, ζ); h = 1//50)   # h = Δt: one rate, n = 1
-    init!(sim, fragment(slots = (ref = r,)))
+    init!(sim, fragment(inputs = (ref = r,)))
     run!(sim; t_end = N * Δt)
 
     # The tolerance is RK4's, not the semantics': the reference integrates
@@ -37,7 +37,7 @@ end
 
 @testset "the ZOH holds by compile-time absence (§10.5)" begin
     sim = Simulation(sampled_loop(); h = 1//50)
-    init!(sim, fragment(slots = (ref = 1.0,)))    # excite the loop, or nothing moves at all
+    init!(sim, fragment(inputs = (ref = 1.0,)))    # excite the loop, or nothing moves at all
 
     # Structural: the interior variants carry continuous entries only, so there
     # is no gating test on the hot path — the hold is not implemented, it is
@@ -129,7 +129,7 @@ end
     @test length(walked(simd.bodies.sweep_1)) == 1          # plant only; ctl frozen
     @test port(simd, "children/ctl", :u) isa Float64
 
-    init!(simd, fragment(slots = (ref = 0.0,)))
+    init!(simd, fragment(inputs = (ref = 0.0,)))
     run!(simd; t_end = 0.04)
     @test state(simd, "children/plant").q isa SVector{2,D8}
     @test port(simd, "children/ctl", :u) == 0.0              # held, never recomputed

@@ -77,7 +77,7 @@ end
 struct EntryTypeMismatch
     face::Symbol
     value::Any
-    declared::Any                   # the slot's declared type
+    declared::Any                   # the root input's declared type
 end
 
 "§10.4's localization-budget exhaustion: further crossings this frame fire at boundary resolution."
@@ -344,17 +344,17 @@ at a stopped-sim point — a device's compiled at attach against its claim set,
 the harness register's at deployment binding and at every roster change
 against its *derived* surface, the unclaimed complement (§11.3). The batch is
 the values-plus-mask pair above (D-202), isbits with one concrete layout per
-writer. The face-name → position schema, the slot types, the per-position cell
-addresses — the compiled scatter's data — and the blank batch the shim starts
-from (placeholders drawn from the layout's probe values, mask all clear) live
-here beside the staging cell they describe; a roster entry carries one of
+writer. The face-name → position schema, the root-input types, the per-position
+cell addresses — the compiled scatter's data — and the blank batch the shim
+starts from (placeholders drawn from the layout's probe values, mask all clear)
+live here beside the staging cell they describe; a roster entry carries one of
 these per device (roster.jl), and the harness register carries the one whose
 shape the framework derives rather than receives.
 """
 struct Writer{B<:Batch,A<:Tuple}
     faces::Vector{Symbol}    # position → face name: the schema
-    types::Vector{Any}       # position → the slot's declared type Tᵢ
-    addrs::A                 # position → the slot's cell address
+    types::Vector{Any}       # position → the root input's declared type Tᵢ
+    addrs::A                 # position → the root input's cell address
     blank::B                 # placeholders under an all-clear mask
     cell::StagingCell{B}
 end
@@ -364,7 +364,7 @@ _port_type(::CellAddr{P,K}) where {P,K} = P
 function Writer(layout::Layout, faces::Vector{Symbol})
     addrs = Tuple(layout.addr[("", f)] for f in faces)
     types = Any[_port_type(a) for a in addrs]
-    probes = Dict(f => v for (f, v) in layout.slots)
+    probes = Dict(f => v for (f, v) in layout.root_inputs)
     vals = Tuple(convert(types[i], probes[faces[i]]) for i in eachindex(faces))
     blank = Batch(convert(Tuple{types...}, vals), ntuple(_ -> false, length(faces)))
     Writer{typeof(blank),typeof(addrs)}(faces, types, addrs, blank,
@@ -373,7 +373,7 @@ end
 
 """
 §11.4's shim, run at staging on the writer's own side: the author's face ⇒
-value pairs become a batch — name → position, convert to the slot's declared
+value pairs become a batch — name → position, convert to the root input's declared
 type, set the mask. Every diagnostic site follows the compilation here, to
 staging: face validity, surface membership and value convertibility are all
 static facts of the run, so a face with no position in the schema is
@@ -389,7 +389,7 @@ The out-of-schema kind discriminates by writer (§11.3, Appendix C): a
 device's entry is always `OutOfClaimEntry` — naming the incumbent when the
 face is claimed elsewhere — while the harness register's is `ClaimedFaceEntry`
 naming the incumbent when a rostered claim covers the face, and
-`OutOfClaimEntry` only when the face names no root slot at all. `claimedby` is
+`OutOfClaimEntry` only when the face names no root input at all. `claimedby` is
 the exclusivity index the roster maintains; `device` identifies a device
 writer and `nothing` the harness; `site` distinguishes ordinary staging from
 an attach's renormalization in the `ClaimedFaceEntry` payload. Returns
@@ -451,10 +451,10 @@ function _stage!(w::Writer{B}, batch::B) where {B}
     end
 end
 
-# The drain's application (§11.4): the compiled scatter, position → slot cell,
-# statically typed, masked-off positions skipped — pure application, no
-# checks. One specialization per writer, compiled at the stopped-sim point
-# that compiled the writer, whatever the batch touches (D-202).
+# The drain's application (§11.4): the compiled scatter, position → the root
+# input's cell, statically typed, masked-off positions skipped — pure
+# application, no checks. One specialization per writer, compiled at the
+# stopped-sim point that compiled the writer, whatever the batch touches (D-202).
 @generated function _apply!(store, addrs::Tuple, batch::Batch)
     stmts = [:(batch.mask[$i] && scatter!(store, addrs[$i], batch.vals[$i]))
              for i in 1:fieldcount(fieldtype(batch, :mask))]
@@ -479,7 +479,7 @@ end
 
 """
 A snapshot (§11.2): the boundary-consistent signal table — the *whole* table,
-root slots riding along as the source cells they are — with `t`, the frame
+root inputs riding along as the source cells they are — with `t`, the frame
 ordinal and the §12.3 boundary ordinal, the counter-home rule: the index
 rides *in* the snapshot, so any holder of one — the log, a post-run
 inspector — indexes it without consulting the loop. The framework status

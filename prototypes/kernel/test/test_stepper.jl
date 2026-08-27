@@ -28,7 +28,7 @@ end
     exact(t) = exp(Acl * t) * (Acl \ (B * k * r)) - Acl \ (B * k * r)
     function final_error(method, h)
         sim = Simulation(feedback_model(; k, ω, ζ); h, method)
-        init!(sim, fragment(slots = (ref = r,)))
+        init!(sim, fragment(inputs = (ref = r,)))
         run!(sim; t_end = 2.0)
         norm(state(sim, "children/plant").q - exact(2.0))
     end
@@ -72,7 +72,7 @@ end
     # The frame-top claims never depended on the method: an epoch-caused edge
     # falls through to fire at the indexed grid time bitwise under Heun too.
     simf = Simulation(fed(Stamper(0.5), "sig"); h = 1//10, method = Heun)
-    init!(simf, fragment(slots = (in = 0.0,)))
+    init!(simf, fragment(inputs = (in = 0.0,)))
     step!(simf; t_plus = 0.3)
     stage!(simf, "in" => 1.0)                   # frame 4's drain, at its frame top
     step!(simf; t_plus = 0.3)
@@ -81,7 +81,7 @@ end
 
 @testset "gate 4: the second backend holds the §7.5 invariant" begin
     sim = Simulation(feedback_model(); h = 1//1000, method = Heun)
-    init!(sim, fragment(slots = (ref = 0.0,)))
+    init!(sim, fragment(inputs = (ref = 0.0,)))
     step!(sim, 1e-3)
     @test @ballocated(step!($sim, 1e-3)) == 0
     # The localizing frame allocates exactly its t* boundary's publication —
@@ -94,7 +94,7 @@ end
 
 @testset "the second backend is generic over the scalar (§7.2)" begin
     sim = Simulation(feedback_model(), D8; h = 1//1000, method = Heun)
-    init!(sim, fragment(slots = (ref = D8(0.7),)))
+    init!(sim, fragment(inputs = (ref = D8(0.7),)))
     run!(sim; t_end = 0.05)
     @test state(sim, "children/plant").q isa SVector{2,D8}
 end

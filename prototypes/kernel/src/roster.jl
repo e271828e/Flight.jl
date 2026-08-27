@@ -166,7 +166,7 @@ mutable struct DataPlane
 end
 
 function DataPlane(layout::Layout, store)
-    w = Writer(layout, Symbol[f for (f, _) in layout.slots])
+    w = Writer(layout, Symbol[f for (f, _) in layout.root_inputs])
     DataPlane(RosterEntry[], w, _drain_thunk(store, w), DiagCell(EMPTY_DIAG),
               WriterAccount(), Dict{Int,Task}(), Dict{Symbol,String}(), store, 1)
 end
@@ -181,7 +181,7 @@ diagnosable anomaly, never a silent write). Duplicates within one enumeration
 collapse; the empty enumeration is the honest may-write-nothing degenerate.
 """
 function _claim(plane::DataPlane, layout::Layout, b::AbstractBinding)
-    faceset = Symbol[f for (f, _) in layout.slots]
+    faceset = Symbol[f for (f, _) in layout.root_inputs]
     is_greedy(b) && return Symbol[f for f in faceset if !haskey(plane.claimedby, f)]
     claim = Symbol[]
     for f in claims(b)
@@ -215,7 +215,7 @@ function reclaim!(plane::DataPlane, layout::Layout)
     end
     old = plane.harness
     pending = @atomicswap old.cell.pending = nothing
-    w = Writer(layout, Symbol[f for (f, _) in layout.slots if !haskey(plane.claimedby, f)])
+    w = Writer(layout, Symbol[f for (f, _) in layout.root_inputs if !haskey(plane.claimedby, f)])
     plane.harness = w
     plane.harness_drain = _drain_thunk(plane.store, w)
     if pending !== nothing

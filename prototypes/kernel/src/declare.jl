@@ -6,7 +6,7 @@
 
 # --- the one root type (§8.5) -------------------------------------------------
 # There is no `AbstractAssembly`: primitives and assemblies share one root, so a
-# slot declared `E <: AbstractEngine` accepts either, and class is read off
+# field declared `E <: AbstractEngine` accepts either, and class is read off
 # declaration shape (`src/assembly.jl`).
 
 abstract type AbstractComponent end
@@ -320,7 +320,7 @@ function event_bundle_names(c)
 end
 
 # --- probe values (§9.3) -----------------------------------------------------
-# Root slots are the one terminal with no producer; the build synthesizes their
+# Root inputs are the one terminal with no producer; the build synthesizes their
 # values here. Overridable per type — that is the seam a constrained type uses
 # to state a valid default.
 

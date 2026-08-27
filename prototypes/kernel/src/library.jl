@@ -479,7 +479,7 @@ function feedback_model(; k = 4.0, ω = 2.0, ζ = 0.1, q₀ = SVector(0.0, 0.0),
            "children/sum/e" => "children/ctl/e",
            "children/plant/$feedback_port" => "children/sum/b"),
           # `sum.a` is claimed by no wire: the obligation is handed up to this
-          # face, and at the root a face is a slot — its cell seeded by
+          # face, and at the root a face is a root input — its cell seeded by
           # `probe_value` for the build's own probes, and its initial value
           # authored by the init service's condition (§6.1, §11.3, §14.6).
           ("ref" => "children/sum/a",),
@@ -580,9 +580,9 @@ condition(::DiscreteIntegrator; cmd = 0.0) = fragment(s = (acc = cmd,))
 """
 Composition by pull (§14.2): the owner of the structure names its children and
 scopes their fragments with `at`, and `combine` collects the siblings. It
-authors no slot — `ref` is this assembly's *input face*, which is a root slot
-only when `SampledLoop` is itself the root, so the level that knows is the one
-that owns the boundary.
+authors no root input — `ref` is this assembly's *input face*, which is a root
+input only when `SampledLoop` is itself the root, so the level that knows is
+the one that owns the boundary.
 """
 condition(l::SampledLoop; y = 0.0, v = 0.0, cmd = 0.0) =
     combine(at("plant", condition(l.plant; y, v)), at("ctl", condition(l.ctl; cmd)))
@@ -590,11 +590,11 @@ condition(l::SampledLoop; y = 0.0, v = 0.0, cmd = 0.0) =
 """
 The second level, and the one that owns the root boundary: it pulls the loop's
 fragment under `at("loop", …)` — deep paths are compiled derivatives of this
-nesting, never written by hand — and authors the root slot its own contract
+nesting, never written by hand — and authors the root input its own contract
 declares.
 """
 condition(veh::Vehicle; ref = 0.0, kw...) =
-    combine(at("loop", condition(veh.loop; kw...)), fragment(slots = (ref = ref,)))
+    combine(at("loop", condition(veh.loop; kw...)), fragment(inputs = (ref = ref,)))
 
 # --- the multi-rate coverage set (§10.5) ----------------------------------------
 

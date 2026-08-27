@@ -1,7 +1,7 @@
 # --- localization (§10.4, increment 7) ------------------------------------------
 # The input epochs these tests rely on are the real ones since increment 9: a
 # batch staged between runs is applied by the drain at the next frame top
-# (§11.4) — so a slot write is always epoch-aligned here, by construction.
+# (§11.4) — so a root-input write is always epoch-aligned here, by construction.
 
 @testset "a localized event fires at t*, within tol of the true crossing (§10.4)" begin
     # Linear trajectory: RK4 and the cubic Hermite are both exact, so the stamp
@@ -45,12 +45,12 @@ end
 end
 
 @testset "the θ = 0 validation: an epoch-caused edge fires at the frame top, exactly" begin
-    # The slot write between runs is the epoch seam: the guard jumps at the
+    # The root-input write between runs is the epoch seam: the guard jumps at the
     # frame top without crossing anything, σ₀ re-measured under the frame's own
     # u holds, and not localizing is the action — the event falls through to
     # the frame top's ordinary iteration and stamps the indexed grid time.
     sim = Simulation(fed(Stamper(0.5), "sig"); h = 1//10)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     step!(sim; t_plus = 0.3)
     @test modes(sim, "children/c").count == 0
     stage!(sim, "in" => 1.0)                     # staged, drained at the next frame top (§11.4)
@@ -140,7 +140,7 @@ end
     # Gate true from the start: the Bool factor is constant over the bracket
     # and the continuous atom localizes as such.
     sim = Simulation(gated(); h = 1//10)
-    init!(sim, fragment(slots = (gate = true,)))
+    init!(sim, fragment(inputs = (gate = true,)))
     run!(sim; t_end = 0.5)
     @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
 
@@ -148,7 +148,7 @@ end
     # the u seam's, σ₀ holds under the frame's own u, and the event fires at
     # the frame top exactly — epoch-caused, never root-found.
     sim2 = Simulation(gated(); h = 1//10)
-    init!(sim2, fragment(slots = (gate = false,)))
+    init!(sim2, fragment(inputs = (gate = false,)))
     step!(sim2; t_plus = 0.5)
     @test modes(sim2, "children/s").count == 0              # gate down: -one(σ) throughout
     stage!(sim2, "gate" => true)                            # the u seam, through the drain (§11.4)

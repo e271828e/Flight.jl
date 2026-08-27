@@ -105,7 +105,7 @@ finite real ≥ 0, taken to the nearest frame top, with no constructor default
 of its own (a run needs one from *some* binding site) — and the model-declared
 sibling beside it, a collection naming root-exported `Bool` **output** faces,
 OR-combined, sampled at every published boundary. Validation runs here exactly
-as at `run!`: an unknown face, a root input slot, or a non-`Bool` face is
+as at `run!`: an unknown face, a root input, or a non-`Bool` face is
 refused at whichever site names it. The default `()` is no stop faces — a run
 to `t_end`.
 
@@ -175,14 +175,14 @@ _t_bound(t) = (t isa Real && isfinite(t) && t ≥ 0) ? Float64(t) : throw(BuildE
 # declaration's, which is the order the first-holding face is reported in.
 function _stop_faces(layout::Layout, stop_on)
     faces, addrs = Symbol[], Any[]
-    slot_names = Symbol[f for (f, _) in layout.slots]
+    root_input_names = Symbol[f for (f, _) in layout.root_inputs]
     for f in stop_on
         s = Symbol(f)
         haskey(layout.addr, ("", s)) || throw(BuildError(
             "stop_on names `$s`, which is no root face — a stop face is a " *
             "root-exported Bool output face (§13.5)"))
-        s in slot_names && throw(BuildError(
-            "stop_on names `$s`, a root input slot — a stop face is a root-exported " *
+        s in root_input_names && throw(BuildError(
+            "stop_on names `$s`, a root input — a stop face is a root-exported " *
             "*output*: the model detects and exports the condition, and the " *
             "deployment names it (§13.5)"))
         a = layout.addr[("", s)]
@@ -327,7 +327,7 @@ sweep's discrete entries admitted **due or not**. Every output stage runs and
 publishes — from the authored `s` and the `t₀` table, in the ordinary sorted
 walk — so the `t₀` snapshot carries the authored world fully evaluated and no
 published cell holds the probe's synthesized values (§14.6's barrier extended
-from the slots to the whole table).
+from the root inputs to the whole table).
 
 The `g` updates keep the ordinary gate at index 0, which under the canonical
 residue admits exactly `Φ = 0` (§10.5): that evaluation is establishment, not
@@ -440,11 +440,11 @@ homes — `xbuf` and the `s`/`m` stores, from `init_x`/`init_s`/`init_m` —
 before applying anything, so applying a condition means "fresh run from the
 declared defaults, with these overrides" (D-063) and warm restart needs no
 second semantics. Nothing re-seeds the cells, and nothing needs to: boundary
-zero *derives* every one of them below (D-205). Slots have no declared default
-at all, and the condition's totality is what supplies them (§14.6). It
-resolves first (§14.3), then checks slot totality against the build's root
-input faces (§14.6), and only then writes: a rejected `init!` leaves the
-simulation exactly as it was, and a root slot gets a condition value or the
+zero *derives* every one of them below (D-205). Root inputs have no declared
+default at all, and the condition's totality is what supplies them (§14.6). It
+resolves first (§14.3), then checks root-input totality against the build's
+root input faces (§14.6), and only then writes: a rejected `init!` leaves the
+simulation exactly as it was, and a root input gets a condition value or the
 call errors — the services path contains no call to `probe_value`. `t₀` is a
 service argument, never a condition entry: time is not a store of any
 component (§14.5).
@@ -819,7 +819,7 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
     for f in claim                                 # claims: face exclusivity
         haskey(plane.claimedby, f) && throw(BuildError(
             "ClaimConflict: `$f` is claimed by both $(typeof(dev)) and " *
-            "$(plane.claimedby[f]) — one writer per slot at any time (§11.3)"))
+            "$(plane.claimedby[f]) — one writer per root input at any time (§11.3)"))
     end
     rg = is_output(b) ?                            # the output side: reads → one gather,
         _compile_reads(sim.layout, reads(b), typeof(b)) : nothing   # resolved before admission commits
@@ -844,7 +844,7 @@ end
 Release a rostered device — the same stopped-sim gate as `attach!`. The
 claims are released and the harness register's surface regains them; a
 pending undrained batch in the entry's cell is discarded with it, detach
-being a deliberate reconfiguration, while the slots it fed hold their
+being a deliberate reconfiguration, while the root inputs it fed hold their
 last-drained values. The device id retires with the entry, never reused.
 """
 function detach!(sim::Simulation, dev::AbstractDevice)
@@ -864,8 +864,8 @@ end
 """
     stage!(sim, "face" => value, ...)          # the harness register (§11.3)
 
-Stage a batch of root-slot writes from any task, at any wall-clock moment,
-never touching a live slot (§11.1): the entries land in the writer's staging
+Stage a batch of root-input writes from any task, at any wall-clock moment,
+never touching a live root input (§11.1): the entries land in the writer's staging
 cell under the one coalescing policy — CAS merge, newest wins per face
 (§11.4). Untouched faces survive into the pending batch; re-staged faces take
 the newest level. Every check runs here, on the writer's side, its findings

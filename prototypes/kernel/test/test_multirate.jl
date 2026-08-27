@@ -214,7 +214,7 @@ end
     sim = Simulation(SampledLoop(; kI, ω, ζ, ctl_rate = Relative(2)); h = 1//200, n = 2)
     @test [(e.path, e.D, e.Φ) for e in sim.sched] == [("ctl", 2, 0)]
     @test sim.sched[1].Δt ≈ Δt_ctl
-    init!(sim, fragment(slots = (ref = r,)))
+    init!(sim, fragment(inputs = (ref = r,)))
     run!(sim; t_end = N * Δt_ctl)
     @test state(sim, "plant").q ≈ q rtol = 1e-6
     @test port(sim, "ctl", :u) ≈ s rtol = 1e-6
@@ -231,7 +231,7 @@ end
         @test @ballocated($body(2)) == 0             # a boundary where gates split
     end
     sim2 = Simulation(SampledLoop(; ctl_rate = Relative(2)); h = 1//200, n = 2)
-    init!(sim2, fragment(slots = (ref = 0.0,)))
+    init!(sim2, fragment(inputs = (ref = 0.0,)))
     @test @ballocated(step!($sim2, 0.005)) == 0
     @test @ballocated(offtick_boundary!($sim2)) == 0
     @test @ballocated(boundary!($sim2, 3)) == 0

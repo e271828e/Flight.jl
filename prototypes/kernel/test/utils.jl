@@ -14,11 +14,11 @@ gated(body) = count(e isa Gated for c in body.boundary for e in c.entries)
 # A model of one component, wrapped in the assembly every model's root must be.
 single(c) = Group((; c = c), (), (), ())
 
-# The same, with the component's one input face handed up to a root slot `in`.
+# The same, with the component's one input face handed up to a root input `in`.
 fed(c, face) = Group((; c = c), (), ("in" => "children/c/$face",), ())
 
 # The drain's counterfactual: the same value written straight into a root
-# slot's cell at a stopped point, reaching under the data plane on purpose.
+# input's cell at a stopped point, reaching under the data plane on purpose.
 # The framework's own write paths are `init!`'s condition (stopped) and
 # `stage!` (running), and neither can express a *mid-trajectory* poke — which
 # is exactly what the drain-equivalence tests need as their reference. Not

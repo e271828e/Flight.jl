@@ -225,14 +225,14 @@ end
 
 """
 What the pipeline consumes: primitives by absolute path, one resolved producer
-per declared input, the root's input faces (the [root slots](§11.3)) and the
+per declared input, the root's input faces (the [root inputs](§11.3)) and the
 assembly faces the periphery may read, aliased onto the cells they derive from.
 """
 struct Flat
     paths::Vector{String}
     comps::Vector{Any}
     conns::Vector{Vector{Pair{Symbol,Tuple{String,Symbol}}}}   # face => (producer path, port)
-    slots::Vector{Symbol}                                      # root input faces, in order
+    root_inputs::Vector{Symbol}                                # root input faces, in order
     faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}   # (path, face) => producer
     triples::Vector{NTuple{3,Int}}      # per component: (anchor, m, c), anchor 0 the base grid
     anchors::Vector{NTuple{2,Rational{Int}}}   # anchors 1…K: the exact (T, τ) pairs
@@ -250,7 +250,7 @@ struct _Walk
     comps::Vector{Any}
     feeds::Dict{Tuple{String,Symbol},Tuple{String,Symbol}}
     claims::Dict{Tuple{String,Symbol},String}                  # who claimed it, for the message
-    slots::Vector{Symbol}
+    root_inputs::Vector{Symbol}
     faces::Vector{Pair{Tuple{String,Symbol},Tuple{String,Symbol}}}
     triples::Vector{NTuple{3,Int}}
     anchors::Vector{NTuple{2,Rational{Int}}}
@@ -342,7 +342,7 @@ enforced.
 function flatten(root)
     classify("", root) === PRIMITIVE &&
         throw(BuildError("the root component is a primitive — a model's root is an assembly, " *
-                         "whose input faces are the root slots (§9.1)"))
+                         "whose input faces are the root inputs (§9.1)"))
     w = _Walk(String[], Any[], Dict{Tuple{String,Symbol},Tuple{String,Symbol}}(),
               Dict{Tuple{String,Symbol},String}(), Symbol[],
               Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[],
@@ -365,7 +365,7 @@ function flatten(root)
         end
         push!(conns, cs)
     end
-    Flat(w.paths, w.comps, conns, w.slots, w.faces, w.triples, w.anchors, w.aprov)
+    Flat(w.paths, w.comps, conns, w.root_inputs, w.faces, w.triples, w.anchors, w.aprov)
 end
 
 function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
@@ -407,7 +407,7 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         entry = _entry("input_connections", path, face => inner)
         consumers = _fanout(entry, path, comp, inner)
         isempty(path) || continue
-        push!(w.slots, Symbol(face))
+        push!(w.root_inputs, Symbol(face))
         for consumer in consumers
             _claim!(w, consumer, ("", Symbol(face)), entry)
         end

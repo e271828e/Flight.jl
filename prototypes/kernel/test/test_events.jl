@@ -98,7 +98,7 @@ end
 
 @testset "edge semantics: a u-edge fires at its boundary, a sticky predicate once" begin
     sim = Simulation(fed(Trigger(0.5), "sig"); h = 1//10)
-    init!(sim, fragment(slots = (in = 0.0,)))    # authored at 0.0: not holding
+    init!(sim, fragment(inputs = (in = 0.0,)))    # authored at 0.0: not holding
     step!(sim; t_plus = 0.3)
     @test modes(sim, "children/c").count == 0
     stage!(sim, "in" => 1.0)                     # the input epoch seam, staged (§11.4)
@@ -111,12 +111,12 @@ end
     # Boundary zero establishes every prior as not-holding (§10.6): a predicate
     # already holding in the authored state fires at t₀ — derived, not asserted.
     sim2 = Simulation(fed(Trigger(0.5), "sig"); h = 1//10)
-    init!(sim2, fragment(slots = (in = 1.0,)))
+    init!(sim2, fragment(inputs = (in = 1.0,)))
     @test modes(sim2, "children/c").count == 1
     # A warm restart resets the registers from scratch: it fires again — and
     # from the declared defaults, so `count` restarts at 0 and reaches 1, never 2
     # (D-063).
-    init!(sim2, fragment(slots = (in = 1.0,)))
+    init!(sim2, fragment(inputs = (in = 1.0,)))
     @test modes(sim2, "children/c").count == 1
 end
 
@@ -127,7 +127,7 @@ end
                     ("in" => "children/trig/sig",), ())
     for h in (1//10, 1//1000)                    # the latency is rounds, never steps
         sim = Simulation(chain(); h)
-        init!(sim, fragment(slots = (in = 1.0,)))    # one boundary: three rounds to quiescence
+        init!(sim, fragment(inputs = (in = 1.0,)))    # one boundary: three rounds to quiescence
         @test modes(sim, "children/trig").state === :fired
         @test modes(sim, "children/f1").state === :on
         @test modes(sim, "children/f2").state === :on
@@ -140,13 +140,13 @@ end
     # `second` is eligible but blocked — its sample is not overwritten, so the
     # standing edge fires it in the next round.
     sim = Simulation(fed(TwoShot(), "sig"); h = 1//10)
-    init!(sim, fragment(slots = (in = 2.0,)))
+    init!(sim, fragment(inputs = (in = 2.0,)))
     @test modes(sim, "children/c") === (a = true, b = true)
 
     # The premise the first transition falsifies: re-decided against the
     # post-transition sweep, `second` never fires on its stale round-1 edge.
     simp = Simulation(fed(Preempted(), "sig"); h = 1//10)
-    init!(simp, fragment(slots = (in = 2.0,)))
+    init!(simp, fragment(inputs = (in = 2.0,)))
     @test modes(simp, "children/c") === (a = true, b = false)
 end
 
@@ -191,7 +191,7 @@ end
     chatty() = Group((; chat = Chatterer(), trig = Trigger(0.5)), (),
                      ("in" => "children/trig/sig",), ())
     sim = Simulation(chatty(); h = 1//10)
-    init!(sim, fragment(slots = (in = 1.0,)))            # exhaustion at boundary zero
+    init!(sim, fragment(inputs = (in = 1.0,)))            # exhaustion at boundary zero
     @test modes(sim, "children/chat").flips == 8         # 2 × the default budget of 4
     @test modes(sim, "children/trig").count == 1         # the sibling fired normally
     # The report rides the loop's own diagnostic cell (§11.8), folded at the
@@ -213,14 +213,14 @@ end
     # its own boundary zero — the stores restart from the declared defaults
     # (D-063) and the priors reset with them — and the new run's totals carry
     # that one occurrence, never the last trajectory's.
-    init!(sim, fragment(slots = (in = 1.0,)))
+    init!(sim, fragment(inputs = (in = 1.0,)))
     run!(sim; t_end = 0.1)
     @test modes(sim, "children/chat").flips == 8
     @test writer_status(latest(sim), "loop").totals.firing == 1
 
     # The budget is a deployment keyword, validated with its siblings.
     sim2 = Simulation(chatty(); h = 1//10, firing_budget = 2)
-    init!(sim2, fragment(slots = (in = 1.0,)))
+    init!(sim2, fragment(inputs = (in = 1.0,)))
     @test modes(sim2, "children/chat").flips == 4
     run!(sim2; t_end = 0.1)
     fb2 = only(writer_status(latest(sim2), "loop").recent)
@@ -245,7 +245,7 @@ end
 @testset "events compile out at a non-nominal activation (§9.4, D-052)" begin
     sim = Simulation(fed(Trigger(0.5), "sig"), D8; h = 1//10)
     @test isempty(sim.events.entries)
-    init!(sim, fragment(slots = (in = D8(1.0),)))
+    init!(sim, fragment(inputs = (in = D8(1.0),)))
     run!(sim; t_end = 0.3)
     @test modes(sim, "children/c").count == 0            # the guard never ran
 
@@ -259,7 +259,7 @@ end
     # The first iteration round always runs, so guard evaluation is on the
     # measured path even when nothing ever fires.
     sim = Simulation(fed(Trigger(0.5), "sig"); h = 1//10)
-    init!(sim, fragment(slots = (in = 0.0,)))
+    init!(sim, fragment(inputs = (in = 0.0,)))
     boundary!(sim, 1); offtick_boundary!(sim)
     @test @ballocated(boundary!($sim, 1)) == 0
     @test @ballocated(offtick_boundary!($sim)) == 0

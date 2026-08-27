@@ -27,7 +27,7 @@ struct Reader <: AbstractBinding end                 # output side only: absent 
 is_output(::Reader) = true
 
 @testset "the binding conformance check names every drift at the attach point (§11.6)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     d = Pad("d")
     for (b, frag) in ((NoSides(), "neither side"),
                       (NoEnum(), "no `claims` enumeration"),
@@ -47,7 +47,7 @@ is_output(::Reader) = true
 end
 
 @testset "admission is three checks in spec order (§11.3)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     d1 = Pad("d1")
     @test attach!(sim, d1, Enumerated("a")).id == 1
     # Identity before claims: the same instance re-attached — even under an
@@ -71,13 +71,13 @@ end
 end
 
 @testset "a device writes inside its claim, every check at its own staging (§11.3, §11.4)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     da, db = Pad("da"), Pad("db")
     ha = attach!(sim, da, Enumerated("a"))           # the handle is the write capability (§11.6)
     hb = attach!(sim, db, Enumerated("b"))
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     stage!(ha, "a" => 1.0)
-    stage!(hb, "b" => 2)                             # the shim converts to the slot's Float64
+    stage!(hb, "b" => 2)                       # the shim converts to the root input's Float64
     @test port(sim, "", :a) === 0.0                  # staged is pending, never applied (§11.1)
     step!(sim; frames = 1)
     @test port(sim, "", :a) === 1.0
@@ -105,12 +105,12 @@ end
 end
 
 @testset "the computed claim is the complement at the attach instant (§11.3, §11.6)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     d1, g = Pad("d1"), Pad("gui")
     attach!(sim, d1, Enumerated("a"))
     hg = attach!(sim, g, Greedy())                   # greedy last: exactly what is left
     @test sim.plane.roster[2].writer.faces == [:b]
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     stage!(hg, "b" => 5.0)
     run!(sim; t_end = 0.1)
     @test port(sim, "", :b) === 5.0
@@ -136,12 +136,12 @@ end
 end
 
 @testset "the harness surface is the unclaimed complement, recomputed at roster changes (§11.3)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     @test sim.plane.harness.faces == [:a, :b]        # the empty roster's complement
     d = Pad("d")
     attach!(sim, d, Enumerated("a"))
     @test sim.plane.harness.faces == [:b]
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     stage!(sim, "a" => 1.0)                          # claimed: rejected into the harness cell
     stage!(sim, "b" => 2.0)
     step!(sim; frames = 1)
@@ -159,8 +159,8 @@ end
 end
 
 @testset "the recompilation seam: a pending harness batch is renormalized at attach (§11.4)" begin
-    sim = Simulation(two_slots(); h = 1//10)
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))  # first: a pre-init! batch would clear (§12.6)
+    sim = Simulation(two_root_inputs(); h = 1//10)
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))  # first: a pre-init! batch would clear (§12.6)
     stage!(sim, "a" => 1.0, "b" => 2.0)              # staged while stopped, roster still empty
     # The attach reshapes the pending batch through the new schema, discarding
     # the newly claimed face into the harness cell with the incumbent and the
@@ -173,8 +173,8 @@ end
     @test cfe isa ClaimedFaceEntry && cfe.face === :a
     @test cfe.incumbent == "device 1 (Pad)" && cfe.site === :renormalization
     # At detach the surface only broadens: every pending entry survives.
-    sim2 = Simulation(two_slots(); h = 1//10)
-    init!(sim2, fragment(slots = (a = 0.0, b = 0.0)))
+    sim2 = Simulation(two_root_inputs(); h = 1//10)
+    init!(sim2, fragment(inputs = (a = 0.0, b = 0.0)))
     d2 = Pad("d2")
     attach!(sim2, d2, Enumerated("a"))
     stage!(sim2, "b" => 4.0)
@@ -184,7 +184,7 @@ end
 end
 
 @testset "device ids are monotonic per Simulation and never reused (§11.3)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     d1 = Pad("d1")
     @test attach!(sim, d1, Enumerated("a")).id == 1
     @test attach!(sim, Pad("d2"), Enumerated("b")).id == 2
@@ -196,7 +196,7 @@ end
 
 @testset "the roster is frozen per run: attach and detach are stopped-sim operations (§11.3)" begin
     sim = Simulation(chain3(); h = 1//100000)
-    init!(sim, fragment(slots = (u = 0.0,)))
+    init!(sim, fragment(inputs = (u = 0.0,)))
     d = Pad("d")
     @test attach!(sim, d, Enumerated("u")).id == 1   # also warms both compile paths, so
     detach!(sim, d)                                  # the mid-run checks below race no JIT
@@ -217,17 +217,17 @@ end
 end
 
 @testset "the frame's outcome is a pure function of the drained batches, whoever staged them (§11.4)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     da, db = Pad("da"), Pad("db")
     ha = attach!(sim, da, Enumerated("a"))
     hb = attach!(sim, db, Enumerated("b"))
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     step!(sim; t_plus = 0.3)
     stage!(ha, "a" => 0.7)
     stage!(hb, "b" => -1.3)
     step!(sim; t_plus = 0.5)
-    ref = Simulation(two_slots(); h = 1//10)
-    init!(ref, fragment(slots = (a = 0.0, b = 0.0)))
+    ref = Simulation(two_root_inputs(); h = 1//10)
+    init!(ref, fragment(inputs = (a = 0.0, b = 0.0)))
     step!(ref; t_plus = 0.3)
     poke!(ref, "a", 0.7)                 # the counterfactual, under the data plane
     poke!(ref, "b", -1.3)
@@ -236,18 +236,18 @@ end
 end
 
 @testset "an empty drain stays free with a populated roster (§11.1, §11.4)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     attach!(sim, Pad("da"), Enumerated("a"))
     attach!(sim, Pad("gui"), Greedy())
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     @test @ballocated(drain!($sim)) == 0
 end
 
 @testset "a populated device drain is as free as an empty one (§11.4, D-202)" begin
-    sim = Simulation(two_slots(); h = 1//10)
+    sim = Simulation(two_root_inputs(); h = 1//10)
     ha = attach!(sim, Pad("da"), Enumerated("a"))
     hg = attach!(sim, Pad("gui"), Greedy())
-    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     stage!(ha, "a" => 1.0); stage!(hg, "b" => 1.0); drain!(sim)   # warm both scatters
     @test @ballocated(drain!($sim), setup = (stage!($ha, "a" => 2.0)), evals = 1) == 0
     @test @ballocated(drain!($sim), setup = (stage!($hg, "b" => 2.0)), evals = 1) == 0

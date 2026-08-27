@@ -97,7 +97,7 @@ end
 
 """
 The table members of §14.4's read-selector family: `get_output(path, name)`,
-`get_slot(face)` and `get_face(name)` — one address space for every reader of
+`get_input(face)` and `get_face(name)` — one address space for every reader of
 the model. A selector is a *deferred read*, a value describing the read the
 compiled gather will perform; the `get_` prefix names that action and keeps
 the short nouns out of the namespace user declarations share. The store
@@ -110,7 +110,7 @@ cells, as every reader of the table does.
 `get_output` is the *inspection* register — deep paths, zero promises, free
 access, right for looking at *this* build — and `get_face` the *integration*
 register: a root-exported output face, named, curated, meaning-stable under
-substitution (§11.2). `get_slot` reads a root input slot back, the source
+substitution (§11.2). `get_input` reads a root input back, the source
 cell it is. Only cells are addressable: there is no selector for a value a
 component computes without declaring, and the remedy is the same at every
 register — the component exports it.
@@ -119,7 +119,7 @@ struct GetOutput
     path::String
     name::Symbol
 end
-struct GetSlot
+struct GetInput
     face::Symbol
 end
 struct GetFace
@@ -127,10 +127,10 @@ struct GetFace
 end
 get_output(path::AbstractString, name::Union{Symbol,AbstractString}) =
     GetOutput(String(path), Symbol(name))
-get_slot(face::Union{Symbol,AbstractString}) = GetSlot(Symbol(face))
+get_input(face::Union{Symbol,AbstractString}) = GetInput(Symbol(face))
 get_face(name::Union{Symbol,AbstractString}) = GetFace(Symbol(name))
 
-const ReadSelector = Union{GetOutput,GetSlot,GetFace}
+const ReadSelector = Union{GetOutput,GetInput,GetFace}
 
 """
 The compiled gather (§11.2, §14.4): one attachment's `reads`, resolved and
@@ -163,34 +163,34 @@ function _compile_reads(layout::Layout, nt, T::Type)
     addrs = map(values(nt)) do s
         s isa ReadSelector || throw(BuildError(
             "BindingContractMismatch: $T's `reads` entries must be read selectors — " *
-            "get_output, get_slot or get_face (§14.4) — got $(repr(s))"))
+            "get_output, get_input or get_face (§14.4) — got $(repr(s))"))
         _resolve_read(layout, s, T)
     end
     ReadGather{keys(nt)}(addrs)
 end
 
-_slot_names(layout::Layout) = Symbol[f for (f, _) in layout.slots]
+_root_input_names(layout::Layout) = Symbol[f for (f, _) in layout.root_inputs]
 
 function _resolve_read(layout::Layout, s::GetOutput, T::Type)
     haskey(layout.addr, (s.path, s.name)) || throw(BuildError(
         "ReadBindingUnresolved: $T reads get_output(\"$(s.path)\", :$(s.name)), which " *
-        "names no cell — only declared outputs, assembly faces and root slots are " *
+        "names no cell — only declared outputs, assembly faces and root inputs are " *
         "addressable (§14.4)"))
     layout.addr[(s.path, s.name)]
 end
 
-function _resolve_read(layout::Layout, s::GetSlot, T::Type)
-    s.face in _slot_names(layout) || throw(BuildError(
-        "ReadBindingUnresolved: $T reads get_slot(:$(s.face)), which names no root " *
-        "input face — the root slots are $(_facelist(_slot_names(layout))) (§14.4)"))
+function _resolve_read(layout::Layout, s::GetInput, T::Type)
+    s.face in _root_input_names(layout) || throw(BuildError(
+        "ReadBindingUnresolved: $T reads get_input(:$(s.face)), which names no root " *
+        "input face — the root inputs are $(_facelist(_root_input_names(layout))) (§14.4)"))
     layout.addr[("", s.face)]
 end
 
 function _resolve_read(layout::Layout, s::GetFace, T::Type)
-    s.name in _slot_names(layout) && throw(BuildError(
+    s.name in _root_input_names(layout) && throw(BuildError(
         "ReadBindingUnresolved: $T reads get_face(:$(s.name)), which names a root " *
         "*input* face — the integration register is the exported output faces, and " *
-        "a slot is read back with get_slot (§14.4, §11.2)"))
+        "a root input is read back with get_input (§14.4, §11.2)"))
     haskey(layout.addr, ("", s.name)) || throw(BuildError(
         "ReadBindingUnresolved: $T reads get_face(:$(s.name)), which names no " *
         "root-exported output face (§14.4, §11.2)"))
