@@ -200,6 +200,19 @@ end
 child_connections(::SlashedFace) = ()
 output_connections(::SlashedFace) = ("a/out" => "sensors/out",)
 
+struct RootCollision <: AbstractComponent        # one key in both contracts
+end
+input_types(::RootCollision, ::Type{T}) where {T <: Real} = (u = T,)
+output_types(::RootCollision, ::Type{T}) where {T <: Real} = (u = T, v = T)
+h_xu(::RootCollision, (; u)) = (u = 2u.u, v = 1.0)
+
+struct DeadFace <: AbstractComponent             # a face routed to nothing at all
+    g::Gain
+end
+child_connections(::DeadFace) = ()
+input_connections(::DeadFace) = ("in" => "g/e", "dead" => ())
+output_connections(::DeadFace) = ("g/out" => "y",)
+
 struct CollidingFaces <: AbstractComponent
     a::ModedSource
     b::Gain
@@ -224,6 +237,39 @@ end
 
     err = failure(() -> build(CollidingFaces(ModedSource(), Gain(1.0))))
     @test err isa BuildError && occursin("unique", err.msg)
+
+    # Uniqueness follows the root's class, not its family (D-210): a primitive
+    # root's faces are its two contract declarations' keys together, and a
+    # shared key would place the root input's cell over the output port's — the
+    # authored value read back as the stage's, silently.
+    err = failure(() -> build(RootCollision()))
+    @test err isa BuildError && occursin("appear twice", err.msg) && occursin("§8.6", err.msg)
+
+    # Below the root the same leaf is untouched: its input face aliases its
+    # producer's cell and places nothing, so there is no collision to forbid.
+    @test build(fed(RootCollision(), "u")) isa Build
+end
+
+@testset "an `input_connections` entry routes to at least one endpoint (§8.6, D-210)" begin
+    # At the root and one level down alike, and at declaration: the entry is
+    # named, and the refusal is a declaration error rather than the starvation
+    # further down the tree that the shape used to surface as.
+    err = failure(() -> build(DeadFace(Gain(1.0))))
+    @test err isa BuildError && occursin("routes to no internal endpoint", err.msg)
+    @test occursin("input_connections at the root component", err.msg)
+
+    nested = Group((; sub = DeadFace(Gain(2.0))), (), ("in" => "children/sub/in",), ())
+    err = failure(() -> build(nested))
+    @test err isa BuildError && occursin("routes to no internal endpoint", err.msg)
+    @test occursin("input_connections at `children/sub`", err.msg)
+
+    # The misdiagnosis this closes: the dead face used to build, and a condition
+    # addressing it read "declares no input face" — byte-identical to the message
+    # a bare typo earns. Authoring one can no longer get that far.
+    err = failure(() -> resolve(at("children/sub", fragment(inputs = (dead = 1.0,))),
+                                build(nested)))
+    @test occursin("routes to no internal endpoint", err.msg) &&
+          !occursin("declares no input face", err.msg)
 end
 
 # --- the whole-tree obligation model (§6.1) -----------------------------------

@@ -361,7 +361,7 @@ function flatten(root)
     # input face at every level, whatever the level's class.
     in_faces = Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[]
     for (path, face, consumers) in w.routes
-        isempty(consumers) || push!(in_faces, (path, face) => w.feeds[first(consumers)])
+        push!(in_faces, (path, face) => w.feeds[first(consumers)])
     end
     for (path, cs) in zip(w.paths, conns), (face, producer) in cs
         push!(in_faces, (path, face) => producer)
@@ -379,6 +379,7 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         # inputs, each face its own consuming entry (§8.6, §11.3, D-208), fed by
         # the same pseudo-producer an assembly root's faces get.
         if isempty(path)
+            _check_root_faces(comp)
             for face in keys(_contract(input_types, comp))
                 push!(w.root_inputs, face)
                 _claim!(w, (path, face), ("", face),
@@ -418,6 +419,14 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
     for (face, inner) in input_connections(comp)
         entry = _entry("input_connections", path, face => inner)
         consumers = _fanout(entry, path, comp, inner)
+        # Every entry routes to at least one internal endpoint, at every level
+        # (D-210): a face feeding nothing declares nothing, and the empty tuple
+        # would otherwise reach no consumer, leave no row in §9.2's face graph,
+        # and let a condition addressing it misdiagnose as a bare typo.
+        isempty(consumers) &&
+            throw(BuildError("$entry: the entry routes to no internal endpoint — every " *
+                             "`input_connections` entry routes to at least one, a face " *
+                             "feeding nothing declaring nothing (§8.6)"))
         push!(w.routes, (path, Symbol(face), consumers))
         isempty(path) || continue
         push!(w.root_inputs, Symbol(face))
@@ -463,5 +472,23 @@ function _check_face_names(path::String, comp)
                          "$(join(unique(n for n in names if count(==(n), names) > 1), ", ")) " *
                          "appear twice — face names are unique across `input_connections` and " *
                          "`output_connections` together (§8.6)"))
+    nothing
+end
+
+# The same invariant at a *primitive* root, whose face set is its two contract
+# declarations' keys together (§8.6, D-210). The root is where those two first
+# share the periphery's address space: a root input places a cell of its own, so
+# a shared key would put two cells at one name and the root input's placement
+# would silently overwrite the port's. Below the root nothing collides — a
+# primitive's input faces alias their producers' cells and place nothing — and
+# non-root leaves are left alone.
+function _check_root_faces(comp)
+    outs = String.(keys(_contract(output_types, comp)))
+    dup = [n for n in String.(keys(_contract(input_types, comp))) if n in outs]
+    isempty(dup) ||
+        throw(BuildError("$(_at("")): face name(s) $(join(dup, ", ")) appear twice — at the " *
+                         "root a primitive's faces are its `input_types` and `output_types` " *
+                         "keys together, and a key declared in both is the same build error a " *
+                         "duplicate assembly face name is (§8.6)"))
     nothing
 end

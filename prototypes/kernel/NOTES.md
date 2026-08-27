@@ -353,6 +353,27 @@ root input behind it, and the component-fed face keeps its own refusal at
 every level. State payloads at an assembly prefix stay refused — assemblies
 own no state, and only the `inputs` payload gained a level to resolve at.
 
+**The third commit closes the two silences the conformance build exposed**
+(D-210). §8.6's face-name uniqueness invariant now reads the root by the
+root's *class*: a primitive root's face set is its `input_types` and
+`output_types` keys together, checked where `flatten` meets the root, because
+that is where the two declarations first share the periphery's address space.
+The repro is worth keeping in mind — `input_types = (u = T,)` beside
+`output_types = (u = T, v = T)` had `cell_layout` place the root input's cell
+over the output port's, so the authored `5.0` read back as the stage's `10.0`,
+boundary-zero-ordered and silent. Non-root primitives are deliberately
+untouched: below the root an input face aliases its producer's cell and places
+nothing, so there is no address to collide over. The second ruling is one level
+down: an `input_connections` entry routes to at least one internal endpoint, so
+the empty tuple is a declaration error wherever it appears. It used to
+contribute no consumer, leave no row in the face graph, and let a condition
+addressing that face read "declares no input face" — byte-identical to a bare
+typo's diagnostic. The check sits in the walk over `input_connections`, where
+the fan-out is already in hand, and it makes the `isempty(consumers)` guard in
+the `in_faces` derivation dead: every route now pushes its row unconditionally.
+`_root_input_type`'s "routes to no input" throw stays as an internal invariant
+with nothing left that can reach it.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -831,6 +852,18 @@ Each of these is a spec claim rather than a programming convenience:
   refusals that flank it are unchanged in kind: a component-fed face reaches
   no root input, and a state payload at an assembly prefix has nothing to
   write.
+- **Face uniqueness reads the root's class, not its family (D-210).** A
+  primitive root declaring one key in both contracts is rejected as the same
+  build error a duplicate assembly face name is — the shape that used to build
+  and place two cells at one address, the root input's over the port's. The
+  identical leaf one level down still builds, which is the rule's other half:
+  below the root an input face places nothing, so there is nothing to forbid.
+- **A face feeding nothing declares nothing (D-210).** An `input_connections`
+  entry routing to the empty tuple is refused at the level that declares it,
+  root or not, with the offending entry named. The condition misdiagnosis it
+  used to produce is *unreachable* rather than reworded: the test authors the
+  dead face, addresses it with a condition, and gets the build's refusal — the
+  resolver never sees it.
 
 ## Stand-in retirement history
 
