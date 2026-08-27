@@ -59,7 +59,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = Parser(0.7, "garbage", 0.9)
     hp = attach!(sim, dev, Enumerated("a"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 1000.0)                        # ends by the device's stop
     end
@@ -85,7 +85,7 @@ end
 @testset "the ring's bound is the rate limit: 16 retained, excess to the counts (§11.8)" begin
     sim = Simulation(two_slots(); h = 1//10)
     h = attach!(sim, Pad("p"), Enumerated("a"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     for k in 1:20                                # one frame's flood, pending in the cell
         report!(h, MalformedDatum("datum $k"))
     end
@@ -102,7 +102,7 @@ end
 @testset "the status: the delta rides one snapshot, totals ride every one (§11.8, §11.2)" begin
     sim = Simulation(two_slots(); h = 1//10)
     h = attach!(sim, Pad("p"), Enumerated("a"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     # Boundary zero's status: the writers in the drain's order — devices in
     # attachment order, the harness register, the loop — every account zero,
     # and no run task to be alive: device tasks are run-scoped observables.
@@ -132,7 +132,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = Ticker()
     attach!(sim, dev, Enumerated())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 1000.0)                            # ends by the device's stop, ≥ 3 boundaries in
     @test dev.n ≥ 3
     tw = writer_status(latest(sim), "device 1 (Ticker)")
@@ -149,7 +149,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = LateReporter()
     attach!(sim, dev, Enumerated())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 1000.0)
     end
@@ -160,7 +160,7 @@ end
     # A fresh trajectory opens a fresh account (§11.8): init! resets the
     # totals, and the stepped frames — deviceless, the reporter never respawns —
     # publish a zeroed record for it.
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     step!(sim; frames = 2)
     @test writer_status(latest(sim), "device 1 (LateReporter)").totals.malformed == 0
 end

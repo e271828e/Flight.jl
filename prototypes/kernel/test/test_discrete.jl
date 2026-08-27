@@ -20,8 +20,7 @@
     s_next = s + kI * Δt * (r - q[1])   # the update boundary N itself performs
 
     sim = Simulation(sampled_loop(; kI, ω, ζ); h = 1//50)   # h = Δt: one rate, n = 1
-    set_slot!(sim, "ref", r)
-    init!(sim)
+    init!(sim, fragment(slots = (ref = r,)))
     run!(sim; t_end = N * Δt)
 
     # The tolerance is RK4's, not the semantics': the reference integrates
@@ -38,8 +37,7 @@ end
 
 @testset "the ZOH holds by compile-time absence (§10.5)" begin
     sim = Simulation(sampled_loop(); h = 1//50)
-    set_slot!(sim, "ref", 1.0)         # excite the loop, or nothing moves at all
-    init!(sim)
+    init!(sim, fragment(slots = (ref = 1.0,)))    # excite the loop, or nothing moves at all
 
     # Structural: the interior variants carry continuous entries only, so there
     # is no gating test on the hot path — the hold is not implemented, it is
@@ -121,15 +119,17 @@ end
 
 @testset "the discrete tier is frozen at a non-nominal activation (§7.2)" begin
     # The plant's input is declared `T` and wired to a discrete `Float64` cell:
-    # a lawful arrival, embedded as a zero-partial. `ctl`'s stages do not run
-    # at all, and its cell holds what the probe wrote — which is exactly what a
-    # tick at `t₀⁻` would have produced.
+    # a lawful arrival, embedded as a zero-partial. `ctl`'s stages are outside
+    # this activation's executable set, so they do not run at all — boundary
+    # zero's wide gate included (D-205 admits entries, and a frozen component
+    # has none) — and its cell holds the nominal products §9.4 carried across,
+    # pinned for the whole run.
     simd = Simulation(sampled_loop(), D8; h = 1//50)
     @test isempty(walked(simd.bodies.ticks))
     @test length(walked(simd.bodies.sweep_1)) == 1          # plant only; ctl frozen
     @test port(simd, "children/ctl", :u) isa Float64
 
-    init!(simd)
+    init!(simd, fragment(slots = (ref = 0.0,)))
     run!(simd; t_end = 0.04)
     @test state(simd, "children/plant").q isa SVector{2,D8}
     @test port(simd, "children/ctl", :u) == 0.0              # held, never recomputed

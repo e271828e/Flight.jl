@@ -17,6 +17,15 @@ single(c) = Group((; c = c), (), (), ())
 # The same, with the component's one input face handed up to a root slot `in`.
 fed(c, face) = Group((; c = c), (), ("in" => "children/c/$face",), ())
 
+# The drain's counterfactual: the same value written straight into a root
+# slot's cell at a stopped point, reaching under the data plane on purpose.
+# The framework's own write paths are `init!`'s condition (stopped) and
+# `stage!` (running), and neither can express a *mid-trajectory* poke — which
+# is exactly what the drain-equivalence tests need as their reference. Not
+# framework API, and used nowhere else.
+poke!(sim, face, v) =
+    (scatter!(sim.store, sim.layout.addr[("", Symbol(face))], v); nothing)
+
 # The error a build raises, for the tests that read the message.
 failure(f) =
     try

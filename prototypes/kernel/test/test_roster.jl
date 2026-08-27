@@ -75,7 +75,7 @@ end
     da, db = Pad("da"), Pad("db")
     ha = attach!(sim, da, Enumerated("a"))           # the handle is the write capability (§11.6)
     hb = attach!(sim, db, Enumerated("b"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(ha, "a" => 1.0)
     stage!(hb, "b" => 2)                             # the shim converts to the slot's Float64
     @test port(sim, "", :a) === 0.0                  # staged is pending, never applied (§11.1)
@@ -110,7 +110,7 @@ end
     attach!(sim, d1, Enumerated("a"))
     hg = attach!(sim, g, Greedy())                   # greedy last: exactly what is left
     @test sim.plane.roster[2].writer.faces == [:b]
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(hg, "b" => 5.0)
     run!(sim; t_end = 0.1)
     @test port(sim, "", :b) === 5.0
@@ -141,7 +141,7 @@ end
     d = Pad("d")
     attach!(sim, d, Enumerated("a"))
     @test sim.plane.harness.faces == [:b]
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(sim, "a" => 1.0)                          # claimed: rejected into the harness cell
     stage!(sim, "b" => 2.0)
     step!(sim; frames = 1)
@@ -160,7 +160,7 @@ end
 
 @testset "the recompilation seam: a pending harness batch is renormalized at attach (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
-    init!(sim)                                       # first: a pre-init! batch would clear (§12.6)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))  # first: a pre-init! batch would clear (§12.6)
     stage!(sim, "a" => 1.0, "b" => 2.0)              # staged while stopped, roster still empty
     # The attach reshapes the pending batch through the new schema, discarding
     # the newly claimed face into the harness cell with the incumbent and the
@@ -174,7 +174,7 @@ end
     @test cfe.incumbent == "device 1 (Pad)" && cfe.site === :renormalization
     # At detach the surface only broadens: every pending entry survives.
     sim2 = Simulation(two_slots(); h = 1//10)
-    init!(sim2)
+    init!(sim2, fragment(slots = (a = 0.0, b = 0.0)))
     d2 = Pad("d2")
     attach!(sim2, d2, Enumerated("a"))
     stage!(sim2, "b" => 4.0)
@@ -196,7 +196,7 @@ end
 
 @testset "the roster is frozen per run: attach and detach are stopped-sim operations (§11.3)" begin
     sim = Simulation(chain3(); h = 1//100000)
-    init!(sim)
+    init!(sim, fragment(slots = (u = 0.0,)))
     d = Pad("d")
     @test attach!(sim, d, Enumerated("u")).id == 1   # also warms both compile paths, so
     detach!(sim, d)                                  # the mid-run checks below race no JIT
@@ -221,16 +221,16 @@ end
     da, db = Pad("da"), Pad("db")
     ha = attach!(sim, da, Enumerated("a"))
     hb = attach!(sim, db, Enumerated("b"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     step!(sim; t_plus = 0.3)
     stage!(ha, "a" => 0.7)
     stage!(hb, "b" => -1.3)
     step!(sim; t_plus = 0.5)
     ref = Simulation(two_slots(); h = 1//10)
-    init!(ref)
+    init!(ref, fragment(slots = (a = 0.0, b = 0.0)))
     step!(ref; t_plus = 0.3)
-    set_slot!(ref, "a", 0.7)
-    set_slot!(ref, "b", -1.3)
+    poke!(ref, "a", 0.7)                 # the counterfactual, under the data plane
+    poke!(ref, "b", -1.3)
     step!(ref; t_plus = 0.5)
     @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
 end
@@ -239,7 +239,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     attach!(sim, Pad("da"), Enumerated("a"))
     attach!(sim, Pad("gui"), Greedy())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     @test @ballocated(drain!($sim)) == 0
 end
 
@@ -247,7 +247,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     ha = attach!(sim, Pad("da"), Enumerated("a"))
     hg = attach!(sim, Pad("gui"), Greedy())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(ha, "a" => 1.0); stage!(hg, "b" => 1.0); drain!(sim)   # warm both scatters
     @test @ballocated(drain!($sim), setup = (stage!($ha, "a" => 2.0)), evals = 1) == 0
     @test @ballocated(drain!($sim), setup = (stage!($hg, "b" => 2.0)), evals = 1) == 0

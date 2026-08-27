@@ -15,7 +15,7 @@ chain3() = Group((; p = Plant(), g1 = Gain(2.0), g2 = Gain(2.0)),
 
 @testset "a staged batch lands at its frame top, and nowhere earlier (§11.1, §11.4)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (in = 0.0,)))
     step!(sim; t_plus = 0.3)
     stage!(sim, "in" => 1.0)
     @test port(sim, "", :in) === 0.0         # staging never touches a live slot (§11.1)
@@ -26,24 +26,24 @@ chain3() = Group((; p = Plant(), g1 = Gain(2.0), g2 = Gain(2.0)),
     # write applied directly at the same stopped point is the same trajectory,
     # bitwise.
     ref = Simulation(fed(Plant(), "u"); h = 1//10)
-    init!(ref)
+    init!(ref, fragment(slots = (in = 0.0,)))
     step!(ref; t_plus = 0.3)
-    set_slot!(ref, "in", 1.0)
+    poke!(ref, "in", 1.0)                    # the counterfactual, under the data plane
     step!(ref; t_plus = 0.5)
     @test port(sim, "children/c", :y) === port(ref, "children/c", :y)
     @test port(sim, "children/c", :power) === port(ref, "children/c", :power)
 end
 
 @testset "a staged batch waits for the first frame top; one predating init! clears with it (§11.3, §12.6)" begin
-    # The contrast with the direct write: set_slot! before init! makes the
-    # predicate hold in the authored state and fire at t₀ (test_events). A
-    # batch staged *before* init! predates the boundary zero it would clobber,
-    # so init! clears it (§12.6); staged *after* init! — the pre-run register —
-    # it is pending, not applied, and the edge arrives with frame 1's drain,
-    # never at boundary zero.
+    # The contrast with the authored condition: a slot value carried into
+    # `init!` makes the predicate hold in the authored state and fire at t₀
+    # (test_events). A batch staged *before* init! predates the boundary zero
+    # it would clobber, so init! clears it (§12.6); staged *after* init! — the
+    # pre-run register — it is pending, not applied, and the edge arrives with
+    # frame 1's drain, never at boundary zero.
     sim = Simulation(fed(Trigger(0.5), "sig"); h = 1//10)
     stage!(sim, "in" => 1.0)                 # predates boundary zero: cleared by init!
-    init!(sim)
+    init!(sim, fragment(slots = (in = 0.0,)))
     @test (@atomic sim.plane.harness.cell.pending) === nothing
     @test modes(sim, "children/c").count == 0
     stage!(sim, "in" => 1.0)                 # the pre-run register: init! → stage! → run!
@@ -54,7 +54,7 @@ end
 
 @testset "coalescing: merge only — newest wins per face, untouched faces survive (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(sim, "a" => 1.0)
     stage!(sim, "b" => 2.0)                  # sparse: must not clobber the pending `a`
     stage!(sim, "a" => 3.0)                  # re-staged: the newest level, the per-face ZOH
@@ -66,7 +66,7 @@ end
 
 @testset "every check runs at staging, on the writer's side; the drain is pure (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     # Each rejection is written into the harness register's diagnostic cell on
     # the staging task (§11.8) — a stopped-sim staging waits there exactly as
     # its surviving entries wait in the staging cell, both drained at the next
@@ -89,7 +89,7 @@ end
 
 @testset "the shim converts to the activation's slot types (§11.4)" begin
     sim = Simulation(fed(Plant(), "u"), D8; h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (in = 0.0,)))
     stage!(sim, "in" => 1.0)                 # convert to the slot's declared type: D8
     run!(sim; t_end = 0.1)
     @test port(sim, "", :in) === D8(1.0)
@@ -98,11 +98,10 @@ end
 @testset "publication: one immutable value per frame-top boundary (§11.2)" begin
     sim = Simulation(chain3(); h = 1//10)
     @test latest(sim) === nothing            # nothing is published before init!
-    init!(sim)
+    init!(sim, fragment(slots = (u = 1.0,)))
     snap0 = latest(sim)
     @test snap0.t == 0.0 && snap0.frame == 0 # the boundary-zero snapshot (§14.5)
 
-    set_slot!(sim, "u", 1.0)
     step!(sim; t_plus = 0.5)
     snap = latest(sim)
     @test snap.frame == 5 && snap.t == sim.clock.t
@@ -121,15 +120,14 @@ end
 
     # Every frame top publishes, the off-tick boundary included.
     simo = Simulation(chain3(); h = 1//20, n = 2)
-    init!(simo)
+    init!(simo, fragment(slots = (u = 0.0,)))
     run!(simo; t_end = 0.05)                         # one frame, not a base tick
     @test latest(simo).frame == 1
 end
 
 @testset "the exchange is wait-free and coherent: no reader ever sees a torn world (§11.2)" begin
     sim = Simulation(chain3(); h = 1//1000)
-    set_slot!(sim, "u", 1.0)
-    init!(sim)
+    init!(sim, fragment(slots = (u = 1.0,)))
     stop = Threads.Atomic{Bool}(false)
     reader = Threads.@spawn begin
         seen, bad, tprev, mono = 0, 0, -1.0, true
@@ -157,7 +155,7 @@ end
 
 @testset "staging from another task: the CAS merge loses nothing it shouldn't (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     writer = Threads.@spawn for i in 1:1000
         stage!(sim, "a" => Float64(i))
         yield()
@@ -174,13 +172,13 @@ end
 
 @testset "an empty drain is free: the frame top adds no work to a quiet loop (§11.1)" begin
     sim = Simulation(chain3(); h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (u = 0.0,)))
     @test @ballocated(drain!($sim)) == 0
 end
 
 @testset "a populated drain is as free as an empty one, whatever the batch touches (§11.4, D-202)" begin
     sim = Simulation(two_slots(); h = 1//10)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(sim, "a" => 1.0); drain!(sim)             # warm the writer's one scatter
     @test @ballocated(drain!($sim), setup = (stage!($sim, "a" => 1.0)), evals = 1) == 0
     # A never-drained sparsity pattern costs the same nothing: the scatter is
@@ -196,9 +194,15 @@ wide_slots(n) = Group(NamedTuple(Symbol(:s, i) => Sum(sa = 1.0, sb = 1.0) for i 
                       Tuple(vcat(["a$i" => "children/s$i/a" for i in 1:n],
                                  ["b$i" => "children/s$i/b" for i in 1:n])), ())
 
+# Its baseline (§14.6): a generated fixture's full-coverage condition, generated
+# beside it. Totality is a precondition of `init!`, and 34 hand-written slot
+# values is exactly the case baselines exist for.
+wide_zero(n) = fragment(slots = NamedTuple(Symbol(p, i) => 0.0
+                                           for p in ("a", "b") for i in 1:n))
+
 @testset "a wide surface stages, merges and drains like a narrow one (§11.4, D-202)" begin
     sim = Simulation(wide_slots(17); h = 1//10)      # 34 root faces
-    init!(sim)
+    init!(sim, wide_zero(17))
     stage!(sim, "a3" => 1.5)
     stage!(sim, "b9" => -2.0, "a3" => 2.5)           # merge: newest wins, untouched survive
     drain!(sim)

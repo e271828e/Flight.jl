@@ -276,7 +276,7 @@ end
     nothing
 end
 
-# --- the gate (§10.5, D-185) ----------------------------------------------------
+# --- the gate (§10.5, D-185, D-205) ---------------------------------------------
 # The boundary sweep walks the full list with *discrete* entries gated by
 # `(idx − Φ) % D == 0`. The gate is a wrapper only discrete entries wear, so a
 # continuous entry pays nothing at a boundary, and the interior walk — compiled
@@ -289,16 +289,40 @@ struct Gated{E}
     Φ::Int
 end
 
-@inline run_at!(e, store, xbuf, ẋbuf, tick::Int) = run!(e, store, xbuf, ẋbuf)
+"""
+Boundary zero's wide gate (§14.5, D-205), spelled as the marker the boundary
+walk takes in place of a tick index: every discrete output stage runs there,
+due or not, publishing from the authored `s` and the `t₀` table, so no
+published cell holds the probe's synthesized values.
+
+It is a *marker*, not an index, precisely so the measured path keeps its
+shape: `run_at!` against an `Int` is the method the frame loop compiles and
+nothing was added to it. The `g` updates are not walked this way — they take
+the ordinary index 0 and stay gated by `Φ`, an offset component's first
+consumed sample remaining its `Φ·Δt_base` tick's.
+"""
+struct Establish end
+const ESTABLISH = Establish()
+
+# The walk's index parameter is unconstrained from here down: `run_at!` is the
+# one site that reads it, and dispatch there is what separates the two gates.
+# Every caller passes a concrete `Int` or `ESTABLISH`, so each specializes
+# exactly as it did when the annotation was `::Int`.
+@inline run_at!(e, store, xbuf, ẋbuf, idx) = run!(e, store, xbuf, ẋbuf)
 
 @inline function run_at!(g::Gated, store, xbuf, ẋbuf, tick::Int)
     # Under the canonical residue 0 ≤ Φ < D, truncated rem is never 0 on the
     # negative pre-first-tick differences, so one subtraction and one remainder
-    # are the whole admission test — and boundary zero's "everything with Φ = 0"
-    # is this same gate at index 0, implemented by nothing (§10.5).
+    # are the whole admission test — and "everything with Φ = 0" is this same
+    # gate at index 0, implemented by nothing (§10.5).
     (tick - g.Φ) % g.D == 0 && run!(g.e, store, xbuf, ẋbuf)
     nothing
 end
+
+# Establishment admits every gated entry (§14.5, D-205). Dueness at boundary
+# zero governs the `g` updates alone.
+@inline run_at!(g::Gated, store, xbuf, ẋbuf, ::Establish) =
+    (run!(g.e, store, xbuf, ẋbuf); nothing)
 
 # --- the walk -----------------------------------------------------------------
 
@@ -311,7 +335,7 @@ struct Chunk{E<:Tuple,S,X,CL}
 end
 
 @noinline (c::Chunk)() = _walk(c.entries, c.store, c.xbuf, c.ẋbuf)
-@noinline (c::Chunk)(tick::Int) = _walk_at(c.entries, c.store, c.xbuf, c.ẋbuf, tick)
+@noinline (c::Chunk)(idx) = _walk_at(c.entries, c.store, c.xbuf, c.ẋbuf, idx)
 
 @inline _walk(::Tuple{}, store, xbuf, ẋbuf) = nothing
 @inline function _walk(t::Tuple, store, xbuf, ẋbuf)
@@ -319,10 +343,10 @@ end
     _walk(Base.tail(t), store, xbuf, ẋbuf)
 end
 
-@inline _walk_at(::Tuple{}, store, xbuf, ẋbuf, tick::Int) = nothing
-@inline function _walk_at(t::Tuple, store, xbuf, ẋbuf, tick::Int)
-    run_at!(t[1], store, xbuf, ẋbuf, tick)
-    _walk_at(Base.tail(t), store, xbuf, ẋbuf, tick)
+@inline _walk_at(::Tuple{}, store, xbuf, ẋbuf, idx) = nothing
+@inline function _walk_at(t::Tuple, store, xbuf, ẋbuf, idx)
+    run_at!(t[1], store, xbuf, ẋbuf, idx)
+    _walk_at(Base.tail(t), store, xbuf, ẋbuf, idx)
 end
 
 """
@@ -336,7 +360,10 @@ from the compiled walk, and the hot path carries no gating test at all.
 
 The one-arg call is the *boundary* variant, walking the full list with each
 discrete entry gated by `(tick - Φ) % D` against the index it takes (§10.5,
-D-185).
+D-185) — or admitted outright, when the argument is `ESTABLISH` rather than an
+index (§14.5, D-205). Both take the one compiled tuple; only `run_at!`'s
+dispatch differs, so boundary zero's wide walk costs the measured path
+nothing.
 """
 struct PhaseBody{I<:Tuple,B<:Tuple}
     interior::I
@@ -344,7 +371,7 @@ struct PhaseBody{I<:Tuple,B<:Tuple}
 end
 
 @inline (b::PhaseBody)() = _walkchunks(b.interior)
-@inline (b::PhaseBody)(tick::Int) = _walkchunks(b.boundary, tick)
+@inline (b::PhaseBody)(idx) = _walkchunks(b.boundary, idx)
 
 @inline _walkchunks(::Tuple{}) = nothing
 @inline function _walkchunks(t::Tuple)
@@ -352,10 +379,10 @@ end
     _walkchunks(Base.tail(t))
 end
 
-@inline _walkchunks(::Tuple{}, tick::Int) = nothing
-@inline function _walkchunks(t::Tuple, tick::Int)
-    t[1](tick)
-    _walkchunks(Base.tail(t), tick)
+@inline _walkchunks(::Tuple{}, idx) = nothing
+@inline function _walkchunks(t::Tuple, idx)
+    t[1](idx)
+    _walkchunks(Base.tail(t), idx)
 end
 
 # Construction is type-opaque: entries are built into untyped buffers and

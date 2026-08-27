@@ -173,17 +173,18 @@ end
 
 # --- multi-rate: the gate at run time (§10.5) -----------------------------------
 
-@testset "boundary zero admits Φ = 0; an offset component holds its probe cells" begin
-    # `z` at Relative(2, 1) is not due at boundary zero: until its first tick at
-    # Φ·Δt_base its cell holds what the build probe populated — the ramp's value
-    # at the probe, a coherent ZOH story (§10.5, §9.3).
+@testset "boundary zero admits Φ = 0 for updates, and publishes every output stage" begin
+    # `z` at Relative(2, 1) is not due at boundary zero: its first tick is at
+    # Φ·Δt_base. Its output stage runs there all the same (D-205), publishing
+    # from the t₀ table — the ramp *at t₀*, not the build probe's value; the
+    # dueness the gate reads at index 0 governs the `g` updates alone (§10.5).
     late = Group((; src = Ramp(5.0), z = ZOH()),
                  ("children/src/out" => "children/z/in",), (),
                  ("children/z/out" => "y",),
                  (; var"children/z" = Relative(2, 1)))
     sim = Simulation(late; h = 1//100)
     init!(sim)
-    @test port(sim, "", :y) == 5.0                   # probe-populated, not swept
+    @test port(sim, "", :y) == 5.0                   # the ramp at t₀, evaluated
     step!(sim)                                       # base tick 1: the first tick
     @test port(sim, "", :y) ≈ 5.01
     step!(sim)                                       # base tick 2: not due, holds
@@ -213,8 +214,7 @@ end
     sim = Simulation(SampledLoop(; kI, ω, ζ, ctl_rate = Relative(2)); h = 1//200, n = 2)
     @test [(e.path, e.D, e.Φ) for e in sim.sched] == [("ctl", 2, 0)]
     @test sim.sched[1].Δt ≈ Δt_ctl
-    set_slot!(sim, "ref", r)
-    init!(sim)
+    init!(sim, fragment(slots = (ref = r,)))
     run!(sim; t_end = N * Δt_ctl)
     @test state(sim, "plant").q ≈ q rtol = 1e-6
     @test port(sim, "ctl", :u) ≈ s rtol = 1e-6
@@ -231,7 +231,7 @@ end
         @test @ballocated($body(2)) == 0             # a boundary where gates split
     end
     sim2 = Simulation(SampledLoop(; ctl_rate = Relative(2)); h = 1//200, n = 2)
-    init!(sim2)
+    init!(sim2, fragment(slots = (ref = 0.0,)))
     @test @ballocated(step!($sim2, 0.005)) == 0
     @test @ballocated(offtick_boundary!($sim2)) == 0
     @test @ballocated(boundary!($sim2, 3)) == 0

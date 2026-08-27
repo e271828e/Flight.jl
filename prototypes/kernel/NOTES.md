@@ -224,6 +224,84 @@ shape (the sweep still warns per entry, now as the record's renderer), so
 the `accounted` either-status-or-sweep invariant held without edits. No
 stand-ins enter or retire.
 
+**Increment 18 — the condition algebra, and `init!` as a real service.** §14's
+first end-to-end slice: the four node kinds (`Fragment`/`Scoped`/`Combined`
+plus §14.6's `Override`), their constructors `fragment`/`at`/`combine`/
+`override` — top-level functions, none extending a `Base` generic, `combine`
+being D-204's rename away from `Base.merge`'s last-wins contract — resolution
+against a `Build`, §14.6's totality check, and §14.4's dynamic-walk
+application register, all in `src/conditions.jl`. Composition is inert: `at`
+stores a prefix and flattening at resolution is the only place path strings
+join, so the deep tree a misaddressed fragment function builds constructs
+fine and fails with the build in hand. The collecting pass (§13.1) checks
+path, declared field, convertibility, slot-face reachability and leaf
+uniqueness, and throws once with the full list; the plan it compiles bakes
+`xbuf` offsets, cell addresses and the `merge(defaults, overlay)` store
+values — the *other* merge, §14.1's fork, and the reason D-204 wanted the
+combinator's name back.
+
+One design point inside the algebra is worth naming because it is not the
+literal reading of §14.3's `(path, store, field)` duplicate rule: **a slot
+entry's leaf is the root slot it resolves to**, not the face it was written
+with. The export chain is therefore walked during flattening, at the same
+moment the paths join, and the resolved face becomes the entry's key. That is
+what makes §14.6's central use case work — a full-coverage baseline authored
+at the root, layered under a patch a component's own `condition` method ships
+against its own local face — while keeping two spellings of one slot a
+`combine` collision, which they plainly are.
+
+Three integration facts are worth naming. **`init!` now resets the declared
+state before applying** — D-063's "fresh run from the `init_*` defaults, with
+these overrides", which the previous `init!` never did: the establishment of
+`xbuf` and the `s`/`m` stores was factored out of `compile` as
+`establish_defaults!`, and both sites call it, so a warm restart no longer
+overlays the last trajectory's endpoint. Two existing assertions moved with
+the reset and are the fix made visible: a re-`init!`ed `Trigger` fires from
+`count = 0` again (1, not 2), and the chatterer's warm restart re-exhausts its
+budget from `flips = 0` (8, not 16).
+
+**D-205 re-adjudicated the cells the same day**, in the register D-203 took for
+increment 17. Review of the first cut found a second staleness class: a warm
+boundary zero left an offset component's cell holding the previous
+trajectory's value, where §10.5 and `build.jl`'s own comment promised the
+build probe's. The first fix was symmetric with the state reset — an
+`establish_cells!` re-seeding the probe products, `init!` and `compile`
+sharing it. The design then went the other way and removed the class outright
+(D-205): **at boundary zero every discrete output stage runs, due
+or not**, publishing from the authored `s` and the `t₀` table, while the `g`
+updates keep the `Φ` gate. So `establish_cells!` was retired the day it was
+written, and the prototype is the better for it — the virgin-table
+precondition is gone, every published cell at `t₀` is boundary-zero-derived at
+the deployment activation, and §14.6's barrier now covers the whole table
+rather than the slots alone. The declared world has **three** establishment
+registers, not four: `init!` resets the state homes, boundary zero derives the
+cells, totality supplies the slots. Root slots are pointedly not re-seeded in
+any of them — re-seeding would put `probe_value` back on the services path,
+which is precisely what §14.6 removed.
+
+The mechanism is one dispatch. `Establish` is a singleton marker the boundary
+walk takes in place of a tick index; `run_at!(::Gated, …, ::Establish)` admits
+the entry outright where `run_at!(::Gated, …, ::Int)` tests `(idx − Φ) % D`.
+The walk's index parameter lost its `::Int` annotation from `Chunk` down so
+the one compiled tuple serves both, and since every caller passes a concrete
+`Int` or `ESTABLISH` each specializes exactly as before — the §7.5 gates
+confirm the frame loop's path is unchanged. `boundary_zero!` in `sim.jl` is
+the ordinary macro-sequence with `event_phase!(sim, ESTABLISH)` and
+`bodies.ticks(0)`. Frozen components need no exemption logic: at a non-nominal
+activation they have no compiled entries at all (§9.4's executable set), so
+there is nothing for the wide gate to admit and their pinned cells stand.
+**The `Simulation` gained a `build` field** — §14.3 says resolution takes the
+root node plus a `Build`, and the schema (declared fields, leaf types) lives
+nowhere else. **Slot totality is structural**, so the probe-value barrier bit
+immediately: every test whose model has root slots now authors them, which is
+most of the churn in this increment's diff. The `condition(comp; kw)` idiom
+ships in `src/library.jl` as user material — `Plant`, `DiscreteIntegrator`,
+and `SampledLoop`/`Vehicle` composing them by pull — and no framework code
+knows the name exists. The `set_slot!` stand-in retires here; the two tests
+that genuinely needed a *mid-trajectory* direct write (the drain's
+counterfactual in test_dataplane and test_roster) keep it as a test-local
+`poke!` in `test/utils.jl`, which is test equipment and not framework API.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -609,6 +687,74 @@ Each of these is a spec claim rather than a programming convenience:
   log ends at it, the device's bracket closed through the ordinary tail, the
   mid-boundary stores stay readable, and `errored` refuses `run!`, `step!`
   and `init!` alike, each by name.
+- **Composition is inert, and that is testable.** A `combine`/`at` tree over
+  a path that resolves against nothing *constructs*: the nodes are inspected
+  for their stored prefixes, unconcatenated, and the fragments are `isbits`;
+  only `resolve` throws. The same test pins the stack-only property the trim
+  loop will need before trim exists.
+- **`combine` collides, `override` layers, and both say who wrote what.** A
+  duplicate leaf reports both provenance chains — the `at` prefixes and the
+  payload position, verbatim — and names `override(base, patch)` as the
+  remedy; `override` gives the shared leaf to the patch, passes untouched
+  leaves through, composes variadically, and still refuses a collision
+  *within* a layer. The dual provenance is asserted through a violation on
+  the overridden leaf, which is where the chain surfaces.
+- **Layering is keyed on the root slot, not on the spelling.** A root-level
+  baseline under a component-local patch on the same slot resolves to the
+  patch's value, with the baseline's other slots untouched — §14.6's central
+  use case, which a literal `(path, store, field)` key would reject with the
+  very advice it was following. The same two spellings under `combine` still
+  collide, so the directive that branch prints is advice that works.
+- **Boundary zero publishes every output stage, due or not (D-205).** Two
+  components at `Relative(2, 1)` — neither due at `t₀` — both publish there:
+  the ZOH from the condition's slot value, the integrator from its authored
+  `s`, and the probe's synthesized `0.0` reaches no published cell, live table
+  or `t₀` snapshot. Dueness still governs the updates: the authored `s`
+  survives boundary zero untouched and the first sample the integrator
+  *consumes* is its own `Φ·Δt_base` tick's, pinned analytically as one period
+  times one sample. Cold and warm `init!` agree exactly, the authored
+  condition determining the `t₀` table outright — which is what retired the
+  virgin-table precondition rather than guarding it.
+  `test_multirate.jl`'s offset testset carries the same rule at its own
+  fixture: the assertions were already the evaluated values, so only the claim
+  behind them was re-pointed.
+- **The service entry point speaks the algebra's diagnostics.** A bare
+  NamedTuple handed to `init!` where a condition belongs gets
+  `ConditionNodeMisuse` and the wrap-it directive, never a `MethodError`.
+- **The misuse kind is a composition-time fact.** Blending a node with a bare
+  NamedTuple throws `ConditionNodeMisuse` in both argument orders, at every
+  arity, in `at` and `override` too, and with no build anywhere in sight —
+  which is exactly why it is its own kind rather than a `ConditionResolution`
+  sub-kind.
+- **Resolution collects.** Five different violations in one condition —
+  unknown path, undeclared field, unconvertible value, a slot face wired
+  internally, one root slot written twice — come back as one throw naming all
+  five. The undeclared-field message discriminates outputs and workspace by
+  name, because "conditions never specify outputs" is the rule the author is
+  most likely to test.
+- **A slot face is resolved through the export chain, not guessed.** A face
+  authored at the component that declares it lands on the root slot its
+  obligation chain ends at; an internally wired input is refused, because the
+  first sweep would overwrite it and unexported stays unpokeable.
+- **Totality is pre-write, and "pre-write" is asserted by inspection.** A
+  condition short one root slot is rejected with every uncovered face named in
+  declaration order, and the simulation is then checked to be bit-for-bit what
+  it was: same `x`, same stores, same slot cells, same lifecycle, the same
+  published snapshot *object*. `init!(sim)` with no condition stays legal
+  exactly where the build has no root slots.
+- **The overlay base is the declared defaults, always.** A sparse condition
+  leaves unnamed fields at their `init_*` values, and a second `init!` after a
+  full run restores them bitwise — `SVector(0.0, 0.0)` and `(state = :armed,
+  count = 0)` again, not the trajectory's endpoint. This is the D-063
+  behaviour the previous `init!` silently lacked.
+- **An authored state fires its guard at t₀.** Boundary zero establishes every
+  prior as not-holding, so a condition landing a predicate in holding
+  territory fires visibly at `t₀` — authored, not staged, and with zero frames
+  advanced.
+- **The fragment-function idiom composes by pull across two levels.** The
+  vehicle scopes the loop's fragment under `at("loop", …)`, the loop scopes
+  the plant's under `at("plant", …)`, and nothing anywhere writes
+  `"loop/plant"`: the deep path exists only in the flattened entry list.
 
 ## Stand-in retirement history
 
@@ -622,4 +768,11 @@ rows entered with increment 13. Increment 14 retired both presentation rows
 on 2026-08-26 and entered its own three: the harness register's cell, the
 tail window, and the status's per-publication allocation. The harness-cell and
 tail-window rows were retired the same day by the D-200/D-201 spec amendment,
-leaving `set_slot!` and the status allocation.
+leaving `set_slot!` and the status allocation. Increment 18 retired
+`set_slot!` on 2026-08-27, the §14 services increment it was booked against:
+slot initial values now arrive through `init!`'s condition (stopped) or
+`stage!` (running), and the function is gone. What survives it is `poke!` in
+`test/utils.jl`, used at two sites where the *counterfactual to the drain* is
+the point — a mid-trajectory direct write, which neither framework path can
+express — and test equipment, not a stand-in. The status allocation is the
+only row left.

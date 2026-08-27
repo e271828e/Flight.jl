@@ -79,8 +79,7 @@ output_connections(::TupleRoster) = ("units/2/out" => "y",)
     # (§8.5), addressable by the parent's declarations like any child name.
     tsim = Simulation(TupleRoster((Gain(2.0), Gain(3.0))); h = 1//10)
     @test tsim.flat.paths == ["units/1", "units/2"]
-    set_slot!(tsim, "in", 1.0)
-    init!(tsim)
+    init!(tsim, fragment(slots = (in = 1.0,)))
     @test port(tsim, "units/2", :out) === 6.0
     @test port(tsim, "", :y) === port(tsim, "units/2", :out)
 
@@ -113,8 +112,7 @@ output_connections(::GenericHold) = ("inner/plant/y" => "y",)
     # Two levels down into declared structure, bypassing the sub-assembly's own
     # face: legal, and the routed input is fed exactly once.
     sim = Simulation(ConcreteHold(SampledLoop()); h = 1//50)
-    set_slot!(sim, "ref", 1.0)
-    init!(sim)
+    init!(sim, fragment(slots = (ref = 1.0,)))
     @test port(sim, "", :y) === port(sim, "inner/plant", :y)
 
     # The identical paths against the identical instance, held generically: the
@@ -151,8 +149,7 @@ output_connections(::PastReach) = ("mid/inner/plant/y" => "y",)
 
 @testset "a route may end at a generic child's face, never go past it (§6.1, §13.3)" begin
     sim = Simulation(FaceReach(MidHold(SampledLoop())); h = 1//50)
-    set_slot!(sim, "ref", 1.0)
-    init!(sim)
+    init!(sim, fragment(slots = (ref = 1.0,)))
     @test port(sim, "", :y) === port(sim, "mid/inner/plant", :y)
 
     err = failure(() -> build(PastReach(MidHold(SampledLoop()))))
@@ -243,14 +240,13 @@ child_connections(::DoubleFedSibling) = ("src/out" => "loop/sum/b",)
           occursin("child_connections at the root component", err.msg)
 
     # The one legitimate terminus: the root's own input faces are the slots,
-    # synthesized by `probe_value` and written by face name (§11.3).
+    # authored by the init service's condition (§11.3, §14.6).
     sim = Simulation(Group((; c = Gain(2.0)), (), ("in" => "children/c/e",), ());
                      h = 1//100)
     @test sim.flat.slots == [:in]
-    init!(sim)
-    @test port(sim, "children/c", :out) == 0.0        # the synthesized value
-    set_slot!(sim, "in", 3.0)
-    init!(sim)
+    init!(sim, fragment(slots = (in = 0.0,)))
+    @test port(sim, "children/c", :out) == 0.0
+    init!(sim, fragment(slots = (in = 3.0,)))
     @test port(sim, "children/c", :out) == 6.0
 end
 

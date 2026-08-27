@@ -709,6 +709,33 @@ end
 # `Simulation`s (§9.2). No user stage runs here: every check already ran at the
 # probe, and what compiles is the checked shape.
 
+"""
+The declared defaults, established into the three state homes (§7.3, §8.2):
+`x` into the flat buffer by the declaration walk, `s` and `m` into the
+component stores they were allocated for. The stores' *types* are fixed by
+their allocation; this only ever writes values into them.
+
+Construction and `init!` share this one path, which is what makes an
+application "fresh run from the `init_*` defaults, with these overrides"
+(D-063) rather than an overlay on whatever the last trajectory left behind.
+"""
+function establish_defaults!(xbuf::Vector{T}, sstores::Vector, mstores::Vector,
+                             comps::Vector, decls::Vector{Decls},
+                             tiers::Vector{Tier}) where {T}
+    off = 0
+    for (ci, (d, t)) in enumerate(zip(decls, tiers))
+        if t === CONTINUOUS
+            for l in _leaf_values(d.x)
+                off += 1
+                xbuf[off] = T(l)
+            end
+        end
+        sstores[ci] === nothing || (sstores[ci][] = d.s)
+        mstores[ci] === nothing || (mstores[ci][] = init_m(comps[ci]))
+    end
+    nothing
+end
+
 function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{Int},
                  Δt_c::Vector{Float64}; chunk_size::Int = 16) where {T}
     flat, tiers, decls, layout = b.flat, b.tiers, act.decls, act.layout
@@ -725,13 +752,14 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     store = StoreBundle(NamedTuple{tuple((Symbol(L) for (L, _) in layout.sizes)...)}(
         tuple((CellStore(zeros(L, n)) for (L, n) in layout.sizes)...)))
 
-    xbuf = T[]
-    x_offs = Int[]
+    x_offs, nx = Int[], 0
     for (d, t) in zip(decls, tiers)
-        push!(x_offs, length(xbuf))
-        t === CONTINUOUS && append!(xbuf, T[T(l) for l in _leaf_values(d.x)])
+        push!(x_offs, nx)
+        t === CONTINUOUS && (nx += nleaves(typeof(d.x)))
     end
-    ẋbuf = zeros(T, length(xbuf))
+    xbuf = zeros(T, nx)
+    establish_defaults!(xbuf, sstores, mstores, flat.comps, decls, tiers)
+    ẋbuf = zeros(T, nx)
     clock = Clock(zero(T))
 
     addr_group(path, names) =
@@ -741,8 +769,8 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
             tuple((input_addr(layout, flat.conns[ci], face) for face in keys(d.ins))...))
 
     # A cell holds what the build probe populated until a sweep first writes it
-    # (§10.5): an offset component's pre-first-tick reads and a frozen
-    # component's pinned cells are both this seed.
+    # (§10.5): this is the table's pre-`init!` content, and a frozen
+    # component's pinned cells are this seed for the whole run (§9.4).
     for (ci, path) in enumerate(flat.paths)
         isempty(act.products[ci]) ||
             scatter_group!(store, addr_group(path, keys(act.products[ci])), act.products[ci])

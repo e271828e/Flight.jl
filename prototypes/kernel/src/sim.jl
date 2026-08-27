@@ -25,6 +25,7 @@ struct Simulation{T,S,B,CL,EV,M}
     events::EV                    # the compiled event set with its §10.6 registers
     layout::Layout
     flat::Flat
+    build::Build                  # the schema authority a condition resolves against (§14.3)
     h::Float64                    # the continuous step, bound at deployment
     n::Int                        # steps per base tick: Δt_base = n·h (§10.5)
     Δt_base::Float64
@@ -149,7 +150,7 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     stepper = method(T, length(c.xbuf))
     Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events),
                typeof(stepper)}(
-        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
+        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat, b,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
         Int(localization_budget), Float64(join_timeout),
         t_end === nothing ? nothing : Float64(t_end), stop_faces, stop_addrs,
@@ -320,12 +321,37 @@ projection and the event phase run in full — every step boundary is a boundary
     nothing
 end
 
+"""
+Boundary zero's macro-sequence (§14.5, D-205): the ordinary one, with the
+sweep's discrete entries admitted **due or not**. Every output stage runs and
+publishes — from the authored `s` and the `t₀` table, in the ordinary sorted
+walk — so the `t₀` snapshot carries the authored world fully evaluated and no
+published cell holds the probe's synthesized values (§14.6's barrier extended
+from the slots to the whole table).
+
+The `g` updates keep the ordinary gate at index 0, which under the canonical
+residue admits exactly `Φ = 0` (§10.5): that evaluation is establishment, not
+a scheduled sample, and an offset component's first *consumed* sample stays
+its `Φ·Δt_base` tick's. A component frozen at a non-nominal activation has no
+entries here at all (§9.4's executable set), so its pinned cells keep the
+carried nominal products — at boundary zero as everywhere.
+"""
+@inline function boundary_zero!(sim::Simulation)
+    _projects!(sim.events)
+    event_phase!(sim, ESTABLISH)
+    sim.bodies.ticks(0)
+    nothing
+end
+
 # One iteration round's sweep: the whole gated schedule (§10.6), in the due-set
 # arity the boundary fixed — never the update laws, which wait for quiescence.
 @inline _round!(sim::Simulation, tick::Int) =
     (sim.bodies.sweep_1(tick); sim.bodies.sweep_2(tick); nothing)
 @inline _round!(sim::Simulation, ::Nothing) =
     (sim.bodies.sweep_1(); sim.bodies.sweep_2(); nothing)
+# Boundary zero's round: the whole schedule, gated by nothing (§14.5, D-205).
+@inline _round!(sim::Simulation, e::Establish) =
+    (sim.bodies.sweep_1(e); sim.bodies.sweep_2(e); nothing)
 
 """
 The event phase (§10.6): [sweep → guards → handlers] iterated to quiescence,
@@ -403,12 +429,31 @@ would do at N = 0.
 end
 
 """
-Initialize: state at its declared values, table consistent, clock at `t₀`.
+    init!(sim, condition = fragment(); t₀ = zero(T))
 
-Boundary zero is an ordinary boundary with an empty integrate (§10.5, §14.5):
-the gate at index 0 admits exactly the components with `Φ = 0`, implemented by
-nothing. An offset component holds its probe-populated cells until its first
-tick at `Φ·Δt_base`.
+Initialize: state at the declared defaults with the condition's overrides
+applied, table consistent, clock at `t₀`.
+
+The condition is §14.1's path-addressed sparse overlay, and the overlay base
+is **always the declared defaults**: `init!` re-establishes the three state
+homes — `xbuf` and the `s`/`m` stores, from `init_x`/`init_s`/`init_m` —
+before applying anything, so applying a condition means "fresh run from the
+declared defaults, with these overrides" (D-063) and warm restart needs no
+second semantics. Nothing re-seeds the cells, and nothing needs to: boundary
+zero *derives* every one of them below (D-205). Slots have no declared default
+at all, and the condition's totality is what supplies them (§14.6). It
+resolves first (§14.3), then checks slot totality against the build's root
+input faces (§14.6), and only then writes: a rejected `init!` leaves the
+simulation exactly as it was, and a root slot gets a condition value or the
+call errors — the services path contains no call to `probe_value`. `t₀` is a
+service argument, never a condition entry: time is not a store of any
+component (§14.5).
+
+Boundary zero is an ordinary boundary with an empty integrate (§10.5, §14.5),
+run with the sweep's one amendment: every discrete output stage publishes,
+due or not (D-205, `boundary_zero!`), while the `g` updates keep the gate at
+index 0 — which admits exactly the components with `Φ = 0`, implemented by
+nothing.
 
 Boundary zero also establishes every event prior as not-holding (§10.6), so a
 predicate already holding in the authored state fires at `t₀` — derived, not
@@ -430,7 +475,7 @@ status (§11.8). `init!` is itself a stopped-sim operation: refused while
 `running`, and refused on an `errored` simulation, which is terminally
 stopped (§13.6) — reproduction is trace replay, not resurrection.
 """
-function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
+function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) where {T}
     ctl = sim.control
     lc = @atomic ctl.lifecycle
     lc === :running && throw(BuildError(
@@ -439,6 +484,11 @@ function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     lc === :errored && throw(BuildError(
         "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
         "never re-initialized; reproduction is trace replay, absent here (§13.6)"))
+    plan = resolve(condition, sim.build, T)      # both refusals precede every write
+    assert_total(plan, sim.build.flat, "init!")  # (§14.6): all-or-nothing
+    establish_defaults!(sim.xbuf, sim.sstores, sim.mstores, sim.build.flat.comps,
+                        activation(sim.build, T).decls, sim.build.tiers)   # D-063's reset
+    apply!(sim, plan)
     sim.clock.t = t₀
     sim.clock.t₀ = t₀
     sim.clock.step = 0
@@ -451,7 +501,7 @@ function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
     @atomic sim.plane.harness.cell.pending = nothing
     @atomic ctl.stop_issuer = nothing
     ctl.termination = nothing
-    boundary!(sim, 0)
+    boundary_zero!(sim)
     publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
     @atomic :release ctl.lifecycle = :initialized
     nothing
@@ -964,19 +1014,6 @@ end
 # which resolve to the cells they derive from.
 
 port(sim::Simulation, path::String, name::Symbol) = gather(sim.store, sim.layout.addr[(path, name)])
-
-"""
-Write a root slot directly, by the root input face's name — a stopped-sim
-establishment operation and a stand-in (README): slot initial values are owned
-by the §14 init/trim services (§11.3), absent here, and the *running* write
-path is staged batches through the drain alone. Kept for authored initial slot
-values until the services exist; a write meant to reach a running trajectory
-goes through `stage!`.
-"""
-function set_slot!(sim::Simulation, face::AbstractString, v)
-    scatter!(sim.store, sim.layout.addr[("", Symbol(face))], v)
-    nothing
-end
 
 """
 State at `path`, from whichever home owns it: `x` in the flat buffer on the

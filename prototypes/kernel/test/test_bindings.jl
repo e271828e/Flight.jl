@@ -138,14 +138,14 @@ end
     h = attach!(sim, dev, TableBinding(stick = (face = "a", deadzone = 0.1),
                                        thr   = (face = "b",)))
     @test binding(h) === sim.plane.roster[1].binding
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 1000.0)                # ends by the device's stop, past its observed apply
     @test port(sim, "", :a) ≈ 0.5            # (0.55 − 0.1) / 0.9: conditioned at staging
     @test port(sim, "", :b) === 0.7          # pass-through, bitwise
     # The device-staged trajectory is the directly-staged one: conditioning ran
     # upstream, so the model consumed post-conditioning levels (§11.4).
     ref = Simulation(two_slots(); h = 1//10)
-    init!(ref)
+    init!(ref, fragment(slots = (a = 0.0, b = 0.0)))
     ref_val = last(only(map_input((; stick = 0.55),
                                   TableBinding(stick = (face = "a", deadzone = 0.1)))))
     stage!(ref, "a" => ref_val, "b" => 0.7)
@@ -155,7 +155,7 @@ end
     # run continuing (§11.6: any non-datum exception propagates to the wrapper).
     sim2 = Simulation(two_slots(); h = 1//10)
     attach!(sim2, Poller((; wheel = 0.1)), TableBinding(stick = (face = "a",)))
-    init!(sim2)
+    init!(sim2, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim2; t_end = 0.2)
     end
@@ -201,7 +201,7 @@ end
     h = attach!(sim, dev, Readout(alt = get_face("y"),
                                   raw = get_output("children/p", "y"),
                                   cmd = get_slot("u")))
-    init!(sim)
+    init!(sim, fragment(slots = (u = 0.0,)))
     stage!(sim, "u" => 2.0)
     run!(sim; t_end = 0.5)
     @test !isempty(dev.wire)
@@ -221,7 +221,7 @@ end
 @testset "gather without an output side is a contract misuse, by name (§11.6)" begin
     sim = Simulation(two_slots(); h = 1//10)
     h = attach!(sim, Pad("p"), Enumerated("a"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     err = failure(() -> gather(h, latest(sim)))
     @test err isa ErrorException && occursin("declares no output side", err.msg)
 end
@@ -230,7 +230,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     h = attach!(sim, Pad("p"), Duplex())
     @test sim.plane.roster[1].writer.faces == [:a]     # the input half: the claim staked
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stage!(h, "a" => 0.4)
     run!(sim; t_end = 0.2)
     nt = gather(h, latest(sim))                        # the output half: the gather compiled

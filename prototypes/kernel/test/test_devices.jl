@@ -108,7 +108,7 @@ mutable struct Loopless <: AbstractDevice end
     sim = Simulation(two_slots(); h = 1//10)
     dev = OneShot(0.7)
     h = attach!(sim, dev, Enumerated("a"); should_abort = true)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 1000.0)                        # ends by the device's stop, not t_end
     @test sim.clock.step < 10000             # the stop truncated the run
     @test dev.log[1:3] == [:init, :loop, :shutdown]
@@ -120,7 +120,7 @@ mutable struct Loopless <: AbstractDevice end
     # pends in the cell — exactly one of the two, timing's choice — and init!
     # clears whatever pends with the trajectory it predates (§12.6).
     @test (port(sim, "", :a) === 0.7) ⊻ ((@atomic h.writer.cell.pending) !== nothing)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     @test (@atomic h.writer.cell.pending) === nothing
 end
 
@@ -128,7 +128,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = Collector()
     attach!(sim, dev, Enumerated())          # the may-write-nothing degenerate: a pure reader
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 1.0)
     @test dev.log == [:returned]             # exited through the woken wait, before the join
     @test !isempty(dev.seen)                 # at least one boundary observed in ten frames
@@ -142,7 +142,7 @@ end
 
 @testset "the boundary ordinal rides in the snapshot (§12.3)" begin
     sim = Simulation(two_slots(); h = 1//10)
-    init!(sim)                               # boundary zero: ordinal 0
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))  # boundary zero: ordinal 0
     run!(sim; t_end = 0.5)
     @test latest(sim).boundary == 5
     @test latest(sim).t ≈ 0.5
@@ -152,7 +152,7 @@ end
 @testset "stop! from any task ends the run at a frame top (§12.1, §12.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
     attach!(sim, Pad("p"), Enumerated("a"))  # a rostered device keeps the loop yielding (§12.2)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     stopper = Threads.@spawn (sleep(0.05); stop!(sim))
     run!(sim; t_end = 1.0e6)
     wait(stopper)
@@ -162,7 +162,7 @@ end
     # is calling code from any task, issuer :code.
     @test termination(sim).source === ControlRequestedStop(:code)
     # A fresh trajectory owes nothing to this stop: init! clears the word.
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     @test step!(sim; frames = 3) == 3
     @test sim.clock.step == 3
 end
@@ -171,7 +171,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = Crasher()
     attach!(sim, dev, Enumerated("a"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 0.5)
     end
@@ -187,7 +187,7 @@ end
 @testset "a crash under should_abort requests the stop (§12.4(6))" begin
     sim = Simulation(two_slots(); h = 1//10)
     attach!(sim, Crasher(), Enumerated("a"); should_abort = true)
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 1000.0)
     end
@@ -199,7 +199,7 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = BadInit()
     attach!(sim, dev, Enumerated("a"))
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 0.5)
     @test dev.log == [:init, :shutdown]      # loop never ran: no task was spawned
     @test sim.clock.step == 5                # flag clear: the run proceeds without it
@@ -220,7 +220,7 @@ end
     # top ever folds the report, so only the run's-end sweep can present it.
     sim2 = Simulation(two_slots(); h = 1//10)
     attach!(sim2, BadInit(), Enumerated("a"); should_abort = true)
-    init!(sim2)
+    init!(sim2, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim2; t_end = 0.5)
     end
@@ -239,7 +239,7 @@ end
     sim = Simulation(two_slots(); h = 1//10, join_timeout = 0.2)
     dev = Stubborn()
     attach!(sim, dev, Enumerated())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     t0 = time()
     # The abandonment is written to the loop's own cell and presented by the
     # run's-end sweep, the record's renderer (§12.4(5), D-203).
@@ -264,7 +264,7 @@ end
     sim = Simulation(two_slots(); h = 1//10, join_timeout = 2.0)
     dev = Blocked()
     attach!(sim, dev, Enumerated())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     t0 = time()
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 0.3)
@@ -279,14 +279,14 @@ end
     sim = Simulation(two_slots(); h = 1//10)
     dev = Inline()
     attach!(sim, dev, Enumerated())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     caller = current_task()
     run!(sim; t_end = 0.5)
     @test dev.task === caller                # the pinning: the body ran on run!'s task
     @test dev.log == [:returned]             # and left through the ordinary predicate
     @test sim.clock.step == 5
     ref = Simulation(two_slots(); h = 1//10) # the movable loop moved nothing else
-    init!(ref)
+    init!(ref, fragment(slots = (a = 0.0, b = 0.0)))
     run!(ref; t_end = 0.5)
     @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
 end
@@ -294,7 +294,7 @@ end
 @testset "a device with no loop method crashes loudly, never idles (§11.6)" begin
     sim = Simulation(two_slots(); h = 1//10)
     attach!(sim, Loopless(), Enumerated())
-    init!(sim)
+    init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 0.2)
     end
@@ -310,7 +310,7 @@ end
     trajectories = map((5.0, 0.01)) do cap
         sim = Simulation(two_slots(); h = 1//10, join_timeout = cap)
         attach!(sim, Pad("p"), Enumerated("a"))
-        init!(sim)
+        init!(sim, fragment(slots = (a = 0.0, b = 0.0)))
         run!(sim; t_end = 0.5)
         port(sim, "children/s", :e)
     end

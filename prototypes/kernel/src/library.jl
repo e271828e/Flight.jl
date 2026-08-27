@@ -479,8 +479,9 @@ function feedback_model(; k = 4.0, ω = 2.0, ζ = 0.1, q₀ = SVector(0.0, 0.0),
            "children/sum/e" => "children/ctl/e",
            "children/plant/$feedback_port" => "children/sum/b"),
           # `sum.a` is claimed by no wire: the obligation is handed up to this
-          # face, and at the root a face is a slot — its initial value
-          # synthesized by `probe_value`, written by `set_slot!` (§6.1, §11.3).
+          # face, and at the root a face is a slot — its cell seeded by
+          # `probe_value` for the build's own probes, and its initial value
+          # authored by the init service's condition (§6.1, §11.3, §14.6).
           ("ref" => "children/sum/a",),
           ("children/plant/y" => "y",))
 end
@@ -561,6 +562,39 @@ child_connections(::Vehicle) = ("trim/out" => "loop/ref",)
 input_connections(::Vehicle) = ("ref" => "trim/e",)
 output_connections(::Vehicle) =
     ("loop/y" => "y", "loop/cmd" => "cmd", "loop/plant/power" => "power")
+
+# --- the fragment-function idiom (§14.2) ----------------------------------------
+# User-idiom material, not framework API: `condition` is an ordinary function
+# dispatched on the component, shipped beside it, and nothing in `src/` outside
+# this file knows the name exists. What it buys is locality — the caller says
+# "start the plant at this displacement", and only `Plant` knows displacement and
+# rate pack into `q` — composed by *pull* from the structure's owner, never by a
+# schema routing sub-specs down the tree (D-064).
+
+"""The plant's own vocabulary: displacement and rate, which it packs into `q`."""
+condition(::Plant; y = 0.0, v = 0.0) = fragment(x = (q = SVector(y, v),))
+
+"""The integrator's: the held command, which it accumulates in `acc`."""
+condition(::DiscreteIntegrator; cmd = 0.0) = fragment(s = (acc = cmd,))
+
+"""
+Composition by pull (§14.2): the owner of the structure names its children and
+scopes their fragments with `at`, and `combine` collects the siblings. It
+authors no slot — `ref` is this assembly's *input face*, which is a root slot
+only when `SampledLoop` is itself the root, so the level that knows is the one
+that owns the boundary.
+"""
+condition(l::SampledLoop; y = 0.0, v = 0.0, cmd = 0.0) =
+    combine(at("plant", condition(l.plant; y, v)), at("ctl", condition(l.ctl; cmd)))
+
+"""
+The second level, and the one that owns the root boundary: it pulls the loop's
+fragment under `at("loop", …)` — deep paths are compiled derivatives of this
+nesting, never written by hand — and authors the root slot its own contract
+declares.
+"""
+condition(veh::Vehicle; ref = 0.0, kw...) =
+    combine(at("loop", condition(veh.loop; kw...)), fragment(slots = (ref = ref,)))
 
 # --- the multi-rate coverage set (§10.5) ----------------------------------------
 
