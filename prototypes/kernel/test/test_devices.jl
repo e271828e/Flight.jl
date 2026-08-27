@@ -109,12 +109,17 @@ mutable struct Loopless <: AbstractDevice end
     dev = OneShot(0.7)
     h = attach!(sim, dev, Enumerated("a"); should_abort = true)
     init!(sim)
-    run!(sim, 1000.0)                        # ends by the device's stop, not t_end
+    run!(sim; t_end = 1000.0)                        # ends by the device's stop, not t_end
     @test sim.clock.step < 10000             # the stop truncated the run
     @test dev.log[1:3] == [:init, :loop, :shutdown]
     @test !running(h)                        # the sticky status, read off the handle
-    run!(sim, (sim.clock.step + 1) * sim.h)  # one more frame: the drain applies what is pending
-    @test port(sim, "", :a) === 0.7
+    @test termination(sim).source === :control_stop  # the record names the channel (§13.5)
+    # The staged batch was applied by a drain the stop did not beat, or still
+    # pends in the cell — exactly one of the two, timing's choice — and init!
+    # clears whatever pends with the trajectory it predates (§12.6).
+    @test (port(sim, "", :a) === 0.7) ⊻ ((@atomic h.writer.cell.pending) !== nothing)
+    init!(sim)
+    @test (@atomic h.writer.cell.pending) === nothing
 end
 
 @testset "wait_next_snapshot observes ordered boundaries and wakes on the stop (§12.3, §12.4)" begin
@@ -122,7 +127,7 @@ end
     dev = Collector()
     attach!(sim, dev, Enumerated())          # the may-write-nothing degenerate: a pure reader
     init!(sim)
-    run!(sim, 1.0)
+    run!(sim; t_end = 1.0)
     @test dev.log == [:returned]             # exited through the woken wait, before the join
     @test !isempty(dev.seen)                 # at least one boundary observed in ten frames
     @test issorted([b for (_, b) in dev.seen])       # never a stale wake: newest-wins only
@@ -136,7 +141,7 @@ end
 @testset "the boundary ordinal rides in the snapshot (§12.3)" begin
     sim = Simulation(two_slots(); h = 1//10)
     init!(sim)                               # boundary zero: ordinal 0
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test latest(sim).boundary == 5
     @test latest(sim).t ≈ 0.5
     @test logged(sim)[1].boundary == 0
@@ -147,14 +152,15 @@ end
     attach!(sim, Pad("p"), Enumerated("a"))  # a rostered device keeps the loop yielding (§12.2)
     init!(sim)
     stopper = Threads.@spawn (sleep(0.05); stop!(sim))
-    run!(sim, 1.0e6)
+    run!(sim; t_end = 1.0e6)
     wait(stopper)
     @test sim.clock.step < 10^7              # truncated, and stopped is sticky:
     @test !running(sim.plane.roster[1].handle)
-    # The next run owes nothing to this stop: the word clears at its top.
-    k = sim.clock.step
-    run!(sim, (k + 3) * sim.h)
-    @test sim.clock.step == k + 3
+    @test termination(sim).source === :control_stop  # one tag, whichever task spoke (§13.5)
+    # A fresh trajectory owes nothing to this stop: init! clears the word.
+    init!(sim)
+    @test step!(sim; frames = 3) == 3
+    @test sim.clock.step == 3
 end
 
 @testset "a crash is caught, shutdown! runs, the run continues, claims persist (§12.4(6))" begin
@@ -163,7 +169,7 @@ end
     attach!(sim, dev, Enumerated("a"))
     init!(sim)
     logs, _ = Test.collect_test_logs() do
-        run!(sim, 0.5)
+        run!(sim; t_end = 0.5)
     end
     @test sim.clock.step == 5                # the run reached t_end regardless
     @test dev.log == [:loop, :shutdown]      # the bracket held on the crash path
@@ -179,7 +185,7 @@ end
     attach!(sim, Crasher(), Enumerated("a"); should_abort = true)
     init!(sim)
     logs, _ = Test.collect_test_logs() do
-        run!(sim, 1000.0)
+        run!(sim; t_end = 1000.0)
     end
     @test sim.clock.step < 10000             # ended by the crash's stop, not t_end
     @test crash_accounted(sim, logs, "device 1 (Crasher)")
@@ -190,7 +196,7 @@ end
     dev = BadInit()
     attach!(sim, dev, Enumerated("a"))
     init!(sim)
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test dev.log == [:init, :shutdown]      # loop never ran: no task was spawned
     @test sim.clock.step == 5                # flag clear: the run proceeds without it
     # The report was written pre-spawn, addressed by the entry (§12.4), so it
@@ -212,7 +218,7 @@ end
     attach!(sim2, BadInit(), Enumerated("a"); should_abort = true)
     init!(sim2)
     logs, _ = Test.collect_test_logs() do
-        run!(sim2, 0.5)
+        run!(sim2; t_end = 0.5)
     end
     @test sim2.clock.step == 0
     @test any(occursin("DeviceCrash from device 1 (BadInit), past the final", string(l.message))
@@ -225,7 +231,7 @@ end
     attach!(sim, dev, Enumerated())
     init!(sim)
     t0 = time()
-    @test_logs (:warn, r"DeviceJoinTimeout: device 1 \(Stubborn\)") match_mode=:any run!(sim, 0.3)
+    @test_logs (:warn, r"DeviceJoinTimeout: device 1 \(Stubborn\)") match_mode=:any run!(sim; t_end = 0.3)
     @test time() - t0 < 0.6                  # abandoned at ~0.2 s, not the sleep's 0.8 s
     @test :woke ∉ dev.log                    # the straggler had not returned when run! did
     # Abandonment is not a kill: let the straggler expire inside this testset —
@@ -242,7 +248,7 @@ end
     init!(sim)
     t0 = time()
     logs, _ = Test.collect_test_logs() do
-        run!(sim, 0.3)
+        run!(sim; t_end = 0.3)
     end
     @test time() - t0 < 1.5                  # joined promptly, well inside the cap
     @test !any(occursin("DeviceJoinTimeout", string(l.message)) for l in logs)
@@ -255,13 +261,13 @@ end
     attach!(sim, dev, Enumerated())
     init!(sim)
     caller = current_task()
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test dev.task === caller                # the pinning: the body ran on run!'s task
     @test dev.log == [:returned]             # and left through the ordinary predicate
     @test sim.clock.step == 5
     ref = Simulation(two_slots(); h = 1//10) # the movable loop moved nothing else
     init!(ref)
-    run!(ref, 0.5)
+    run!(ref; t_end = 0.5)
     @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
 end
 
@@ -270,7 +276,7 @@ end
     attach!(sim, Loopless(), Enumerated())
     init!(sim)
     logs, _ = Test.collect_test_logs() do
-        run!(sim, 0.2)
+        run!(sim; t_end = 0.2)
     end
     @test sim.clock.step == 2                # the crash is the device's alone
     @test crash_accounted(sim, logs, "device 1 (Loopless)")
@@ -285,7 +291,7 @@ end
         sim = Simulation(two_slots(); h = 1//10, join_timeout = cap)
         attach!(sim, Pad("p"), Enumerated("a"))
         init!(sim)
-        run!(sim, 0.5)
+        run!(sim; t_end = 0.5)
         port(sim, "children/s", :e)
     end
     @test trajectories[1] === trajectories[2]

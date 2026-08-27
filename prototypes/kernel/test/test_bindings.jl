@@ -43,7 +43,9 @@ claims(::Duplex) = ("a",)
 reads(::Duplex) = (; echo = get_slot("a"), e = get_output("children/s", "e"))
 
 # A poll-once input device: assembles one datum, stages it through the loop
-# idiom — map_input against the handle's own binding — and requests the stop.
+# idiom — map_input against the handle's own binding — then holds its loop
+# until a snapshot shows the write applied, and requests the stop: the full
+# poll → stage → observe cycle, deterministic by construction.
 mutable struct Poller <: AbstractDevice
     datum::NamedTuple
     fired::Bool
@@ -52,8 +54,13 @@ Poller(datum) = Poller(datum, false)
 function loop(d::Poller, h)
     d.fired && return nothing
     d.fired = true
-    stage!(h, map_input(d.datum, binding(h))...)
-    stop!(h)
+    pairs = map_input(d.datum, binding(h))
+    stage!(h, pairs...)
+    (f, v) = first(pairs)
+    while running(h)
+        snap = wait_next_snapshot(h)
+        port(snap, "", Symbol(f)) === v && (stop!(h); break)
+    end
     nothing
 end
 
@@ -132,8 +139,7 @@ end
                                        thr   = (face = "b",)))
     @test binding(h) === sim.plane.roster[1].binding
     init!(sim)
-    run!(sim, 1000.0)                        # ends by the device's stop
-    run!(sim, (sim.clock.step + 1) * sim.h)  # one more frame: the drain applies it
+    run!(sim; t_end = 1000.0)                # ends by the device's stop, past its observed apply
     @test port(sim, "", :a) ≈ 0.5            # (0.55 − 0.1) / 0.9: conditioned at staging
     @test port(sim, "", :b) === 0.7          # pass-through, bitwise
     # The device-staged trajectory is the directly-staged one: conditioning ran
@@ -143,7 +149,7 @@ end
     ref_val = last(only(map_input((; stick = 0.55),
                                   TableBinding(stick = (face = "a", deadzone = 0.1)))))
     stage!(ref, "a" => ref_val, "b" => 0.7)
-    run!(ref, (sim.clock.step) * sim.h)
+    run!(ref; t_end = sim.clock.step * sim.h)
     @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
     # An unknown channel in a real loop body crashes the device by name, the
     # run continuing (§11.6: any non-datum exception propagates to the wrapper).
@@ -151,7 +157,7 @@ end
     attach!(sim2, Poller((; wheel = 0.1)), TableBinding(stick = (face = "a",)))
     init!(sim2)
     logs, _ = Test.collect_test_logs() do
-        run!(sim2, 0.2)
+        run!(sim2; t_end = 0.2)
     end
     @test sim2.clock.step == 2               # the crash is the device's alone
     @test crash_accounted(sim2, logs, "device 1 (Poller)")
@@ -197,7 +203,7 @@ end
                                   cmd = get_slot("u")))
     init!(sim)
     stage!(sim, "u" => 2.0)
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test !isempty(dev.wire)
     # map_output received the labeled NamedTuple, labels in reads order.
     @test all(keys(nt) == (:alt, :raw, :cmd) for nt in dev.wire)
@@ -226,7 +232,7 @@ end
     @test sim.plane.roster[1].writer.faces == [:a]     # the input half: the claim staked
     init!(sim)
     stage!(h, "a" => 0.4)
-    run!(sim, 0.2)
+    run!(sim; t_end = 0.2)
     nt = gather(h, latest(sim))                        # the output half: the gather compiled
     @test nt.echo === 0.4                              # the slot read back through get_slot
     @test nt.e === port(sim, "children/s", :e)

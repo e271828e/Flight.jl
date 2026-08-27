@@ -79,16 +79,16 @@ end
     stage!(ha, "a" => 1.0)
     stage!(hb, "b" => 2)                             # the shim converts to the slot's Float64
     @test port(sim, "", :a) === 0.0                  # staged is pending, never applied (§11.1)
-    run!(sim, 0.1)
+    step!(sim; frames = 1)
     @test port(sim, "", :a) === 1.0
     @test port(sim, "", :b) === 2.0
     # Out-of-claim is always OutOfClaimEntry for a device — naming the incumbent
     # when the face is claimed elsewhere — and the rest of the batch stands.
     # The rejection lands in the *staging* device's own cell (§11.8), folded
-    # into its record at the next run's first frame top.
+    # into its record at the next frame top.
     stage!(ha, "b" => 9.0, "a" => 3.0)
     stage!(ha, "flaps" => 1.0)
-    run!(sim, 0.2)
+    step!(sim; frames = 1)
     @test port(sim, "", :a) === 3.0
     @test port(sim, "", :b) === 2.0
     dw = writer_status(latest(sim), "device 1 (Pad)")
@@ -99,7 +99,7 @@ end
     # The empty enumeration: an honest may-write-nothing degenerate (§11.6).
     hc = attach!(sim, Pad("dc"), Enumerated())
     stage!(hc, "a" => 9.0)
-    entry = only((@atomic hc.diag.batch).ring)       # pending in the cell until the next run
+    entry = only((@atomic hc.diag.batch).ring)       # pending in the cell until the next drain
     @test entry isa OutOfClaimEntry
     @test entry.surface == Symbol[] && entry.incumbent == "device 1 (Pad)"
 end
@@ -112,7 +112,7 @@ end
     @test sim.plane.roster[2].writer.faces == [:b]
     init!(sim)
     stage!(hg, "b" => 5.0)
-    run!(sim, 0.1)
+    run!(sim; t_end = 0.1)
     @test port(sim, "", :b) === 5.0
     # Past the attach point nothing downstream tells the sources apart.
     stage!(hg, "a" => 9.0)
@@ -144,29 +144,29 @@ end
     init!(sim)
     stage!(sim, "a" => 1.0)                          # claimed: rejected into the harness cell
     stage!(sim, "b" => 2.0)
-    run!(sim, 0.1)
+    step!(sim; frames = 1)
     @test port(sim, "", :a) === 0.0
     @test port(sim, "", :b) === 2.0
     cfe = only(writer_status(latest(sim), "harness").recent)
     @test cfe isa ClaimedFaceEntry && cfe.face === :a
     @test cfe.incumbent == "device 1 (Pad)" && cfe.site === :staging
-    # Detach releases the claims: the surface regains the face from the next run.
+    # Detach releases the claims: the surface regains the face from the next frame.
     detach!(sim, d)
     @test sim.plane.harness.faces == [:a, :b]
     stage!(sim, "a" => 3.0)
-    run!(sim, 0.2)
+    step!(sim; frames = 1)
     @test port(sim, "", :a) === 3.0
 end
 
 @testset "the recompilation seam: a pending harness batch is renormalized at attach (§11.4)" begin
     sim = Simulation(two_slots(); h = 1//10)
+    init!(sim)                                       # first: a pre-init! batch would clear (§12.6)
     stage!(sim, "a" => 1.0, "b" => 2.0)              # staged while stopped, roster still empty
     # The attach reshapes the pending batch through the new schema, discarding
     # the newly claimed face into the harness cell with the incumbent and the
     # site named.
     attach!(sim, Pad("d"), Enumerated("a"))
-    init!(sim)
-    run!(sim, 0.1)
+    run!(sim; t_end = 0.1)
     @test port(sim, "", :a) === 0.0                  # discarded at the attach, never drained
     @test port(sim, "", :b) === 2.0                  # reshaped, re-staged, drained
     cfe = only(writer_status(latest(sim), "harness").recent)
@@ -174,12 +174,12 @@ end
     @test cfe.incumbent == "device 1 (Pad)" && cfe.site === :renormalization
     # At detach the surface only broadens: every pending entry survives.
     sim2 = Simulation(two_slots(); h = 1//10)
+    init!(sim2)
     d2 = Pad("d2")
     attach!(sim2, d2, Enumerated("a"))
     stage!(sim2, "b" => 4.0)
     detach!(sim2, d2)
-    init!(sim2)
-    run!(sim2, 0.1)
+    run!(sim2; t_end = 0.1)
     @test port(sim2, "", :b) === 4.0
 end
 
@@ -200,8 +200,8 @@ end
     d = Pad("d")
     @test attach!(sim, d, Enumerated("u")).id == 1   # also warms both compile paths, so
     detach!(sim, d)                                  # the mid-run checks below race no JIT
-    t = Threads.@spawn run!(sim, 1.0)                # 100k frames: alive throughout the checks
-    while !(@atomic sim.plane.running)
+    t = Threads.@spawn run!(sim; t_end = 1.0)                # 100k frames: alive throughout the checks
+    while lifecycle(sim) !== :running
         yield()
     end
     # Inline try/catch rather than `failure`: a fresh closure would JIT-compile
@@ -222,16 +222,16 @@ end
     ha = attach!(sim, da, Enumerated("a"))
     hb = attach!(sim, db, Enumerated("b"))
     init!(sim)
-    run!(sim, 0.3)
+    step!(sim; t_plus = 0.3)
     stage!(ha, "a" => 0.7)
     stage!(hb, "b" => -1.3)
-    run!(sim, 0.8)
+    step!(sim; t_plus = 0.5)
     ref = Simulation(two_slots(); h = 1//10)
     init!(ref)
-    run!(ref, 0.3)
+    step!(ref; t_plus = 0.3)
     set_slot!(ref, "a", 0.7)
     set_slot!(ref, "b", -1.3)
-    run!(ref, 0.8)
+    step!(ref; t_plus = 0.5)
     @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
 end
 

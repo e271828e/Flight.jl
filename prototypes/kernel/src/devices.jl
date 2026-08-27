@@ -2,8 +2,9 @@
 # lifecycle slice: the handle every attached device receives, the authoring
 # contract's four functions, the framework wrapper around the author-owned
 # loop body, the pre-spawn init bracket and the tail. The control surface here
-# is §12.1's stop word and §12.3's counter-plus-condition wait, nothing more:
-# pause, pacing and the operator interrupt are absent (README). A device
+# is §12.1's stop word, §12.3's counter-plus-condition wait and §12.6's
+# lifecycle with §13.5's termination record beside it: pause, pacing and the
+# operator interrupt are absent (README). A device
 # failure reports as `DeviceCrash` into the device's own diagnostic cell
 # (§11.8, §12.4); what the tail alone produces — the join timeout, and
 # whatever landed past the final frame top — presents through the logging
@@ -15,16 +16,44 @@
 # include order only — they run once per run, never inside a frame.
 
 """
-The control surface — §12.1's stop, nothing else. `stop_requested` is the
-control-plane stop word: set by `stop!` from any task, consulted by the loop
-at frame top, cleared at the top of the next run (which is what lets an init
-bracket's `should_abort` failure leave a stop *already pending* at the run's
-start, §12.4). `stopped` is §12.4(1)'s sticky status: set only after the
+§13.5's termination record: the run's *outcome*, where the deployment carries
+its policy — which source ended the run, so a stopped simulation answers "why
+did it stop?" without its consumer reconstructing the answer from the clock.
+`source` is `:t_end`, `:stop_on` — with `face` the first named face observed
+holding, in the declaration order — `:control_stop` — the wall-clock channel,
+one tag whether the word came from a device handle or calling code — or
+`:error`, §13.6's abnormal entry, with `exception` the retained cause (raw:
+§13.4's `StepError` wrap and its cursor are absent, README). `t` is the final
+snapshot's boundary time. The fourth spec source, the operator interrupt, is
+absent with its machinery. `init!` clears the record with the trajectory.
+`t` is untyped because it is the snapshot's own boundary time, in whatever
+scalar the deployment bound (§7.2).
+"""
+struct Termination
+    source::Symbol
+    face::Union{Nothing,Symbol}
+    t::Any
+    exception::Any
+end
+
+"""
+The control surface — §12.1's stop and §12.6's lifecycle. `stop_requested` is
+the control-plane stop word: set by `stop!` from any task, consulted by the
+loop at frame top, cleared at the top of the next run (which is what lets an
+init bracket's `should_abort` failure leave a stop *already pending* at the
+run's start, §12.4) and at `init!` (a fresh trajectory owes nothing to the
+last one's stop). `stopped` is §12.4(1)'s sticky status: set only after the
 final snapshot is published, and read by `running(handle)`, which is how loop
-bodies observe the run's end. The §11.3 freeze (`plane.running`) stays a
-separate flag deliberately: it spans the whole of `run!`, tail included,
-while `stopped` flips at tail step (1) so device loops exit while the joins
-are still ahead.
+bodies observe the run's end.
+
+`lifecycle` is §12.6's five-state machine: `:built`, `:initialized`,
+`:running`, and terminally `:stopped` or `:errored` (§13.6). `:running` is
+the §11.3 freeze, and it deliberately spans the whole of `run!` — tail
+included, the terminal state landing in the outermost `finally` — while
+`stopped` flips at tail step (1), so device loops exit while the joins are
+still ahead. `termination` is the §13.5 record beside it, written by the
+run's own task before the terminal state's release-store; readers reach both
+through `lifecycle(sim)`/`termination(sim)`, never the raw fields.
 
 `cond` and `counter` are §12.3's two artifacts: the counter counts *published
 boundaries* — grid, `t*`, boundary zero — mirrored under the lock right
@@ -39,8 +68,22 @@ mutable struct Control
     @atomic stopped::Bool
     cond::Threads.Condition
     counter::Int
+    @atomic lifecycle::Symbol
+    termination::Union{Nothing,Termination}
 end
-Control() = Control(false, true, Threads.Condition(), 0)
+Control() = Control(false, true, Threads.Condition(), 0, :built, nothing)
+
+"""
+The §11.3 freeze, keyed on the lifecycle (§12.6): `attach!`, `detach!` and the
+stopped-sim readers are refused exactly while `run!` or `step!` holds the
+simulation `:running` — which spans the tail, so a roster change cannot race
+the joins. Every other state admits them, `:errored` included: post-mortem
+inspection of a terminally stopped simulation is legitimate (§13.6).
+"""
+assert_stopped(ctl::Control, op::String) =
+    (@atomic ctl.lifecycle) === :running ? throw(BuildError(
+        "ServiceLifecycle: `$op` is a stopped-sim operation and the simulation is " *
+        "running — the roster is frozen per run (§11.3, §12.5)")) : nothing
 
 """
 The handle (§11.6): the one object every attached device receives, carrying

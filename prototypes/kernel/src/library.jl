@@ -388,6 +388,48 @@ relaxer_handler(c::Relaxer, (; x, m)) =
     (x = (q = c.level - c.drop,), m = (count = m.count + 1,))
 events(::Relaxer) = (pop = Event(relaxer_guard, relaxer_handler),)
 
+# --- the termination coverage set (§13.5, §13.6) -------------------------------
+
+"""
+Overload monitor: §13.5's touchdown archetype — a **sign-form** guard on its
+input against a level, a handler that latches `m.tripped`, and the sticky
+`Bool` output face a `stop_on` policy names. The sign form declares the event
+localized, so a run stopped on `tripped` ends at the crossing's `t*` boundary
+with the crossing state as the terminal snapshot.
+"""
+struct Overload <: AbstractComponent
+    level::Float64
+end
+
+init_m(::Overload) = (tripped = false,)
+input_types(::Overload, ::Type{T}) where {T <: Real} = (sig = T,)
+output_types(::Overload, ::Type{T}) where {T <: Real} = (tripped = Bool,)
+
+h_x(::Overload, (; m)) = (tripped = m.tripped,)
+
+overload_guard(c::Overload, (; u)) = u.sig - c.level
+overload_handler(::Overload, (; m)) = (m = (tripped = true,),)
+events(::Overload) = (trip = Event(overload_guard, overload_handler),)
+
+"""
+Exploder: the §13.6 specimen — `q̇ = 1` until its `arm` input goes true, then
+its RHS throws `Exploded`. The throw escapes mid-integration, so the failing
+frame has published nothing: what the abnormal tail leaves as final is the
+last completed boundary's snapshot, which is the §13.6 discard-and-promote
+made observable.
+"""
+struct Exploder <: AbstractComponent end
+
+"Exploder's own exception type, so the tests assert the retained cause's identity."
+struct Exploded <: Exception end
+
+init_x(::Exploder) = (q = 0.0,)
+input_types(::Exploder, ::Type{T}) where {T <: Real} = (arm = Bool,)
+output_types(::Exploder, ::Type{T}) where {T <: Real} = (q = T,)
+
+h_x(::Exploder, (; x)) = (q = x.q,)
+f(::Exploder, (; x, u)) = u.arm ? throw(Exploded()) : (q = one(x.q),)
+
 # --- the anonymous assembly (§8.5) --------------------------------------------
 
 """

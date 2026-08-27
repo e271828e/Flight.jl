@@ -80,15 +80,15 @@ end
     @test port(sim, "fcs/inner", :out) == 1.0
     @test port(sim, "gnss", :out) == 1.0
 
-    run!(sim, 2 * 0.002)                             # base tick 2: outer's first tick
+    step!(sim; frames = 2)                           # base tick 2: outer's first tick
     @test port(sim, "fcs/inner", :out) ≈ 1.004       # fresh at every tick
     @test port(sim, "fcs/outer", :out) == 1.0        # gnss's k = 0 sample: two ticks old
-    run!(sim, 7 * 0.002)                             # base tick 7
+    step!(sim; frames = 5)                           # base tick 7
     @test port(sim, "fcs/outer", :out) == 1.0        # the same sample, seven ticks old
     @test port(sim, "gnss", :out) == 1.0             # gnss itself holds until k = 10
-    run!(sim, 10 * 0.002)
+    step!(sim; frames = 3)                           # base tick 10
     @test port(sim, "gnss", :out) ≈ 1.02             # its second tick
-    run!(sim, 12 * 0.002)
+    run!(sim; t_end = 12 * 0.002)
     @test port(sim, "fcs/outer", :out) ≈ 1.02        # re-aged two ticks at k = 12
 end
 
@@ -104,7 +104,7 @@ end
     # `a` ticks at the odd indices and `b` at 5 alone.
     init!(sim)
     @test state(sim, "children/f/children/a") === (n = 0,)
-    run!(sim, 10 * 0.01)
+    run!(sim; t_end = 10 * 0.01)
     @test state(sim, "children/f/children/a") === (n = 5,)
     @test state(sim, "children/f/children/b") === (n = 1,)
 
@@ -134,7 +134,7 @@ end
     @test s3.n == 2 && s3.sched == s2.sched == s4.sched
 
     # Nothing writable is shared: each Simulation materializes its own buffers.
-    init!(s1); run!(s1, 0.02)
+    init!(s1); run!(s1; t_end = 0.02)
     init!(s2)
     @test port(s1, "fcs/inner", :out) ≈ 1.02
     @test port(s2, "fcs/inner", :out) == 1.0
@@ -184,9 +184,9 @@ end
     sim = Simulation(late; h = 1//100)
     init!(sim)
     @test port(sim, "", :y) == 5.0                   # probe-populated, not swept
-    run!(sim, 0.01)                                  # base tick 1: the first tick
+    step!(sim)                                       # base tick 1: the first tick
     @test port(sim, "", :y) ≈ 5.01
-    run!(sim, 0.02)                                  # base tick 2: not due, holds
+    step!(sim)                                       # base tick 2: not due, holds
     @test port(sim, "", :y) ≈ 5.01
 end
 
@@ -215,7 +215,7 @@ end
     @test sim.sched[1].Δt ≈ Δt_ctl
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, N * Δt_ctl)
+    run!(sim; t_end = N * Δt_ctl)
     @test state(sim, "plant").q ≈ q rtol = 1e-6
     @test port(sim, "ctl", :u) ≈ s rtol = 1e-6
 end

@@ -30,7 +30,7 @@ end
         sim = Simulation(feedback_model(; k, ω, ζ); h, method)
         set_slot!(sim, "ref", r)
         init!(sim)
-        run!(sim, 2.0)
+        run!(sim; t_end = 2.0)
         norm(state(sim, "children/plant").q - exact(2.0))
     end
     hs = (1//10, 1//20, 1//40, 1//80)   # errors 5e-8..2e-4: well above float noise
@@ -49,7 +49,7 @@ end
               ("children/src/q" => "children/s/sig",), (), ())
     sim = Simulation(m; h = 1//10, method = Heun)
     init!(sim)
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test modes(sim, "children/s").count == 1
     @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
 
@@ -62,7 +62,7 @@ end
                    ("children/src/c" => "children/s/sig",), (), ())
         simr = Simulation(mr; h, method = Heun)
         init!(simr)
-        run!(simr, 1.5)
+        run!(simr; t_end = 1.5)
         @test modes(simr, "children/s").count == 1
         abs(modes(simr, "children/s").t_fired - π / 3)
     end
@@ -74,9 +74,9 @@ end
     # falls through to fire at the indexed grid time bitwise under Heun too.
     simf = Simulation(fed(Stamper(0.5), "sig"); h = 1//10, method = Heun)
     init!(simf)
-    run!(simf, 0.3)
+    step!(simf; t_plus = 0.3)
     set_slot!(simf, "in", 1.0)
-    run!(simf, 0.6)
+    step!(simf; t_plus = 0.3)
     @test modes(simf, "children/c").t_fired == 4 * simf.h
 end
 
@@ -97,6 +97,6 @@ end
     sim = Simulation(feedback_model(), D8; h = 1//1000, method = Heun)
     set_slot!(sim, "ref", D8(0.7))
     init!(sim)
-    run!(sim, 0.05)
+    run!(sim; t_end = 0.05)
     @test state(sim, "children/plant").q isa SVector{2,D8}
 end

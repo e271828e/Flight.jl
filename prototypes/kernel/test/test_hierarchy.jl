@@ -17,7 +17,7 @@
     @test sim.flat.paths == ["loop/plant", "loop/ctl", "loop/sum", "trim"]
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, N * Δt)
+    run!(sim; t_end = N * Δt)
     @test state(sim, "loop/plant").q ≈ q rtol = 1e-6
     @test port(sim, "loop", :cmd) ≈ s rtol = 1e-6
 end
@@ -26,7 +26,7 @@ end
     sim = Simulation(Vehicle(); h = 1//50)
     set_slot!(sim, "ref", 1.0)
     init!(sim)
-    run!(sim, 0.1)
+    run!(sim; t_end = 0.1)
     # A face is its endpoint: no cell of its own, at any level of re-export.
     @test port(sim, "loop", :y) === port(sim, "loop/plant", :y)
     @test port(sim, "", :y) === port(sim, "loop/plant", :y)

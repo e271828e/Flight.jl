@@ -10,12 +10,12 @@
               ("children/src/q" => "children/s/sig",), (), ())
     sim = Simulation(m; h = 1//10)
     init!(sim)
-    run!(sim, 0.5)
+    step!(sim; t_plus = 0.5)
     @test modes(sim, "children/s").count == 1
     @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
     @test modes(sim, "children/s").t_fired ≥ 0.315          # the holding endpoint
     @test port(sim, "children/s", :armed) === false         # the t* re-sweep published it
-    run!(sim, 0.9)                                          # sticky: no further edge
+    step!(sim; t_plus = 0.4)                                # sticky: no further edge
     @test modes(sim, "children/s").count == 1
 end
 
@@ -26,7 +26,7 @@ end
     # firings would have accumulated a full overshoot per reset.
     sim = Simulation(single(Bouncer(1.0, 0.315)); h = 1//10)
     init!(sim)
-    run!(sim, 2.0)                                          # resets at 0.315·k, k = 1..6
+    run!(sim; t_end = 2.0)                                          # resets at 0.315·k, k = 1..6
     @test modes(sim, "children/c").count == 6
     @test state(sim, "children/c").q ≈ 2.0 - 6 * 0.315 atol = 1e-5
 end
@@ -39,7 +39,7 @@ end
               ("children/src/c" => "children/s/sig",), (), ())
     sim = Simulation(m; h = 1//10)
     init!(sim)
-    run!(sim, 1.5)
+    run!(sim; t_end = 1.5)
     @test modes(sim, "children/s").count == 1
     @test modes(sim, "children/s").t_fired ≈ π / 3 atol = 1e-5
 end
@@ -51,10 +51,10 @@ end
     # the frame top's ordinary iteration and stamps the indexed grid time.
     sim = Simulation(fed(Stamper(0.5), "sig"); h = 1//10)
     init!(sim)
-    run!(sim, 0.3)
+    step!(sim; t_plus = 0.3)
     @test modes(sim, "children/c").count == 0
     stage!(sim, "in" => 1.0)                     # staged, drained at the next frame top (§11.4)
-    run!(sim, 0.6)
+    step!(sim; t_plus = 0.3)
     @test modes(sim, "children/c").count == 1
     @test modes(sim, "children/c").t_fired == 4 * sim.h     # the grid point itself
 end
@@ -67,7 +67,7 @@ end
               ("children/src/out" => "children/s/sig",), (), ())
     sim = Simulation(m; h = 1//10)
     init!(sim)
-    run!(sim, 0.6)
+    run!(sim; t_end = 0.6)
     @test modes(sim, "children/s").count == 1
     @test modes(sim, "children/s").t_fired == 4 * sim.h
 end
@@ -78,7 +78,7 @@ end
                   "children/src/q" => "children/s2/sig"), (), ())
     sim = Simulation(m2(); h = 1//10)
     init!(sim)
-    @test_logs run!(sim, 0.5)                               # both localize: no degradation
+    @test_logs run!(sim; t_end = 0.5)                               # both localize: no degradation
     @test modes(sim, "children/s1").t_fired ≈ 0.31 atol = 1e-6
     @test modes(sim, "children/s2").t_fired ≈ 0.34 atol = 1e-6
     @test modes(sim, "children/s1").t_fired < modes(sim, "children/s2").t_fired
@@ -91,7 +91,7 @@ end
                 "children/src/q" => "children/s2/sig"), (), ())
     simt = Simulation(mt; h = 1//10, localization_budget = 1)
     init!(simt)
-    @test_logs run!(simt, 0.5)
+    @test_logs run!(simt; t_end = 0.5)
     @test modes(simt, "children/s1").t_fired == modes(simt, "children/s2").t_fired
     @test modes(simt, "children/s1").t_fired ≈ 0.315 atol = 1e-6
     @test writer_status(latest(simt), "loop").totals.chattering == 0
@@ -101,7 +101,7 @@ end
     # stamping the frame top.
     simb = Simulation(m2(); h = 1//10, localization_budget = 1)
     init!(simb)
-    run!(simb, 0.5)                    # the degradation reports on the loop's cell (§11.8)
+    run!(simb; t_end = 0.5)                    # the degradation reports on the loop's cell (§11.8)
     @test modes(simb, "children/s1").t_fired ≈ 0.31 atol = 1e-6
     @test modes(simb, "children/s2").t_fired == 4 * simb.h
     lw = writer_status(latest(simb), "loop")
@@ -125,7 +125,7 @@ end
     # presents it through the logging backend instead, the tail's renderer of
     # last resort (§11.8, D-201).
     @test_logs (:warn, r"ChatteringBudget from loop, past the final snapshot's account.*children/c") #=
-        =# run!(sim, 0.1)
+        =# run!(sim; t_end = 0.1)
     @test modes(sim, "children/c").count == 9               # 8 at t*, 1 at the frame top
     @test state(sim, "children/c").q ≈ 0.049 atol = 1e-12   # the frame-top firing re-armed it
 end
@@ -142,7 +142,7 @@ end
     sim = Simulation(gated(); h = 1//10)
     set_slot!(sim, "gate", true)
     init!(sim)
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
 
     # Gate flipped at a frame top, with σ already past the level: the edge is
@@ -150,10 +150,10 @@ end
     # the frame top exactly — epoch-caused, never root-found.
     sim2 = Simulation(gated(); h = 1//10)
     init!(sim2)
-    run!(sim2, 0.5)
+    step!(sim2; t_plus = 0.5)
     @test modes(sim2, "children/s").count == 0              # gate down: -one(σ) throughout
     stage!(sim2, "gate" => true)                            # the u seam, through the drain (§11.4)
-    run!(sim2, 0.8)
+    step!(sim2; t_plus = 0.3)
     @test modes(sim2, "children/s").count == 1
     @test modes(sim2, "children/s").t_fired == 6 * sim2.h
 end
@@ -167,7 +167,7 @@ end
                "children/src/q" => "children/ctl/e"), (), ())
     sim = Simulation(m; h = 1//10)
     init!(sim)
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test modes(sim, "children/s").count == 1               # the event did localize
     @test state(sim, "children/ctl").acc ≈ 0.1 * (0.0 + 0.1 + 0.2 + 0.3 + 0.4 + 0.5) rtol = 1e-9
 end
@@ -188,7 +188,7 @@ end
     sim = Simulation(single(Bouncer(1.0, 0.315)), D8; h = 1//10)
     @test !sim.has_localized
     init!(sim)
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     @test ForwardDiff.value(state(sim, "children/c").q) ≈ 0.5 rtol = 1e-12
 end
 
@@ -198,7 +198,7 @@ end
                ("children/src/q" => "children/s/sig",), (), ())
     simq = Simulation(mq; h = 1//10)
     init!(simq)
-    run!(simq, 0.2)
+    run!(simq; t_end = 0.2)
     @test @ballocated(frame!($simq, 3)) == 0
 
     # A localizing frame: one crossing, θ = 0 validation, ẋₙ₊₁, the bracketing

@@ -21,11 +21,14 @@ top with the state and table at their arrival values — the frame-top boundary
 itself is the caller's, exactly as before. A model with no localized events
 (every non-nominal activation included, its events having compiled out) takes
 the bare step: no arrival machinery, no extra sweep, today's exact path.
+The one exception is a §13.5 stop observed at a `t*` publication: the frame's
+remainder was abandoned, so the clock stays at `t*` — where the stores are —
+and the frame top is never stamped.
 """
 function frame!(sim::Simulation{T}, k::Int) where {T}
     t_to = _grid_time(sim, k)
     sim.has_localized ? _localized_frame!(sim, t_to) : step!(sim, T(sim.h))
-    sim.clock.t = t_to
+    sim.policy.hit === nothing && (sim.clock.t = t_to)
     nothing
 end
 
@@ -137,6 +140,16 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
         sim.clock.t = t_seg + θ★ * h′
         offtick_boundary!(sim)
         publish!(sim)
+
+        # Every publication is a stop-face sampling point (§13.5): a face
+        # holding in the t* snapshot makes it the final one — the frame's
+        # remainder is abandoned, and the hit reaches the loop through the
+        # policy seam.
+        face = _stop_hit(sim, sim.policy)
+        if face !== nothing
+            sim.policy.hit = face
+            return nothing
+        end
         count += 1
     end
 end

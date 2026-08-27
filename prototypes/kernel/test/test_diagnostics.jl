@@ -58,10 +58,10 @@ end
 @testset "a bad datum is tolerated: catch, stage nothing, report, continue (§11.6)" begin
     sim = Simulation(two_slots(); h = 1//10)
     dev = Parser(0.7, "garbage", 0.9)
-    attach!(sim, dev, Enumerated("a"))
+    hp = attach!(sim, dev, Enumerated("a"))
     init!(sim)
     logs, _ = Test.collect_test_logs() do
-        run!(sim, 1000.0)                        # ends by the device's stop
+        run!(sim; t_end = 1000.0)                        # ends by the device's stop
     end
     msgs = [string(l.message) for l in logs]
     # The link survived its truncated datagram: no crash, and the report is
@@ -75,10 +75,11 @@ end
                   for s in logged(sim)
                   for d in writer_status(s, "device 1 (Parser)").recent)
     @test carried ⊻ any(occursin("unparseable", m) for m in msgs)
-    # The stream's good datums reached the slot (newest wins within the staged
-    # batch, applied at the next run's first drain).
-    run!(sim, (sim.clock.step + 1) * sim.h)
-    @test port(sim, "", :a) === 0.9
+    # The stream's good datums survived — newest wins within the staged batch —
+    # applied by a drain the stop did not beat, or still pending in the cell:
+    # exactly one of the two, timing's choice.
+    p = @atomic hp.writer.cell.pending
+    @test (p === nothing ? port(sim, "", :a) : p[].vals[1]) === 0.9
 end
 
 @testset "the ring's bound is the rate limit: 16 retained, excess to the counts (§11.8)" begin
@@ -88,7 +89,7 @@ end
     for k in 1:20                                # one frame's flood, pending in the cell
         report!(h, MalformedDatum("datum $k"))
     end
-    run!(sim, 0.1)                               # the first frame top folds the cell
+    run!(sim; t_end = 0.1)                               # the first frame top folds the cell
     mw = writer_status(latest(sim), "device 1 (Pad)")
     # Earliest-in-frame retained: the first occurrences carry the diagnostic
     # content, the excess becomes exactly a per-kind count beside them.
@@ -114,7 +115,7 @@ end
     @test writer_status(latest(sim), "loop").heartbeat === nothing
     @test !stale(writer_status(latest(sim), "harness"))
     report!(h, MalformedDatum("one"))            # pending before the run: folded at frame 1's top
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     snaps = logged(sim)                          # boundary zero, then frames 1..5
     dw(s) = writer_status(s, "device 1 (Pad)")
     # Exactly one snapshot carries the occurrence in `recent` — the first
@@ -132,7 +133,7 @@ end
     dev = Ticker()
     attach!(sim, dev, Enumerated())
     init!(sim)
-    run!(sim, 1000.0)                            # ends by the device's stop, ≥ 3 boundaries in
+    run!(sim; t_end = 1000.0)                            # ends by the device's stop, ≥ 3 boundaries in
     @test dev.n ≥ 3
     tw = writer_status(latest(sim), "device 1 (Ticker)")
     # The device consumed boundaries through the handle primitives, each pass
@@ -150,14 +151,17 @@ end
     attach!(sim, dev, Enumerated())
     init!(sim)
     logs, _ = Test.collect_test_logs() do
-        run!(sim, 1000.0)
+        run!(sim; t_end = 1000.0)
     end
     # The report races the last frame top: folded into the terminal status, or
     # — no drain remaining — presented by the sweep, the tail's renderer of
     # last resort. Exactly one account either way (§11.8, D-201).
     @test accounted(sim, logs, "device 1 (LateReporter)", :malformed, "MalformedDatum")
-    # A fresh run opens a fresh account: totals count since the run began.
-    run!(sim, (sim.clock.step + 2) * sim.h)
+    # A fresh trajectory opens a fresh account (§11.8): init! resets the
+    # totals, and the stepped frames — deviceless, the reporter never respawns —
+    # publish a zeroed record for it.
+    init!(sim)
+    step!(sim; frames = 2)
     @test writer_status(latest(sim), "device 1 (LateReporter)").totals.malformed == 0
 end
 

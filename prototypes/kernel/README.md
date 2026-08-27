@@ -5,11 +5,12 @@ built to keepable standards and grown one increment at a time. Increment 1 (the
 cell-store representation bench) lives in `../cellstore_bench` and stays frozen
 there — D-162 cites its numbers.
 
-Increments 2–14 are built: the two tiers, hierarchy and assemblies, the
+Increments 2–16 are built: the two tiers, hierarchy and assemblies, the
 multi-rate grid, events with localization, the stepper seam (RK4/Heun), the
 data plane's core exchange, the roster and claims, the log, the device
-contract with its tasks and the run's end, the binding's runtime half, and
-the diagnostic channel with its published framework status.
+contract with its tasks and the run's end, the binding's runtime half, the
+diagnostic channel with its published framework status, and the run
+lifecycle with its termination policy and record.
 The per-increment narrative and the property-by-property record of what the
 tests pin down live in `NOTES.md` — optional reading, for when you are
 modifying an existing test or wondering why one asserts what it does; new
@@ -36,7 +37,8 @@ increments add their paragraph and property bullets there.
 | the device contract and its tasks: the four contract functions (no-op resource defaults, the error-throwing `loop` fallback), the handle as the capability carrier — `stage!`, `latest`, `wait_next_snapshot`, `running`, `stop!`, `binding`, `gather`, `report!`, never the `Simulation` — the wrapper (crash → `DeviceCrash`, `shutdown!` on every exit path, `should_abort` at departure), §11.1's topology (run-scoped spawn per live entry, the movable loop, the inline calling-task body, topology derived after initialization), the §12.4 init bracket and tail (1)–(5) under the shared `join_timeout` deadline, and the §12 slices beneath them — the §12.1 stop word, §12.3's wait (counter mirrored under the condition's lock, release-store before increment, monotonic across runs, the ordinal in the snapshot) and §12.2's per-frame yield | §11.6, §11.1, §12.4, §12.1, §12.2, §12.3, D-198 | `src/devices.jl`, `src/sim.jl` |
 | the binding's runtime half: `TableBinding` — the table in the type, the validating constructor, `claims` derived from the entries — with its generic `map_input` (sparse over the datum, an unknown channel a deliberate throw) and the conditioning helper (deadzone rescale, expo blend `(1−e)·a + e·a³`, endpoints fixed, pass-through where no parameter is declared), the loop-idiom conventions the framework never calls, §14.4's table selectors as deferred-read values (`get_output`/`get_slot`/`get_face`, whole cells), `reads` fixed as a labeled NamedTuple, resolved at attach (`ReadBindingUnresolved`, the two root registers discriminated) and compiled to one gather — the compiled scatter's mirror — behind `gather(handle, snap)`, the conformance check completed over both (trait, method) pairs with the error-throwing `reads` fallback, and the output-only attach staking no claim | §11.6, §11.4, §11.2, §14.4 | `src/bindings.jl`, `src/roster.jl`, `src/devices.jl` |
 | the diagnostic channel and the framework status: the closed kind set as types — `MalformedDatum` (`report!`'s one author-facing kind, the payload the cause, attribution the cell's), the three staging kinds written at staging on the writer's task, the two budget degradations on the loop's own cell, `DeviceCrash` from the wrapper and the init bracket — over the fixed-shape isbits `KindCounts`; one cell per writer (each rostered device's, the harness register's, the loop's own) with the ring of `DIAG_RING` = 16 plus per-kind suppressed counts (earliest-in-frame retained), the CAS append mirroring the staging cell's, and the heartbeat field the handle primitives store (`stale` against the 2 s threshold, initial `0.0` = dead-from-boundary-zero); the frame-top fold into per-writer accounts, the published `FrameworkStatus` every snapshot carries — `recent` riding exactly one snapshot, `totals` monotone since the run began, `heartbeat` and `task_state` (D-193, off the run's task registry) fresh per publication — and the run's-end sweep behind the tail | §11.8, §13.2, §11.2, §12.2, §12.4, §11.6 | `src/dataplane.jl`, `src/roster.jl`, `src/devices.jl`, `src/sim.jl`, `src/localize.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity, immediate-return loop bodies), the `Enumerated`/`Greedy` bindings, one per claim source, and `Readout`, the output side's coverage binding with the identity `map_output` | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6, §11.2 | `src/library.jl` |
+| the run lifecycle and termination: the five-state machine behind `lifecycle(sim)` — mandatory `init!` as the one door into `initialized`, opening the trajectory wholesale (log, stop word, termination record and every staged batch clear with it), the `:running` state as the §11.3 freeze spanning the tail, terminal `stopped`/`errored` — the §13.5 policy pair `t_end`/`stop_on` as constructor defaults with `run!`'s per-run overrides, validated identically at both sites (stop faces are root-exported Bool output faces, OR-combined, sampled at every publication — a `t*` hit makes that snapshot final and abandons the frame's remainder), partial advance (`step!` by `frames`/`t_plus` over the same frame loop `run!` drives, deviceless, returning the count actually advanced), the termination record behind `termination(sim)` naming the source (`:t_end`, `:stop_on` with the face, `:control_stop`, `:error` with the cause), and §13.6's abnormal entry — the failed boundary discarded by publication-last construction, the previous snapshot promoted, stores retained for post-mortem, the ordinary tail, the synchronous rethrow | §12.6, §13.5, §13.6, §12.1, §13.4 | `src/sim.jl`, `src/devices.jl`, `src/localize.jl` |
+| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), the termination set (`Overload`, the §13.5 touchdown archetype; `Exploder`, §13.6's specimen), plus `Group`, the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity, immediate-return loop bodies), the `Enumerated`/`Greedy` bindings, one per claim source, and `Readout`, the output side's coverage binding with the identity `map_output` | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6, §11.2 | `src/library.jl` |
 
 Correctness is checked against analytically integrated references — the
 continuous loop by matrix exponential, the sampled loop by its exact ZOH
@@ -63,10 +65,8 @@ suggestion lists (an error names the offender plainly), auto-published ports,
 probe), §13.2's build-side diagnostic framing (build errors here are a plain
 `BuildError` with a good message, not the structured carrier — the *runtime*
 warning stream does carry Appendix C's kinds as typed values, through the
-§11.8 cells), partial advance and the per-run overrides (§12.6 —
-`run!(sim, t_end)` takes `t_end` to the nearest step boundary), and the
-runtime periphery beyond increments 9–14's data plane, device tasks and
-diagnostic channel:
+§11.8 cells), and the runtime periphery beyond increments 9–16's data plane,
+device tasks, diagnostic channel and lifecycle:
 
 - **§11.8's remainder:** the pacer diagnostics are absent with §10.7, and the
   kinds whose sources are absent — `DebtReanchor`, `ThreadBudget`,
@@ -74,8 +74,8 @@ diagnostic channel:
   presentation-side maxlog-25 renderer (count-only display past 25 cumulative
   occurrences per writer × kind) is presentation policy nothing here renders,
   the status being read raw by the tests. The snapshot still carries no
-  §12.6 *run*-status value: the framework status is the diagnostic account,
-  not the lifecycle. Two unguarded edges remain: staging through a handle
+  run-status value: the lifecycle is read off the simulation
+  (`lifecycle(sim)`), the framework status stays the diagnostic account. Two unguarded edges remain: staging through a handle
   whose device was detached lands in an orphaned cell and is silently lost
   (handles are run-scoped task equipment; a guard would put a roster scan
   back into `stage!`), and an `InterruptException` in a device loop reports
@@ -88,17 +88,19 @@ diagnostic channel:
   reads whole cells, as every reader of this table does); and did-you-mean
   candidate lists at resolution, per the general rule above;
 - **the §11.5 input trace and the §11.7 GUI write path**;
-- **§12 beyond increment 12's slices** (the §12.1 stop word, §12.2's yield,
-  §12.3's wait, §12.4's bracket and tail): pause and the rest of the control
-  plane's surface, real-time pacing (§10.7) with §12.2's thread-budget
-  warning, the operator interrupt and its sigint masking (the runs here are
-  test-driven), §13.6's loop-side failure tail — a loop-side throw still sets
-  the sticky status, wakes the waits and joins the devices through the
-  `finally` chain, but the failed-boundary discard and snapshot promotion are
-  absent — and replay (§12.7). The §11.3 freeze is enforced by a single
-  running flag beside the stop word — §12.6's status machine is absent, so
-  `built`, `initialized` and `stopped` are indistinguishable here and every
-  not-running point admits `attach!`/`detach!`.
+- **§12 beyond increments 12 and 16's slices** (the §12.1 stop word, §12.2's
+  yield, §12.3's wait, §12.4's bracket and tail, §12.6's lifecycle and
+  partial advance): pause and the rest of the control plane's surface,
+  real-time pacing (§10.7) with §12.2's thread-budget warning, the operator
+  interrupt and its sigint masking (the runs here are test-driven, and the
+  interrupt's termination-record tag is absent with it), and replay (§12.7)
+  with `replay!`'s alternative entry into boundary zero. §13.4's `StepError`
+  wrap and execution cursor are absent with the trace — the errored record
+  retains the raw cause — and so is the nonfinite sweep; the unbounded
+  register is absent with `UnboundedRun`, `run!` requiring a finite `t_end`
+  from one of its two binding sites. Every terminal or not-yet-run state
+  admits `attach!`/`detach!`, `errored` included: the freeze is exactly the
+  lifecycle's `:running`.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 

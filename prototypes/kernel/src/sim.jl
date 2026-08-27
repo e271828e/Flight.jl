@@ -2,6 +2,20 @@
 # seam (§10.2) and the phase-body accessor (§9.7). The framework owns the loop;
 # the one delegated operation is "advance the continuous state from `t` by `h`".
 
+"""
+The active advance's effective stop policy (§13.5), bound at each `run!` or
+`step!` entry from the constructor defaults and the per-run overrides: the
+named stop faces in declaration order, their compiled root-cell addresses, and
+`hit` — the seam through which a `t*` boundary's stop observation reaches the
+loop (localize.jl publishes mid-frame, so the frame reports the holding face
+here and abandons its remainder: the `t*` snapshot is the final one).
+"""
+mutable struct RunPolicy
+    faces::Vector{Symbol}
+    addrs::Vector{Any}
+    hit::Union{Nothing,Symbol}
+end
+
 struct Simulation{T,S,B,CL,EV,M}
     store::S
     xbuf::Vector{T}
@@ -18,6 +32,10 @@ struct Simulation{T,S,B,CL,EV,M}
     localization_tol::Float64     # relative bracket-width stop (§10.4)
     localization_budget::Int      # t* boundaries permitted per frame (§10.4)
     join_timeout::Float64         # the shutdown tail's join cap, seconds of wall clock (§12.4)
+    t_end::Union{Nothing,Float64} # the run's default clock bound (§13.5), run!-overridable
+    stop_on::Vector{Symbol}       # the default stop faces (§13.5), run!-overridable
+    stop_addrs::Vector{Any}       # their compiled root-cell addresses, validated at binding
+    policy::RunPolicy             # the active advance's effective policy, bound per entry
     has_localized::Bool           # any localized event compiled in: the frame loop's fast-path key
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
     sstores::Vector{Any}          # discrete state stores, by component index
@@ -36,7 +54,8 @@ end
 """
     Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
                method = RK4, firing_budget = 4, localization_tol = 1e-6,
-               localization_budget = 8, join_timeout = 5.0, log = true,
+               localization_budget = 8, join_timeout = 5.0,
+               t_end = nothing, stop_on = (), log = true,
                log_every = 1, log_max = 65536, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
@@ -79,6 +98,16 @@ trajectory-determining, because the trajectory has ended at the final
 snapshot before any join begins, yet not a view policy either — it tunes the
 tail's wall-clock patience, nothing more.
 
+`t_end` and `stop_on` are §13.5's termination policy, the `Simulation`'s
+defaults with `run!`'s keywords as the per-run overrides: the clock bound — a
+finite real ≥ 0, taken to the nearest frame top, with no constructor default
+of its own (a run needs one from *some* binding site) — and the model-declared
+sibling beside it, a collection naming root-exported `Bool` **output** faces,
+OR-combined, sampled at every published boundary. Validation runs here exactly
+as at `run!`: an unknown face, a root input slot, or a non-`Bool` face is
+refused at whichever site names it. The default `()` is no stop faces — a run
+to `t_end`.
+
 `log`, `log_every` and `log_max` are §11.2's retention keywords: the plain
 switch (default `true`), the keep-every-kth stride over published boundaries
 (an integer ≥ 1, default 1) and the bound on retained snapshot references (an
@@ -91,7 +120,8 @@ retention being reference bookkeeping over what publication already built.
 function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                     Δt_base = nothing, method = RK4, firing_budget = 4,
                     localization_tol = 1e-6, localization_budget = 8,
-                    join_timeout = 5.0, log = true, log_every = 1,
+                    join_timeout = 5.0, t_end = nothing, stop_on = (),
+                    log = true, log_every = 1,
                     log_max = 65536, chunk_size::Int = 16) where {T}
     method isa Type && method <: AbstractStepper ||
         throw(BuildError("method must be a stepper type — RK4 or Heun — got $method (§10.2)"))
@@ -111,7 +141,9 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     (log_max isa Integer && log_max ≥ 1) || log_max === Inf ||
         throw(BuildError("log_max must be an integer ≥ 1, or Inf as the explicit " *
                          "opt-out, got $log_max (§11.2)"))
+    t_end === nothing || _t_bound(t_end)
     act = activation(b, T)
+    (stop_faces, stop_addrs) = _stop_faces(act.layout, stop_on)
     bound = bind_schedule(b, h, n, Δt_base)
     c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     stepper = method(T, length(c.xbuf))
@@ -119,7 +151,9 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                typeof(stepper)}(
         c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
-        Int(localization_budget), Float64(join_timeout), any(c.events.localized), bound.sched,
+        Int(localization_budget), Float64(join_timeout),
+        t_end === nothing ? nothing : Float64(t_end), stop_faces, stop_addrs,
+        RunPolicy(Symbol[], Any[], nothing), any(c.events.localized), bound.sched,
         c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
         DataPlane(act.layout, c.store), Published(nothing), Control(),
         SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)),
@@ -128,6 +162,93 @@ end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
     Simulation(build(root), T; kw...)
+
+# §13.5's clock bound, validated identically at both binding sites.
+_t_bound(t) = (t isa Real && isfinite(t) && t ≥ 0) ? Float64(t) : throw(BuildError(
+    "t_end must be a finite real ≥ 0 — the run's clock bound, taken to the " *
+    "nearest frame top — got $t (§13.5)"))
+
+# §13.5's stop-face validation and compilation, run identically at both binding
+# sites — the constructor's default and `run!`'s override: each name must be a
+# root-exported Bool *output* face. Duplicates collapse; the order kept is the
+# declaration's, which is the order the first-holding face is reported in.
+function _stop_faces(layout::Layout, stop_on)
+    faces, addrs = Symbol[], Any[]
+    slot_names = Symbol[f for (f, _) in layout.slots]
+    for f in stop_on
+        s = Symbol(f)
+        haskey(layout.addr, ("", s)) || throw(BuildError(
+            "stop_on names `$s`, which is no root face — a stop face is a " *
+            "root-exported Bool output face (§13.5)"))
+        s in slot_names && throw(BuildError(
+            "stop_on names `$s`, a root input slot — a stop face is a root-exported " *
+            "*output*: the model detects and exports the condition, and the " *
+            "deployment names it (§13.5)"))
+        a = layout.addr[("", s)]
+        _port_type(a) === Bool || throw(BuildError(
+            "stop_on names `$s`, whose declared type is $(_port_type(a)) — stop " *
+            "faces are Bool, OR-combined (§13.5)"))
+        s in faces || (push!(faces, s); push!(addrs, a))
+    end
+    (faces, addrs)
+end
+
+"""
+    lifecycle(sim)
+
+§12.6's five-state lifecycle: `:built` — stores allocated, boundary zero never
+run; `:initialized` — boundary-consistent and ready to advance, the state
+`init!` establishes and a completed `step!` returns to; `:running` — `run!` or
+`step!` holds the loop, and the §11.3 freeze with it; and the two terminal
+states, `:stopped` and `:errored` (§13.6). Readable from any task.
+"""
+lifecycle(sim::Simulation) = @atomic :acquire sim.control.lifecycle
+
+"""
+    termination(sim)
+
+§13.5's termination record (devices.jl) — the run's outcome, `nothing` unless
+the lifecycle is terminal: which source ended the run (`:t_end`, `:stop_on`
+with the face named, `:control_stop`, or `:error` with the cause retained),
+and the final snapshot's boundary time.
+"""
+function termination(sim::Simulation)
+    lc = @atomic :acquire sim.control.lifecycle
+    lc === :stopped || lc === :errored ? sim.control.termination : nothing
+end
+
+# The final snapshot's boundary time, for the record: after `init!` a snapshot
+# always exists; the NaN arm covers a failure before boundary zero ever ran.
+_t_latest(sim::Simulation) =
+    (s = latest(sim); s === nothing ? NaN : s.t)
+
+# §13.5's sampling read, after every publication: the named faces off the
+# just-published snapshot, first holding face wins, in declaration order.
+function _stop_hit(sim::Simulation, pol::RunPolicy)
+    isempty(pol.addrs) && return nothing
+    snap = latest(sim)
+    for i in eachindex(pol.addrs)
+        gather(snap.store, pol.addrs[i]) === true && return pol.faces[i]
+    end
+    nothing
+end
+
+# The shared entry gate of the two advance entries (§12.6): only `:initialized`
+# admits an advance, and each refusal names its own way out.
+function _assert_advanceable(sim::Simulation, op::String)
+    lc = @atomic sim.control.lifecycle
+    lc === :initialized && return nothing
+    lc === :built && throw(BuildError(
+        "`$op` before `init!`: boundary zero has not run — `init!` is mandatory (§12.6)"))
+    lc === :running && throw(BuildError(
+        "ServiceLifecycle: the simulation is already running (§12.6)"))
+    lc === :stopped && throw(BuildError(
+        "`$op` on a stopped simulation: re-running is the `stopped → init! → run!` " *
+        "cycle — `init!` re-runs boundary zero and opens a fresh trajectory (§12.6)"))
+    throw(BuildError(
+        "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
+        "never resumable; reproduction is trace replay, absent here (§13.6)"))
+end
 
 """
     phase_bodies(sim)
@@ -287,33 +408,78 @@ asserted — and a warm restart (`init!` again) resets all three registers from
 scratch: such predicates fire again at the new `t₀`. The log resets with them
 (§11.2): a warm restart is a new trajectory, and its boundary zero lands as a
 fresh first endpoint.
+
+`init!` is §12.6's one door into `initialized`, and it is mandatory: `run!`
+and `step!` refuse a simulation whose boundary zero has not completed. It
+opens the fresh trajectory wholesale — the stop word, the §13.5 termination
+record *and every staged batch still in a staging cell* clear with the
+registers (§12.6: no stale batch survives to clobber the boundary zero it
+predates — the pre-run register is `init!` → `stage!` → `run!`, the batch
+then waiting for the first frame top as §11.4 says). The diagnostic cells are
+deliberately not cleared: a rejection recorded while stopped is a fact about
+what happened, not a stale input, and it surfaces in the next run's first
+status (§11.8). `init!` is itself a stopped-sim operation: refused while
+`running`, and refused on an `errored` simulation, which is terminally
+stopped (§13.6) — reproduction is trace replay, not resurrection.
 """
 function init!(sim::Simulation{T}; t₀::T = zero(T)) where {T}
+    ctl = sim.control
+    lc = @atomic ctl.lifecycle
+    lc === :running && throw(BuildError(
+        "ServiceLifecycle: `init!` is a stopped-sim operation and the simulation " *
+        "is running (§11.3, §12.6)"))
+    lc === :errored && throw(BuildError(
+        "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
+        "never re-initialized; reproduction is trace replay, absent here (§13.6)"))
     sim.clock.t = t₀
     sim.clock.t₀ = t₀
     sim.clock.step = 0
     fill!(sim.events.prior, false)
     _reset!(sim.log)
     _reset_accounts!(sim)         # a new trajectory opens a fresh account (§11.8)
+    for e in sim.plane.roster     # §12.6: no staged batch survives into the
+        @atomic e.writer.cell.pending = nothing   # trajectory it predates
+    end
+    @atomic sim.plane.harness.cell.pending = nothing
+    @atomic ctl.stop_requested = false
+    ctl.termination = nothing
     boundary!(sim, 0)
     publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
+    @atomic :release ctl.lifecycle = :initialized
     nothing
 end
 
 """
-Advance to `t_end` one frame at a time, each frame §11.1's anatomy — drain,
-integrate, boundary sequence, publication — under §11.1's task topology and
-§12.4's bracket and tail. The run's shape, in order: the §11.3 freeze rises;
-the stop word is cleared (a fresh run owes nothing to the last one's stop);
-the §12.4 init bracket runs per roster entry on the calling task; the
-topology is derived from the *live* entries — with a `needs_calling_task`
-holder among them the loop moves to a spawned task and the calling task runs
-that device's loop body inline, otherwise the loop runs here and one task is
-spawned per live entry — the loop advances until `t_end`'s frame or a stop
-observed at frame top; and the tail closes the run (devices.jl): sticky
-status after the final snapshot, waits woken, `unblock!`, the join under
-`join_timeout`. Either way `run!` blocks its caller until the run ends; what
-varies is what the calling task spends the run doing (§11.1).
+    run!(sim; t_end = nothing, stop_on = nothing)
+
+Advance one frame at a time, each frame §11.1's anatomy — drain, integrate,
+boundary sequence, publication — under §11.1's task topology and §12.4's
+bracket and tail, until a §13.5 termination source ends the run: `t_end`'s
+frame reached, a named `stop_on` face observed holding in a published
+snapshot, or a control-plane stop observed at frame top. Both keywords bind
+for **this run only**, the constructor's values standing where they are not
+given (§13.5) — the override validated exactly as the constructor validates
+its default — and a run needs a clock bound from one of the two sites. Only
+an `initialized` simulation runs (`init!` is mandatory, §12.6), and the run
+leaves it terminally `stopped` — the §13.5 record readable through
+`termination(sim)` — or `errored` on a loop-side failure (§13.6): the failed
+boundary published nothing, so the last published snapshot is already the
+promoted final one; the tail runs identically, the cause is retained on the
+record, and `run!` rethrows after the tail completes (§13.4's synchronous
+rule).
+
+The run's shape, in order: the policy binds and the §11.3 freeze rises (the
+lifecycle's `:running`, spanning the tail); the stop word is cleared (a fresh
+run owes nothing to the last one's stop); the §12.4 init bracket runs per
+roster entry on the calling task; the topology is derived from the *live*
+entries — with a `needs_calling_task` holder among them the loop moves to a
+spawned task and the calling task runs that device's loop body inline,
+otherwise the loop runs here and one task is spawned per live entry — the
+loop advances until a termination source fires; and the tail closes the run
+(devices.jl): sticky status after the final snapshot, waits woken,
+`unblock!`, the join under `join_timeout`. Either way `run!` blocks its
+caller until the run ends; what varies is what the calling task spends the
+run doing (§11.1).
 
 Inside the loop, `frame!` carries each grid step `[tₖ₋₁, tₖ]` through the
 §10.4 localization loop, firing any `t*` boundaries it brackets on the way;
@@ -321,14 +487,26 @@ the frame-top boundary (§10.3) is a base tick every `n` frames, where the
 gate reads the tick index, and the empty-due-set boundary in between. The
 drain runs at the frame top only, never at a `t*` boundary (§10.4), while
 publication follows *every* boundary sequence (§11.2) — the frame top's here,
-a `t*` boundary's inside the frame loop, before integration resumes. The grid
-is driven by the step counter, so `t_end` is taken to the nearest frame top;
-partial advance is the periphery's (§12.6) and absent here.
+a `t*` boundary's inside the frame loop, before integration resumes — and
+every publication is a stop-face sampling point (§13.5), a `t*` hit ending
+the run with the `t*` snapshot final. The grid is driven by the step counter,
+so `t_end` is taken to the nearest frame top.
 """
-function run!(sim::Simulation{T}, t_end::Real) where {T}
-    target = round(Int, Float64(t_end) / sim.h)
+function run!(sim::Simulation; t_end = nothing, stop_on = nothing)
     plane, ctl = sim.plane, sim.control
-    @atomic plane.running = true      # the §11.3 freeze: the roster is fixed for the run
+    _assert_advanceable(sim, "run!")
+    te = t_end === nothing ? sim.t_end : _t_bound(t_end)
+    te === nothing && throw(BuildError(
+        "run! has no clock bound: `t_end` was given neither at the constructor " *
+        "nor here — the constructor value is the default and the run! keyword " *
+        "the per-run override (§13.5)"))
+    (faces, addrs) = stop_on === nothing ? (sim.stop_on, sim.stop_addrs) :
+                                           _stop_faces(sim.layout, stop_on)
+    target = round(Int, te / sim.h)
+    pol = sim.policy
+    pol.faces, pol.addrs, pol.hit = faces, addrs, nothing
+    @atomic :release ctl.lifecycle = :running   # the §11.3 freeze: the roster is fixed for the run
+    term = nothing
     try
         @atomic ctl.stop_requested = false
         _reset_accounts!(sim)                 # §11.8: totals count since the run began
@@ -339,7 +517,7 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
             tasks = _spawn!(live)
             _register_tasks!(plane, live, tasks)
             try
-                _loop!(sim, target)
+                term = _advance!(sim, pol, typemax(Int), target)[1]
             finally
                 _finish!(sim)                 # tail (1)–(2), even off a loop-side throw
                 _tail!(sim, live, tasks)      # tail (3)–(5)
@@ -352,22 +530,35 @@ function run!(sim::Simulation{T}, t_end::Real) where {T}
             plane.run_tasks[e_ct.id] = current_task()   # the inline body's task (§11.1)
             e_ct.handle.last_seen = ctl.counter
             loop_task = Threads.@spawn try
-                _loop!(sim, target)
+                _advance!(sim, pol, typemax(Int), target)[1]
             finally
                 _finish!(sim)                 # the spawned loop wakes the inline body too
             end
             _wrap(e_ct)                       # the identical wrapper, inline (§11.6)
             try
-                wait(loop_task)               # run! blocks until the run ends (§11.1)
+                term = fetch(loop_task)       # run! blocks until the run ends (§11.1)
             finally
                 _tail!(sim, others, tasks)    # the calling-task device sits outside the join
             end
         end
+    catch err
+        # §13.6's abnormal entry: the failed boundary is discarded by
+        # construction — publication is a boundary's last act, so it published
+        # nothing and the previous snapshot is already final. The record
+        # retains the cause raw (§13.4's wrap is absent, README), unwrapped
+        # from the spawned loop's task failure where the topology moved it.
+        ctl.termination = Termination(:error, nothing, _t_latest(sim),
+                                      err isa TaskFailedException ? err.task.exception : err)
+        @atomic :release ctl.lifecycle = :errored
+        rethrow()
     finally
         @atomic ctl.stopped = true
         _sweep_tail!(sim)                     # the run's last take (§11.8): what landed past
         empty!(plane.run_tasks)               # the final frame top — presented, never published
-        @atomic plane.running = false         # (devices.jl); tasks are run-scoped equipment
+        if (@atomic ctl.lifecycle) === :running   # (devices.jl); tasks are run-scoped equipment
+            ctl.termination = term
+            @atomic :release ctl.lifecycle = :stopped
+        end
     end
     nothing
 end
@@ -388,22 +579,118 @@ end
 _register_tasks!(plane::DataPlane, entries::Vector{RosterEntry}, tasks::Vector{Task}) =
     (for (e, t) in zip(entries, tasks); plane.run_tasks[e.id] = t; end; nothing)
 
-# The frame loop, stop-aware: the stop word is consulted at the frame top
-# (§12.1) and the loop never stops mid-frame — a stop observed here leaves the
-# last published boundary as the final snapshot (§12.4(1)). With devices
+# The frame loop, shared by both advance entries (§12.6: a stepped frame is
+# bit-identical to a run frame because this is the same code) — returns
+# `(termination, frames advanced)`, the termination `nothing` exactly when the
+# frame budget `upto` ran out, which only `step!` binds finitely. The §13.5
+# sources in consultation order: the stop word at frame top (§12.1 — the loop
+# never stops mid-frame, so a stop observed here leaves the last published
+# boundary as the final snapshot, §12.4(1)); `t_end`'s frame completed; and
+# the stop faces at every publication — the entry check first (a boundary-zero
+# or authored condition already terminal advances nothing, §13.5), then after
+# each frame's own publications, where a mid-frame `t*` hit arrives through
+# `pol.hit` with the frame's remainder already abandoned. With devices
 # rostered every frame yields at least once (§12.2, the unpaced case): the
 # explicit yield is the co-resident device tasks' scheduling slot.
-function _loop!(sim::Simulation, target::Int)
+function _advance!(sim::Simulation, pol::RunPolicy, upto::Int, t_end_frame::Int)
     plane, ctl = sim.plane, sim.control
-    while !(@atomic ctl.stop_requested) && sim.clock.step < target
+    adv = 0
+    face = _stop_hit(sim, pol)
+    face === nothing ||
+        return (Termination(:stop_on, face, _t_latest(sim), nothing), adv)
+    while true
+        (@atomic ctl.stop_requested) &&
+            return (Termination(:control_stop, nothing, _t_latest(sim), nothing), adv)
+        sim.clock.step < t_end_frame ||
+            return (Termination(:t_end, nothing, _t_latest(sim), nothing), adv)
+        sim.clock.step < upto || return (nothing, adv)
         isempty(plane.roster) || yield()
         drain!(sim)
         k = (sim.clock.step += 1)
+        adv += 1
         frame!(sim, k)
-        k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
-        publish!(sim)
+        if pol.hit === nothing
+            k % sim.n == 0 ? boundary!(sim, k ÷ sim.n) : offtick_boundary!(sim)
+            publish!(sim)
+            face = _stop_hit(sim, pol)
+        else
+            face = pol.hit        # a t* publication hit (§13.5): that snapshot is final
+        end
+        face === nothing ||
+            return (Termination(:stop_on, face, _t_latest(sim), nothing), adv)
     end
-    nothing
+end
+
+"""
+    step!(sim; frames = 1)
+    step!(sim; t_plus)
+
+§12.6's partial advance: advance whole frames synchronously through the
+ordinary frame sequence — drain, integrate, boundaries, publication — and
+return the number of frames **actually advanced**. A stepped simulation is
+bit-identical to the same frames under `run!`: the two entries share the one
+frame loop. `t_plus` is the duration spelling, mutually exclusive with
+`frames`: whole frames until the boundary time first covers the duration.
+
+A stepping session is deviceless by construction (§12.6): no task is spawned
+and no bracket runs — device tasks are per-`run!` artifacts — while the
+frame-top drain still runs, so `stage!(sim, …)` → `step!` → `latest(sim)` is
+the advance-assert-advance register, and a batch staged into a rostered
+device's cell while stopped is applied exactly as §11.4 says. Between calls
+the simulation reports `initialized`, so `attach!` is legal there and `run!`
+may follow, continuing from the current boundary.
+
+Termination policy is honored throughout, from the `Simulation`'s own
+defaults: `t_end` reached, a `stop_on` face holding, or a pending control
+stop ends the run *inside* the call through the deviceless §12.4 tail,
+leaves the simulation terminally `stopped` with the §13.5 record set, and
+returns the frames advanced before the stop — fewer than requested, which is
+how a harness detects the truncation without inspecting the clock. A
+loop-side failure ends it `errored` exactly as under `run!` (§13.6).
+"""
+function step!(sim::Simulation; frames = nothing, t_plus = nothing)
+    ctl = sim.control
+    _assert_advanceable(sim, "step!")
+    frames === nothing || t_plus === nothing || throw(BuildError(
+        "step! takes `frames` or `t_plus`, not both — the count and the duration " *
+        "are two spellings of one advance (§12.6)"))
+    if t_plus === nothing
+        nf = frames === nothing ? 1 : frames
+        nf isa Integer && nf ≥ 1 || throw(BuildError(
+            "frames must be an integer ≥ 1, got $nf (§12.6)"))
+        nf = Int(nf)
+    else
+        t_plus isa Real && isfinite(t_plus) && t_plus > 0 || throw(BuildError(
+            "t_plus must be a finite real > 0 — the duration spelling — got " *
+            "$t_plus (§12.6)"))
+        nf = max(1, ceil(Int, Float64(t_plus) / sim.h - 1e-9))
+    end
+    pol = sim.policy
+    pol.faces, pol.addrs, pol.hit = sim.stop_on, sim.stop_addrs, nothing
+    t_end_frame = sim.t_end === nothing ? typemax(Int) : round(Int, sim.t_end / sim.h)
+    @atomic :release ctl.lifecycle = :running   # the freeze holds within the call
+    term, adv = nothing, 0
+    try
+        (term, adv) = _advance!(sim, pol, sim.clock.step + nf, t_end_frame)
+    catch err
+        ctl.termination = Termination(:error, nothing, _t_latest(sim), err)
+        @atomic :release ctl.lifecycle = :errored
+        rethrow()
+    finally
+        lc = @atomic ctl.lifecycle
+        if lc === :errored                    # §13.6, the stepped register: same tail,
+            _finish!(sim)                     # deviceless — waits woken, accounts swept
+            _sweep_tail!(sim)
+        elseif term === nothing
+            @atomic :release ctl.lifecycle = :initialized
+        else                                  # a §13.5 source fired inside the call:
+            _finish!(sim)                     # the deviceless §12.4 tail, then terminal
+            _sweep_tail!(sim)
+            ctl.termination = term
+            @atomic :release ctl.lifecycle = :stopped
+        end
+    end
+    adv
 end
 
 """
@@ -457,7 +744,7 @@ same object the wrapper passes to `loop(dev, handle)` on the device's task.
 function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
                  should_abort::Bool = false)
     plane = sim.plane
-    assert_stopped(plane, "attach!")
+    assert_stopped(sim.control, "attach!")
     check_binding(b)
     for e in plane.roster                          # identity, before claims (§11.3)
         e.dev === dev && throw(BuildError(
@@ -505,7 +792,7 @@ last-drained values. The device id retires with the entry, never reused.
 """
 function detach!(sim::Simulation, dev::AbstractDevice)
     plane = sim.plane
-    assert_stopped(plane, "detach!")
+    assert_stopped(sim.control, "detach!")
     i = findfirst(e -> e.dev === dev, plane.roster)
     i === nothing && throw(BuildError(
         "this $(typeof(dev)) instance is not rostered — `detach!` releases an " *
@@ -651,7 +938,7 @@ the first `init!`, and empty under `log = false` — the switch gates
 retention wholesale.
 """
 function logged(sim::Simulation)
-    assert_stopped(sim.plane, "logged")
+    assert_stopped(sim.control, "logged")
     L = sim.log
     out = Snapshot[]
     L.first === nothing && return out

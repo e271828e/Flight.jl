@@ -135,7 +135,8 @@ _drain_thunk(store, w::Writer) = () -> _drain!(store, w)
 The data plane's mutable holder: the roster in attachment order — which is the
 drain's application order — the harness register's writer and drain thunk, the
 exclusivity index behind the `ClaimedFaceEntry` payload, the store the thunks
-compile against, the id counter, and the §11.3 freeze flag. Mutable and
+compile against, and the id counter; the §11.3 freeze itself is the
+lifecycle's `:running` state (devices.jl). Mutable and
 abstractly typed deliberately: the harness writer's *type* changes at every
 roster change (its schema is recompiled), so it cannot be a `Simulation` type
 parameter, and everything here is stopped-sim configuration read behind
@@ -162,25 +163,13 @@ mutable struct DataPlane
     claimedby::Dict{Symbol,String}  # face → incumbent: the exclusivity index
     store::Any                      # the model's store bundle, captured into the drain thunks
     next_id::Int
-    @atomic running::Bool           # the freeze (§11.3): raised by `run!`, read by `attach!`/`detach!`
 end
 
 function DataPlane(layout::Layout, store)
     w = Writer(layout, Symbol[f for (f, _) in layout.slots])
     DataPlane(RosterEntry[], w, _drain_thunk(store, w), DiagCell(EMPTY_DIAG),
-              WriterAccount(), Dict{Int,Task}(), Dict{Symbol,String}(), store, 1, false)
+              WriterAccount(), Dict{Int,Task}(), Dict{Symbol,String}(), store, 1)
 end
-
-"""
-The §11.3 freeze: `attach!` and `detach!` are stopped-sim operations, and an
-error while the loop runs. While a simulation runs, its configuration — build,
-roster, claims, surfaces — is immutable: the running periphery stages writes,
-and nothing else changes (§12.5).
-"""
-assert_stopped(plane::DataPlane, op::String) =
-    (@atomic plane.running) ? throw(BuildError(
-        "ServiceLifecycle: `$op` is a stopped-sim operation and the simulation is " *
-        "running — the roster is frozen per run (§11.3, §12.5)")) : nothing
 
 """
 The claim, from its source (§11.3): computed — `is_greedy`, the unclaimed

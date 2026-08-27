@@ -46,7 +46,7 @@ end
     sim = Simulation(feedback_model(; k, ω, ζ); h = 1//1000)
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, 2.0)
+    run!(sim; t_end = 2.0)
 
     # Tolerance, never `==` (D-163): RK4 truncation dominates at ~1e-12 here.
     @test state(sim, "children/plant").q ≈ exact(2.0) rtol = 1e-8
@@ -99,7 +99,7 @@ end
     sim = Simulation(feedback_model(), D8; h = 1//1000)
     set_slot!(sim, "ref", D8(0.7))
     init!(sim)
-    run!(sim, 0.05)
+    run!(sim; t_end = 0.05)
     @test state(sim, "children/plant").q isa SVector{2,D8}
     @test ForwardDiff.value(port(sim, "children/plant", :y)) != 0.0
 end

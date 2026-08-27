@@ -166,6 +166,39 @@ generation over the writer's one concrete type, and the drain is
 allocation-free populated as well as empty, at any width, whatever the
 batch touches. No stand-ins enter or retire.
 
+**Increment 16 — the run lifecycle and termination.** §12.6's five-state
+machine behind `lifecycle(sim)`, §13.5's stop policy and termination record
+behind `termination(sim)`, §12.6's partial advance, and §13.6's abnormal
+entry, in one increment. The single `plane.running` flag retires: the §11.3
+freeze becomes the lifecycle's `:running` — spanning `run!`, tail included —
+while `ctl.stopped` stays the device-facing sticky word at tail step (1).
+`init!` becomes mandatory and the one door into `initialized`, opening the
+trajectory wholesale: the log, the stop word, the record *and every staged
+batch* clear (§12.6's no-stale-batch rule — the pre-run register is now
+`init!` → `stage!` → `run!`, which restructured the increment-9-era
+stage-before-`init!` tests). `run!` trades its positional `t_end` for the
+§13.5 keyword pair — constructor defaults, per-run overrides, both sites
+validating identically, a finite bound owed from one of them (the unbounded
+register stays absent with `UnboundedRun`). Stop faces are sampled at every
+publication, `t*` included: a `t*` hit abandons the frame's remainder and
+leaves the clock at `t*` — a real bug caught by the increment's tests,
+`frame!` having stamped the frame top unconditionally. `step!(frames`/
+`t_plus)` shares the one frame loop with `run!` — bit-identity by
+construction — and returns the frames actually advanced; a stepping session
+is deviceless and reports `initialized` between calls, which is what
+absorbed the suite's run-chaining idiom. A loop-side throw leaves terminal
+`errored` — the cause retained raw, §13.4's `StepError` wrap and cursor
+absent — with the previous snapshot already final by publication-last
+construction, and `run!` rethrows after the tail. Two decisions worth
+flagging: a stop word pending at `step!`'s entry stops the session as
+`:control_stop` rather than being cleared (`run!` clears at its top, `init!`
+with the trajectory — the spec is silent on the stepped case); and
+test_bindings' `Poller` became confirm-then-stop — stage, observe the write
+applied in a snapshot, then stop — because a departing device cannot
+otherwise guarantee its batch drained before the run ends. New coverage:
+`Overload` (§13.5's touchdown archetype) and `Exploder` (§13.6's specimen).
+No stand-ins enter or retire.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -514,6 +547,37 @@ Each of these is a spec claim rather than a programming convenience:
   and a 34-face surface (past the 32-wide threshold where Base's tuple `map`
   leaves its inlined path, which the generated merge never touches) drains
   as free as a two-face one.
+- **Termination is a state with a record, never an exception.** Every ended
+  run answers "why did it stop?" through `termination(sim)`: `:t_end` with
+  the final frame top, `:stop_on` with the first holding face in declaration
+  order and the boundary time of the very snapshot that held it,
+  `:control_stop` one tag whichever task spoke the word, `:error` with the
+  cause retained. The record is `nothing` unless the lifecycle is terminal,
+  and `init!` clears it with the trajectory.
+- **A stop face ends the run at its own boundary — `t*` included.** The
+  boundary-detected face ends the run at the sweep that saw it (frame 4 for
+  a ramp crossing 0.35 at h = 0.1, never t_end's frame); the localized one
+  ends it at the crossing's `t*` within tol of the analytic instant, the
+  clock left at `t*`, the frame's remainder never integrated, and the log's
+  terminal endpoint *is* the `t*` snapshot; an authored condition already
+  terminal ends the run at t₀ with boundary zero final and zero frames
+  advanced.
+- **`init!` is the one door, and it opens the trajectory wholesale.**
+  `run!`/`step!` before it refuse naming it; `stopped → init! → run!` is the
+  re-run cycle; and the §12.6 clearing is pinned beside the §11.4 wait in
+  one testset — a batch staged *before* `init!` is discarded with the
+  trajectory it predates, the same batch staged *after* waits for frame 1's
+  drain and never reaches boundary zero.
+- **A stepped frame is a run frame, bitwise.** The two advance entries share
+  one frame loop, so the equality is by construction and the tests assert it
+  with `===`; the count actually advanced is the return value, so t_end and
+  stop-face truncation are detected without inspecting the clock.
+- **§13.6 costs nothing because publication is a boundary's last act.** The
+  failing frame published nothing, so the "promoted" final snapshot is
+  simply the newest published one: the record and `latest` agree on it, the
+  log ends at it, the device's bracket closed through the ordinary tail, the
+  mid-boundary stores stay readable, and `errored` refuses `run!`, `step!`
+  and `init!` alike, each by name.
 
 ## Stand-in retirement history
 

@@ -22,7 +22,7 @@
     sim = Simulation(sampled_loop(; kI, ω, ζ); h = 1//50)   # h = Δt: one rate, n = 1
     set_slot!(sim, "ref", r)
     init!(sim)
-    run!(sim, N * Δt)
+    run!(sim; t_end = N * Δt)
 
     # The tolerance is RK4's, not the semantics': the reference integrates
     # exactly where the loop takes one RK4 step per sample, which at `ωΔt` this
@@ -53,7 +53,7 @@ end
     # cannot move across one, while the continuous table does. Run a few
     # boundaries first — the loop starts at rest with `u` held at zero, so the
     # very first interval moves nothing at all.
-    run!(sim, 0.1)
+    run!(sim; t_end = 0.1)
     u₀, y₀ = port(sim, "children/ctl", :u), port(sim, "children/plant", :y)
     @test u₀ != 0.0
     step!(sim, 0.02)
@@ -78,7 +78,7 @@ end
     @test state(sim, "children/counter") === (n = 1,)   # boundary zero is a tick
     @test port(sim, "children/counter", :n) === 0       # the cell holds what it published
     @test port(sim, "children/counter", :even) === true
-    run!(sim, 0.5)
+    run!(sim; t_end = 0.5)
     # Six boundaries: zero, then one per step. The store leads the cell by one,
     # the update having run after the output stage at each of them.
     @test state(sim, "children/counter") === (n = 6,)
@@ -93,7 +93,7 @@ end
                      h = 1//10)
     init!(sim)
     @test port(sim, "children/wg", :out) == 0.0      # 2 × the idle-phase constant
-    run!(sim, 0.3)
+    run!(sim; t_end = 0.3)
     @test state(sim, "children/sm").v isa SVector{2,Float64}
 
     # Allocation is what the idiom is for: in-place math on scratch, an isbits
@@ -130,7 +130,7 @@ end
     @test port(simd, "children/ctl", :u) isa Float64
 
     init!(simd)
-    run!(simd, 0.04)
+    run!(simd; t_end = 0.04)
     @test state(simd, "children/plant").q isa SVector{2,D8}
     @test port(simd, "children/ctl", :u) == 0.0              # held, never recomputed
 end
