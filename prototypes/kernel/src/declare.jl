@@ -103,6 +103,19 @@ every other pair in the three declarations, read along the flow.
 """
 output_connections(::Any) = ()
 
+"""
+The one optional declaration (§8.5, D-211): a component may declare **at most
+one** of its container fields name-transparent by returning that field's
+`Symbol`. Its elements are then contributed as children under their bare keys —
+`"key"` and `"1"` in place of `"field/key"` and `"field/1"` — everywhere a child
+name appears: wiring endpoints, `sample_times` keys, read paths, `at` prefixes,
+diagnostics. Naming is the only thing it changes; the container keeps its
+transparency of contract. "At most one" is unrepresentable otherwise here: the
+return is one `Symbol` or `nothing`, and `nothing` — undeclared containers
+keeping their key segment — is the default.
+"""
+transparent_container(::Any) = nothing
+
 # --- rate scopes (§8.7, §10.5) --------------------------------------------------
 # The two registers of the sample-time declaration, and the wrappers are the
 # whole value vocabulary — a bare integer or bare quantity in a `sample_times`

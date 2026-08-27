@@ -5,13 +5,13 @@
 # re-decimation, and the two unconditional endpoints outside it.
 
 @testset "every boundary publishes: t* included, boundary-consistent (§11.2, §10.6)" begin
-    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315)),
-              ("children/src/q" => "children/s/sig",), (), ())
+    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315));
+              wires = ("src/q" => "s/sig",))
     sim = Simulation(m; h = 1//10)
     init!(sim)
     run!(sim; t_end = 0.5)
     snaps = logged(sim)
-    t★ = modes(sim, "children/s").t_fired
+    t★ = modes(sim, "s").t_fired
     i = findfirst(s -> s.t == t★, snaps)   # bitwise: a snapshot published at t* itself
     @test i !== nothing
     @test length(snaps) == 7               # boundary zero + 5 frame tops + one t*
@@ -19,8 +19,8 @@
     # The t* snapshot is the settled boundary's: the re-sweep after the firing
     # is what it captures, so `armed` has already dropped — while the boundary
     # before it still shows the armed value. Boundary-consistency at t*.
-    @test port(snaps[i], "children/s", :armed) === false
-    @test port(snaps[i-1], "children/s", :armed) === true
+    @test port(snaps[i], "s", :armed) === false
+    @test port(snaps[i-1], "s", :armed) === true
     ts = [s.t for s in snaps]
     @test issorted(ts) && allunique(ts)    # t never decreases, t* strictly inside
 end
@@ -32,9 +32,9 @@ end
     snaps = logged(sim)
     @test [s.frame for s in snaps] == collect(0:10)      # boundary zero + every frame top
     @test snaps[end] === latest(sim)                     # the same object publication handed out
-    ys = [port(s, "children/c", :y) for s in snaps]
+    ys = [port(s, "c", :y) for s in snaps]
     @test issorted(ys) && allunique(ys)                  # the step response, one value per boundary
-    @test ys[end] === port(sim, "children/c", :y)        # the terminal endpoint is the live boundary
+    @test ys[end] === port(sim, "c", :y)        # the terminal endpoint is the live boundary
     step!(sim; t_plus = 1.0)
     @test length(logged(sim)) == 21                      # the session accumulates: one trajectory, one log
 end
@@ -101,12 +101,12 @@ end
     a, b, c = mk(), mk(log = false), mk(log_every = 7, log_max = 3)
     foreach(init!, (a, b, c))
     foreach(s -> run!(s; t_end = 2.0), (a, b, c))
-    qa = state(a, "children/c").q
-    @test qa === state(b, "children/c").q
-    @test qa === state(c, "children/c").q
-    ca = modes(a, "children/c").count
-    @test ca === modes(b, "children/c").count
-    @test ca === modes(c, "children/c").count
+    qa = state(a, "c").q
+    @test qa === state(b, "c").q
+    @test qa === state(c, "c").q
+    ca = modes(a, "c").count
+    @test ca === modes(b, "c").count
+    @test ca === modes(c, "c").count
 end
 
 @testset "a warm restart is a new trajectory: the log starts over (§11.2)" begin

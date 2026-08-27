@@ -232,7 +232,7 @@ end
     poke!(ref, "a", 0.7)                 # the counterfactual, under the data plane
     poke!(ref, "b", -1.3)
     step!(ref; t_plus = 0.5)
-    @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
+    @test port(sim, "s", :e) === port(ref, "s", :e)
 end
 
 @testset "an empty drain stays free with a populated roster (§11.1, §11.4)" begin

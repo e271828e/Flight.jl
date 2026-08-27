@@ -6,17 +6,17 @@
 @testset "a localized event fires at t*, within tol of the true crossing (§10.4)" begin
     # Linear trajectory: RK4 and the cubic Hermite are both exact, so the stamp
     # isolates the localization machinery itself — t* within the bracket width.
-    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315)),
-              ("children/src/q" => "children/s/sig",), (), ())
+    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315));
+              wires = ("src/q" => "s/sig",))
     sim = Simulation(m; h = 1//10)
     init!(sim)
     step!(sim; t_plus = 0.5)
-    @test modes(sim, "children/s").count == 1
-    @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
-    @test modes(sim, "children/s").t_fired ≥ 0.315          # the holding endpoint
-    @test port(sim, "children/s", :armed) === false         # the t* re-sweep published it
+    @test modes(sim, "s").count == 1
+    @test modes(sim, "s").t_fired ≈ 0.315 atol = 1e-6
+    @test modes(sim, "s").t_fired ≥ 0.315          # the holding endpoint
+    @test port(sim, "s", :armed) === false         # the t* re-sweep published it
     step!(sim; t_plus = 0.4)                                # sticky: no further edge
-    @test modes(sim, "children/s").count == 1
+    @test modes(sim, "s").count == 1
 end
 
 @testset "the timing observable: a discarding reset needs t*, not the boundary" begin
@@ -27,21 +27,21 @@ end
     sim = Simulation(single(Bouncer(1.0, 0.315)); h = 1//10)
     init!(sim)
     run!(sim; t_end = 2.0)                                          # resets at 0.315·k, k = 1..6
-    @test modes(sim, "children/c").count == 6
-    @test state(sim, "children/c").q ≈ 2.0 - 6 * 0.315 atol = 1e-5
+    @test modes(sim, "c").count == 6
+    @test state(sim, "c").q ≈ 2.0 - 6 * 0.315 atol = 1e-5
 end
 
 @testset "t* on a nonlinear trajectory is interpolant-accurate, O(h⁴) (§10.4)" begin
     # c(t) = -cos t under the renormalizing project: σ = -cos t + 0.5 crosses
     # at t = π/3, mid-frame. Trials run against the raw interpolated state;
     # the error budget is the Hermite's O(h⁴) plus RK4's own global error.
-    m = Group((; src = Rotor(; ω = 1.0, r₀ = SVector(-1.0, 0.0)), s = Stamper(-0.5)),
-              ("children/src/c" => "children/s/sig",), (), ())
+    m = Group((; src = Rotor(; ω = 1.0, r₀ = SVector(-1.0, 0.0)), s = Stamper(-0.5));
+              wires = ("src/c" => "s/sig",))
     sim = Simulation(m; h = 1//10)
     init!(sim)
     run!(sim; t_end = 1.5)
-    @test modes(sim, "children/s").count == 1
-    @test modes(sim, "children/s").t_fired ≈ π / 3 atol = 1e-5
+    @test modes(sim, "s").count == 1
+    @test modes(sim, "s").t_fired ≈ π / 3 atol = 1e-5
 end
 
 @testset "the θ = 0 validation: an epoch-caused edge fires at the frame top, exactly" begin
@@ -52,48 +52,48 @@ end
     sim = Simulation(fed(Stamper(0.5), "sig"); h = 1//10)
     init!(sim, fragment(inputs = (in = 0.0,)))
     step!(sim; t_plus = 0.3)
-    @test modes(sim, "children/c").count == 0
+    @test modes(sim, "c").count == 0
     stage!(sim, "in" => 1.0)                     # staged, drained at the next frame top (§11.4)
     step!(sim; t_plus = 0.3)
-    @test modes(sim, "children/c").count == 1
-    @test modes(sim, "children/c").t_fired == 4 * sim.h     # the grid point itself
+    @test modes(sim, "c").count == 1
+    @test modes(sim, "c").t_fired == 4 * sim.h     # the grid point itself
 end
 
 @testset "t* = tₙ₊₁ exactly degenerates to the grid boundary (§10.4)" begin
     # The ramp reads t, so σ crosses exactly at the frame top: the trigger sees
     # σ₁ = 0, every interior trial is not-holding, and the localization result
     # is discarded — one boundary, one firing, stamping the indexed grid time.
-    m = Group((; src = Ramp(0.0), s = Stamper(0.4)),
-              ("children/src/out" => "children/s/sig",), (), ())
+    m = Group((; src = Ramp(0.0), s = Stamper(0.4));
+              wires = ("src/out" => "s/sig",))
     sim = Simulation(m; h = 1//10)
     init!(sim)
     run!(sim; t_end = 0.6)
-    @test modes(sim, "children/s").count == 1
-    @test modes(sim, "children/s").t_fired == 4 * sim.h
+    @test modes(sim, "s").count == 1
+    @test modes(sim, "s").t_fired == 4 * sim.h
 end
 
 @testset "multiple crossings in one frame: earliest first, re-localized on the remainder" begin
-    m2() = Group((; src = Sawtooth(1.0), s1 = Stamper(0.31), s2 = Stamper(0.34)),
-                 ("children/src/q" => "children/s1/sig",
-                  "children/src/q" => "children/s2/sig"), (), ())
+    m2() = Group((; src = Sawtooth(1.0), s1 = Stamper(0.31), s2 = Stamper(0.34));
+                 wires = ("src/q" => "s1/sig",
+                          "src/q" => "s2/sig"))
     sim = Simulation(m2(); h = 1//10)
     init!(sim)
     @test_logs run!(sim; t_end = 0.5)                               # both localize: no degradation
-    @test modes(sim, "children/s1").t_fired ≈ 0.31 atol = 1e-6
-    @test modes(sim, "children/s2").t_fired ≈ 0.34 atol = 1e-6
-    @test modes(sim, "children/s1").t_fired < modes(sim, "children/s2").t_fired
+    @test modes(sim, "s1").t_fired ≈ 0.31 atol = 1e-6
+    @test modes(sim, "s2").t_fired ≈ 0.34 atol = 1e-6
+    @test modes(sim, "s1").t_fired < modes(sim, "s2").t_fired
 
     # A tie is one localization: both edges stand at the shared t* and fire
     # together inside that boundary's iteration — so a budget of 1 suffices,
     # and no ChatteringBudget degradation is seen.
-    mt = Group((; src = Sawtooth(1.0), s1 = Stamper(0.315), s2 = Stamper(0.315)),
-               ("children/src/q" => "children/s1/sig",
-                "children/src/q" => "children/s2/sig"), (), ())
+    mt = Group((; src = Sawtooth(1.0), s1 = Stamper(0.315), s2 = Stamper(0.315));
+               wires = ("src/q" => "s1/sig",
+                        "src/q" => "s2/sig"))
     simt = Simulation(mt; h = 1//10, localization_budget = 1)
     init!(simt)
     @test_logs run!(simt; t_end = 0.5)
-    @test modes(simt, "children/s1").t_fired == modes(simt, "children/s2").t_fired
-    @test modes(simt, "children/s1").t_fired ≈ 0.315 atol = 1e-6
+    @test modes(simt, "s1").t_fired == modes(simt, "s2").t_fired
+    @test modes(simt, "s1").t_fired ≈ 0.315 atol = 1e-6
     @test writer_status(latest(simt), "loop").totals.chattering == 0
 
     # Distinct crossings under budget 1: the earliest localizes, the second
@@ -102,12 +102,12 @@ end
     simb = Simulation(m2(); h = 1//10, localization_budget = 1)
     init!(simb)
     run!(simb; t_end = 0.5)                    # the degradation reports on the loop's cell (§11.8)
-    @test modes(simb, "children/s1").t_fired ≈ 0.31 atol = 1e-6
-    @test modes(simb, "children/s2").t_fired == 4 * simb.h
+    @test modes(simb, "s1").t_fired ≈ 0.31 atol = 1e-6
+    @test modes(simb, "s2").t_fired == 4 * simb.h
     lw = writer_status(latest(simb), "loop")
     cb = only(lw.recent)               # frame 4's report, folded at frame 5's top
     @test cb isa ChatteringBudget
-    @test cb.path == "children/s2" && cb.event == :cross
+    @test cb.path == "s2" && cb.event == :cross
     @test cb.budget == 1 && cb.count == 1 && cb.t == 0.4
     @test lw.totals.chattering == 1
 end
@@ -124,25 +124,26 @@ end
     # later drain exists, so no snapshot can carry it — the run's-end sweep
     # presents it through the logging backend instead, the tail's renderer of
     # last resort (§11.8, D-201).
-    @test_logs (:warn, r"ChatteringBudget from loop, past the final snapshot's account.*children/c") #=
+    @test_logs (:warn, r"ChatteringBudget from loop, past the final snapshot's " *
+                       r"account.*ChatteringBudget\(\"c\"") #=
         =# run!(sim; t_end = 0.1)
-    @test modes(sim, "children/c").count == 9               # 8 at t*, 1 at the frame top
-    @test state(sim, "children/c").q ≈ 0.049 atol = 1e-12   # the frame-top firing re-armed it
+    @test modes(sim, "c").count == 9               # 8 at t*, 1 at the frame top
+    @test state(sim, "c").q ≈ 0.049 atol = 1e-12   # the frame-top firing re-armed it
 end
 
 @testset "the gate idiom localizes; a gate flip is an epoch edge (§10.4)" begin
-    gated() = Group((; src = Sawtooth(1.0), s = GatedStamper(0.315)),
-                    ("children/src/q" => "children/s/sig",),
-                    ("gate" => "children/s/gate",), ())
+    gated() = Group((; src = Sawtooth(1.0), s = GatedStamper(0.315));
+                    wires = ("src/q" => "s/sig",),
+                    inputs = ("gate" => "s/gate",))
     b = build(gated())
-    @test b.policies[index_of(b.flat, "children/s")] === (cross = :localized,)
+    @test b.policies[index_of(b.flat, "s")] === (cross = :localized,)
 
     # Gate true from the start: the Bool factor is constant over the bracket
     # and the continuous atom localizes as such.
     sim = Simulation(gated(); h = 1//10)
     init!(sim, fragment(inputs = (gate = true,)))
     run!(sim; t_end = 0.5)
-    @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
+    @test modes(sim, "s").t_fired ≈ 0.315 atol = 1e-6
 
     # Gate flipped at a frame top, with σ already past the level: the edge is
     # the u seam's, σ₀ holds under the frame's own u, and the event fires at
@@ -150,25 +151,25 @@ end
     sim2 = Simulation(gated(); h = 1//10)
     init!(sim2, fragment(inputs = (gate = false,)))
     step!(sim2; t_plus = 0.5)
-    @test modes(sim2, "children/s").count == 0              # gate down: -one(σ) throughout
+    @test modes(sim2, "s").count == 0              # gate down: -one(σ) throughout
     stage!(sim2, "gate" => true)                            # the u seam, through the drain (§11.4)
     step!(sim2; t_plus = 0.3)
-    @test modes(sim2, "children/s").count == 1
-    @test modes(sim2, "children/s").t_fired == 6 * sim2.h
+    @test modes(sim2, "s").count == 1
+    @test modes(sim2, "s").t_fired == 6 * sim2.h
 end
 
 @testset "ticks are never due at t*: the discrete tier holds through it (§10.4)" begin
     # A sampled consumer beside a localized event: the t* boundary runs the
     # full event phase but no g update — a spurious tick there would add the
     # mid-frame sample 0.1·q(t*) to the accumulator.
-    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315), ctl = DiscreteIntegrator(1.0)),
-              ("children/src/q" => "children/s/sig",
-               "children/src/q" => "children/ctl/e"), (), ())
+    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315), ctl = DiscreteIntegrator(1.0));
+              wires = ("src/q" => "s/sig",
+                       "src/q" => "ctl/e"))
     sim = Simulation(m; h = 1//10)
     init!(sim)
     run!(sim; t_end = 0.5)
-    @test modes(sim, "children/s").count == 1               # the event did localize
-    @test state(sim, "children/ctl").acc ≈ 0.1 * (0.0 + 0.1 + 0.2 + 0.3 + 0.4 + 0.5) rtol = 1e-9
+    @test modes(sim, "s").count == 1               # the event did localize
+    @test state(sim, "ctl").acc ≈ 0.1 * (0.0 + 0.1 + 0.2 + 0.3 + 0.4 + 0.5) rtol = 1e-9
 end
 
 @testset "the two deployment keywords are validated with their siblings (§10.4)" begin
@@ -188,13 +189,13 @@ end
     @test !sim.has_localized
     init!(sim)
     run!(sim; t_end = 0.5)
-    @test ForwardDiff.value(state(sim, "children/c").q) ≈ 0.5 rtol = 1e-12
+    @test ForwardDiff.value(state(sim, "c").q) ≈ 0.5 rtol = 1e-12
 end
 
 @testset "gate 3: localized frames do not allocate (§7.5)" begin
     # A quiet frame pays the arrival sweep and the trigger scan, nothing else.
-    mq = Group((; src = Sawtooth(0.1), s = Stamper(100.0)),
-               ("children/src/q" => "children/s/sig",), (), ())
+    mq = Group((; src = Sawtooth(0.1), s = Stamper(100.0));
+               wires = ("src/q" => "s/sig",))
     simq = Simulation(mq; h = 1//10)
     init!(simq)
     run!(simq; t_end = 0.2)

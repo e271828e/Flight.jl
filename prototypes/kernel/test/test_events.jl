@@ -100,38 +100,38 @@ end
     sim = Simulation(fed(Trigger(0.5), "sig"); h = 1//10)
     init!(sim, fragment(inputs = (in = 0.0,)))    # authored at 0.0: not holding
     step!(sim; t_plus = 0.3)
-    @test modes(sim, "children/c").count == 0
+    @test modes(sim, "c").count == 0
     stage!(sim, "in" => 1.0)                     # the input epoch seam, staged (§11.4)
     step!(sim; t_plus = 0.3)                     # drained at the frame top: the first boundary sees the edge
-    @test modes(sim, "children/c") === (state = :fired, count = 1)
-    @test port(sim, "children/c", :on) === true  # the settled sweep published the new mode
+    @test modes(sim, "c") === (state = :fired, count = 1)
+    @test port(sim, "c", :on) === true  # the settled sweep published the new mode
     step!(sim; t_plus = 0.9)                     # sticky: holding presents no further edge
-    @test modes(sim, "children/c").count == 1
+    @test modes(sim, "c").count == 1
 
     # Boundary zero establishes every prior as not-holding (§10.6): a predicate
     # already holding in the authored state fires at t₀ — derived, not asserted.
     sim2 = Simulation(fed(Trigger(0.5), "sig"); h = 1//10)
     init!(sim2, fragment(inputs = (in = 1.0,)))
-    @test modes(sim2, "children/c").count == 1
+    @test modes(sim2, "c").count == 1
     # A warm restart resets the registers from scratch: it fires again — and
     # from the declared defaults, so `count` restarts at 0 and reaches 1, never 2
     # (D-063).
     init!(sim2, fragment(inputs = (in = 1.0,)))
-    @test modes(sim2, "children/c").count == 1
+    @test modes(sim2, "c").count == 1
 end
 
 @testset "a cascade settles within one boundary, independently of h (§10.6)" begin
-    chain() = Group((; trig = Trigger(0.5), f1 = Follower(), f2 = Follower()),
-                    ("children/trig/on" => "children/f1/go",
-                     "children/f1/on" => "children/f2/go"),
-                    ("in" => "children/trig/sig",), ())
+    chain() = Group((; trig = Trigger(0.5), f1 = Follower(), f2 = Follower());
+                    wires = ("trig/on" => "f1/go",
+                             "f1/on" => "f2/go"),
+                    inputs = ("in" => "trig/sig",))
     for h in (1//10, 1//1000)                    # the latency is rounds, never steps
         sim = Simulation(chain(); h)
         init!(sim, fragment(inputs = (in = 1.0,)))    # one boundary: three rounds to quiescence
-        @test modes(sim, "children/trig").state === :fired
-        @test modes(sim, "children/f1").state === :on
-        @test modes(sim, "children/f2").state === :on
-        @test port(sim, "children/f2", :on) === true
+        @test modes(sim, "trig").state === :fired
+        @test modes(sim, "f1").state === :on
+        @test modes(sim, "f2").state === :on
+        @test port(sim, "f2", :on) === true
     end
 end
 
@@ -141,13 +141,13 @@ end
     # standing edge fires it in the next round.
     sim = Simulation(fed(TwoShot(), "sig"); h = 1//10)
     init!(sim, fragment(inputs = (in = 2.0,)))
-    @test modes(sim, "children/c") === (a = true, b = true)
+    @test modes(sim, "c") === (a = true, b = true)
 
     # The premise the first transition falsifies: re-decided against the
     # post-transition sweep, `second` never fires on its stale round-1 edge.
     simp = Simulation(fed(Preempted(), "sig"); h = 1//10)
     init!(simp, fragment(inputs = (in = 2.0,)))
-    @test modes(simp, "children/c") === (a = true, b = false)
+    @test modes(simp, "c") === (a = true, b = false)
 end
 
 @testset "an x-writing handler's carried overshoot is resolution-invariant" begin
@@ -161,10 +161,10 @@ end
         sim = Simulation(single(Sawtooth(0.3)); h = 1//10, n)
         init!(sim)
         step!(sim; t_plus = 6.7)                 # boundary 67: the off-tick wrap
-        @test state(sim, "children/c").q ≈ q_ref(67) rtol = 1e-9
+        @test state(sim, "c").q ≈ q_ref(67) rtol = 1e-9
         step!(sim; t_plus = 0.3)
-        @test state(sim, "children/c").q ≈ q_ref(70) rtol = 1e-9
-        @test port(sim, "children/c", :q) ≈ q_ref(70) rtol = 1e-9   # the post-fire re-sweep published it
+        @test state(sim, "c").q ≈ q_ref(70) rtol = 1e-9
+        @test port(sim, "c", :q) ≈ q_ref(70) rtol = 1e-9   # the post-fire re-sweep published it
     end
 end
 
@@ -173,8 +173,8 @@ end
     # post-wrap value, and only then does the integrator's `g` read it: an
     # update-before-quiescence would accumulate 1.02 where the reference has
     # 0.02.
-    m = Group((; saw = Sawtooth(0.3), ctl = DiscreteIntegrator(1.0)),
-              ("children/saw/q" => "children/ctl/e",), (), ())
+    m = Group((; saw = Sawtooth(0.3), ctl = DiscreteIntegrator(1.0));
+              wires = ("saw/q" => "ctl/e",))
     sim = Simulation(m; h = 1//10)
     init!(sim)
     run!(sim; t_end = 4.0)
@@ -184,16 +184,16 @@ end
         q ≥ 1 && (q -= 1)
         acc += 0.1 * q
     end
-    @test state(sim, "children/ctl").acc ≈ acc rtol = 1e-9
+    @test state(sim, "ctl").acc ≈ acc rtol = 1e-9
 end
 
 @testset "budget exhaustion degrades, reported on the loop's cell (§10.6, §11.8)" begin
-    chatty() = Group((; chat = Chatterer(), trig = Trigger(0.5)), (),
-                     ("in" => "children/trig/sig",), ())
+    chatty() = Group((; chat = Chatterer(), trig = Trigger(0.5));
+                     inputs = ("in" => "trig/sig",))
     sim = Simulation(chatty(); h = 1//10)
     init!(sim, fragment(inputs = (in = 1.0,)))            # exhaustion at boundary zero
-    @test modes(sim, "children/chat").flips == 8         # 2 × the default budget of 4
-    @test modes(sim, "children/trig").count == 1         # the sibling fired normally
+    @test modes(sim, "chat").flips == 8         # 2 × the default budget of 4
+    @test modes(sim, "trig").count == 1         # the sibling fired normally
     # The report rides the loop's own diagnostic cell (§11.8), folded at the
     # next frame top: boundary zero's snapshot shows nothing yet.
     @test writer_status(latest(sim), "loop").totals.firing == 0
@@ -201,11 +201,11 @@ end
     lw = writer_status(latest(sim), "loop")
     fb = only(lw.recent)
     @test fb isa FiringBudget
-    @test fb.path == "children/chat" && fb.event == :up
+    @test fb.path == "chat" && fb.event == :up
     @test fb.budget == 4 && fb.count == 4 && fb.t == 0.0
     @test lw.totals.firing == 1
     step!(sim; t_plus = 0.2)                             # the exhausted boundary's samples
-    @test modes(sim, "children/chat").flips == 8         # became honest priors: quiescent now
+    @test modes(sim, "chat").flips == 8         # became honest priors: quiescent now
     lw = writer_status(latest(sim), "loop")              # quiescent frames: the delta has
     @test isempty(lw.recent) && lw.totals.firing == 1    # passed, the session's totals stand
 
@@ -215,13 +215,13 @@ end
     # that one occurrence, never the last trajectory's.
     init!(sim, fragment(inputs = (in = 1.0,)))
     run!(sim; t_end = 0.1)
-    @test modes(sim, "children/chat").flips == 8
+    @test modes(sim, "chat").flips == 8
     @test writer_status(latest(sim), "loop").totals.firing == 1
 
     # The budget is a deployment keyword, validated with its siblings.
     sim2 = Simulation(chatty(); h = 1//10, firing_budget = 2)
     init!(sim2, fragment(inputs = (in = 1.0,)))
-    @test modes(sim2, "children/chat").flips == 4
+    @test modes(sim2, "chat").flips == 4
     run!(sim2; t_end = 0.1)
     fb2 = only(writer_status(latest(sim2), "loop").recent)
     @test fb2 isa FiringBudget && fb2.budget == 2 && fb2.count == 2
@@ -234,10 +234,10 @@ end
     init!(sim)
     # Boundary zero already projects (§14.5), and the sweep decodes the
     # projected state — a wrong order would publish c = 2.0.
-    @test state(sim, "children/c").r ≈ SVector(1.0, 0.0) atol = 1e-15
-    @test port(sim, "children/c", :c) == 1.0
+    @test state(sim, "c").r ≈ SVector(1.0, 0.0) atol = 1e-15
+    @test port(sim, "c", :c) == 1.0
     run!(sim; t_end = 1.0)
-    r = state(sim, "children/c").r
+    r = state(sim, "c").r
     @test r[1]^2 + r[2]^2 ≈ 1.0 atol = 1e-14             # pinned to the manifold
     @test r ≈ SVector(cos(2.0), sin(2.0)) rtol = 1e-6    # and still the right trajectory
 end
@@ -247,12 +247,12 @@ end
     @test isempty(sim.events.entries)
     init!(sim, fragment(inputs = (in = D8(1.0),)))
     run!(sim; t_end = 0.3)
-    @test modes(sim, "children/c").count == 0            # the guard never ran
+    @test modes(sim, "c").count == 0            # the guard never ran
 
     # Projection is continuous machinery, inside every executable set.
     simr = Simulation(single(Rotor(; r₀ = SVector(2.0, 0.0))), D8; h = 1//100)
     init!(simr)
-    @test ForwardDiff.value(state(simr, "children/c").r[1]) ≈ 1.0 atol = 1e-15
+    @test ForwardDiff.value(state(simr, "c").r[1]) ≈ 1.0 atol = 1e-15
 end
 
 @testset "gate 3: a quiet boundary with events does not allocate (§7.5)" begin

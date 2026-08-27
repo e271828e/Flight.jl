@@ -288,7 +288,7 @@ end
     ref = Simulation(two_root_inputs(); h = 1//10) # the movable loop moved nothing else
     init!(ref, fragment(inputs = (a = 0.0, b = 0.0)))
     run!(ref; t_end = 0.5)
-    @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
+    @test port(sim, "s", :e) === port(ref, "s", :e)
 end
 
 @testset "a device with no loop method crashes loudly, never idles (§11.6)" begin
@@ -312,7 +312,7 @@ end
         attach!(sim, Pad("p"), Enumerated("a"))
         init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
         run!(sim; t_end = 0.5)
-        port(sim, "children/s", :e)
+        port(sim, "s", :e)
     end
     @test trajectories[1] === trajectories[2]
 end

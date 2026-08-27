@@ -30,7 +30,7 @@ end
         sim = Simulation(feedback_model(; k, ω, ζ); h, method)
         init!(sim, fragment(inputs = (ref = r,)))
         run!(sim; t_end = 2.0)
-        norm(state(sim, "children/plant").q - exact(2.0))
+        norm(state(sim, "plant").q - exact(2.0))
     end
     hs = (1//10, 1//20, 1//40, 1//80)   # errors 5e-8..2e-4: well above float noise
     for (method, p) in ((RK4, 4.0), (Heun, 2.0))
@@ -44,26 +44,26 @@ end
     # Linear trajectory: Heun and the Hermite are both exact, so the stamp is
     # method-independent down to the bracket width — the machinery, not the
     # method, sets the error.
-    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315)),
-              ("children/src/q" => "children/s/sig",), (), ())
+    m = Group((; src = Sawtooth(1.0), s = Stamper(0.315));
+              wires = ("src/q" => "s/sig",))
     sim = Simulation(m; h = 1//10, method = Heun)
     init!(sim)
     run!(sim; t_end = 0.5)
-    @test modes(sim, "children/s").count == 1
-    @test modes(sim, "children/s").t_fired ≈ 0.315 atol = 1e-6
+    @test modes(sim, "s").count == 1
+    @test modes(sim, "s").t_fired ≈ 0.315 atol = 1e-6
 
     # Nonlinear trajectory: the stamp error is now the discrete solution's
     # O(h²), not RK4's O(h⁴) — quartering under h-halving is the method
     # showing through the same machinery. (Boundary-resolution firing would
     # sit at ~h and shrink linearly instead.)
     stamp_error(h) = begin
-        mr = Group((; src = Rotor(; ω = 1.0, r₀ = SVector(-1.0, 0.0)), s = Stamper(-0.5)),
-                   ("children/src/c" => "children/s/sig",), (), ())
+        mr = Group((; src = Rotor(; ω = 1.0, r₀ = SVector(-1.0, 0.0)), s = Stamper(-0.5));
+                   wires = ("src/c" => "s/sig",))
         simr = Simulation(mr; h, method = Heun)
         init!(simr)
         run!(simr; t_end = 1.5)
-        @test modes(simr, "children/s").count == 1
-        abs(modes(simr, "children/s").t_fired - π / 3)
+        @test modes(simr, "s").count == 1
+        abs(modes(simr, "s").t_fired - π / 3)
     end
     e10, e40 = stamp_error(1//10), stamp_error(1//40)
     @test e10 < 5e-3
@@ -76,7 +76,7 @@ end
     step!(simf; t_plus = 0.3)
     stage!(simf, "in" => 1.0)                   # frame 4's drain, at its frame top
     step!(simf; t_plus = 0.3)
-    @test modes(simf, "children/c").t_fired == 4 * simf.h
+    @test modes(simf, "c").t_fired == 4 * simf.h
 end
 
 @testset "gate 4: the second backend holds the §7.5 invariant" begin
@@ -96,5 +96,5 @@ end
     sim = Simulation(feedback_model(), D8; h = 1//1000, method = Heun)
     init!(sim, fragment(inputs = (ref = D8(0.7),)))
     run!(sim; t_end = 0.05)
-    @test state(sim, "children/plant").q isa SVector{2,D8}
+    @test state(sim, "plant").q isa SVector{2,D8}
 end

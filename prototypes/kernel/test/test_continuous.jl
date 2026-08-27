@@ -48,11 +48,11 @@ end
     run!(sim; t_end = 2.0)
 
     # Tolerance, never `==` (D-163): RK4 truncation dominates at ~1e-12 here.
-    @test state(sim, "children/plant").q ≈ exact(2.0) rtol = 1e-8
-    @test port(sim, "children/plant", :y) ≈ exact(2.0)[1] rtol = 1e-8
+    @test state(sim, "plant").q ≈ exact(2.0) rtol = 1e-8
+    @test port(sim, "plant", :y) ≈ exact(2.0)[1] rtol = 1e-8
     # the table is consistent at the boundary: `power` is a fresh decode
-    @test port(sim, "children/plant", :power) ≈
-          port(sim, "children/ctl", :out) * exact(2.0)[2] rtol = 1e-8
+    @test port(sim, "plant", :power) ≈
+          port(sim, "ctl", :out) * exact(2.0)[2] rtol = 1e-8
 end
 
 @testset "the phase-body roster is fixed and total (§9.7)" begin
@@ -74,8 +74,8 @@ end
     # chunks — a chunk count no other fixture approaches — so the §7.5 canary
     # covers the outer walk over the chunk tuple itself, not just the entry
     # walks within one chunk.
-    six = Group(NamedTuple{ntuple(i -> Symbol(:m, i), 6)}(ntuple(_ -> feedback_model(), 6)),
-                (), ("ref" => ntuple(i -> "children/m$(i)/ref", 6),), ())
+    six = Group(NamedTuple{ntuple(i -> Symbol(:m, i), 6)}(ntuple(_ -> feedback_model(), 6));
+                inputs = ("ref" => ntuple(i -> "m$(i)/ref", 6),))
     sim = Simulation(six; h = 1//100, chunk_size = 1)
     @test length(sim.bodies.sweep_2.interior) > 16
     for name in keys(phase_bodies(sim))
@@ -98,16 +98,16 @@ end
     sim = Simulation(feedback_model(), D8; h = 1//1000)
     init!(sim, fragment(inputs = (ref = D8(0.7),)))
     run!(sim; t_end = 0.05)
-    @test state(sim, "children/plant").q isa SVector{2,D8}
-    @test ForwardDiff.value(port(sim, "children/plant", :y)) != 0.0
+    @test state(sim, "plant").q isa SVector{2,D8}
+    @test ForwardDiff.value(port(sim, "plant", :y)) != 0.0
 end
 
 @testset "instances of one component type share one compiled body (D-162)" begin
     # Two independent loops, each a sub-assembly of one root: eight components,
     # still one entry type per stage per component type — the store's addressing
     # keeps offsets in fields. The root's one face fans out to both.
-    two = Group((; a = feedback_model(), b = feedback_model(k = 3.0)), (),
-                ("ref" => ("children/a/ref", "children/b/ref"),), ())
+    two = Group((; a = feedback_model(), b = feedback_model(k = 3.0));
+                inputs = ("ref" => ("a/ref", "b/ref"),))
     sim = Simulation(two; h = 1//100)
     types(body) = unique(typeof(e) for e in walked(body))
     @test length(types(sim.bodies.sweep_1)) == 1     # two Plants, one h_x body
@@ -117,7 +117,7 @@ end
     # The discrete tier keeps the property: a state store is a `Ref` whose
     # *type* every instance of a component type shares, so the store lives in a
     # field and two counters still compile to one `g` body.
-    counters = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ());
+    counters = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()));
                           h = 1//10)
     @test length(walked(counters.bodies.ticks)) == 2
     @test length(types(counters.bodies.ticks)) == 1

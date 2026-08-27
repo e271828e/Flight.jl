@@ -374,6 +374,48 @@ the `in_faces` derivation dead: every route now pushes its row unconditionally.
 `_root_input_type`'s "routes to no input" throw stays as an internal invariant
 with nothing left that can reach it.
 
+**Increment 20, part 1 — name-transparent containers** (D-211). The
+declaration layer gains one optional entry, `transparent_container(c)`,
+defaulting to `nothing`: a component may name at most one of its container
+fields, and that field's elements are then contributed under their bare keys —
+`"key"`, `"1"` — in place of `"field/key"` and `"field/1"`. Naming is the only
+thing it changes, so the whole of it lives in `children`: the same fields in
+the same order, one branch on `name === tf` deciding the segment. Two checks
+pay for it. The declaration must name a container field of the type, validated
+*after* the field walk so that a mixed container still reports as one; and no
+two children may share a name — a check written generally over the collected
+list rather than over the transparent case, because bare keys only make the
+collision *reachable*, they do not define it. The message names both parties by
+provenance, and the general form catches the pathological cases (a bare key
+against a sibling field, against another container's composite name) in one
+place. `resolve_terminal`'s two-segment lookahead is untouched: it still serves
+the undeclared containers, whose key segment D-211 leaves exactly as it was.
+
+The one place the rename reached past naming was the rate declaration's
+field-name sugar, which `_rate_entry` had implemented as a *path-segment*
+prefix match (`startswith(seg, "children/")`). §8.5 keys that sugar on the
+field, and the two spellings coincide only while the field segment rides the
+child name — under transparency the prefix match would have silently stopped
+applying to `(children = Relative(2),)`. `_children` now returns the
+contributing field beside each child and `_rate_entry` matches on it, which is
+the spec's rule and a strict generalization of the old one: for an undeclared
+container, field-keying and prefix-keying are the same lookup. `_check_sample_times`
+admits the field name as a key on the same basis. What that leaves is the one
+ambiguity §8.5 names — a transparent element keyed with its own field's name —
+and it is refused where the bare key is formed.
+
+`Group` is the library case and the reason for the decision: it declares
+`children` transparent, drops the 4-arg positional convenience constructor for
+`Group(children; wires, inputs, outputs, rates)` — a bare `Pair` normalized to
+a one-entry tuple, since a single wire should not have to be written with a
+trailing comma — and its declarations then read exactly like a named
+assembly's. The test sweep is the visible half: 335 `children/` occurrences
+across `src/` (19) and `test/` (316) became bare keys, including the 16
+`var"children/ctl"` rate spellings that a slash-bearing key had forced, the nested read paths
+(`"children/f/children/a"` → `"f/a"`) and the error-message assertions, two of
+which were re-pinned against a quoted form rather than left matching a
+one-letter substring.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -855,7 +897,7 @@ Each of these is a spec claim rather than a programming convenience:
   the assembly root does not already use. Totality reaches it identically, and
   the leaf's own `condition` fragment composes at the root with no `at` prefix.
 - **An `at` prefix stopping at an assembly resolves to the same plan the root
-  spelling produces.** `at("children/loop", fragment(inputs = (ref = …)))`
+  spelling produces.** `at("loop", fragment(inputs = (ref = …)))`
   and `fragment(inputs = (in = …))` compile entry for entry, because the face
   graph the `Build` retains has a name to follow at every level. The two
   refusals that flank it are unchanged in kind: a component-fed face reaches
@@ -873,6 +915,25 @@ Each of these is a spec claim rather than a programming convenience:
   used to produce is *unreachable* rather than reworded: the test authors the
   dead face, addresses it with a condition, and gets the build's refusal — the
   resolver never sees it.
+- **Transparency is a naming change and nothing else (D-211).** The same two
+  children, in the same declaration order, wired and read through bare keys on
+  a transparent container and through `"units/1"` on an undeclared one — the
+  flat list, the wiring endpoints, the read path and the exported face all land
+  identically. The default is `nothing`, and `TupleRoster` sitting beside
+  `TransparentRoster` in the same file is the control.
+- **The collision check is general; bare keys only make it reachable.** A bare
+  key against a sibling component field, and a bare key against another
+  container's composite name, are one error naming both parties by provenance.
+  The self-named case — an element keyed with its own field's name — is refused
+  where the bare key is formed, because that is the ambiguity §8.5 hands to the
+  same error. The declaration itself is checked too: a component field and an
+  absent name are refused alike.
+- **Bare rate keys drive the grid the composite ones did.** The same two
+  children under the same two `sample_times` entries compile to the same
+  `(D, Φ)` pairs whether the container is transparent (`a`, `b`) or not
+  (`kids/a`, `kids/b`), and the field-name sugar keys on the *field*, so
+  `(children = Relative(2, 1),)` still applies one declaration to every element
+  of a `Group`.
 
 ## Stand-in retirement history
 

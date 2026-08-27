@@ -19,16 +19,16 @@
 end
 
 @testset "the fold validates with path attribution (§8.7, §9.1)" begin
-    rated(rates) = Group((; c = TickCounter()), (), (), (), rates)
+    rated(rates) = Group((; c = TickCounter()); rates = rates)
 
-    err = failure(() -> build(rated((; var"children/c" = 2))))
+    err = failure(() -> build(rated((; c = 2))))
     @test err isa BuildError
-    @test occursin("whole value vocabulary", err.msg) && occursin("children/c", err.msg)
+    @test occursin("whole value vocabulary", err.msg) && occursin("key `c`", err.msg)
 
-    for (rates, fragment) in (((; var"children/c" = Relative(0)),      "K ≥ 1"),
-                              ((; var"children/c" = Relative(2, 2)),   "0 ≤ φ < K"),
-                              ((; var"children/c" = Absolute(Period(0))),        "T > 0"),
-                              ((; var"children/c" = Absolute(Hz(50), 1//40)),    "0 ≤ τ < T"))
+    for (rates, fragment) in (((; c = Relative(0)),      "K ≥ 1"),
+                              ((; c = Relative(2, 2)),   "0 ≤ φ < K"),
+                              ((; c = Absolute(Period(0))),        "T > 0"),
+                              ((; c = Absolute(Hz(50), 1//40)),    "0 ≤ τ < T"))
         err = failure(() -> build(rated(rates)))
         @test err isa BuildError && occursin(fragment, err.msg)
     end
@@ -37,18 +37,18 @@ end
     # key meet the same rule.
     err = failure(() -> build(rated((; nav = Relative(2)))))
     @test err isa BuildError && occursin("immediate child", err.msg)
-    err = failure(() -> build(rated((; var"children/c/x" = Relative(2)))))
+    err = failure(() -> build(rated((; var"c/x" = Relative(2)))))
     @test err isa BuildError && occursin("immediate child", err.msg)
 
     # A key on a continuous child is the Δt-on-continuous error at declaration
     # time: keys name discrete or scope children (§8.7).
-    err = failure(() -> build(Group((; c = Gain(1.0)), (), ("in" => "children/c/e",), (),
-                                    (; var"children/c" = Relative(2)))))
+    err = failure(() -> build(Group((; c = Gain(1.0)); inputs = ("in" => "c/e",),
+                                    rates = (; c = Relative(2)))))
     @test err isa BuildError && occursin("continuous", err.msg)
 
     # A bare container field name applies one declaration to every element.
-    sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), (),
-                           (; children = Relative(2, 1))); h = 1//10)
+    sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter());
+                           rates = (; children = Relative(2, 1))); h = 1//10)
     @test length(sim.sched) == 2
     @test all(e.D == 2 && e.Φ == 1 for e in sim.sched)
 end
@@ -94,27 +94,48 @@ end
 
 @testset "relative scopes compose affinely; anchors sever (§10.5, §9.1)" begin
     # Under a scope at Relative(2, 1): D = K·Dₛ, Φ = Φₛ + φ·Dₛ.
-    inner_g = Group((; a = TickCounter(), b = TickCounter()), (), (), (),
-                    (; var"children/a" = Relative(1), var"children/b" = Relative(5, 2)))
-    sim = Simulation(Group((; f = inner_g), (), (), (),
-                           (; var"children/f" = Relative(2, 1))); h = 1//100)
+    inner_g = Group((; a = TickCounter(), b = TickCounter());
+                    rates = (; a = Relative(1), b = Relative(5, 2)))
+    sim = Simulation(Group((; f = inner_g);
+                           rates = (; f = Relative(2, 1))); h = 1//100)
     @test [(e.D, e.Φ) for e in sim.sched] == [(2, 1), (10, 5)]
 
     # Neither has Φ = 0, so boundary zero admits neither; over base ticks 1…10,
     # `a` ticks at the odd indices and `b` at 5 alone.
     init!(sim)
-    @test state(sim, "children/f/children/a") === (n = 0,)
+    @test state(sim, "f/a") === (n = 0,)
     run!(sim; t_end = 10 * 0.01)
-    @test state(sim, "children/f/children/a") === (n = 5,)
-    @test state(sim, "children/f/children/b") === (n = 1,)
+    @test state(sim, "f/a") === (n = 5,)
+    @test state(sim, "f/b") === (n = 1,)
 
     # An anchor severs: a relative child of an anchored subtree composes against
     # the anchor, not the enclosing grid — D = 3·D₁ with D₁ = (1//50)/(1//500).
-    gps = Group((; rx = TickCounter()), (), (), (),
-                (; var"children/rx" = Relative(3)))
-    sim = Simulation(Group((; gps = gps), (), (), (),
-                           (; var"children/gps" = Absolute(Hz(50)))); h = 1//500)
+    gps = Group((; rx = TickCounter());
+                rates = (; rx = Relative(3)))
+    sim = Simulation(Group((; gps = gps);
+                           rates = (; gps = Absolute(Hz(50)))); h = 1//500)
     @test [(e.D, e.Φ) for e in sim.sched] == [(30, 0)]
+end
+
+# An undeclared container's twin of the `Group` above: the same two children
+# under the same two declarations, keyed by the composite name D-211 leaves
+# untouched.
+struct OpaqueRoster{K <: NamedTuple, R <: NamedTuple} <: AbstractComponent
+    kids::K
+    rates::R
+end
+child_connections(::OpaqueRoster) = ()
+sample_times(r::OpaqueRoster) = r.rates
+
+@testset "bare rate keys drive the grid the composite ones did (§8.7, D-211)" begin
+    bare = Simulation(Group((; a = TickCounter(), b = TickCounter());
+                            rates = (; a = Relative(2), b = Relative(3, 1))); h = 1//10)
+    opaque = Simulation(OpaqueRoster((a = TickCounter(), b = TickCounter()),
+                                     (; var"kids/a" = Relative(2),
+                                        var"kids/b" = Relative(3, 1))); h = 1//10)
+    @test [(e.D, e.Φ) for e in bare.sched] == [(2, 0), (3, 1)]
+    @test [(e.D, e.Φ) for e in bare.sched] == [(e.D, e.Φ) for e in opaque.sched]
+    @test bare.flat.paths == ["a", "b"] && opaque.flat.paths == ["kids/a", "kids/b"]
 end
 
 # --- multi-rate: deployment binding (§9.1, §9.2) --------------------------------
@@ -164,8 +185,8 @@ end
 
     # All anchored: the pool is every period and every nonzero offset, and the
     # derived value is its GCD — the offset drives the grid 2× finer here.
-    anchored = Group((; c = TickCounter()), (), (), (),
-                     (; var"children/c" = Absolute(Hz(50), 1//100)))
+    anchored = Group((; c = TickCounter());
+                     rates = (; c = Absolute(Hz(50), 1//100)))
     sim = Simulation(anchored; h = 1//500, Δt_base = :derive)
     @test sim.Δt_base == 0.01 && sim.n == 5
     @test [(e.D, e.Φ) for e in sim.sched] == [(2, 1)]
@@ -178,10 +199,10 @@ end
     # Φ·Δt_base. Its output stage runs there all the same (D-205), publishing
     # from the t₀ table — the ramp *at t₀*, not the build probe's value; the
     # dueness the gate reads at index 0 governs the `g` updates alone (§10.5).
-    late = Group((; src = Ramp(5.0), z = ZOH()),
-                 ("children/src/out" => "children/z/in",), (),
-                 ("children/z/out" => "y",),
-                 (; var"children/z" = Relative(2, 1)))
+    late = Group((; src = Ramp(5.0), z = ZOH());
+                 wires = ("src/out" => "z/in",),
+                 outputs = ("z/out" => "y",),
+                 rates = (; z = Relative(2, 1)))
     sim = Simulation(late; h = 1//100)
     init!(sim)
     @test port(sim, "", :y) == 5.0                   # the ramp at t₀, evaluated

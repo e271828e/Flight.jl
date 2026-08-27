@@ -6,19 +6,19 @@
 
 # A monitored ramp: `hit` goes true at the first boundary whose sweep sees the
 # ramp at the trigger's level — the boundary-detected stop face.
-monitored() = Group((; src = Ramp(0.0), trig = Trigger(0.35)),
-                    ("children/src/out" => "children/trig/sig",), (),
-                    ("children/trig/on" => "hit",))
+monitored() = Group((; src = Ramp(0.0), trig = Trigger(0.35));
+                    wires = ("src/out" => "trig/sig",),
+                    outputs = ("trig/on" => "hit",))
 
 # A root-input-fed trigger exporting its flag: the boundary-zero stop's model.
-armed() = Group((; c = Trigger(0.5)), (), ("in" => "children/c/sig",),
-                ("children/c/on" => "stop",))
+armed() = Group((; c = Trigger(0.5)); inputs = ("in" => "c/sig",),
+                outputs = ("c/on" => "stop",))
 
 # The touchdown archetype (§13.5): a sawtooth crossing the overload's level
 # mid-frame, so the stop localizes to the crossing's t* boundary.
-overloaded() = Group((; src = Sawtooth(1.0), mon = Overload(0.315)),
-                     ("children/src/q" => "children/mon/sig",), (),
-                     ("children/mon/tripped" => "tripped",))
+overloaded() = Group((; src = Sawtooth(1.0), mon = Overload(0.315));
+                     wires = ("src/q" => "mon/sig",),
+                     outputs = ("mon/tripped" => "tripped",))
 
 # A resource-bracket witness for the abnormal tail, and the empty-claim binding
 # that rosters it.
@@ -180,8 +180,8 @@ end
     ref = Simulation(feedback_model(); h = 1//50, t_end = 1.0)
     init!(ref, fragment(inputs = (ref = 0.0,)))
     run!(ref)
-    @test port(sim, "children/plant", :y) === port(ref, "children/plant", :y)
-    @test state(sim, "children/plant").q === state(ref, "children/plant").q
+    @test port(sim, "plant", :y) === port(ref, "plant", :y)
+    @test state(sim, "plant").q === state(ref, "plant").q
 
     sim2 = Simulation(feedback_model(); h = 1//50)
     init!(sim2, fragment(inputs = (ref = 0.0,)))
@@ -218,7 +218,7 @@ end
     @test probe.log == [:init, :shutdown]            # the device took the ordinary tail
     # The stores may hold mid-boundary values — retained for inspection,
     # readable, and worth nothing more than inspection.
-    @test state(sim, "children/c").q isa Float64
+    @test state(sim, "c").q isa Float64
 
     # Errored is terminal: never advanced, never re-initialized.
     @test occursin("errored", failure(() -> run!(sim)).msg)

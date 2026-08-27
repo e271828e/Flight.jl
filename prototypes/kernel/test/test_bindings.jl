@@ -5,7 +5,7 @@
 
 # A fed plant exporting its output: the root face set the output side reads —
 # one root input (`u`), one exported output face (`y`).
-outfaced() = Group((; p = Plant()), (), ("u" => "children/p/u",), ("children/p/y" => "y",))
+outfaced() = Group((; p = Plant()); inputs = ("u" => "p/u",), outputs = ("p/y" => "y",))
 
 # A boundary-driven output device (§11.2): the loop idiom verbatim — wait,
 # gather against the handle's compiled reads, map_output through its binding —
@@ -40,7 +40,7 @@ struct Duplex <: AbstractBinding end             # both sides, one binding
 is_input(::Duplex) = true
 is_output(::Duplex) = true
 claims(::Duplex) = ("a",)
-reads(::Duplex) = (; echo = get_input("a"), e = get_output("children/s", "e"))
+reads(::Duplex) = (; echo = get_input("a"), e = get_output("s", "e"))
 
 # A poll-once input device: assembles one datum, stages it through the loop
 # idiom — map_input against the handle's own binding — then holds its loop
@@ -150,7 +150,7 @@ end
                                   TableBinding(stick = (face = "a", deadzone = 0.1)))))
     stage!(ref, "a" => ref_val, "b" => 0.7)
     run!(ref; t_end = sim.clock.step * sim.h)
-    @test port(sim, "children/s", :e) === port(ref, "children/s", :e)
+    @test port(sim, "s", :e) === port(ref, "s", :e)
     # An unknown channel in a real loop body crashes the device by name, the
     # run continuing (§11.6: any non-datum exception propagates to the wrapper).
     sim2 = Simulation(two_root_inputs(); h = 1//10)
@@ -178,9 +178,9 @@ end
 
 @testset "reads resolve at attach: binding drift fails there, never on the wire (§11.2, §14.4)" begin
     sim = Simulation(outfaced(); h = 1//10)
-    err = failure(() -> attach!(sim, Pad("t"), Readout(alt = get_output("children/q", "y"))))
+    err = failure(() -> attach!(sim, Pad("t"), Readout(alt = get_output("q", "y"))))
     @test err isa BuildError && occursin("ReadBindingUnresolved", err.msg) &&
-          occursin("children/q", err.msg)
+          occursin("get_output(\"q\", :y)", err.msg)
     err = failure(() -> attach!(sim, Pad("t"), Readout(v = get_input("nope"))))
     @test err isa BuildError && occursin("ReadBindingUnresolved", err.msg) &&
           occursin("{u}", err.msg)               # the root-input list, in hand
@@ -199,7 +199,7 @@ end
     sim = Simulation(outfaced(); h = 1//10)
     dev = Telemetry()
     h = attach!(sim, dev, Readout(alt = get_face("y"),
-                                  raw = get_output("children/p", "y"),
+                                  raw = get_output("p", "y"),
                                   cmd = get_input("u")))
     init!(sim, fragment(inputs = (u = 0.0,)))
     stage!(sim, "u" => 2.0)
@@ -211,7 +211,7 @@ end
     # alias one cell (§11.2), so the two registers agree bitwise, always.
     @test all(nt.alt === nt.raw for nt in dev.wire)
     # The stop wake handed the final world: the last datum is the run's end.
-    @test last(dev.wire).raw === port(sim, "children/p", :y)
+    @test last(dev.wire).raw === port(sim, "p", :y)
     @test last(dev.wire).cmd === 2.0
     # The same compiled gather serves the calling task against any snapshot.
     nt = gather(h, latest(sim))
@@ -235,5 +235,5 @@ end
     run!(sim; t_end = 0.2)
     nt = gather(h, latest(sim))                        # the output half: the gather compiled
     @test nt.echo === 0.4                        # the root input read back through get_input
-    @test nt.e === port(sim, "children/s", :e)
+    @test nt.e === port(sim, "s", :e)
 end

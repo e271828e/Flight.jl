@@ -3,15 +3,15 @@
 # the roster empty, so the harness register's derived surface is every root face.
 
 # Two root inputs feeding one summing junction: the sparse-batch hazard's shape.
-two_root_inputs() = Group((; s = Sum(sa = 1.0, sb = 1.0)), (),
-                    ("a" => "children/s/a", "b" => "children/s/b"), ())
+two_root_inputs() = Group((; s = Sum(sa = 1.0, sb = 1.0));
+                    inputs = ("a" => "s/a", "b" => "s/b"))
 
 # A chain whose published ports are in lockstep at every boundary — g2 computes
 # 2·g1 in the same sweep, so any snapshot mixing two boundaries breaks it.
-chain3() = Group((; p = Plant(), g1 = Gain(2.0), g2 = Gain(2.0)),
-                 ("children/p/y" => "children/g1/e",
-                  "children/g1/out" => "children/g2/e"),
-                 ("u" => "children/p/u",), ())
+chain3() = Group((; p = Plant(), g1 = Gain(2.0), g2 = Gain(2.0));
+                 wires = ("p/y" => "g1/e",
+                          "g1/out" => "g2/e"),
+                 inputs = ("u" => "p/u",))
 
 @testset "a staged batch lands at its frame top, and nowhere earlier (§11.1, §11.4)" begin
     sim = Simulation(fed(Plant(), "u"); h = 1//10)
@@ -30,8 +30,8 @@ chain3() = Group((; p = Plant(), g1 = Gain(2.0), g2 = Gain(2.0)),
     step!(ref; t_plus = 0.3)
     poke!(ref, "in", 1.0)                    # the counterfactual, under the data plane
     step!(ref; t_plus = 0.5)
-    @test port(sim, "children/c", :y) === port(ref, "children/c", :y)
-    @test port(sim, "children/c", :power) === port(ref, "children/c", :power)
+    @test port(sim, "c", :y) === port(ref, "c", :y)
+    @test port(sim, "c", :power) === port(ref, "c", :power)
 end
 
 @testset "a staged batch waits for the first frame top; one predating init! clears with it (§11.3, §12.6)" begin
@@ -45,11 +45,11 @@ end
     stage!(sim, "in" => 1.0)                 # predates boundary zero: cleared by init!
     init!(sim, fragment(inputs = (in = 0.0,)))
     @test (@atomic sim.plane.harness.cell.pending) === nothing
-    @test modes(sim, "children/c").count == 0
+    @test modes(sim, "c").count == 0
     stage!(sim, "in" => 1.0)                 # the pre-run register: init! → stage! → run!
-    @test modes(sim, "children/c").count == 0
+    @test modes(sim, "c").count == 0
     run!(sim; t_end = 0.1)
-    @test modes(sim, "children/c").count == 1
+    @test modes(sim, "c").count == 1
 end
 
 @testset "coalescing: merge only — newest wins per face, untouched faces survive (§11.4)" begin
@@ -61,7 +61,7 @@ end
     run!(sim; t_end = 0.1)
     @test port(sim, "", :a) === 3.0
     @test port(sim, "", :b) === 2.0
-    @test port(sim, "children/s", :e) === 5.0
+    @test port(sim, "s", :e) === 5.0
 end
 
 @testset "every check runs at staging, on the writer's side; the drain is pure (§11.4)" begin
@@ -107,15 +107,15 @@ end
     @test snap.frame == 5 && snap.t == sim.clock.t
     # Boundary-consistent and whole-table: every port bitwise the live table's,
     # the root inputs riding along as the source cells they are (§11.2).
-    for (path, name) in (("children/p", :y), ("children/p", :power),
-                         ("children/g1", :out), ("children/g2", :out), ("", :u))
+    for (path, name) in (("p", :y), ("p", :power),
+                         ("g1", :out), ("g2", :out), ("", :u))
         @test port(snap, path, name) === port(sim, path, name)
     end
 
     # The binding rule: the run moves on, the published snapshot holds.
-    y5 = port(snap, "children/p", :y)
+    y5 = port(snap, "p", :y)
     step!(sim; t_plus = 0.5)
-    @test port(snap, "children/p", :y) === y5
+    @test port(snap, "p", :y) === y5
     @test latest(sim).frame == 10
 
     # Every frame top publishes, the off-tick boundary included.
@@ -137,7 +137,7 @@ end
                 seen += 1
                 # In-lockstep within one snapshot: g2 was computed as 2·g1 in
                 # the same sweep, so any mix of two boundaries breaks it.
-                port(s, "children/g2", :out) === 2.0 * port(s, "children/g1", :out) || (bad += 1)
+                port(s, "g2", :out) === 2.0 * port(s, "g1", :out) || (bad += 1)
                 s.t ≥ tprev || (mono = false)
                 tprev = s.t
             end
@@ -190,9 +190,9 @@ end
 
 # A surface past the 32-wide threshold where Base's tuple `map` leaves its
 # inlined small-tuple path: the merge and the scatter must lean on neither.
-wide_root_inputs(n) = Group(NamedTuple(Symbol(:s, i) => Sum(sa = 1.0, sb = 1.0) for i in 1:n), (),
-                      Tuple(vcat(["a$i" => "children/s$i/a" for i in 1:n],
-                                 ["b$i" => "children/s$i/b" for i in 1:n])), ())
+wide_root_inputs(n) = Group(NamedTuple(Symbol(:s, i) => Sum(sa = 1.0, sb = 1.0) for i in 1:n);
+                      inputs = Tuple(vcat(["a$i" => "s$i/a" for i in 1:n],
+                                          ["b$i" => "s$i/b" for i in 1:n])))
 
 # Its baseline (§14.6): a generated fixture's full-coverage condition, generated
 # beside it. Totality is a precondition of `init!`, and 34 hand-written root-input

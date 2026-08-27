@@ -58,13 +58,13 @@ h_x(::PinnedGetsDual, (; t)) = (frozen = t,)
 @testset "embed-accept keeps the constant branch legal (D-166)" begin
     # Both ports return literal `Float64`s at a `Dual` activation — the scalar
     # through a branch not taken, the `SVector` wholesale.
-    sim = Simulation(Group((; c = ConstantBranch()), (), ("in" => "children/c/in",), ()),
+    sim = Simulation(Group((; c = ConstantBranch()); inputs = ("in" => "c/in",)),
                      D8; h = 1//100)
     init!(sim, fragment(inputs = (in = 0.0,)))
     # What the table holds is the cell's type, the constant embedded into it.
-    @test port(sim, "children/c", :out) isa D8
-    @test port(sim, "children/c", :vec) isa SVector{2,D8}
-    @test ForwardDiff.value(port(sim, "children/c", :vec)[2]) == 1.0
+    @test port(sim, "c", :out) isa D8
+    @test port(sim, "c", :vec) isa SVector{2,D8}
+    @test ForwardDiff.value(port(sim, "c", :vec)[2]) == 1.0
 
     # The converse is not accepted: a `Dual` at a pinned leaf is an error, with
     # the hint that names the one honest cause. It fails at the `Dual`
@@ -92,8 +92,8 @@ output_types(::ClockStamp) = (stamp = Float64,)
 h_s(::ClockStamp, (; t)) = (stamp = t,)
 
 @testset "a non-nominal activation re-runs Stratum C; frozen products carry (§9.4)" begin
-    pair() = Group((; src = NomSource(), rd = FrozenReader()),
-                   ("children/src/val" => "children/rd/in",), (), ())
+    pair() = Group((; src = NomSource(), rd = FrozenReader());
+                   wires = ("src/val" => "rd/in",))
 
     # The nominal activation runs at build and *is* the Float64 activation; a
     # non-nominal one materializes at first request and is cached on the Build.
@@ -105,15 +105,15 @@ h_s(::ClockStamp, (; t)) = (stamp = t,)
     # real upstream value — 2·(3.0 + 0.0) — not a value synthesized off its
     # declaration. Its cell pins while its producer's walks.
     simd = Simulation(b, D8; h = 1//100)
-    @test port(simd, "children/src", :val) isa D8
-    @test port(simd, "children/rd", :out) === 6.0
+    @test port(simd, "src", :val) isa D8
+    @test port(simd, "rd", :out) === 6.0
 
     # A discrete stage is never probed at a non-nominal activation (§9.4's
     # executable set): `t` in a discrete bundle is lawful, because it is a
     # `Float64` whenever the stage actually runs — so this must not detonate
     # as a `Dual` arriving at a pinned declaration.
     sims = Simulation(single(ClockStamp()), D8; h = 1//100)
-    @test port(sims, "children/c", :stamp) === 0.0
+    @test port(sims, "c", :stamp) === 0.0
 
     # §9.4's opt-in exhaustive mode: the listed activations materialize at
     # build time, which is where CI catches a lurking pinned leaf.
@@ -136,9 +136,9 @@ h_x(::PinnedLeaf, (; t)) = (a = t, frozen = 2.0)
     sim = Simulation(single(PinnedLeaf()), D8; h = 1//100)
     @test Set(keys(sim.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
     init!(sim)
-    @test port(sim, "children/c", :a) isa D8
-    @test port(sim, "children/c", :frozen) isa Float64
-    @test port(sim, "children/c", :frozen) == 2.0  # a stored constant, not a computed product
+    @test port(sim, "c", :a) isa D8
+    @test port(sim, "c", :frozen) isa Float64
+    @test port(sim, "c", :frozen) == 2.0  # a stored constant, not a computed product
 end
 
 # Mixed-leaf cells (§7.2's per-leaf table): the ordinary route, an `Int` leaf
@@ -167,7 +167,7 @@ h_x(::PinnedInside, (; t)) = (out = PinnedPair(t, 2.0),)
     sim = Simulation(single(MixedCell()); h = 1//100)
     @test Set(keys(sim.store.stores)) == Set([Symbol(Float64), Symbol(Int)])
     init!(sim)
-    out = port(sim, "children/c", :out)
+    out = port(sim, "c", :out)
     @test out isa TaggedValue{Float64} && out.n === 1
     step!(sim, 1e-2)
     @test @ballocated(step!($sim, 1e-2)) == 0
@@ -180,7 +180,7 @@ h_x(::PinnedInside, (; t)) = (out = PinnedPair(t, 2.0),)
     sim = Simulation(single(PinnedInside()), D8; h = 1//100)
     @test Set(keys(sim.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
     init!(sim)
-    out = port(sim, "children/c", :out)
+    out = port(sim, "c", :out)
     @test out isa PinnedPair{D8}
     @test out.a isa D8 && out.ref === 2.0
 end

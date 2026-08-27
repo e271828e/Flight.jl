@@ -67,14 +67,36 @@ end
 # of its own, contributing its elements as children *of the parent*, path-named
 # `"field/1"…"field/N"` or `"field/key"`. Every other field is inert parameter
 # data.
+#
+# One container field per type may be declared **name-transparent** (D-211), and
+# its elements are then contributed under their bare keys — `"key"`, `"1"` —
+# everywhere a child name appears. Naming is the only thing the declaration
+# changes: the elements are the parent's children exactly as before, in the same
+# declaration order, and the container keeps its transparency of contract. Two
+# checks pay for it: the declared symbol must name a container field, and no two
+# children may end up sharing a name.
 
 """`segment => instance` for every child of `c`, in field order."""
-function children(path::String, c)
+children(path::String, c) = first(_children(path, c))
+
+"""
+`(kids, fields)`: the children of `c` as `segment => instance` pairs, and per
+child the field name that contributed it — the rate declaration's second key
+form, the bare field name applying one entry to every element of a container
+(§8.7). The sugar keys on the *field*, so a name-transparent container keeps it
+unchanged.
+"""
+function _children(path::String, c)
+    tf = transparent_container(c)
     kids = Pair{String,Any}[]
+    fields = Symbol[]
+    prov = String[]                            # per child, who contributed it
     for name in fieldnames(typeof(c))
         v = getfield(c, name)
         if v isa AbstractComponent
             push!(kids, string(name) => v)
+            push!(fields, name)
+            push!(prov, "field `$name`")
         elseif v isa NamedTuple || v isa Tuple
             n = count(e -> e isa AbstractComponent, v)
             n == 0 && continue                     # inert data; an empty container too
@@ -83,12 +105,55 @@ function children(path::String, c)
                                  "$(join(unique(typeof(e) for e in v
                                                 if !(e isa AbstractComponent)), ", ")) " *
                                  "— a container holds components only (§8.5)"))
+            bare = name === tf
             for k in keys(v)
-                push!(kids, string(name, "/", k) => v[k])
+                # The one ambiguity bare keys leave: an element key equal to its
+                # own field's name would be indistinguishable from the rate
+                # declaration's field-name sugar. It joins the collision error
+                # below (§8.5, D-211).
+                bare && string(k) == string(name) &&
+                    throw(BuildError("$(_at(path)): the name-transparent container field " *
+                                     "`$name` holds an element keyed `$k` — a bare key equal " *
+                                     "to its own field's name collides with the `sample_times` " *
+                                     "field-name sugar (§8.5, D-211)"))
+                push!(kids, (bare ? string(k) : string(name, "/", k)) => v[k])
+                push!(fields, name)
+                push!(prov, "$(bare ? "name-transparent " : "")container field `$name`, " *
+                            "element `$k`")
             end
         end
     end
-    kids
+    _check_transparent(path, c, tf)
+    _check_child_names(path, kids, prov)
+    kids, fields
+end
+
+# The declaration is checked after the walk, so a mixed container reports as one
+# rather than as a bad transparency declaration.
+function _check_transparent(path::String, c, tf)
+    tf === nothing && return nothing
+    ok = tf in fieldnames(typeof(c)) && let v = getfield(c, tf)
+        (v isa NamedTuple || v isa Tuple) && all(e -> e isa AbstractComponent, v)
+    end
+    ok || throw(BuildError("$(_at(path)): `transparent_container` returns `:$tf`, which names " *
+                           "no container field of `$(typeof(c))` — a name-transparent " *
+                           "declaration names a `Tuple` or `NamedTuple` field whose elements " *
+                           "are all components, the empty one included (§8.5, D-211)"))
+    nothing
+end
+
+# General, not transparency-specific: whatever mix of fields and containers
+# produced them, two children may not share a name. Bare keys make the case
+# reachable, but the rule is the older one — a child name is a path segment, and
+# a path segment addresses one component.
+function _check_child_names(path::String, kids, prov)
+    for i in eachindex(kids), j in 1:(i - 1)
+        first(kids[i]) == first(kids[j]) &&
+            throw(BuildError("$(_at(path)): two children are named `$(first(kids[i]))` — " *
+                             "$(prov[j]) and $(prov[i]); a child name is a path segment, and " *
+                             "a path segment addresses one component (§8.5, D-211)"))
+    end
+    nothing
 end
 
 # --- paths (§8.6, §6.1) -------------------------------------------------------
@@ -259,7 +324,7 @@ Validate a scope's `sample_times` against §10.5's constraints, with path
 attribution (§9.1, §13.1): wrapper-typed values only, `K ≥ 1`, `0 ≤ φ < K`,
 `T > 0`, `0 ≤ τ < T`, and every key naming an immediate child.
 """
-function _check_sample_times(path::String, st, kids)
+function _check_sample_times(path::String, st, kids, fields)
     st isa NamedTuple ||
         throw(BuildError("$(_at(path)): `sample_times` must return a NamedTuple of child " *
                          "name => `Relative`/`Absolute` entries (§8.7)"))
@@ -276,7 +341,8 @@ function _check_sample_times(path::String, st, kids)
             v.T > 0 || throw(BuildError("$entry: period $(v.T), and T > 0 (§10.5)"))
             0 ≤ v.τ < v.T || throw(BuildError("$entry: offset $(v.τ), and 0 ≤ τ < T (§10.5)"))
         end
-        any(seg == String(k) || startswith(seg, String(k) * "/") for (seg, _) in kids) ||
+        any(seg == String(k) for (seg, _) in kids) ||
+            any(String(fld) == String(k) for fld in fields) ||
             throw(BuildError("$entry: names no immediate child of $(_at(path)) — keys are " *
                              "immediate child names only; a deep key would edit another " *
                              "type's design from outside (§8.7)" *
@@ -286,15 +352,17 @@ function _check_sample_times(path::String, st, kids)
     nothing
 end
 
-# The entry scheduling child segment `seg`, or `nothing` for the `Relative(1)`
-# default. Exact match first; a bare container field name applies one
-# declaration to every element (§8.7).
-function _rate_entry(st, seg::String)
+# The entry scheduling the child at segment `seg`, contributed by field `fld`, or
+# `nothing` for the `Relative(1)` default. Exact match first; then the bare field
+# name, which applies one declaration to every element of a container (§8.7). The
+# sugar keys on the *field*, so a name-transparent container keeps it unchanged:
+# `(children = Relative(2),)` is the uniform spelling for a `Group` (D-211).
+function _rate_entry(st, seg::String, fld::Symbol)
     for (k, v) in pairs(st)
         String(k) == seg && return (k, v)
     end
     for (k, v) in pairs(st)
-        startswith(seg, String(k) * "/") && return (k, v)
+        String(k) == String(fld) && return (k, v)
     end
     nothing
 end
@@ -304,8 +372,9 @@ The child's scope triple, and whether an explicit key declared it. The unlisted
 child continues at the enclosing triple — the `Relative(1)` default is the
 affine law at `(K, φ) = (1, 0)`, implemented by nothing.
 """
-function _child_scope(w::_Walk, path::String, st, seg::String, scope::NTuple{3,Int})
-    hit = _rate_entry(st, seg)
+function _child_scope(w::_Walk, path::String, st, seg::String, fld::Symbol,
+                      scope::NTuple{3,Int})
+    hit = _rate_entry(st, seg, fld)
     hit === nothing && return scope, false
     (k, v) = hit
     if v isa Relative
@@ -390,11 +459,11 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
     end
     _check_face_names(path, comp)
     st = sample_times(comp)
-    kids = children(path, comp)
-    _check_sample_times(path, st, kids)
-    for (seg, kid) in kids
+    kids, fields = _children(path, comp)
+    _check_sample_times(path, st, kids, fields)
+    for ((seg, kid), fld) in zip(kids, fields)
         kidpath = _join(path, seg)
-        kscope, keyed = _child_scope(w, path, st, seg, scope)
+        kscope, keyed = _child_scope(w, path, st, seg, fld, scope)
         # A key on a continuous child is the Δt-on-continuous error at
         # declaration time (§8.7): keys name discrete or scope children only.
         keyed && classify(kidpath, kid) === PRIMITIVE &&

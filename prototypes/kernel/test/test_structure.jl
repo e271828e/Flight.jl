@@ -88,10 +88,13 @@ input_connections(::TupleRoster)  = ("in" => "units/1/e",)
 output_connections(::TupleRoster) = ("units/2/out" => "y",)
 
 @testset "container children are path-named `field/key` and `field/1` (§8.5)" begin
-    sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()), (), (), ());
+    # A container's elements are children *of the parent*, in declaration order.
+    # `Group` names them bare, its `children` being transparent (D-211); the
+    # naming rule itself is the undeclared containers' below.
+    sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()));
                      h = 1//10)
-    @test sim.flat.paths == ["children/c1", "children/c2"]
-    @test state(sim, "children/c2") === (n = 0,)
+    @test sim.flat.paths == ["c1", "c2"]
+    @test state(sim, "c2") === (n = 0,)
 
     # An empty container contributes zero children, and is not an error.
     b = build(EmptyRoster((;), ModedSource()))
@@ -114,6 +117,110 @@ output_connections(::TupleRoster) = ("units/2/out" => "y",)
     err = failure(() -> build(TupleRoster((Gain(1.0), 2.0))))
     @test err isa BuildError
     @test occursin("mixes components", err.msg) && occursin("units", err.msg)
+end
+
+# --- name-transparent containers (§8.5, D-211) --------------------------------
+# One container field per type may be declared name-transparent, and its
+# elements then go by bare key everywhere a child name appears. `Group` is the
+# library case, exercised throughout these files; below is the rule itself, on
+# named types, beside `TupleRoster` — the undeclared container it leaves alone.
+
+struct TransparentRoster{U <: NamedTuple} <: AbstractComponent
+    units::U
+end
+child_connections(::TransparentRoster)     = ("a/out" => "b/e",)
+input_connections(::TransparentRoster)     = ("in" => "a/e",)
+output_connections(::TransparentRoster)    = ("b/out" => "y",)
+transparent_container(::TransparentRoster) = :units
+
+struct Colliding <: AbstractComponent            # a bare key against a sibling field
+    kids::NamedTuple
+    c1::TickCounter
+end
+child_connections(::Colliding) = ()
+transparent_container(::Colliding) = :kids
+
+struct Pathological <: AbstractComponent         # ...and against another container's element
+    kids::NamedTuple
+    units::Tuple
+end
+child_connections(::Pathological) = ()
+transparent_container(::Pathological) = :kids
+
+struct SelfNamed <: AbstractComponent            # a bare key equal to its own field's name
+    kids::NamedTuple
+end
+child_connections(::SelfNamed) = ()
+transparent_container(::SelfNamed) = :kids
+
+struct OpaqueDeclared <: AbstractComponent       # the declaration names a component field
+    c::TickCounter
+end
+child_connections(::OpaqueDeclared) = ()
+transparent_container(::OpaqueDeclared) = :c
+
+struct AbsentDeclared <: AbstractComponent       # ...and here, no field of the type at all
+    kids::NamedTuple
+end
+child_connections(::AbsentDeclared) = ()
+transparent_container(::AbsentDeclared) = :nope
+
+@testset "a name-transparent container contributes bare keys (§8.5, D-211)" begin
+    # Naming is the only thing the declaration changes: the same two children in
+    # the same declaration order, addressed without the field segment — wiring
+    # endpoints, the flat list and the read path alike.
+    sim = Simulation(TransparentRoster((a = Gain(2.0), b = Gain(3.0))); h = 1//10)
+    @test sim.flat.paths == ["a", "b"]
+    init!(sim, fragment(inputs = (in = 1.0,)))
+    @test port(sim, "b", :out) === 6.0
+    @test port(sim, "", :y) === port(sim, "b", :out)
+
+    # The undeclared container keeps its key segment: `TupleRoster` above wires
+    # and reads the same topology as `"units/1"`, and the default is `nothing`.
+    @test build(TupleRoster((Gain(2.0), Gain(3.0)))).flat.paths == ["units/1", "units/2"]
+    @test transparent_container(TupleRoster((Gain(1.0),))) === nothing
+    @test transparent_container(Group((;))) === :children
+
+    # Two children may not share a name, whatever produced them. The check is
+    # general — bare keys only make the case reachable — and it names both
+    # parties: here a bare key against a sibling field, and against another
+    # container's composite name.
+    err = failure(() -> build(Colliding((c1 = TickCounter(),), TickCounter())))
+    @test err isa BuildError && occursin("two children are named `c1`", err.msg)
+    @test occursin("field `c1`", err.msg) &&
+          occursin("name-transparent container field `kids`, element `c1`", err.msg)
+    err = failure(() -> build(Pathological((var"units/1" = TickCounter(),),
+                                           (TickCounter(),))))
+    @test err isa BuildError && occursin("two children are named `units/1`", err.msg)
+
+    # The one ambiguity bare keys leave: an element keyed with its own field's
+    # name is indistinguishable from `sample_times`' field-name sugar (§8.7).
+    err = failure(() -> build(SelfNamed((kids = TickCounter(),))))
+    @test err isa BuildError && occursin("field-name sugar", err.msg)
+
+    # And the declaration must name a container field of the type — a component
+    # field and an absent name are refused alike.
+    for bad in (OpaqueDeclared(TickCounter()), AbsentDeclared((; c = TickCounter())))
+        err = failure(() -> build(bad))
+        @test err isa BuildError && occursin("names no container field", err.msg)
+    end
+end
+
+@testset "`Group`'s keyword form normalizes a bare `Pair` (§8.5, D-211)" begin
+    g = Group((; c = Gain(2.0)); inputs = "in" => "c/e", outputs = "c/out" => "y")
+    @test input_connections(g) == ("in" => "c/e",)
+    @test output_connections(g) == ("c/out" => "y",)
+    @test child_connections(g) == () && sample_times(g) == (;)
+
+    # A tuple passes through as written, and every unnamed keyword is empty.
+    w = Group((; a = Gain(1.0), b = Gain(2.0)); wires = ("a/out" => "b/e",))
+    @test child_connections(w) == ("a/out" => "b/e",)
+    @test input_connections(w) == () && output_connections(w) == ()
+
+    # The normalized declarations are the ones that build.
+    sim = Simulation(g; h = 1//10)
+    init!(sim, fragment(inputs = (in = 2.0,)))
+    @test port(sim, "", :y) === 4.0
 end
 
 # --- paths and the one-level rule (§6.1, §8.6) --------------------------------
@@ -258,15 +365,15 @@ end
     @test err isa BuildError && occursin("routes to no internal endpoint", err.msg)
     @test occursin("input_connections at the root component", err.msg)
 
-    nested = Group((; sub = DeadFace(Gain(2.0))), (), ("in" => "children/sub/in",), ())
+    nested = Group((; sub = DeadFace(Gain(2.0))); inputs = ("in" => "sub/in",))
     err = failure(() -> build(nested))
     @test err isa BuildError && occursin("routes to no internal endpoint", err.msg)
-    @test occursin("input_connections at `children/sub`", err.msg)
+    @test occursin("input_connections at `sub`", err.msg)
 
     # The misdiagnosis this closes: the dead face used to build, and a condition
     # addressing it read "declares no input face" — byte-identical to the message
     # a bare typo earns. Authoring one can no longer get that far.
-    err = failure(() -> resolve(at("children/sub", fragment(inputs = (dead = 1.0,))),
+    err = failure(() -> resolve(at("sub", fragment(inputs = (dead = 1.0,))),
                                 build(nested)))
     @test occursin("routes to no internal endpoint", err.msg) &&
           !occursin("declares no input face", err.msg)
@@ -319,13 +426,13 @@ child_connections(::DoubleFedSibling) = ("src/out" => "loop/in",)
 
     # The one legitimate terminus: the root's own input faces are the root inputs,
     # authored by the init service's condition (§11.3, §14.6).
-    sim = Simulation(Group((; c = Gain(2.0)), (), ("in" => "children/c/e",), ());
+    sim = Simulation(Group((; c = Gain(2.0)); inputs = ("in" => "c/e",));
                      h = 1//100)
     @test sim.flat.root_inputs == [:in]
     init!(sim, fragment(inputs = (in = 0.0,)))
-    @test port(sim, "children/c", :out) == 0.0
+    @test port(sim, "c", :out) == 0.0
     init!(sim, fragment(inputs = (in = 3.0,)))
-    @test port(sim, "children/c", :out) == 6.0
+    @test port(sim, "c", :out) == 6.0
 end
 
 # --- tier classification (§8.2) -----------------------------------------------

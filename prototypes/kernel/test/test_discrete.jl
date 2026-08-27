@@ -27,12 +27,12 @@
     # exactly where the loop takes one RK4 step per sample, which at `ωΔt` this
     # size leaves ~1e-8 relative. A violated hold moves `u` mid-interval and
     # costs ~1e-3, so the margin still separates the two by orders of magnitude.
-    @test state(sim, "children/plant").q ≈ q rtol = 1e-6
+    @test state(sim, "plant").q ≈ q rtol = 1e-6
     # The cell holds `s[N]` — the output stage ran at this boundary — while the
     # store already holds `s[N+1]`. That gap *is* the sampled-data ordering:
     # output stages before updates, within one boundary (§10.5).
-    @test port(sim, "children/ctl", :u) ≈ s rtol = 1e-6
-    @test state(sim, "children/ctl").acc ≈ s_next rtol = 1e-6
+    @test port(sim, "ctl", :u) ≈ s rtol = 1e-6
+    @test state(sim, "ctl").acc ≈ s_next rtol = 1e-6
 end
 
 @testset "the ZOH holds by compile-time absence (§10.5)" begin
@@ -52,47 +52,47 @@ end
     # boundaries first — the loop starts at rest with `u` held at zero, so the
     # very first interval moves nothing at all.
     run!(sim; t_end = 0.1)
-    u₀, y₀ = port(sim, "children/ctl", :u), port(sim, "children/plant", :y)
+    u₀, y₀ = port(sim, "ctl", :u), port(sim, "plant", :y)
     @test u₀ != 0.0
     step!(sim, 0.02)
-    @test port(sim, "children/ctl", :u) == u₀   # untouched: never gathered, never written
-    @test port(sim, "children/plant", :y) != y₀
+    @test port(sim, "ctl", :u) == u₀   # untouched: never gathered, never written
+    @test port(sim, "plant", :y) != y₀
 end
 
 @testset "discrete state and modes live outside the buffer (§7.3)" begin
-    sim = Simulation(Group((; counter = TickCounter(), moded = ModedSource()), (), (), ());
+    sim = Simulation(Group((; counter = TickCounter(), moded = ModedSource()));
                      h = 1//10)
     # The flat buffer is continuous state only; the counter's `Int` is in its
     # own store, and no store mirrors another.
     @test isempty(sim.xbuf)
-    @test state(sim, "children/counter") === (n = 0,)
-    @test modes(sim, "children/moded") === (phase = :idle,)
+    @test state(sim, "counter") === (n = 0,)
+    @test modes(sim, "moded") === (phase = :idle,)
 
     # `Int` and `Bool` cells force their own buffers — the plural in
     # "per-eltype stores", first exercised here.
     @test Set(keys(sim.store.stores)) == Set([Symbol(Int), Symbol(Bool), Symbol(Float64)])
 
     init!(sim)
-    @test state(sim, "children/counter") === (n = 1,)   # boundary zero is a tick
-    @test port(sim, "children/counter", :n) === 0       # the cell holds what it published
-    @test port(sim, "children/counter", :even) === true
+    @test state(sim, "counter") === (n = 1,)   # boundary zero is a tick
+    @test port(sim, "counter", :n) === 0       # the cell holds what it published
+    @test port(sim, "counter", :even) === true
     run!(sim; t_end = 0.5)
     # Six boundaries: zero, then one per step. The store leads the cell by one,
     # the update having run after the output stage at each of them.
-    @test state(sim, "children/counter") === (n = 6,)
-    @test port(sim, "children/counter", :n) === 5
+    @test state(sim, "counter") === (n = 6,)
+    @test port(sim, "counter", :n) === 5
 end
 
 @testset "the workspace is scratch, on both tiers (§7.3)" begin
-    sim = Simulation(Group((; sm = Smoother(0.5), src = ModedSource(), wg = WorkGain(2.0)),
-                           ("children/src/out" => "children/sm/a",
-                            "children/src/out" => "children/sm/b",
-                            "children/src/out" => "children/wg/in"), (), ());
+    sim = Simulation(Group((; sm = Smoother(0.5), src = ModedSource(), wg = WorkGain(2.0));
+                           wires = ("src/out" => "sm/a",
+                                    "src/out" => "sm/b",
+                                    "src/out" => "wg/in"));
                      h = 1//10)
     init!(sim)
-    @test port(sim, "children/wg", :out) == 0.0      # 2 × the idle-phase constant
+    @test port(sim, "wg", :out) == 0.0      # 2 × the idle-phase constant
     run!(sim; t_end = 0.3)
-    @test state(sim, "children/sm").v isa SVector{2,Float64}
+    @test state(sim, "sm").v isa SVector{2,Float64}
 
     # Allocation is what the idiom is for: in-place math on scratch, an isbits
     # snapshot into the store, and nothing on the measured path.
@@ -127,10 +127,10 @@ end
     simd = Simulation(sampled_loop(), D8; h = 1//50)
     @test isempty(walked(simd.bodies.ticks))
     @test length(walked(simd.bodies.sweep_1)) == 1          # plant only; ctl frozen
-    @test port(simd, "children/ctl", :u) isa Float64
+    @test port(simd, "ctl", :u) isa Float64
 
     init!(simd, fragment(inputs = (ref = 0.0,)))
     run!(simd; t_end = 0.04)
-    @test state(simd, "children/plant").q isa SVector{2,D8}
-    @test port(simd, "children/ctl", :u) == 0.0              # held, never recomputed
+    @test state(simd, "plant").q isa SVector{2,D8}
+    @test port(simd, "ctl", :u) == 0.0              # held, never recomputed
 end

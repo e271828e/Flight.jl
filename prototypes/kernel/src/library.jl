@@ -435,8 +435,16 @@ f(::Exploder, (; x, u)) = u.arm ? throw(Exploded()) : (q = one(x.q),)
 """
 `Group`: the on-the-fly assembly, one library type whose *values* are the ad-hoc
 topologies. It needs no new rule — the container-children rule makes the
-`children` field's elements children path-named `"children/key"`, and the three
+`children` field's elements children of the `Group` itself, and the four
 declarations are ordinary functions of the instance, free to read its fields.
+
+The one declaration it adds is `transparent_container` (D-211): `children` is
+name-transparent, so its elements go by **bare key** everywhere a child name
+appears — `"ctl/out" => "plant/u"` for a wire, `(ctl = Relative(2),)` for a rate,
+`at("ctl", …)` for a condition prefix, `"plant/y"` for a read path. A `Group`'s
+declarations are then textually identical to a named assembly's; the rate
+declaration's field-name sugar, keying on the field rather than on a path
+segment, keeps working as `(children = Relative(2),)` for the uniform case.
 
 The type parameters carry the children's concrete types, so specialization is
 unchanged; what is given up against a named type is dispatch, which exploratory
@@ -447,15 +455,27 @@ struct Group{C <: NamedTuple, W, I, O, R <: NamedTuple} <: AbstractComponent
     wires::W         # inert parameter data
     inputs::I
     outputs::O
-    rates::R         # the ad-hoc rate scope; container elements are keyed `var"children/key"` (§8.7)
+    rates::R         # the ad-hoc rate scope, keyed by bare element name (§8.7)
 end
 
-Group(children, wires, inputs, outputs) = Group(children, wires, inputs, outputs, (;))
+"""
+    Group(children; wires = (), inputs = (), outputs = (), rates = (;))
+
+The convenience form. A bare `Pair` passed for `wires`, `inputs` or `outputs` is
+the one-entry tuple — the declarations are ordered collections of pairs, and a
+single wire should not have to be written `("a/x" => "b/y",)`.
+"""
+Group(children; wires = (), inputs = (), outputs = (), rates = (;)) =
+    Group(children, _entries(wires), _entries(inputs), _entries(outputs), rates)
+
+_entries(p::Pair) = (p,)
+_entries(t) = t
 
 child_connections(g::Group) = g.wires
 input_connections(g::Group) = g.inputs
 output_connections(g::Group) = g.outputs
 sample_times(g::Group) = g.rates
+transparent_container(::Group) = :children
 
 # --- the reference models -----------------------------------------------------
 
@@ -474,16 +494,16 @@ instead, which is a genuine algebraic loop and must be rejected at build time
 """
 function feedback_model(; k = 4.0, ω = 2.0, ζ = 0.1, q₀ = SVector(0.0, 0.0),
                         feedback_port::String = "y")
-    Group((plant = Plant(; ω, ζ, q₀), ctl = Gain(k), sum = Sum()),
-          ("children/ctl/out" => "children/plant/u",
-           "children/sum/e" => "children/ctl/e",
-           "children/plant/$feedback_port" => "children/sum/b"),
+    Group((plant = Plant(; ω, ζ, q₀), ctl = Gain(k), sum = Sum());
+          wires = ("ctl/out" => "plant/u",
+                   "sum/e" => "ctl/e",
+                   "plant/$feedback_port" => "sum/b"),
           # `sum.a` is claimed by no wire: the obligation is handed up to this
           # face, and at the root a face is a root input — its cell seeded by
           # `probe_value` for the build's own probes, and its initial value
           # authored by the init service's condition (§6.1, §11.3, §14.6).
-          ("ref" => "children/sum/a",),
-          ("children/plant/y" => "y",))
+          inputs = "ref" => "sum/a",
+          outputs = "plant/y" => "y")
 end
 
 """
@@ -502,12 +522,12 @@ The hold is not implemented anywhere: `ctl`'s entries are absent from the
 interior sweep, so its cell simply cannot change between boundaries (§10.5).
 """
 function sampled_loop(; kI = 3.0, ω = 2.0, ζ = 0.1)
-    Group((plant = Plant(; ω, ζ), ctl = DiscreteIntegrator(kI), sum = Sum()),
-          ("children/ctl/u" => "children/plant/u",
-           "children/sum/e" => "children/ctl/e",
-           "children/plant/y" => "children/sum/b"),
-          ("ref" => "children/sum/a",),
-          ("children/plant/y" => "y", "children/ctl/u" => "cmd"))
+    Group((plant = Plant(; ω, ζ), ctl = DiscreteIntegrator(kI), sum = Sum());
+          wires = ("ctl/u" => "plant/u",
+                   "sum/e" => "ctl/e",
+                   "plant/y" => "sum/b"),
+          inputs = "ref" => "sum/a",
+          outputs = ("plant/y" => "y", "ctl/u" => "cmd"))
 end
 
 # --- the named two-level assembly ---------------------------------------------
