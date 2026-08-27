@@ -174,12 +174,12 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | baseline | g-baseline | 3 | B | an aircraft-shipped, full-coverage condition function |
 | boundary zero | g-boundary-zero | 18 | A | the initialization boundary: the ordinary macro-sequence with an empty integrate |
 | capture | g-capture | 1 | A | reading the current stores and root inputs back as a condition |
+| combine | g-combine | 1 | B | the symmetric, collision-intolerant combinator over condition nodes |
 | component test rig | g-component-test-rig | 2 | B | a one-child assembly exporting the child's whole input face set |
 | condition | g-condition | 12 | A | the path-addressed sparse overlay that sets a build's state |
 | `design_world` | g-design_world | 1 | B | the shipped thin world that mounts an aircraft |
 | fragment | g-fragment | 3 | B | the leaf node of the condition algebra |
 | fragment tree | g-fragment-tree | 0 | — | the inert, lazy composition of condition nodes |
-| merge | g-merge | 1 | B | the symmetric, collision-intolerant combinator over condition nodes |
 | mounting | g-mounting | 2 | A | relocating a whole problem or tap set with `at(prefix, …)` |
 | override | g-override | 1 | B | the ordered, asymmetric layering combinator: the patch wins |
 | root-input totality | g-root-input-totality | 4 | A | the requirement that an application establishing a complete world cover every root input |
