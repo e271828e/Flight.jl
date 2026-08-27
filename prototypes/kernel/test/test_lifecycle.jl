@@ -60,23 +60,27 @@ claims(::NoClaim) = ()
 end
 
 @testset "the freeze is the lifecycle's :running — init! and run! refuse it too (§12.6)" begin
-    sim = Simulation(fed(Plant(), "u"); h = 1//100000)
-    total = fragment(inputs = (in = 0.0,))
+    # Both ends of the run are test-controlled: the spin below waits for its
+    # start, and the run cannot reach *its* end until the stop face is staged,
+    # so the mid-run probes race nothing — no frame count and no JIT warming
+    # stand between them. `t_end` is a loud safety net rather than the run's
+    # expected end — 30M frames, twenty times what the probes' own compilation
+    # costs — and reaching it fails the source assertion instead of hanging.
+    sim = Simulation(armed(); h = 1//100, t_end = 3.0e5, stop_on = ("stop",))
+    total = fragment(inputs = (in = 0.0,))           # below the trigger: the run holds
     init!(sim, total)
-    init!(sim, total)                                # warms init!'s path — including this
-    #                                                  condition's resolution shape (§14.3):
-    #                                                  the mid-run probe below races no JIT
-    t = Threads.@spawn run!(sim; t_end = 1.0)        # 100k frames: alive throughout the checks
+    t = Threads.@spawn run!(sim)
     while lifecycle(sim) !== :running
         yield()
     end
-    err_i = try init!(sim, total) catch e; e end
-    err_r = try run!(sim; t_end = 2.0) catch e; e end
-    wait(t)
+    err_i = failure(() -> init!(sim, total))
+    err_r = failure(() -> run!(sim; t_end = 2.0))
+    stage!(sim, "in" => 1.0)                         # now, and only now, may the run end:
+    wait(t)                                          # the next drain arms the trigger (§12.6)
     @test err_i isa BuildError && occursin("ServiceLifecycle", err_i.msg)
     @test err_r isa BuildError && occursin("already running", err_r.msg)
     @test lifecycle(sim) === :stopped
-    @test termination(sim).source === EndTimeReached()
+    @test termination(sim).source === ModelRequestedStop(:stop)
 end
 
 @testset "t_end: constructor default, run! override, and a bound owed from some site (§13.5)" begin

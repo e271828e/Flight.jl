@@ -747,7 +747,16 @@ Each of these is a spec claim rather than a programming convenience:
   re-run cycle; and the §12.6 clearing is pinned beside the §11.4 wait in
   one testset — a batch staged *before* `init!` is discarded with the
   trajectory it predates, the same batch staged *after* waits for frame 1's
-  drain and never reaches boundary zero.
+  drain and never reaches boundary zero. The freeze on the far side of that
+  door — `init!` and `run!` both refusing while the lifecycle is `:running` —
+  is pinned against a run the test holds open at *both* ends: it spins for
+  `:running`, probes, and only then stages the root input that trips the stop
+  face, so the run's end is that staged write's consequence rather than a frame
+  count the probes have to outrace. The same testset is therefore the
+  end-to-end witness for a staged root input causing a model-requested stop:
+  `stage!` mid-run on a deviceless simulation reaches the whole root-input
+  surface through the harness register (§11.3), the next frame's drain applies
+  it, and the boundary that follows publishes the holding face.
 - **A stepped frame is a run frame, bitwise.** The two advance entries share
   one frame loop, so the equality is by construction and the tests assert it
   with `===`; the count actually advanced is the return value, so t_end and
