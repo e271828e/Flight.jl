@@ -178,6 +178,12 @@ end
     @test occursin("declares no input face",
                    failure(() -> resolve(at("children/plant",
                                             fragment(inputs = (nope = 1.0,))), b)).msg)
+    # The discrimination an `inputs` payload makes on its own: a prefix naming no
+    # level of this build reads "no component", not the face-typo message the
+    # real component earns above — an empty face list alone cannot tell them
+    # apart, assemblies leaving no row in the flat list (§14.3).
+    @test occursin("no component of this build",
+                   failure(() -> resolve(at("nope", fragment(inputs = (dead = 1.0,))), b)).msg)
     @test occursin("no root input face",
                    failure(() -> resolve(fragment(inputs = (nope = 1.0,)), b)).msg)
 end

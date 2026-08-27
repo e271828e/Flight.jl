@@ -11,7 +11,8 @@ walked(body, variant = :boundary) =
 # The gated entries of a body's boundary variant.
 gated(body) = count(e isa Gated for c in body.boundary for e in c.entries)
 
-# A model of one component, wrapped in the assembly every model's root must be.
+# A model of one component under a wrapper assembly — kept where a fixture wants
+# a named face; a bare leaf builds too (D-208).
 single(c) = Group((; c = c), (), (), ())
 
 # The same, with the component's one input face handed up to a root input `in`.

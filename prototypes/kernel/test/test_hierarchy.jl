@@ -29,8 +29,11 @@ end
     @test port(sim, "loop", :y) === port(sim, "loop/plant", :y)
     @test port(sim, "", :y) === port(sim, "loop/plant", :y)
     @test port(sim, "", :cmd) === port(sim, "loop/ctl", :u)
-    # And a deep-routed face reaches a grandchild's port directly.
-    @test port(sim, "", :power) === port(sim, "loop/plant", :power)
+    # And a two-level chain aliases the one cell all the way down: the vehicle's
+    # `power` re-exports the loop's own `power` face, which re-exports the
+    # plant's port — one alias per level, no cell of its own at either (D-207).
+    @test port(sim, "", :power) === port(sim, "loop", :power) ===
+          port(sim, "loop/plant", :power)
 
     # Tier-neutral, and the tiers are *derived*: at a non-nominal activation the
     # continuous-sourced face walks while the discrete-sourced one stays pinned.

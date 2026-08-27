@@ -164,6 +164,10 @@ output_connections(::PastGenericReach) = ("inner/y" => "y",)
     # this register entirely.
     gsim = Simulation(GenericHold(SampledLoop()); h = 1//50)
     init!(gsim, fragment(inputs = (ref = 1.0,)))
+    @test gsim.flat.paths == sim.flat.paths && gsim.flat.conns == sim.flat.conns
+    run!(sim; t_end = 0.2)                       # equal wiring, and equal trajectories:
+    run!(gsim; t_end = 0.2)                      # the t₀ table alone would prove nothing
+    @test state(gsim, "inner/plant").q === state(sim, "inner/plant").q
     @test port(gsim, "", :y) === port(sim, "", :y)
 
     # One segment further — the grandchild's own port, bypassing `inner`'s face
