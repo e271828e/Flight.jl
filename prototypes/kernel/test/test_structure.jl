@@ -373,7 +373,7 @@ end
     # The misdiagnosis this closes: the dead face used to build, and a condition
     # addressing it read "declares no input face" — byte-identical to the message
     # a bare typo earns. Authoring one can no longer get that far.
-    err = failure(() -> resolve(at("sub", fragment(inputs = (dead = 1.0,))),
+    err = failure(() -> resolve_condition(at("sub", fragment(inputs = (dead = 1.0,))),
                                 build(nested)))
     @test occursin("routes to no internal endpoint", err.msg) &&
           !occursin("declares no input face", err.msg)
@@ -526,4 +526,173 @@ h_x(::BothArities, (; t)) = (a = 1.0,)
     err = failure(() -> Simulation(b))
     @test err isa BuildError && occursin("h", err.msg)
     @test Simulation(b; h = 1//10) isa Simulation
+end
+
+# --- §13.3's primitives and §8.8's passthrough pair -----------------------------
+# The declaration surface computing its own boundary: `input_connections` and
+# `output_connections` are ordinary functions of the instance, so an assembly may
+# derive its entries from a child's contract. The helpers are the pass-through
+# case, and everything they return is an ordinary pair.
+
+# The child under test: two input faces and two output faces, so both filters
+# have something to bite on either side.
+faced() = Group((; s = Sum(), g = Gain(2.0));
+                wires = "s/e" => "g/e",
+                inputs = ("a" => "s/a", "b" => "s/b"),
+                outputs = ("s/e" => "sum", "g/out" => "scaled"))
+
+# `a` is fed here, so it leaves the input face surface; `b` is passed through,
+# and `scaled` is re-exported one level up. Nothing else about the two
+# declarations is authored.
+struct Passed{C <: AbstractComponent} <: AbstractComponent
+    inner::C
+    trim::Gain
+end
+child_connections(::Passed) = ("trim/out" => "inner/a",)
+input_connections(p::Passed) = (input_passthrough(p, "inner"; except = ("a",))...,
+                                "e" => "trim/e")
+output_connections(p::Passed) = output_passthrough(p, "inner"; only = ("scaled",))
+
+# The same assembly with both boundaries written out by hand: the twin the
+# computed one must match entry for entry.
+struct HandWired{C <: AbstractComponent} <: AbstractComponent
+    inner::C
+    trim::Gain
+end
+child_connections(::HandWired) = ("trim/out" => "inner/a",)
+input_connections(::HandWired) = ("inner.b" => "inner/b", "e" => "trim/e")
+output_connections(::HandWired) = ("inner/scaled" => "inner.scaled",)
+
+# `prefix = ""` drops the prefixing, and the bare `b` then collides with the
+# hand-written face beside it — the build's own uniqueness check, not the
+# helper's business (§8.8).
+struct Unprefixed{C <: AbstractComponent} <: AbstractComponent
+    inner::C
+    trim::Gain
+end
+child_connections(::Unprefixed) = ("trim/out" => "inner/a",)
+input_connections(u::Unprefixed) =
+    (input_passthrough(u, "inner"; prefix = "", except = ("a",))..., "b" => "trim/e")
+
+# A face both wired and passed through: `except` is missing `a`, so the wire and
+# the route both claim it.
+struct DoubleClaimed{C <: AbstractComponent} <: AbstractComponent
+    inner::C
+    trim::Gain
+end
+child_connections(::DoubleClaimed) = ("trim/out" => "inner/a",)
+input_connections(d::DoubleClaimed) = (input_passthrough(d, "inner")..., "e" => "trim/e")
+
+# The same computed boundary over a name-transparent container: the helper's
+# `child_path` is a bare key, and the `Group` it names is a child like any other
+# (D-211).
+struct PassedGroup{U <: NamedTuple} <: AbstractComponent
+    units::U
+end
+transparent_container(::PassedGroup) = :units
+child_connections(::PassedGroup) = ("trim/out" => "inner/a",)
+input_connections(p::PassedGroup) = (input_passthrough(p, "inner"; except = ("a",))...,
+                                     "e" => "trim/e")
+output_connections(p::PassedGroup) = output_passthrough(p, "inner"; only = ("scaled",))
+
+@testset "the §13.3 primitives resolve one level and list faces in order" begin
+    m = feedback_model()
+    @test resolve(m, "sum") === m.children.sum
+    @test resolve_terminal(m, "sum/a") === (m.children.sum, "a")
+
+    # Declaration order, both classes, and the `T`-independent key set read at
+    # the nominal activation.
+    @test input_faces(resolve(m, "sum")) == ["a", "b"]
+    @test output_faces(resolve(m, "plant")) == ["y", "power"]
+    @test input_faces(SampledLoop()) == ["ref"]
+    @test output_faces(SampledLoop()) == ["y", "cmd", "power"]
+    @test input_faces(faced()) == ["a", "b"] && output_faces(faced()) == ["sum", "scaled"]
+
+    # One level, the same rule wiring resolution runs: a deeper path is a build
+    # error naming the child it reaches past, and an unknown segment comes with
+    # the sibling list in hand.
+    err = failure(() -> resolve(m, "sum/a"))
+    @test err isa BuildError && occursin("reaches past `sum`", err.msg)
+    err = failure(() -> resolve(m, "nope"))
+    @test err isa BuildError && occursin("its children are plant, ctl, sum", err.msg)
+end
+
+@testset "the §8.8 passthrough pair computes what a hand-wired twin declares" begin
+    p, w = Passed(faced(), Gain(3.0)), HandWired(faced(), Gain(3.0))
+
+    # The computed entries are the authored ones, pair for pair.
+    @test input_connections(p) == input_connections(w)
+    @test output_connections(p) == output_connections(w)
+    @test input_connections(p) == ("inner.b" => "inner/b", "e" => "trim/e")
+    @test output_connections(p) == ("inner/scaled" => "inner.scaled",)
+
+    # And the two builds are the same model: same root inputs, same exported
+    # faces, same schedule, same trajectory.
+    bp, bw = build(p), build(w)
+    @test bp.flat.root_inputs == bw.flat.root_inputs == [:var"inner.b", :e]
+    @test bp.flat.out_faces == bw.flat.out_faces
+    @test bp.flat.paths == bw.flat.paths
+    sp, sw = Simulation(p; h = 1//10), Simulation(w; h = 1//10)
+    cond = fragment(inputs = (var"inner.b" = 1.0, e = 2.0))
+    init!(sp, cond); init!(sw, cond)
+    @test port(sp, "", :var"inner.scaled") === port(sw, "", :var"inner.scaled")
+    @test port(sp, "", :var"inner.scaled") === 2.0 * (3.0 * 2.0 - 1.0)
+end
+
+@testset "the passthrough filters, and refuses what it cannot mean (§8.8)" begin
+    m = faced()
+
+    # `except` drops, `only` keeps — in the author's order — and the labelling
+    # keywords are independent of both.
+    @test input_passthrough(m, "s") == ("s.a" => "s/a", "s.b" => "s/b")
+    @test input_passthrough(m, "s"; except = ("a",)) == ("s.b" => "s/b",)
+    @test input_passthrough(m, "s"; only = ("b", "a")) == ("s.b" => "s/b", "s.a" => "s/a")
+    @test input_passthrough(m, "s"; prefix = "env", sep = "_") ==
+          ("env_a" => "s/a", "env_b" => "s/b")
+    @test input_passthrough(m, "s"; prefix = "") == ("a" => "s/a", "b" => "s/b")
+
+    # The output side is the mirror, its pairs reading along the flow.
+    @test output_passthrough(m, "g") == ("g/out" => "g.out",)
+    @test output_passthrough(m, "s"; only = ("e",), prefix = "") == ("s/e" => "e",)
+
+    # Exclusivity is enforced, not documented.
+    err = failure(() -> input_passthrough(m, "s"; except = ("a",), only = ("b",)))
+    @test err isa BuildError && occursin("mutually exclusive", err.msg)
+
+    # A filter naming a face the child does not have errors with the list in
+    # hand, on either side.
+    err = failure(() -> input_passthrough(m, "s"; only = ("z",)))
+    @test err isa BuildError && occursin("`z` names no face", err.msg) &&
+          occursin("its faces are `a`, `b`", err.msg)
+    err = failure(() -> output_passthrough(m, "g"; except = ("z",)))
+    @test err isa BuildError && occursin("its faces are `out`", err.msg)
+
+    # A deeper `child_path` meets the one-level rejection like any endpoint.
+    err = failure(() -> input_passthrough(m, "s/a"))
+    @test err isa BuildError && occursin("reaches past `s`", err.msg)
+end
+
+@testset "every computed entry meets the build's own checks (§8.8)" begin
+    # `prefix = ""` collides with a hand-written face beside it, and the
+    # uniqueness check does not care which of the two was computed.
+    err = failure(() -> build(Unprefixed(faced(), Gain(3.0))))
+    @test err isa BuildError && occursin("face name(s) b", err.msg) &&
+          occursin("appear twice", err.msg)
+
+    # A face both wired and passed through is a two-producers error, named at
+    # both claimants.
+    err = failure(() -> build(DoubleClaimed(faced(), Gain(3.0))))
+    @test err isa BuildError && occursin("is fed twice", err.msg)
+    @test occursin("child_connections", err.msg) && occursin("input_connections", err.msg)
+end
+
+@testset "the helpers address a transparent container's child by bare key (D-211)" begin
+    g = PassedGroup((inner = faced(), trim = Gain(3.0)))
+    @test input_connections(g) == ("inner.b" => "inner/b", "e" => "trim/e")
+    @test output_connections(g) == ("inner/scaled" => "inner.scaled",)
+
+    sim = Simulation(g; h = 1//10)
+    @test sim.flat.paths == ["inner/s", "inner/g", "trim"]
+    init!(sim, fragment(inputs = (var"inner.b" = 1.0, e = 2.0)))
+    @test port(sim, "", :var"inner.scaled") === 2.0 * (3.0 * 2.0 - 1.0)
 end

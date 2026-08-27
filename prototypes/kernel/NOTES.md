@@ -416,6 +416,34 @@ across `src/` (19) and `test/` (316) became bare keys, including the 16
 which were re-pinned against a quoted form rather than left matching a
 one-letter substring.
 
+**Increment 20, part 2 — §13.3's primitives and §8.8's passthrough pair.** The
+declaration surface gains its computed half. `resolve` was a reserved name the
+condition algebra had taken, so the rename came first: `resolve(node, b::Build)`
+is `resolve_condition`, internal and behaviour-preserving, and §13.3's path
+primitive takes the name it is spec'd under. `resolve(asm, path)` and the public
+`resolve_terminal(asm, path)` are then *entry-less* forms of the walk wiring
+resolution already ran: the one-level check was factored out of the internal
+`resolve_terminal` into `_one_level`, parameterized by how many segments follow
+the child — one face name for a terminal path, none for a bare child path — so
+there is a single implementation of the rule and the container lookahead serves
+both. Two accessors were already there and needed only their §13.3 form:
+`input_faces`/`output_faces` returned a `Tuple` for a primitive (`String.` over
+a NamedTuple's keys broadcasts to a tuple) and a `Vector` for an assembly; both
+now return `Vector{String}`, which is what the section specifies and what the
+helpers' `setdiff` wants.
+
+The helpers themselves are the thin composition §8.8 promises: `input_faces` of
+the resolved child, a shared filter, and a `Tuple` comprehension. What is worth
+noticing is how much of their error surface is *not* theirs. Exclusivity and the
+unknown-face list are checked in the helper because nothing downstream could
+name the offender; everything else is left where it already lives — a
+`prefix = ""` collision meets §8.6's face-name uniqueness, a face both wired and
+passed through meets §6.1's one-producer rule with both claimants named, and an
+`except`ed face the assembly then fails to wire is an ordinary unconnected
+input. The tests pin exactly that division. `declaration_error`'s two shapes in
+the spec sketch are §13.2's structured carrier, which the README records as
+absent: these throw a plain `BuildError`, the house framing.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -934,6 +962,23 @@ Each of these is a spec claim rather than a programming convenience:
   (`kids/a`, `kids/b`), and the field-name sugar keys on the *field*, so
   `(children = Relative(2, 1),)` still applies one declaration to every element
   of a `Group`.
+- **A computed boundary is the authored one.** The assembly whose two boundary
+  declarations are `input_passthrough`/`output_passthrough` calls and the twin
+  that writes both out by hand produce equal declaration tuples, equal root
+  inputs, equal exported faces, equal flat lists and equal trajectories. The
+  helper is sugar, and the test is what says so: nothing downstream can tell
+  which of the two it was handed.
+- **The helpers own two refusals and no more.** `except` and `only` together,
+  and a filter naming a face the child does not have (with the child's face
+  list in hand), are the helper's errors, because nothing downstream could name
+  the offender. Everything else is left where the rule already lives:
+  `prefix = ""` colliding with a hand-written face is §8.6's face-name
+  uniqueness, and a face both wired and passed through is §6.1's one-producer
+  rule naming `child_connections` and `input_connections` as the two claimants.
+- **`child_path` is a child path, one level, whatever names the child.** A
+  deeper `child_path` meets the same rejection a wiring endpoint does, and a
+  child living in a name-transparent container is addressed by its bare key —
+  the helper never learns which kind of field held it.
 
 ## Stand-in retirement history
 

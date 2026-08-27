@@ -230,7 +230,7 @@ end
 # --- resolution (§14.3) ---------------------------------------------------------
 
 """
-    resolve(node, b::Build, T = Float64) → ConditionPlan
+    resolve_condition(node, b::Build, T = Float64) → ConditionPlan
 
 Flatten the condition tree, validate every entry against `b` in §13.1's
 collecting register — full list, violations collected, one `BuildError` — and
@@ -245,7 +245,7 @@ Schema is the
 authority on *may you write this, at what type*; the activation's layout
 supplies the destination.
 """
-function resolve(node::ConditionNode, b::Build, ::Type{T} = Float64) where {T}
+function resolve_condition(node::ConditionNode, b::Build, ::Type{T} = Float64) where {T}
     flat, tiers = b.flat, b.tiers
     act = activation(b, T)
     decls, layout = act.decls, act.layout
@@ -305,7 +305,7 @@ end
 # Anything that is not a node reaching a service entry point is the §14.2
 # misuse, not a `MethodError`: the directive is the same one `combine` prints,
 # and a bare NamedTuple handed to `init!` is exactly the slip it addresses.
-resolve(other, ::Build, ::Type = Float64) = _node_misuse(other, ())
+resolve_condition(other, ::Build, ::Type = Float64) = _node_misuse(other, ())
 
 # The `x` destinations, per component then per field: the flat buffer's layout
 # is the declaration walk, so the plan bakes the offsets the state accessor

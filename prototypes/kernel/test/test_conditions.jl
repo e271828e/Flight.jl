@@ -47,12 +47,12 @@ offset_pair() = Group((; hold = ZOH(), off = DiscreteIntegrator(1.0));
     @test isbits(fragment(x = (q = 1.0,), inputs = (u = 2.0,)))
     @test isbits(combine(fragment(), fragment()))
     # It fails at resolution, where the build is finally in hand.
-    @test failure(() -> resolve(n, build(tri()))) isa BuildError
+    @test failure(() -> resolve_condition(n, build(tri()))) isa BuildError
 end
 
 @testset "a `combine` collision names both provenance chains and the layering combinator (§14.2)" begin
     b = build(tri())
-    e = failure(() -> resolve(combine(at("plant", condition(Plant(); y = 1.0)),
+    e = failure(() -> resolve_condition(combine(at("plant", condition(Plant(); y = 1.0)),
                                       at("plant",
                                          fragment(x = (q = SVector(2.0, 0.0),)))), b))
     @test e isa BuildError
@@ -69,25 +69,26 @@ end
                    fragment(inputs = (u = 1.0, e = 2.0)))
     input(p, f) = only(v for (face, _, v) in p.inputs if face === f)
 
-    p = resolve(override(base, fragment(inputs = (u = 9.0,))), b)
+    p = resolve_condition(override(base, fragment(inputs = (u = 9.0,))), b)
     @test input(p, :u) === 9.0                     # the patch wins on the shared leaf
     @test input(p, :e) === 2.0                     # untouched leaves pass through
     @test only(v for (_, v) in p.xs) === SVector(1.0, 2.0)
     @test length(p.inputs) == 2                     # the overridden leaf is replaced, not doubled
 
     # Layering is variadic, and the last layer wins.
-    p3 = resolve(override(base, fragment(inputs = (u = 9.0,)), fragment(inputs = (u = 7.0,))), b)
+    p3 = resolve_condition(override(base, fragment(inputs = (u = 9.0,)),
+                                    fragment(inputs = (u = 7.0,))), b)
     @test input(p3, :u) === 7.0
 
     # Provenance keeps both sources: the patch's own chain, and the base's
     # beside it — surfaced here through a violation on the overridden leaf.
-    e = failure(() -> resolve(override(fragment(inputs = (u = 1.0,)),
+    e = failure(() -> resolve_condition(override(fragment(inputs = (u = 1.0,)),
                                        fragment(inputs = (u = "high",))), b))
     @test occursin("override[patch 1] → fragment(inputs).u", e.msg)
     @test occursin("overrode override[base] → fragment(inputs).u", e.msg)
 
     # A collision *within* one layer is still an error (§14.6).
-    e = failure(() -> resolve(override(combine(fragment(inputs = (u = 1.0,)),
+    e = failure(() -> resolve_condition(override(combine(fragment(inputs = (u = 1.0,)),
                                                fragment(inputs = (u = 2.0,))),
                                        fragment(inputs = (u = 3.0,))), b))
     @test occursin("DuplicateConditionLeaf", e.msg)
@@ -95,14 +96,14 @@ end
     # §14.6's central use case: a full-coverage baseline authored at the root,
     # under a patch a component's own `condition` method ships against its own
     # face. Two spellings of one root input are one leaf, so they layer.
-    p4 = resolve(override(fragment(inputs = (u = 1.0, e = 2.0)),
+    p4 = resolve_condition(override(fragment(inputs = (u = 1.0, e = 2.0)),
                           at("plant", fragment(inputs = (u = 9.0,)))), b)
     @test input(p4, :u) === 9.0 && input(p4, :e) === 2.0
     @test length(p4.inputs) == 2
 
     # The same two spellings under `combine` still collide — and with layering
     # no longer reaching this branch, its directive is advice that works.
-    e = failure(() -> resolve(combine(fragment(inputs = (u = 1.0,)),
+    e = failure(() -> resolve_condition(combine(fragment(inputs = (u = 1.0,)),
                                       at("plant",
                                          fragment(inputs = (u = 9.0,)))), b))
     @test occursin("DuplicateConditionLeaf", e.msg) && occursin("root input `u`", e.msg)
@@ -137,7 +138,7 @@ end
                   at("trig", fragment(inputs = (sig = 1.0,))),  # never a root input
                   fragment(inputs = (u = 1.0,)),
                   at("plant", fragment(inputs = (u = 2.0,))))   # one root input, twice
-    e = failure(() -> resolve(bad, b))
+    e = failure(() -> resolve_condition(bad, b))
     @test e isa BuildError
     @test occursin("5 violations", e.msg)                  # the full list, one throw
     @test occursin("no component of this build", e.msg)
@@ -147,19 +148,19 @@ end
     @test occursin("root input `u` is written twice", e.msg)
 
     # An assembly path owns no state, and saying so beats "no such path".
-    e = failure(() -> resolve(at("loop", fragment(x = (q = 1.0,))), build(Vehicle())))
+    e = failure(() -> resolve_condition(at("loop", fragment(x = (q = 1.0,))), build(Vehicle())))
     @test occursin("is an assembly", e.msg)
 
     # A tier's own state letter: `s` on a continuous component is not a typo
     # the resolver should guess at.
-    e = failure(() -> resolve(at("plant", fragment(s = (q = 1.0,))), b))
+    e = failure(() -> resolve_condition(at("plant", fragment(s = (q = 1.0,))), b))
     @test occursin("continuous component and declares no `init_s`", e.msg)
 end
 
 @testset "a condition names state, modes and root inputs — never outputs, never workspace (§14.1)" begin
-    e = failure(() -> resolve(at("plant", fragment(x = (y = 1.0,))), build(tri())))
+    e = failure(() -> resolve_condition(at("plant", fragment(x = (y = 1.0,))), build(tri())))
     @test occursin("`y` is an output port", e.msg)
-    e = failure(() -> resolve(at("sm", fragment(s = (tmp = 1.0,))), build(scratchy())))
+    e = failure(() -> resolve_condition(at("sm", fragment(s = (tmp = 1.0,))), build(scratchy())))
     @test occursin("`tmp` is a workspace entry", e.msg)
 end
 
@@ -167,25 +168,27 @@ end
     b = build(tri())
     # The authoring level names a face of its own contract; resolution walks
     # the chain and lands on the root input the obligation ends at.
-    p = resolve(combine(at("plant", fragment(inputs = (u = 1.0,))),
+    p = resolve_condition(combine(at("plant", fragment(inputs = (u = 1.0,))),
                         fragment(inputs = (e = 2.0,))), b)
     @test Set(p.faces) == Set([:u, :e])
     # An internally wired input reaches no root input: writing it would be
     # meaningless, the first sweep overwriting it. Unexported stays unpokeable.
     @test occursin("reaches no root input",
-                   failure(() -> resolve(at("trig",
+                   failure(() -> resolve_condition(at("trig",
                                             fragment(inputs = (sig = 1.0,))), b)).msg)
     @test occursin("declares no input face",
-                   failure(() -> resolve(at("plant",
+                   failure(() -> resolve_condition(at("plant",
                                             fragment(inputs = (nope = 1.0,))), b)).msg)
     # The discrimination an `inputs` payload makes on its own: a prefix naming no
     # level of this build reads "no component", not the face-typo message the
     # real component earns above — an empty face list alone cannot tell them
     # apart, assemblies leaving no row in the flat list (§14.3).
     @test occursin("no component of this build",
-                   failure(() -> resolve(at("nope", fragment(inputs = (dead = 1.0,))), b)).msg)
+                   failure(() -> resolve_condition(at("nope",
+                                                       fragment(inputs = (dead = 1.0,))),
+                                                    b)).msg)
     @test occursin("no root input face",
-                   failure(() -> resolve(fragment(inputs = (nope = 1.0,)), b)).msg)
+                   failure(() -> resolve_condition(fragment(inputs = (nope = 1.0,)), b)).msg)
 end
 
 @testset "an `at` prefix stopping at an assembly resolves its faces (§14.2, D-207)" begin
@@ -194,23 +197,23 @@ end
     # sub-assembly's own `ref` is looked up at that level and followed to the
     # root input the chain ends at. The plan is the one the root spelling
     # produces, entry for entry — two spellings of one root input.
-    p = resolve(at("loop", fragment(inputs = (ref = 1.0,))), b)
-    q = resolve(fragment(inputs = (in = 1.0,)), b)
+    p = resolve_condition(at("loop", fragment(inputs = (ref = 1.0,))), b)
+    q = resolve_condition(fragment(inputs = (in = 1.0,)), b)
     @test p.inputs == q.inputs && p.faces == q.faces == [:in]
 
     # A component-fed face is still unpokeable, at an assembly prefix as at a
     # primitive's: `Vehicle` feeds the loop's `ref` from its own `trim`.
     @test occursin("reaches no root input",
-                   failure(() -> resolve(at("loop", fragment(inputs = (ref = 1.0,))),
+                   failure(() -> resolve_condition(at("loop", fragment(inputs = (ref = 1.0,))),
                                          build(Vehicle()))).msg)
 
     # A face the level does not declare, with the level's face list in hand.
-    e = failure(() -> resolve(at("loop", fragment(inputs = (nope = 1.0,))), b))
+    e = failure(() -> resolve_condition(at("loop", fragment(inputs = (nope = 1.0,))), b))
     @test occursin("declares no input face `nope`", e.msg) && occursin("`ref`", e.msg)
 
     # State at an assembly prefix stays refused: assemblies own no state, and
     # only the `inputs` payload gained a level to resolve at.
-    e = failure(() -> resolve(at("loop", fragment(x = (q = 1.0,))), b))
+    e = failure(() -> resolve_condition(at("loop", fragment(x = (q = 1.0,))), b))
     @test occursin("is an assembly", e.msg) && occursin("components and root inputs", e.msg)
 end
 

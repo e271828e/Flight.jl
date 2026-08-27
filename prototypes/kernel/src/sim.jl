@@ -484,7 +484,7 @@ function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) wh
     lc === :errored && throw(BuildError(
         "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
         "never re-initialized; reproduction is trace replay, absent here (§13.6)"))
-    plan = resolve(condition, sim.build, T)      # both refusals precede every write
+    plan = resolve_condition(condition, sim.build, T)      # both refusals precede every write
     assert_total(plan, sim.build.flat, "init!")  # (§14.6): all-or-nothing
     establish_defaults!(sim.xbuf, sim.sstores, sim.mstores, sim.build.flat.comps,
                         activation(sim.build, T).decls, sim.build.tiers)   # D-063's reset

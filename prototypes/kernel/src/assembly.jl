@@ -177,27 +177,83 @@ this register: an endpoint stops before any field it could traverse past
 several levels is declared level by level, each assembly speaking of its own
 children alone.
 """
-function resolve_terminal(entry::String, base::String, asm, path::AbstractString)
+function resolve_terminal(entry::String, base::String, asm, path::AbstractString;
+                          owner::String = _at(base))
     segs = String.(split(path, '/'))
     length(segs) > 1 ||
         throw(BuildError("$entry: `$path` is not an endpoint — a terminal path names a child " *
                          "and one of its ports or faces (§8.6)"))
+    kid, seg = _one_level(entry, base, asm, path, segs, 1; owner)
+    kid, _join(base, seg), Symbol(segs[end])
+end
+
+# The child half of the rule, shared by both of §13.3's path primitives: `tail`
+# is how many segments follow the child — one face name for a terminal path,
+# none for `resolve`'s bare child path. Container children match under their
+# D-211 naming, which is what the two-segment lookahead serves: an undeclared
+# container's element spends two segments on the child, a transparent one's
+# spends one, and neither is "deeper".
+function _one_level(entry::String, base::String, asm, path::AbstractString,
+                    segs::Vector{String}, tail::Int; owner::String = _at(base))
     kids = children(base, asm)
     j = findfirst(kid -> first(kid) == segs[1], kids)
-    j === nothing && length(segs) > 2 &&
+    j === nothing && length(segs) > 1 + tail &&
         (j = findfirst(kid -> first(kid) == segs[1] * "/" * segs[2], kids))
     j === nothing &&
-        throw(BuildError("$entry: `$path` names no child `$(segs[1])` of $(_at(base))" *
+        throw(BuildError("$entry: `$path` names no child `$(segs[1])` of $owner" *
                          (isempty(kids) ? " — it has no children" :
                           " — its children are $(join((first(k) for k in kids), ", "))")))
     seg, kid = kids[j]
-    count(==('/'), seg) + 2 == length(segs) ||
-        throw(BuildError("$entry: `$path` reaches past `$(_join(base, seg))` — a connection " *
-                         "endpoint names an immediate child and one of its faces, so an " *
-                         "endpoint path is one child segment (plus the key segment where the " *
-                         "child is a container element) and one face name; route through " *
-                         "`$seg`'s own face instead, declared level by level (§6.1)"))
-    kid, _join(base, seg), Symbol(segs[end])
+    count(==('/'), seg) + 1 + tail == length(segs) ||
+        throw(BuildError("$entry: `$path` reaches past `$(_join(base, seg))` — " *
+                         (tail == 1 ?
+                          "a connection endpoint names an immediate child and one of its " *
+                          "faces, so an endpoint path is one child segment (plus the key " *
+                          "segment where the child is a container element) and one face " *
+                          "name; route through `$seg`'s own face instead, declared level by " *
+                          "level (§6.1)" :
+                          "a path in this register names an immediate child: one child " *
+                          "segment, plus the key segment where the child is a container " *
+                          "element, and nothing further (§6.1, §13.3)")))
+    kid, seg
+end
+
+# --- §13.3's build primitives -------------------------------------------------
+# The four the declaration surface calls: `resolve` and `resolve_terminal` in
+# their public, entry-less forms, plus the two face-list accessors. This is the
+# *structural* register of §13.3's table — the one-level rule verbatim, the same
+# walk wiring resolution runs, entered from a declaration body with no wiring
+# entry to attribute the failure to.
+
+"""
+    resolve(asm, path) → AbstractComponent
+
+The declared-field walk along `/` segments, container children included under
+their D-211 naming (bare keys for a name-transparent container). One level
+(§6.1, D-207): `path` names an **immediate child** — one child segment, plus the
+key segment where the child is a container element — and anything deeper is a
+build error naming the child it reaches past.
+"""
+function resolve(asm, path::AbstractString)
+    who = "`resolve` on `$(nameof(typeof(asm)))`"
+    isempty(path) &&
+        throw(BuildError("$who: the empty path names no child — a path in this register " *
+                         "names an immediate child of the component in hand (§13.3)"))
+    first(_one_level(who, "", asm, path, String.(split(path, '/')), 0;
+                     owner = "the component in hand"))
+end
+
+"""
+    resolve_terminal(asm, path) → (component, name)
+
+The terminal split: the final segment is the port or face name, the prefix
+resolves through `resolve`. The split is unambiguous because face names may
+contain dots, never slashes (§8.6).
+"""
+function resolve_terminal(asm, path::AbstractString)
+    comp, _, name = resolve_terminal("`resolve_terminal` on `$(nameof(typeof(asm)))`",
+                                     "", asm, path; owner = "the component in hand")
+    comp, String(name)
 end
 
 # The key set of a contract declaration, whichever arity declares it: the keys are
@@ -205,10 +261,99 @@ end
 _contract(fn, c) = _declares(fn, c, Type{Float64}) ? fn(c, Float64) :
                    _declares(fn, c) ? fn(c) : NamedTuple()
 
-input_faces(c) = classify("", c) === PRIMITIVE ? String.(keys(_contract(input_types, c))) :
+"""
+    input_faces(c) → Vector{String}
+
+A leaf's `input_types` keys — asked at the nominal `Float64`, the key set being
+`T`-independent — or an assembly's `input_connections` face names. Declaration
+order is preserved: deterministic printouts, stable diagnostics (§13.3).
+"""
+input_faces(c) = classify("", c) === PRIMITIVE ?
+                 String[String(k) for k in keys(_contract(input_types, c))] :
                  String[String(face) for (face, _) in input_connections(c)]
-output_faces(c) = classify("", c) === PRIMITIVE ? String.(keys(_contract(output_types, c))) :
+
+"""
+    output_faces(c) → Vector{String}
+
+`input_faces`' mirror: a leaf's `output_types` keys, or an assembly's
+`output_connections` face names, in declaration order (§13.3).
+"""
+output_faces(c) = classify("", c) === PRIMITIVE ?
+                  String[String(k) for k in keys(_contract(output_types, c))] :
                   String[String(face) for (_, face) in output_connections(c)]
+
+# --- §8.8's passthrough helpers -----------------------------------------------
+# `input_connections` and `output_connections` are ordinary functions evaluated
+# at build against the concrete instance, so they may *compute* entries from
+# child contracts. These two are the framework's own sugar over the primitives
+# above — the pass-through case, where an assembly re-exports the faces of a
+# child it does not itself feed. Two helpers rather than one keyword, because
+# after the boundary split a single call cannot emit into two declarations
+# (D-209). Nothing else about computed connections is built here: the entries
+# they return are ordinary pairs, mixing freely with hand-written ones, and
+# every check that meets them is the build's own.
+
+"""
+    input_passthrough(asm, child_path; prefix = child_path, sep = ".",
+                      except = (), only = ())
+
+Every input face of `child_path` the assembly does not feed, exposed on its own
+boundary under `prefix * sep * face` — splatted into `input_connections` (§8.8).
+`prefix = ""` drops the prefixing entirely; `except` and `only` filter face names
+within the child's set and are mutually exclusive. `child_path` names an
+immediate child (a bare key where the container is name-transparent); a deeper
+path meets `resolve`'s one-level rejection like any other wiring endpoint.
+"""
+function input_passthrough(asm, child_path::AbstractString;
+                           prefix::AbstractString = child_path,
+                           sep::AbstractString = ".",
+                           except::Tuple = (), only::Tuple = ())
+    names = input_faces(resolve(asm, child_path))
+    wanted = _passthrough_faces("input_passthrough", child_path, names, except, only)
+    Tuple(_labelled(prefix, sep, n) => string(child_path, "/", n) for n in wanted)
+end
+
+"""
+    output_passthrough(asm, child_path; prefix = child_path, sep = ".",
+                       except = (), only = ())
+
+`input_passthrough`'s sibling on the outward boundary (D-209), splatted into
+`output_connections`: the same surface over `output_faces`, its pairs reading
+along the flow — internal source => face name — as every pair in that
+declaration does. Its consumer is one-level routing (§6.1): every level
+re-exports the outputs it surfaces, so the output side needs the computed
+spelling the input side already has.
+"""
+function output_passthrough(asm, child_path::AbstractString;
+                            prefix::AbstractString = child_path,
+                            sep::AbstractString = ".",
+                            except::Tuple = (), only::Tuple = ())
+    names = output_faces(resolve(asm, child_path))
+    wanted = _passthrough_faces("output_passthrough", child_path, names, except, only)
+    Tuple(string(child_path, "/", n) => _labelled(prefix, sep, n) for n in wanted)
+end
+
+_labelled(prefix, sep, n) = isempty(prefix) ? String(n) : string(prefix, sep, n)
+
+# Exclusivity is enforced, not documented, and a filter naming a face the child
+# does not have errors with the list in hand — the same did-you-mean shape every
+# declaration-time refusal takes here (§8.8).
+function _passthrough_faces(who::String, child_path::AbstractString,
+                            names::Vector{String}, except::Tuple, only::Tuple)
+    isempty(except) || isempty(only) ||
+        throw(BuildError("`$who` at `$child_path`: `except` and `only` were both given — one " *
+                         "names the faces to drop, the other the faces to keep, and they are " *
+                         "mutually exclusive (§8.8)"))
+    unknown = [String(n) for n in (except..., only...) if !(String(n) in names)]
+    isempty(unknown) ||
+        throw(BuildError("`$who` at `$child_path`: $(_facenames(unknown)) " *
+                         "$(length(unknown) == 1 ? "names" : "name") no face of that child " *
+                         "— its faces are $(_facenames(names)) (§8.8)"))
+    isempty(only) ? setdiff(names, String[String(n) for n in except]) :
+                    String[String(n) for n in only]
+end
+
+_facenames(ns) = isempty(ns) ? "none" : join(("`$n`" for n in ns), ", ")
 
 # --- endpoint resolution (§8.6) -----------------------------------------------
 # Faces are kind-blind (D-172): an endpoint's final segment resolves to a
