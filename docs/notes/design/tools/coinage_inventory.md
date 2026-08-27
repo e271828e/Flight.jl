@@ -46,10 +46,15 @@ context wants.
 | Term | Uses | Notes |
 |---|---|---|
 | handler return law | 3 | §5.2; never defined in glossary prose |
+| termination record | 13 | defined in §13.5; also §11.8, §12.1, §12.4, §12.6, §13.2, §13.6 and Appendix C |
 
-It is a §5.2 hand-off law, sibling of the bundle law (bucket B). Settled
-the third way: it got its own `####` sub-heading in §5.2, and the body cites
-the section rather than a glossary anchor.
+The handler return law is a §5.2 hand-off law, sibling of the bundle law
+(bucket B). Settled the third way: it got its own `####` sub-heading in §5.2,
+and the body cites the section rather than a glossary anchor.
+
+The termination record went the ordinary way: promoted by D-203 to an
+Appendix D entry (`g-termination-record`), so it is bucket A from here on and
+this row is the record of the promotion.
 
 ## D. Low-frequency coinages — inline gloss only
 

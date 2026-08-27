@@ -5855,8 +5855,10 @@ frame top ([D-201][d-201]): the account closes with the drain that preceded the
 terminal publication. What lands after it — a report from a device's exit
 path, the tail's own `DeviceJoinTimeout` ([§12.4][s12-4]) — can reach no snapshot,
 so the loop takes each cell once more at the run's end, keeping the next
-run's account clean, and emits the residue through the standard logging
-backend: loud rather than recorded.
+run's account clean. That last take is folded into the [termination record](#g-termination-record) as
+the tail residue — per writer, the final ring and its suppressed counts
+([§13.5][s13-5]) — and presented through the standard logging backend: loud *and*
+recorded, still never published ([D-201][d-201], [D-203][d-203]).
 
 **Allocation.** On a quiet frame there is **zero additional heap
 allocation**: the sentinel swap allocates nothing and the per-writer status
@@ -5905,6 +5907,14 @@ by construction. The stop's issuers are the operator's channels — GUI button,
 [device](#g-device) handle, calling code — and, in an interactive session, Ctrl-C: an
 [operator interrupt](#g-operator-interrupt) is caught at one of the loop's unmask points and sets exactly
 this stop, no separate entry point involved ([§12.4][s12-4]).
+
+**The stop word carries its issuer.** Each issuing site writes its identity —
+the device's name, `:code`, or `:interrupt` — by compare-and-swap from empty,
+and the first writer wins. The loop's frame-top read consults the word for
+non-empty, so the recorded issuer is the request that actually initiated the
+tail. It lands in the [termination record](#g-termination-record)'s `ControlRequestedStop`
+([§13.5][s13-5], [D-203][d-203]).
+
 **Not staging, structurally:** staged writes apply at [drains](#g-drain), and a paused loop
 drains nothing — un-pause via staging would deadlock by construction. Riding outside
 the drain/[trace](#g-trace) path is safe for determinism precisely because [§10.7][s10-7] put [pacing](#g-pacing)
@@ -6092,8 +6102,10 @@ loop itself ends first.
    keyword: a positive real in seconds of wall clock, defaulting to 5
    ([Appendix B][sB]). A device task exceeding it is reported *by name*, through the
    [§12.2][s12-2] heartbeat. It is then abandoned with a `DeviceJoinTimeout`
-   warning ([Appendix C][sC]) rather than left to hang `run!` — emitted through the
-   logging backend, the terminal snapshot preceding the join ([D-201][d-201]).
+   diagnostic ([Appendix C][sC]) rather than left to hang `run!` — written to the
+   loop's own cell, collected by the run's-end sweep into the [termination record](#g-termination-record)
+   and presented through the logging backend, the terminal snapshot preceding
+   the join ([D-201][d-201], [D-203][d-203]).
 6. **Device-initiated paths.** A device exits voluntarily when its loop body
    returns, at a window ✕ or a peer EOT. No `should_close` hook exists
    ([§11.6][s11-6]). With `should_abort` set, the wrapper's exit path also
@@ -6125,8 +6137,8 @@ guarantees that output devices can flush the true final state. The status in
 that terminal snapshot carries the run's cumulative diagnostic counters
 ([§11.8][s11-8]) — the warning account of a run nobody watched, complete up to that
 snapshot's own frame top. What the tail itself produces comes later by
-construction and is presented through the logging backend, never published
-([D-201][d-201]).
+construction; it is folded into the termination record and presented through
+the logging backend, never published ([D-201][d-201], [D-203][d-203]).
 
 **Rule.** That terminal snapshot is retained in the log unconditionally, under
 any `log_every` and any `log_max` ([§11.2][s11-2]).
@@ -6466,8 +6478,8 @@ a harness detects the truncation without inspecting the clock.
 
 **Re-running: `stopped → init! → run!` is the supported cycle.** `init!` re-runs
 boundary zero from its condition, the warm restart being `capture` → tweak →
-`init!` ([§14.1][s14-1]). It clears the [trace](#g-trace), the log, *and* any
-batches still in [staging cells](#g-staging-cell). The [recorders](#g-recorders)
+`init!` ([§14.1][s14-1]). It clears the [trace](#g-trace), the log, the [termination record](#g-termination-record)
+([§13.5][s13-5]), *and* any batches still in [staging cells](#g-staging-cell). The [recorders](#g-recorders)
 restart with the run they record, and no stale batch survives to clobber the
 boundary zero it predates.
 
@@ -6825,8 +6837,9 @@ place:
   [roster](#g-roster);
 - **device join timeout** ([§12.4][s12-4]) — a device task exceeding the shutdown
   join timeout, abandoned by name rather than hanging `run!`; it arises after
-  the terminal snapshot, so it is emitted through the logging backend, never
-  carried into a status ([D-201][d-201]);
+  the terminal snapshot, so it is collected into the [termination record](#g-termination-record) and
+  presented through the logging backend, never carried into a status
+  ([D-201][d-201], [D-203][d-203]);
 - **device crash** ([§12.4][s12-4], [§13.4][s13-4]) — a device task's failure caught by the
   framework wrapper, the sim continuing with the device absent;
 - **unbounded run** ([Appendix B][sB]) — no finite `t_end`, no `stop_on` faces,
@@ -7071,16 +7084,34 @@ rather than less ([D-060][d-060] and [D-091][d-091]). The `stopped → init! →
 different stopping policies on different runs. The honest cost is two homes for
 one fact; the precedence rule above settles it.
 
-**The termination record names the source.** Where run metadata carries the
-effective *policy*, the run's termination record carries its *outcome*: which
-of the four sources ended the run. Those sources are `t_end` reached, a named
-`stop_on` face reading `true`, a control-plane stop (GUI button,
-[device](#g-device) handle, calling code), and an
-[operator interrupt](#g-operator-interrupt) ([§12.4][s12-4]). A `stopped`
-simulation therefore answers "why did it stop?" without its consumer
-reconstructing the answer from the clock. The interrupt is a tag on an ordinary
-stop, not a diagnostic [kind](#g-kind) of its own ([Appendix C][sC] gains
-nothing here): nothing failed.
+**The termination record names the source, as a typed value.** Where run
+metadata carries the effective *policy*, the run's
+[termination record](#g-termination-record) carries its *outcome*. The record
+holds three fields: the final boundary time — absent when no boundary ever
+ran, a [§13.6][s13-6] failure before boundary zero — the source, and the tail residue,
+the post-account diagnostics the run's-end sweep folds in ([§11.8][s11-8]). The source
+follows the diagnostic convention — its kind is its identity, its payload is
+plain data ([§13.2][s13-2]) — with four kinds:
+
+- `EndTimeReached` — `t_end`'s frame completed. No payload: the record's own
+  `t` is the fact, and the configured bound lives in the run metadata.
+- `ModelRequestedStop` — a named `stop_on` face read `true`. The payload is
+  the holding face.
+- `ControlRequestedStop` — a control-plane stop. The payload is its issuer
+  ([§12.1][s12-1]): the requesting device, `:code`, or `:interrupt`.
+- `LoopError` — [§13.6][s13-6]'s abnormal entry, the payload the propagated cause. The
+  record covers the `errored` terminal state exactly as it covers `stopped`.
+
+A `stopped` simulation therefore answers "why did it stop?" without its
+consumer reconstructing the answer from the clock, and answers "how did the
+stop go?" from the same value. The [operator interrupt](#g-operator-interrupt)
+is a tag on an ordinary stop, not a [kind](#g-kind) of its own
+([Appendix C][sC] gains nothing here): nothing failed.
+
+**Rule.** The sources are consulted in a fixed order — a pending control stop
+at frame top, then `t_end`, then the stop faces at each publication. When two
+sources hold at one boundary, the recorded source is the first in that order
+([D-203][d-203]).
 
 Taught contract: **stop faces are sampled at completed boundaries; declare a
 sign-form event if you need the stop localized.** Both stop-flag shapes work
@@ -7155,7 +7186,9 @@ task hangs.
 ```
 
 This fills the seat [§12.4][s12-4] reserved for it: a loop-side failure runs
-the same protocol from the catch path.
+the same protocol from the catch path. The [termination record](#g-termination-record) covers this
+entry too: its source is `LoopError`, the payload the propagated cause
+([§13.5][s13-5], [D-203][d-203]).
 
 Tail hygiene: the hooks are user code too, so each is individually
 caught-and-logged. Shutdown therefore runs to completion even if a device's hook
@@ -9862,7 +9895,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value; the site (staging, or a stopped-sim attach's renormalization). Harness-register only — a device's out-of-surface entry is `OutOfClaimEntry` | [§11.3][s11-3], [§11.4][s11-4] | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§11.3][s11-3] | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count | [§12.2][s12-2] | warning (runtime), at `run!` |
-| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§12.4][s12-4] | warning (runtime), at the shutdown tail — through the logging backend, past the terminal snapshot ([D-201][d-201]) |
+| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§12.4][s12-4] | warning (runtime), at the shutdown tail — written to the loop's cell, collected by the run's-end sweep into the termination record and presented through the logging backend, past the terminal snapshot ([D-201][d-201], [D-203][d-203]) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§12.4][s12-4], [§11.6][s11-6], [§13.4][s13-4] | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§12.7][s12-7] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
 | `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§11.6][s11-6], [§13.4][s13-4] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
@@ -10720,6 +10753,10 @@ never an exception: detection is ordinary event machinery, publication an
 ordinary root-exported `Bool` output face, and `stop_on` the deployment policy
 naming the faces the loop reads after every published boundary ([§13.5][s13-5]).
 
+<a id="g-termination-record"></a>**termination record** — the stopped-sim
+value naming how the run ended: final boundary time, a typed source with its
+payload, and the tail residue ([§13.5][s13-5]).
+
 <a id="g-warning-streams"></a>**warning streams** — two, scoped separately: the *build* stream, whose
 warning set is deliberately empty, and the *runtime* stream — per-occurrence,
 carried by the per-writer diagnostic cells that structurally rate-limit it
@@ -10912,6 +10949,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-200]: framework_decisions.md#d-200--the-harness-register-is-a-diagnostic-writer-with-its-own-cell
 [d-201]: framework_decisions.md#d-201--the-terminal-account-closes-at-the-final-frame-top
 [d-202]: framework_decisions.md#d-202--stage-batches-as-values-plus-touched-mask-never-union-tuples
+[d-203]: framework_decisions.md#d-203--the-termination-record-carries-typed-sources-and-the-tail-residue
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop

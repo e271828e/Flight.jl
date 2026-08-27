@@ -227,6 +227,7 @@ were derived.
 | [D-200][d-200] | The harness register is a diagnostic writer with its own cell | ratified |
 | [D-201][d-201] | The terminal account closes at the final frame top | ratified |
 | [D-202][d-202] | Stage batches as values plus touched-mask, never union tuples | ratified |
+| [D-203][d-203] | The termination record carries typed sources and the tail residue | ratified |
 
 ### D-001 — Hybrid causal formalism with two-tier events and projection
 
@@ -6966,6 +6967,85 @@ already supply.
 - *Precompiling every sparsity pattern at attach:* 2ⁿ specializations;
   unpayable beyond toy widths.
 
+### D-203 — The termination record carries typed sources and the tail residue
+
+**Status.** ratified
+
+**Position.** The run's termination record is a three-field value — the final
+boundary time, absent when no boundary ever ran; a typed source; the tail
+residue — and this amends [D-201][d-201]'s disposal clause: the run's-end sweep folds
+the residue into the record *and* presents it through the logging backend,
+still never published. The bundled rulings:
+
+- The sources follow the diagnostic kind convention — kind is identity,
+  payload plain data ([§13.2][s13-2]) — without joining [Appendix C][sC]'s diagnostic set:
+  `EndTimeReached` (no payload), `ModelRequestedStop` (the holding face),
+  `ControlRequestedStop` (its issuer), and `LoopError` (the propagated
+  cause). The record covers `errored` exactly as it covers `stopped` ([§13.6][s13-6]).
+- The operator interrupt stays a tag on an ordinary stop ([§13.5][s13-5]): the
+  `:interrupt` issuer arm of `ControlRequestedStop`, never a fifth kind.
+- The control-plane stop word carries its issuer — the requesting device,
+  `:code`, or `:interrupt` — written by compare-and-swap from empty,
+  first writer wins ([§12.1][s12-1]).
+- `DeviceJoinTimeout` becomes an ordinary structured kind: written to the
+  loop's own cell in tail step (5), collected by the run's-end sweep
+  ([§12.4][s12-4], [Appendix C][sC]).
+- Source consultation order is normative: a pending control stop at frame
+  top, then `t_end`, then the stop faces at each publication — the recorded
+  source of a boundary where two hold is the first in that order.
+- `init!` clears the record with the trajectory ([§12.6][s12-6]).
+
+**Spec.** [§11.8][s11-8], [§12.1][s12-1], [§12.4][s12-4], [§12.6][s12-6], [§13.5][s13-5], [§13.6][s13-6], [Appendix C][sC]
+
+**Rationale.** [D-201][d-201] disposed of the tail window's diagnostics through
+presentation because the termination record did not yet exist as machinery;
+with it on the bench, presentation-only fails the unattended run — [§11.8][s11-8]'s own
+audience for the terminal counters. Once `run!` returns, "did a device hang
+the join?" was answerable only by whoever captured the log stream, and a
+harness exercising the abandonment path had to scrape logs. The record is
+none of [D-201][d-201]'s three rejected disposals, which all stand: it is not a
+publication — it follows no boundary sequence and sits on no data plane — it
+is not cell retention across runs (`init!` clears it with the trajectory), and
+it is not a drop. It is stopped-sim state on the diagnostic-observation side
+of [§13.5][s13-5]'s own doctrine, and the precedent of carrying failure detail was
+already spent when the abnormal path put the cause exception in the record.
+The typed sources apply [§13.2][s13-2]'s convention to the outcome channel, dissolving
+a flat record whose `exception` field applied only to the error case and
+whose `face` field only to the stop-face case; construction simplifies with
+them, the loop returning a source where it detects one and the record
+assembled once, in the outermost `finally`, after the sweep has the residue
+in hand. Issuer attribution is nearly free: every stop site knows its
+identity — the handle carries the device name, the interrupt is caught at a
+known unmask point — and the anonymous `Bool` was discarding it at the moment
+of writing; first-CAS-wins matches the first-`true` doctrine for stop faces
+and names the request that actually initiated the tail. The residue stays
+bounded by construction: one final ring take per writer, at most sixteen
+entries plus suppressed counts. The record's cost is nil on any path that
+matters — it is built once per run, on the cold side of the final snapshot.
+
+**Rejected.**
+- *Superseded position — presentation-only disposal ([D-201][d-201]):* honest but
+  ephemeral; the tail's facts evaporated from the program at the moment it
+  regained control. [D-201][d-201]'s rejected list never weighed the record, which
+  had not been built when it was adjudicated.
+- *A fifth source kind for the interrupt:* [§13.5][s13-5] rules the interrupt a tag on
+  an ordinary stop — nothing failed; a consumer that cares matches on the
+  issuer, and a distinct type would quietly reverse a settled ruling for no
+  gain.
+- *A flat record with `nothing`-padded per-source fields (the prototype's
+  first cut):* the shape [§13.2][s13-2] rejects for diagnostics — most fields
+  meaningless for most sources, tests matching on a `Symbol` instead of a
+  type.
+- *`Float64` time with `NaN` for "no boundary ever ran":* time is generic —
+  the clock is seeded `zero(T)` ([§7.2][s7-2]) — and `NaN` is an in-band sentinel of
+  the species [D-202][d-202] rejects; absence spelled out-of-band instead.
+- *Carrying the configured `t_end` in `EndTimeReached`'s payload:* the
+  effective policy already lives in the run metadata ([§11.5][s11-5], [§13.5][s13-5]); a second
+  home for a fact that has one.
+- *Termination sources as [Appendix C][sC] diagnostics:* the record is outcome, not
+  warning — three of the four sources are healthy ends, and the interrupt
+  sentence in [§13.5][s13-5] already ruled the appendix gains nothing here.
+
 <!-- citation link definitions — generated by tools/linkify.jl; do not edit -->
 [d-001]: #d-001--hybrid-causal-formalism-with-two-tier-events-and-projection
 [d-002]: #d-002--adopt-the-causal-port-based-paradigm
@@ -7169,6 +7249,7 @@ already supply.
 [d-200]: #d-200--the-harness-register-is-a-diagnostic-writer-with-its-own-cell
 [d-201]: #d-201--the-terminal-account-closes-at-the-final-frame-top
 [d-202]: #d-202--stage-batches-as-values-plus-touched-mask-never-union-tuples
+[d-203]: #d-203--the-termination-record-carries-typed-sources-and-the-tail-residue
 [s10-1]: framework_spec.md#101-loop-ownership-the-framework-owns-the-simulation-loop
 [s10-2]: framework_spec.md#102-the-stepper-seam
 [s10-3]: framework_spec.md#103-signal-table-consistency-is-a-boundary-property
