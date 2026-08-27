@@ -4033,13 +4033,17 @@ Three kinds of boundary, three due sets:
   ordinary macro-sequence with an empty integrate), it is **everything with
   `Φ = 0`**. At `idx = 0` the gate reads `(0 − Φ) % D == 0`, which under the
   canonical residue `0 ≤ Φ < D` holds if and only if `Φ = 0`. The rule is
-  implemented by nothing: it falls out of the ordinary gate.
+  implemented by nothing: it falls out of the ordinary gate. Dueness at
+  boundary zero governs the `g` updates alone — output stages publish due or
+  not ([D-205][d-205]), as [§14.5][s14-5] specifies.
 
 An offset component's first tick is at `Φ·Δt_base`. Until then its cells hold
-the values the build probe populated ([§9.3][s9-3], [§14.5][s14-5]), which is
-a coherent ZOH story: those are exactly what a tick at `t₀⁻` would have
-produced. In a phase-free model every `Φ` is 0, so "at boundary zero everything
-is due" is the degenerate case of the same identity.
+its boundary-zero publication: its output stages run at `t₀` due or not,
+evaluated from the authored world ([D-205][d-205], [§14.5][s14-5]). The probe's
+synthesized values ([§9.3][s9-3]) reach no published cell — the "tick at
+`t₀⁻`" story they once told held only in the build's own world, since the
+probe runs before any condition exists. In a phase-free model every `Φ` is 0,
+so at boundary zero everything is due and the distinction is empty.
 
 #### Simultaneous ticks are already well-defined
 
@@ -7727,14 +7731,19 @@ ordinary boundary is exact, not approximate. Piece by piece:
   constrained block against fresh defaults. [Projection](#g-projection) after
   condition writes is the same position it holds after any other `x` mutation.
   And it costs nothing when the state is already clean.
-- **The sweep runs with every `Φ = 0` [tick](#g-tick) due.** `t₀` is a grid point
-  of every phase-free divisor, so those discrete output stages are gated in and
-  publish from the authored `s`. They can do nothing else: no earlier tick exists
-  for a ZOH to hold. An offset [component](#g-component) ([§10.5][s10-5]) is *not*
-  due — its first tick is at `Φ·Δt_base`. Until then that component's
-  [cells](#g-cell) hold the values the [activation](#g-activation)'s
-  [probe](#g-probe) populated ([§9.3][s9-3]). The `t₀` snapshot carries a fully
-  populated table either way.
+- **The sweep runs, and every discrete output stage publishes — due or not
+  ([D-205][d-205]).** `t₀` is a grid point of every phase-free divisor, so the `Φ = 0`
+  components are due in full. An offset [component](#g-component)
+  ([§10.5][s10-5]) is *not* due — its first [tick](#g-tick) is at
+  `Φ·Δt_base` — but its output stages run at boundary zero all the same,
+  publishing from the authored `s` and the `t₀` table in the ordinary sorted
+  walk. That evaluation is establishment, not a scheduled sample: the
+  schedule owns every instant after `t₀`, and the first sample the
+  component's `g` consumes remains its `Φ·Δt_base` tick's. What the rule
+  buys is a `t₀` [snapshot](#g-snapshot) carrying the authored world fully
+  evaluated: no published [cell](#g-cell) holds the [probe](#g-probe)'s
+  synthesized values, the [§14.6][s14-6] barrier extended from the
+  [slots](#g-slot) to the whole table.
 - **Events run.** A condition can land a guard [predicate](#g-predicate) in
   [holding](#g-edge-semantics) territory (firing on not-holding → holding
   transitions, never bare sign changes): an authored stall flag, a strut authored
@@ -8184,11 +8193,11 @@ Field by field:
   boundary zero ran quiet ([§14.5][s14-5]).
 
 The committed-state residuals are nearly free: that boundary's sweep has
-already run, so the residuals' declared reads need only gather from it. The
-offset caveat carries over from [§14.5][s14-5]: an offset
-[component](#g-component) is not [due](#g-due) at boundary zero, so a residual
-reading its [port](#g-port) reads the [probe](#g-probe)-populated cell, not a
-commit-refreshed one. Those committed-state residuals are the numbers
+already run, so the residuals' declared reads need only gather from it. There
+is no offset caveat to carry: every output stage publishes at boundary
+zero ([D-205][d-205], [§14.5][s14-5]), so a residual reading an offset
+[component](#g-component)'s [port](#g-port) reads a commit-refreshed cell
+like any other. Those committed-state residuals are the numbers
 describing the state the simulation is actually *in*, which is the point a
 `capture`-defaulted `linearize` reads. A non-empty fired-event set also raises
 `TrimCommitEvents` ([Appendix C][sC]): the committed stores then sit at the
@@ -10951,6 +10960,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-202]: framework_decisions.md#d-202--stage-batches-as-values-plus-touched-mask-never-union-tuples
 [d-203]: framework_decisions.md#d-203--the-termination-record-carries-typed-sources-and-the-tail-residue
 [d-204]: framework_decisions.md#d-204--rename-the-condition-algebras-symmetric-combinator-to-combine
+[d-205]: framework_decisions.md#d-205--boundary-zero-publishes-every-discrete-output-stage-due-or-not
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
