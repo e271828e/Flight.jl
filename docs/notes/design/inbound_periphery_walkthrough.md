@@ -1,7 +1,7 @@
 # The inbound periphery, from the ground up
 
 *A companion explainer, not normative text. The ground truth is
-`framework_spec.md` [§11.3][s11-3] (slots, claims, the roster freeze), [§11.4][s11-4] (staging and the drain), [§11.7][s11-7] (GUI write path),
+`framework_spec.md` [§11.3][s11-3] (root inputs, claims, the roster freeze), [§11.4][s11-4] (staging and the drain), [§11.7][s11-7] (GUI write path),
 [§12.6][s12-6] (harness cell) and decision [D-044][d-044], [D-093][d-093], [D-096][d-096], [D-106][d-106], [D-174][d-174], [D-176][d-176], [D-177][d-177].
 Written
 2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
@@ -20,7 +20,7 @@ station of that pipeline; they are introduced in dependency order, each with a
 code shape, then one frame runs end to end, and the write-surface rule closes
 the story.
 
-## 1. Slots and faces: *what* can be written
+## 1. Root inputs and faces: *what* can be written
 
 The root assembly exports input faces ([§8.6][s8-6]) — named, typed inputs that no
 component inside the model produces. Say our aircraft's root exports four:
@@ -29,19 +29,19 @@ component inside the model produces. Say our aircraft's root exports four:
 input_faces(world)  # ["throttle", "elevator", "flaps", "brake"] — all Float64 here
 ```
 
-A **root input slot** is the storage backing one such face: a source cell of
-the signal table. "Slot" is reserved for exactly these. Conceptually:
+A **root input** is the storage backing one such face: a source cell of
+the signal table. "Root input" is reserved for exactly these. Conceptually:
 
 ```julia
 # inside the Simulation, part of the signal table the loop owns:
-slots = (throttle = 0.62, elevator = -0.03, flaps = 0.0, brake = 0.0)
+inputs = (throttle = 0.62, elevator = -0.03, flaps = 0.0, brake = 0.0)
 ```
 
-Two rules give slots their character. They are **constants within a frame**:
+Two rules give root inputs their character. They are **constants within a frame**:
 the sweep reads them like any other signal, and nothing may change them
 between frame top and frame end. And they are **the only thing the periphery
 may write** — the entire outside world (joysticks, network peers, GUI, your
-REPL) influences the model *only* by proposing new slot values. The write
+REPL) influences the model *only* by proposing new root-input values. The write
 side addresses them by face *name* (`"throttle"`), never by structural path —
 the root contract is the vocabulary. (The read side is different: snapshot
 consumers address table cells by path or face, [§11.2][s11-2]/[§14.4][s14-4].)
@@ -72,7 +72,7 @@ admit through [§11.3][s11-3]'s three-part ordered check — **identity** (`Alre
 **claims** (face exclusivity, `ClaimConflict`) — ordered so a failing later
 check always names two *distinct* devices, then compile the staging shape
 ([section 3](#3-batches-and-staging-cells-how-a-write-is-proposed)), add the entry.
-A **claim** is exclusive ownership of a face: one writer per slot at any
+A **claim** is exclusive ownership of a face: one writer per root input at any
 time, and `detach!` releases the claims. The claim set comes from the
 **binding**, by one of two routes — *returned*, the declarative table that
 also drives the mapping, or *computed*, when the binding declares
@@ -84,7 +84,7 @@ joystick_binding = (stick_y  = (face = "elevator", expo = 0.6),
 # ⇒ claims = ("elevator", "throttle")           # returned: enumerated by the table
 
 is_greedy(::StandardGUIBinding) = true
-# ⇒ claims = every root input face not already claimed, computed at attach
+# ⇒ claims = every root-input face not already claimed, computed at attach
 ```
 
 Past that point nothing can tell the two apart: the complement is disjoint
@@ -102,14 +102,14 @@ One consequence is deliberate and worth stating early: **device death is not
 detach**. A task that crashes, returns voluntarily, or loses its hardware
 mid-run simply stops filling its cell; the [§12.2][s12-2] heartbeat reports the death
 by name, and the entry — claims included — persists to run end. The orphaned
-slots hold their last-drained values, and the GUI renders the fact where the
+root inputs hold their last-drained values, and the GUI renders the fact where the
 user is looking ("claimed by `T16000M` — task dead", [§11.7][s11-7]). Recovery is
 between runs: stop, `detach!`, then `init!` for a fresh trajectory or
 `replay!`-to-end + `run!` to continue the interrupted one ([§12.7][s12-7]).
 
 ## 3. Batches and staging cells: *how* a write is proposed
 
-Nobody outside the loop ever assigns a slot. Instead, a writer produces a
+Nobody outside the loop ever assigns a root input. Instead, a writer produces a
 **batch** and deposits it in its **staging cell**: a one-element atomic
 mailbox, one per attached device, written by exactly one device task:
 
@@ -145,11 +145,11 @@ would silently lose the untouched pending edits. Staged values are **levels,
 never deltas** (`press_count = 17`, never `presses += 1`): levels are
 idempotent and survive coalescing.
 
-## 4. The drain: *when* proposals become slot values
+## 4. The drain: *when* proposals become root-input values
 
 At the top of each frame — and only there — the loop takes each cell's
 contents atomically and applies it through the entry's attach-compiled
-**scatter** (position → slot store, statically typed, unmasked positions
+**scatter** (position → root-input store, statically typed, unmasked positions
 skipped — the mirror of [§11.2][s11-2]'s output gather), in attachment order
 (the harness cell last, [section 5](#5-registers-modes-of-use-not-more-machinery)):
 
@@ -157,7 +157,7 @@ skipped — the mirror of [§11.2][s11-2]'s output gather), in attachment order
 for entry in roster                                    # frame top, loop task
     batch = @atomicswap entry.cell.pending = nothing   # indivisible take
     batch === nothing && continue                      # nothing staged: fine
-    scatter!(slots, entry, batch)                      # no checks — see §6
+    scatter!(inputs, entry, batch)                     # no checks — see §6
     record_in_trace!(frame, entry.id, batch)
 end
 ```
@@ -169,11 +169,11 @@ scatters form a known tuple the frame function can specialize on, with no
 name resolved and no dynamic dispatch at frame top.
 
 **Draining** is that swap-and-apply. It is the single point where the
-periphery's proposals become the frame's slot constants, and everything after
+periphery's proposals become the frame's root-input constants, and everything after
 it — the sweep, the boundaries, the published snapshot — is a pure function
 of the drained batches. That purity is what makes the **input trace** (the
 per-frame sequence of device-tagged drained batches, plus the header's
-initial state, slot values and per-writer schemas) a complete record: replay
+initial state, root-input values and per-writer schemas) a complete record: replay
 feeds the same batches to the same drain and gets a bit-identical trajectory.
 One retention detail ([D-176][d-176]): **every** drained batch is converted at the
 drain into sparse (position ⇒ value) pairs against the writer's schema, so
@@ -211,7 +211,7 @@ reading the same way, not an arbitration policy.
 ## 6. The write-surface rule (D-044, D-106 and D-174)
 
 **Every writer has a write surface, and staging enforces it**: a batch entry
-reaches a slot iff the named face is inside the writer's surface; anything
+reaches a root input iff the named face is inside the writer's surface; anything
 else is rejected in `stage!`'s normalization, on the writer's own task, with
 a runtime warning. A device's surface is its claim set, however that set was
 acquired; the harness register's is the derived remainder — and under the
@@ -224,7 +224,7 @@ know. Two warning kinds cover the violations:
   claim set (plus the incumbent's id when the face is claimed elsewhere).
   "Your peer drifted from your binding." The GUI's out-of-surface writes are
   this kind too, its claim being an ordinary one — though its widgets cannot
-  produce them, since liveness renders out-of-claim slots read-only.
+  produce them, since liveness renders out-of-claim root inputs read-only.
 - `ClaimedFaceEntry` — a harness-register violation, and only that:
   `stage!` named a face some device claims in this run's partition. Face,
   incumbent device id, discarded value, the site.
@@ -240,7 +240,7 @@ The GUI is therefore not an exception: one device contract ([§11.6][s11-6]), on
 claim mechanism with two claim *sources*, one staging rule, one checkless
 drain. Opportunistic writing by autonomous devices does not exist — a device
 that wants a face enumerates it, and greediness is an explicit declaration —
-so cross-writer races on one slot
+so cross-writer races on one root input
 structurally cannot arise: every claim is exclusive whatever its source, the
 unclaimed remainder admits only the harness, and drain order is a diagnostic
 fact, not an arbitration policy.
@@ -259,7 +259,7 @@ its authority, unchanged, to every frame of the run.
 Joystick attached while stopped (claims `throttle`, `elevator`); GUI
 attached next under the greedy binding (claim computed at that instant:
 `flaps`, `brake`); `run!` reads the roster, bakes widget liveness
-([§11.7][s11-7]) and specializes the drain; slots as above.
+([§11.7][s11-7]) and specializes the drain; root inputs as above.
 
 1. *Between frames*: the joystick task polls at its own rate, runs
    `map_input` (deadzone, expo — pure, on the device task), stages
@@ -270,7 +270,7 @@ attached next under the greedy binding (claim computed at that instant:
    slider renders read-only — its face is claimed by the joystick and so
    falls outside the GUI's own claim, a fact baked at run start.
 2. *Frame top*: drain. Both cells swap and scatter — no checks, both
-   surfaces were enforced at staging. Slots are now
+   surfaces were enforced at staging. Root inputs are now
    `(throttle = 0.70, elevator = -0.05, flaps = 1.0, brake = 0.0)`, frozen
    for the frame. Both batches enter the trace in the one record format —
    the joystick's as `(throttle ⇒ 0.70, elevator ⇒ -0.05)`, the GUI's as
@@ -289,7 +289,7 @@ attached next under the greedy binding (claim computed at that instant:
 [d-176]: framework_decisions.md#d-176--unify-trace-retention-on-one-sparse-record-format
 [d-177]: framework_decisions.md#d-177--re-found-the-periphery-on-mandatory-roots-plus-declared-traits
 [s11-2]: framework_spec.md#112-outbound-snapshot-publication
-[s11-3]: framework_spec.md#113-inbound-root-input-slots-claims-and-the-frozen-roster
+[s11-3]: framework_spec.md#113-inbound-root-inputs-claims-and-the-frozen-roster
 [s11-4]: framework_spec.md#114-inbound-per-device-staging-representation-and-the-drain
 [s11-6]: framework_spec.md#116-devices-one-authoring-contract-no-taxonomy
 [s11-7]: framework_spec.md#117-the-gui-write-path-port-resolution-peek-staging-contract

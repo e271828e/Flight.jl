@@ -101,7 +101,7 @@ immutable value with pure query functions on it (`ISAField(T_sl, p_sl,
 wind)`; `airdata(field, pos, vel)`; `ray_intersect(field, p, u)`). A handle
 is what the physics needs. A *producing component* is a separate question,
 and it earns its place only when the field has something a value cannot
-carry: dynamics (a wind field with its own state), tunable slots (sea-level
+carry: dynamics (a wind field with its own state), tunable root inputs (sea-level
 conditions a GUI or a script can move at runtime), or discrete behaviour
 (gust triggering, a weather schedule). A frozen ISA atmosphere with no wind
 has none of those, and the framework should not force a component on the user
@@ -123,7 +123,7 @@ which is acceptable because condition authoring is design-time code.
 
 With that in hand, [§14.1][s14-1]'s first escape stretches to cover the case: the
 condition constructs the sweep's exact handle from the same values its
-`baseline` writes into the environment component's slots, and calls the same
+`baseline` writes into the environment component's root inputs, and calls the same
 query function the consuming component calls. One implementation of the field
 math, evaluated one level up. No pre-sweep, no new mechanism.
 
@@ -138,17 +138,17 @@ aircraft's environment input faces, declared abstractly (`terrain =
 AbstractTerrainField`) so any concrete field type below the bound may be
 wired — today's `AbstractTerrain` polymorphism moved to the declaration
 layer. The environment's tunables — sea-level temperature and pressure, the
-wind vector, terrain elevation — are the *atmosphere component's* root slots,
+wind vector, terrain elevation — are the *atmosphere component's* root inputs,
 which is the register everything else already speaks: conditions write them,
 `capture` reads them back, linearization can take them as inputs, and the
 trace header records them. This is what `design_world(ac)` ships, and it is
 the blessed default for design tasks.
 
 **(b) Aircraft as root.** Leave the environment faces unconnected. Then, by
-the ordinary rules, each becomes a root input slot — one whose *value* is a
-handle. The `baseline` writes it like any other slot. Nothing new is
+the ordinary rules, each becomes a root input — one whose *value* is a
+handle. The `baseline` writes it like any other root input. Nothing new is
 required: [§4.4][s4-4] handles are immutable values carried by ordinary ports, and a
-slot holds a value.
+root input holds a value.
 
 Three things are worth stating about the pair.
 
@@ -162,15 +162,15 @@ doctrine.
 you have (a) back. The gain is purely one of ceremony, and its real niche is
 **component test rigs**: a strut, an airflow stage or an aero block tested on
 its own against a frozen environment. "Leave the face unconnected and write a
-handle literal into the slot" is the function-valued sibling of a constant
+handle literal into the root input" is the function-valued sibling of a constant
 source — the same answer dry-run finding #7 reaches for its `Constant{V}`
 when an aggregation has zero contributors, one step up the type ladder.
 
 Multi-aircraft worlds argue for (a), and this is the sharpest reason it stays
 the default. With one producer fanned out to every consumer, environmental
 consistency is *structural*: two aircraft cannot disagree about the wind
-because they read one port. With slot-held handles, consistency is baseline
-discipline — the user must write the same value into every aircraft's slot,
+because they read one port. With root-input-held handles, consistency is baseline
+discipline — the user must write the same value into every aircraft's root input,
 and nothing checks that they did.
 
 ## Two ways to pose the trim problem
@@ -244,9 +244,9 @@ the wind is what relates the two frames.
 ## The four quadrants
 
 The two axes are orthogonal: (elimination | enlargement) × ((a)
-component-produced | (b) slot-held). All four combinations are legal, and
+component-produced | (b) root-input-held). All four combinations are legal, and
 here is one sketch of each. **These are illustrative** — the exact spellings
-of slot writes, face names and helper signatures are not all fixed by the
+of root-input writes, face names and helper signatures are not all fixed by the
 spec, and where a sketch guesses, it guesses in the direction of readability.
 Said once, for all four.
 
@@ -295,15 +295,15 @@ baseline, and into the handle. That single-variable discipline is the whole
 safety argument, and the next section is about what happens when it lapses.
 
 **(b) + elimination** — aircraft as root, environment faces unconnected, the
-handle *is* the slot value.
+handle *is* the root-input value.
 
 ```julia
-sim = Simulation(ac; h = 0.02)  #the `atm`/`trn` faces are unconnected → root slots
+sim = Simulation(ac; h = 0.02)  #the `atm`/`trn` faces are unconnected → root inputs
 
 atm = ISAField(; T_sl = 288.15, p_sl = 101325.0, wind = WindVector(-10.0, 0.0, 0.0))
 trn = HorizontalTerrainField(; elevation = 0.0)
 
-#one variable, two uses: the slot the sweep reads, and the params the
+#one variable, two uses: the root input the sweep reads, and the params the
 #condition math queries. No value-level constructor needed — in this rig
 #the handle is not produced by anything, it is written.
 baseline = override(ready_for_taxi(ac), condition("atm" => atm, "trn" => trn))
@@ -411,7 +411,7 @@ trim!(sim, cruise; baseline)
 Under **elimination** the handle influences the residuals along two distinct
 paths, and this is the structural fact that matters:
 
-- **Path 1 (the world's).** `baseline` → environment slots → the sweep builds
+- **Path 1 (the world's).** `baseline` → environment root inputs → the sweep builds
   the handle → the airflow stage queries it at the vehicle pose → aerodynamic
   forces → ẋ → the residuals the solver reads.
 - **Path 2 (the condition's).** `params.atm` → the condition math →
@@ -521,14 +521,14 @@ One alternative deserves recording because it is the first thing anyone
 proposes: widen the condition seam to `condition(d, baseline)`, so the
 condition math can read the handle straight out of the baseline it will be
 applied over. It would genuinely single-source the handle — in rig shape (b),
-where the handle *is* a baseline slot value, the params field disappears
+where the handle *is* a baseline root-input value, the params field disappears
 entirely.
 
 It fails on two counts.
 
 It is **rig-only**. In a full world of shape (a), the environment face is
 *wired*, so the handle is not in the baseline at all — the baseline carries
-the atmosphere's `T_sl`/`p_sl`/`wind` slots, not the handle those slots will
+the atmosphere's `T_sl`/`p_sl`/`wind` root inputs, not the handle those root inputs will
 eventually produce. Serving the condition a handle there would mean
 pre-sweeping the environment subtree, which is [§14.2][s14-2]'s rejected "init as a
 third scheduled sweep" under a new name, and it would additionally require

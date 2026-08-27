@@ -218,7 +218,7 @@ everything here: analysis preserved, nothing built, guarded-additions rule appli
 [§7.2][s7-2] scopes the eltype-generic surface deliberately: payload/value types are
 **walked** (they follow the activation scalar), parameters are **pinned** ("stay
 `Float64`; promotion handles mixing"), and [§14.10][s14-10] makes differentiation
-participation a per-invocation *seeding* fact over `x`-taps and slots. The
+participation a per-invocation *seeding* fact over `x`-taps and root inputs. The
 consequence: a component parameter can only ever enter an evaluation as a
 zero-partial constant. That is correct for every current service — in `∂ẋ/∂x` and
 `∂ẋ/∂u` the parameter genuinely is a constant — but structurally incapable of being
@@ -262,12 +262,12 @@ f(a::Actuator, x, u) = (a.gain.k * u - x) / a.lag.τ   # ẋ = (k·u − x)/τ
 kd = Dual{T}(2.0, 1.0)                 # the parameter: unit partial
 a  = Actuator(Gain(kd), Lag(0.5))      # the rest: plain Float64
 xd = Dual{T}(1.0, 0.0)                 # state at the operating point
-ud = Dual{T}(3.0, 0.0)                 # slot value
+ud = Dual{T}(3.0, 0.0)                 # root-input value
 partials(f(a, xd, ud), 1)              # ∂ẋ/∂k = u/τ = 6.0, exact
 ```
 
 - **Seeding.** Construct the target component around a unit-partial `Dual` and build
-  the world from it; states and slots enter as zero-partial constants. This is
+  the world from it; states and root inputs enter as zero-partial constants. This is
   [§14.10][s14-10]'s seeded pass verbatim, with the unit partial living in a field instead of
   an `x`-tap.
 - **Mixed construction is semantically right, not merely convenient.** Unseeded

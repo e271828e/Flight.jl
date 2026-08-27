@@ -9,14 +9,15 @@
 #   julia docs/notes/design/condition_demo.jl
 #
 #The node structs and the resolution pass are miniature but semantically
-#faithful implementations of §14.2/§14.3/§14.6; the one stand-in is slot
-#resolution, which here uses the demo rule «root slot = mount prefix with
+#faithful implementations of §14.2/§14.3/§14.6; the one stand-in is root-input
+#resolution, which here uses the demo rule «root input = mount prefix with
 #slashes → dots, then the face name» ("throttle" at "wing" → "wing.throttle",
 #§14.9's own example) in place of the Build's export-chain walk.
 #
 #NOT COVERED BY THE CHECK BATTERY: tools/check_refs.jl and tools/linkify.jl
 #scan the COMPANIONS .md roster only, so every § here is hand-verified.
-#Re-verify by hand after any spec renumbering. Last verified 2026-08-16.
+#Re-verify by hand after any spec renumbering. Last verified 2026-08-27, the
+#§ citations re-read and the demo re-run after the D-206 rename.
 
 module ConditionDemo
 
@@ -25,9 +26,9 @@ module ConditionDemo
 #x is the continuous state store and s the discrete one — one letter per tier
 #(D-195, superseding D-173's fusion); z remains the shift operator only
 struct Fragment{X<:NamedTuple, S<:NamedTuple, M<:NamedTuple, L<:NamedTuple}
-    x::X; s::S; m::M; slots::L      #self-vocabulary payloads; no paths
+    x::X; s::S; m::M; inputs::L     #self-vocabulary payloads; no paths
 end
-fragment(; x = (;), s = (;), m = (;), slots = (;)) = Fragment(x, s, m, slots)
+fragment(; x = (;), s = (;), m = (;), inputs = (;)) = Fragment(x, s, m, inputs)
 
 struct Scoped{N}                    #at(prefix, node): stores, never applies
     prefix::String
@@ -51,8 +52,8 @@ override(base, patch, rest...) = override(Override(base, patch), rest...)
 
 struct Entry
     path::String                    #component path from the resolution root
-    store::Symbol                   #:x, :s, :m, or :slot
-    field::Symbol                   #state/mode field, or face name for :slot
+    store::Symbol                   #:x, :s, :m, or :input
+    field::Symbol                   #state/mode field, or face name for :input
     value::Any
     provenance::String
 end
@@ -89,8 +90,8 @@ function flatten!(out, f::Fragment, path, prov)
             push!(out, Entry(path, store, field, value, prov))
         end
     end
-    for (face, value) in pairs(f.slots)     #face vocabulary of the authoring level
-        push!(out, Entry(path, :slot, face, value, prov))
+    for (face, value) in pairs(f.inputs)    #face vocabulary of the authoring level
+        push!(out, Entry(path, :input, face, value, prov))
     end
 end
 
@@ -135,14 +136,14 @@ end
 
 #demo stand-in for the Build's export-chain walk from the mount point (§14.9);
 #the real resolution errors if the face never surfaces at the root
-root_slot(e::Entry) = isempty(e.path) ? String(e.field) :
+root_input(e::Entry) = isempty(e.path) ? String(e.field) :
     replace(e.path, "/" => ".") * "." * String(e.field)
 
 ######################## Printing ##############################################
 
 function label(f::Fragment)
     parts = String[]
-    for store in (:x, :s, :m, :slots)
+    for store in (:x, :s, :m, :inputs)
         nt = getfield(f, store)
         isempty(nt) || push!(parts, "$store = $nt")
     end
@@ -170,8 +171,8 @@ function print_tree(node, prefix = "", islast = true, isroot = true)
     end
 end
 
-loc_string(e::Entry) = e.store === :slot ?
-    "slot \"" * root_slot(e) * "\"" :
+loc_string(e::Entry) = e.store === :input ?
+    "input \"" * root_input(e) * "\"" :
     (isempty(e.path) ? "" : e.path * ":") * "$(e.store).$(e.field)"
 
 function print_entries(entries)
@@ -205,10 +206,11 @@ condition(sys::C172XSystems; n_eng, α_a, β_a) = combine(
     at("pwp/engine", condition(sys.pwp.engine; n_eng)),
     at("aero",       fragment(x = (α_filt = α_a, β_filt = β_a))))
 
-#aircraft-shipped baseline (§14.6): full slot coverage, one authoritative home
+#aircraft-shipped baseline (§14.6): full root-input coverage, one authoritative
+#home
 ready_for_taxi(ac::Cessna172X) = combine(
     at("sys", condition(ac.sys; n_eng = 0.25, α_a = 0.0, β_a = 0.0)),
-    fragment(slots = (throttle = 0.0, elevator = 0.0, mixture = 0.5)))
+    fragment(inputs = (throttle = 0.0, elevator = 0.0, mixture = 0.5)))
 
 ######################## TrimProblem (§14.7, §14.9) ############################
 
@@ -251,7 +253,7 @@ trim_problem(ac::Cessna172X) = TrimProblem(
     d -> combine(
         at("sys", condition(ac.sys; n_eng = d.n_eng, α_a = d.θ, β_a = 0.0)),
         at("kin", fragment(x = (θ = d.θ,))),
-        fragment(slots = (throttle = d.throttle,))),
+        fragment(inputs = (throttle = d.throttle,))),
     (θ̇ = deriv("kin", :θ), ω̇ = deriv("sys/pwp/engine", :ω), γ = output("kin", :γ_gnd)),
     v -> (v.θ̇, v.ω̇, v.γ))
 
@@ -283,7 +285,7 @@ function main()
     end
 
     banner("4. override(base, patch): ordered layering — collision is the intent")
-    warm = override(taxi, fragment(slots = (throttle = 0.3, mixture = 0.8)))
+    warm = override(taxi, fragment(inputs = (throttle = 0.3, mixture = 0.8)))
     print_entries(resolve(warm))
 
     banner("5. A TrimProblem is an implicitly specified condition (§14.9)")
@@ -300,14 +302,14 @@ function main()
     print_entries(resolve(p_wing.condition(p_wing.guess)))
     println("\n  reads, now mounted (the Scoped wrapper, entered at resolution):")
     print_reads(p_wing.reads)
-    println("\n  note the slot: face \"throttle\", authored at the aircraft,")
-    println("  resolves from the mount point → root slot \"wing.throttle\"")
+    println("\n  note the root input: face \"throttle\", authored at the aircraft,")
+    println("  resolves from the mount point → root input \"wing.throttle\"")
 
     banner("7. Commit = override(baseline, at(mount, condition(d*))) (§14.9)")
     baseline = combine(
         at("lead", ready_for_taxi(world.lead)),
         at("wing", ready_for_taxi(world.wing)),
-        fragment(slots = (wind_N = 0.0,)))          #environment: world-level face
+        fragment(inputs = (wind_N = 0.0,)))         #environment: world-level face
     d_star = (throttle = 0.42, θ = 0.031, n_eng = 0.83)
     commit = override(baseline, at("wing", p.condition(d_star)))
     print_entries(resolve(commit))

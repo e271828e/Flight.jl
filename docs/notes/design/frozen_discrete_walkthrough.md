@@ -87,7 +87,7 @@ $t_k$ enters B's tick computation, and B's held output shapes $\dot{x}$ over
 the whole interval $[t_k, t_{k+1})$. But that dependence lives in the
 composition *across* the interval — the sampled-data step map
 
-$$\Phi : ((x_k, s_k), \mathrm{slots}) \mapsto (x_{k+1}, s_{k+1})
+$$\Phi : ((x_k, s_k), \mathrm{inputs}) \mapsto (x_{k+1}, s_{k+1})
 \qquad \text{(over the whole state, continuous } x \text{ and discrete } s
 \text{ alike: integrate one period, then run the due ticks)}$$
 

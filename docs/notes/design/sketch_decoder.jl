@@ -5,7 +5,10 @@
 #
 #UNCHECKED against the current spec: unlike condition_demo.jl, this sketch was
 #never remapped after the framework_spec.md renumberings, so every § below is
-#presumed stale — cited section numbers are the v0.19-era design doc's.
+#presumed stale — cited section numbers are the v0.19-era design doc's, and the
+#declaration names are that era's too (`connections`/`exports`, retired by
+#D-170). Only the vocabulary was swept forward, at D-206; nothing here was
+#re-verified, and being non-runnable it cannot be checked by execution.
 #
 #Interfaces (continuous component), in evaluation order. Every function takes
 #(comp, args): one NamedTuple bundle of views, destructured by name — the
@@ -253,7 +256,7 @@ exports(::Systems) = (
 
 
 ########################### Vehicle (root) #####################################
-#A parametric child slot (sys::S, today's Cessna172X{K, A} shape) is the
+#A parametric child field (sys::S, today's Cessna172X{K, A} shape) is the
 #substitutability idiom (§13.5); concrete here for brevity.
 
 struct Vehicle <: AbstractComponent
@@ -275,10 +278,10 @@ connections(::Vehicle) = (
 )
 
 #At the root, an exported input face IS the write surface: "throttle" becomes
-#a root slot with no extra vocabulary (§13.6). Face names are contract tokens
+#a root input with no extra vocabulary (§13.6). Face names are contract tokens
 #(no slash); bulk re-export with prefixing is the faces(...) helper (§13.8).
 exports(::Vehicle) = (
-    "throttle" => "sys/throttle",       #input face → root slot
+    "throttle" => "sys/throttle",       #input face → root input
     "pose"     => "wa/Ob",              #output faces: the observation contract
     "v_gnd"    => "wa/v_gnd",
 )

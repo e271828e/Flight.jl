@@ -53,7 +53,7 @@ evaluation context (tₙ's quiescence) against its value at a θ = 0 trial evalu
 | `m` | current mode stores | yes — handlers only run at boundaries, and priors are sampled at quiescence, after the last one |
 | discrete cells | the signal table, ZOH-held | yes — interior sweeps exclude discrete entries, so the cells still hold the frame's values |
 | `t` | computed: t = tₙ (indexed grid time, never accumulated) | yes |
-| `u` | the current root input slots — **post-drain** | **no** — the prior was sampled pre-drain |
+| `u` | the current root inputs — **post-drain** | **no** — the prior was sampled pre-drain |
 
 Sweeps are deterministic, so the audit is exhaustive: if the θ = 0 evaluation
 disagrees with the prior, the drain is the only possible culprit. (Under the retired

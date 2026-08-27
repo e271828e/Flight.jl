@@ -29,7 +29,7 @@ in pedagogy is not.
 
 - **First use per section: gloss + glossary link; bare term afterward.** The
   gloss is 5–10 words, parenthesized: "the [drain][g-drain] (the frame-top
-  swap that publishes staged device inputs into the root slots)". Every
+  swap that publishes staged device writes into the root inputs)". Every
   section must be locally re-readable by a reader arriving cold.
 - Coinages are governed by `tools/coinage_inventory.md`: a term used in three
   or more places, or far from its definition, gets a glossary entry; a local

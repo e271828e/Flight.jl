@@ -64,7 +64,7 @@
   - [11. Runtime periphery: the data plane](#11-runtime-periphery-the-data-plane)
     - [11.1 No shared mutable model: staged writes, snapshot reads](#111-no-shared-mutable-model-staged-writes-snapshot-reads)
     - [11.2 Outbound: snapshot publication](#112-outbound-snapshot-publication)
-    - [11.3 Inbound: root input slots, claims and the frozen roster](#113-inbound-root-input-slots-claims-and-the-frozen-roster)
+    - [11.3 Inbound: root inputs, claims and the frozen roster](#113-inbound-root-inputs-claims-and-the-frozen-roster)
     - [11.4 Inbound: per-device staging, representation and the drain](#114-inbound-per-device-staging-representation-and-the-drain)
     - [11.5 Inbound: the input trace](#115-inbound-the-input-trace)
     - [11.6 Devices: one authoring contract, no taxonomy](#116-devices-one-authoring-contract-no-taxonomy)
@@ -93,7 +93,7 @@
     - [14.3 Resolution: flatten, validate, compile once](#143-resolution-flatten-validate-compile-once)
     - [14.4 Two application registers over one plan](#144-two-application-registers-over-one-plan)
     - [14.5 Boundary zero: an ordinary boundary with authored incoming transitions](#145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions)
-    - [14.6 Slot totality: the missing-value error and the `override` combinator](#146-slot-totality-the-missing-value-error-and-the-override-combinator)
+    - [14.6 Root-input totality: the missing-value error and the `override` combinator](#146-root-input-totality-the-missing-value-error-and-the-override-combinator)
     - [14.7 The trim problem: NamedTuple decisions, declared reads, named residuals](#147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals)
     - [14.8 The trim service: solver seam, scratch stores, commit and report](#148-the-trim-service-solver-seam-scratch-stores-commit-and-report)
     - [14.9 Mounting: problems as relocatable values](#149-mounting-problems-as-relocatable-values)
@@ -332,7 +332,8 @@ values into its cell, and consumers read cells.
 - *[staging cell](#g-staging-cell)* — a distinct compound term, the per-[device](#g-device)
   inbound register of [§11.4][s11-4]; unlike a table cell it is mutated frame by frame and
   sits outside the table's publish-once discipline;
-- *[slot](#g-slot)* — reserved for the root input slots of [§11.3][s11-3].
+- *[root input](#g-root-input)* — a source cell fed by the [periphery](#g-periphery)
+  rather than by a producer ([§11.3][s11-3]).
 
 The signal requirement, stated precisely, is **immutability plus frozen references**:
 signals may reference bulk data (see [§4.4][s4-4]) provided that data is read-only for the
@@ -380,7 +381,7 @@ distinction is kind-blind — wiring and the [periphery](#g-periphery) address a
 without knowing whether it is primitive or composite.
 
 **Rule.** The port is the atomic unit of the entire periphery — one cell, one
-root [slot](#g-slot), one staged write, one [device](#g-device) [claim](#g-claim) ([§11.3][s11-3]), one [trace](#g-trace)
+[root input](#g-root-input), one staged write, one [device](#g-device) [claim](#g-claim) ([§11.3][s11-3]), one [trace](#g-trace)
 address, one GUI liveness verdict ([§11.7][s11-7]).
 
 #### Scatter and gather
@@ -484,7 +485,7 @@ other way round puts the query math in the output stage, where only a
 
 The reason is script-side: the condition math ([§14.1][s14-1]) must be able to
 construct, outside any sweep, bit-for-bit the same handle the sweep would
-produce from the same [slot](#g-slot) values. One implementation, two call
+produce from the same [root input](#g-root-input) values. One implementation, two call
 sites, no drift — and the drift avoided here is the silent-drift class that
 [§5.3][s5-3] exists to kill. This is a *shipped component's obligation*, not
 something a consumer can retrofit. The real component composes sub-models, and
@@ -1090,7 +1091,7 @@ above*: a sibling wire, an ancestor's deep route, or an `input_connections` entr
 handing the obligation up one level ([§8.6][s8-6]). The error fires at the root
 build for any input whose obligation chain never terminates. The one legitimate
 terminus fed by no [component](#g-component) is the root assembly's own input face
-— a root slot ([§11.3][s11-3]).
+— a root input ([§11.3][s11-3]).
 
 ### 6.2 Aggregation: explicit summing junctions
 
@@ -1120,7 +1121,7 @@ entries from it by applying it to the scalar of the [activation](#g-activation)
 (a re-run of Stratum C at a given scalar type).
 
 The junction is a continuous leaf, so its `input_types` entries are the tolerant
-`W{T}` a promoting consumer writes; walking, frozen and root-[slot](#g-slot)
+`W{T}` a promoting consumer writes; walking, frozen and [root-input](#g-root-input)
 contributors are all admissible behind them. `output_types` re-types the output
 [cell](#g-cell) per activation ([§8.2][s8-2]). This is the same
 arity-via-computed-contracts pattern [§13.7][s13-7] commits to for `Or{N}`.
@@ -1873,8 +1874,8 @@ consumer *allows* to arrive there. Entries come in three forms:
 | `Int`/`Bool`/enum leaves, abstract reference-typed entries | as it always was | what the declared bound admits |
 
 A `T` entry is what a promoting consumer writes, and it is the overwhelmingly
-common case: a walking producer, a frozen discrete producer and a root
-[slot](#g-slot) are all admissible behind it, so substitution stays intact.
+common case: a walking producer, a frozen discrete producer and a
+[root input](#g-root-input) are all admissible behind it, so substitution stays intact.
 
 A `Float64` entry is the **FFI door**: this input must never carry partials. A
 [component](#g-component) whose internals cannot propagate `Dual`s — an opaque
@@ -1936,38 +1937,38 @@ promote. The permissive reading predicts nothing, and it is not constant —
 pinned entries are rare but real — which is what makes the `T` carry
 information here.
 
-**Root slots are the one place an entry types a cell.** Produced by no
-component, a slot has only the consumer declaration to take a type from. The
-**slot type** is the entry evaluated at `Float64`, and only a *tight* bound
-determines one. A face surfacing as a root slot must therefore resolve to a
+**Root inputs are the one place an entry types a cell.** Produced by no
+component, a root input has only the consumer declaration to take a type from. The
+**root-input type** is the entry evaluated at `Float64`, and only a *tight* bound
+determines one. A face surfacing as a root input must therefore resolve to a
 concrete declaration, which [staging cells](#g-staging-cell), the
 [trace header](#g-trace-header) and `probe_value` all need. Abstract-at-root is
 a build error, and `AbstractAtRoot` names the remedy with the face: wire a
 concrete producer, in a test rig a stub child ([§13.7][s13-7]). Under fan-out
-the slot type is the unique concrete declaration among its consumers — two
+the root-input type is the unique concrete declaration among its consumers — two
 different concrete declarations remain an error — and abstract co-consumers are
-checked against it. The **slot cells** at an activation follow the slot type by
+checked against it. The **root-input cells** at an activation follow the root-input type by
 evaluating that same entry at the activation's `T`, which makes **seedability
-schema-visible**: a `T`-entry slot is a lawful linearization `B`-matrix tap,
-and a `Float64`-entry slot is *declaredly* unseedable ([§14.10][s14-10]).
+schema-visible**: a `T`-entry root input is a lawful linearization `B`-matrix tap,
+and a `Float64`-entry root input is *declaredly* unseedable ([§14.10][s14-10]).
 
-**Fan-out combines tolerance by a meet, not by agreement** ([D-168][d-168]): the slot
+**Fan-out combines tolerance by a meet, not by agreement** ([D-168][d-168]): the root input
 pins at every activation if *any* consumer's entry pins, and follows the scalar
-only when every consumer tolerates. Two consumers of one slot may agree at
+only when every consumer tolerates. Two consumers of one root input may agree at
 nominal and still differ in tolerance. `SVector{3, T}` and
-`SVector{3, Float64}` both evaluate to `SVector{3, Float64}`, so the slot
+`SVector{3, Float64}` both evaluate to `SVector{3, Float64}`, so the root input
 *type* is unambiguous while the entries disagree about partials. That mixture
 is a legitimate model rather than a mistake: a command consumed by a promoting
 aerodynamics leaf and by an AD-opaque table is the FFI door in use.
 
-**Why.** The direction of the meet is forced by embedding. A pinned slot cell
+**Why.** The direction of the meet is forced by embedding. A pinned root-input cell
 feeds a `T` entry lawfully, frozen values embedding upward as zero-partial
 constants ([§9.5][s9-5]), whereas a `Dual`-carrying cell arriving at a
 `Float64` entry is precisely what that entry forbids. The meet is therefore the
 only assignment satisfying every consumer at once, the mirror of the
 walk-compatibility clause ([§6.1][s6-1]) on the producer side.
 
-What the mixture costs is stated where it is paid: such a slot is unseedable,
+What the mixture costs is stated where it is paid: such a root input is unseedable,
 and a tap selecting it is rejected naming the *pinning consumer* rather than
 the face alone ([§14.10][s14-10]).
 
@@ -2160,11 +2161,11 @@ under the plain ones — and [§13.7][s13-7] records why one stateless continuou
 leaf already serves consumers on both tiers. Members of both families,
 or of neither, are the [§8.5][s8-5] class errors.
 
-**The root of a build is an [assembly](#g-assembly).** Root [slots](#g-slot)
+**The root of a build is an [assembly](#g-assembly).** [Root inputs](#g-root-input)
 are the root's input [faces](#g-face) declared through `input_connections`
 ([§6.1][s6-1], [§11.3][s11-3]), and only assemblies declare
 interface connections ([§8.6][s8-6]). A primitive root
-therefore has no root slots — its faces are just its own [port](#g-port) names
+therefore has no root inputs — its faces are just its own [port](#g-port) names
 — and every input it declares is an unconnected-input error. Exercising a leaf
 alone is what the [component test rig](#g-component-test-rig)
 ([§13.7][s13-7]) is for: it supplies the one-child assembly.
@@ -2364,7 +2365,7 @@ library addition and zero new declaration rules.
 **No `AbstractAssembly`; one root `AbstractComponent`** ([D-039][d-039]).
 
 **Why.** The domain hierarchies — `AbstractAircraft`, the engine families —
-have to carry both classes: a slot declared `E <: AbstractEngine`
+have to carry both classes: a field declared `E <: AbstractEngine`
 must accept a primitive `PistonEngine` and a composite turbofan assembly alike.
 And class is implementation detail behind the contract ([§8.3][s8-3]).
 
@@ -2474,7 +2475,7 @@ the leaf names `input_types`/`output_types`, leaf-style *typed* faces with face
 wires inside `child_connections`, and routing-as-wires with derived types and no
 face list. Publicity is never implicit ([§8.3][s8-3]).
 
-**Root [slots](#g-slot) fall out with no vocabulary**: at every non-root level an input face
+**[Root inputs](#g-root-input) fall out with no vocabulary**: at every non-root level an input face
 declared through `input_connections` is fed by the parent's wire; at the root there
 is no parent, and the root's input faces *are* the
 [write surface](#g-write-surface), the set of faces a writer's batch entries may
@@ -2673,7 +2674,7 @@ detected. Every misspelling stays loud: a mistyped destination is an
 unknown-face error with the child's face list in hand, whether the wire or
 the `except` entry meets it first. One honest asymmetry: a pair *omitted*
 from the list is not an error but a structural change — the face leaves the
-`except` set and joins the input face surface, ultimately a root [slot](#g-slot) for
+`except` set and joins the input face surface, ultimately a [root input](#g-root-input) for
 conditions to cover
 ([§14.6][s14-6]).
 What the idiom preserves, and the helper below surrenders, is that the feed
@@ -2700,7 +2701,7 @@ defaults — impossible with a bundled face ([§4.3][s4-3] write-side rule).
 
 The build consumes a root [component](#g-component) instance and produces the runnable artifact:
 resolved wires, typed [signal table](#g-signal-table), evaluation [schedule](#g-schedule), absolute rate divisors,
-flat state layout, root [slots](#g-slot). [§8][s8] states what is declared and what must hold;
+flat state layout, [root inputs](#g-root-input). [§8][s8] states what is declared and what must hold;
 this section states *when* each fact is checked, against what, and with which
 failure. The [§8.4][s8-4] walkthroughs plus the error rules ([§6.1][s6-1]) are its acceptance tests.
 Error-*reporting* policy is settled in [§13.1][s13-1]: declarative checking passes
@@ -2747,7 +2748,7 @@ Resolution runs these checks:
 - the closed leaf vocabulary ([§7.1][s7-1]), checked on every `init_x` because
   the walk in [§8.2][s8-2] rests on it (`init_s` is exempt, pinning wholesale).
 
-Root [slots](#g-slot) fall out here too, as the root's input faces.
+[Root inputs](#g-root-input) fall out here too, as the root's input faces.
 
 **The bound check** is the first type clause, and it applies at nominal faces:
 the producer's declaration at `Float64` must be `<:` the entry at `Float64`.
@@ -2917,7 +2918,7 @@ is shared. The one mutable thing on the artifact is the lazily populated
 [activation](#g-activation) cache, whose insertion [§9.4][s9-4] makes torn-state-free.
 The `Build` is the
 inspectable derived contract of the instantiation [§8.8][s8-8] gestures at — wire list, face
-table, [schedule](#g-schedule), root [slots](#g-slot) as plain printable data. CI checks a model by
+table, [schedule](#g-schedule), [root inputs](#g-root-input) as plain printable data. CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
 `attach!` validates [device](#g-device) [bindings](#g-binding) against it. Build living only inside the
 `Simulation` constructor was rejected ([D-049][d-049]).
@@ -3024,7 +3025,7 @@ value; `ws` comes from invoking the component's `workspace` allocator at the
 probing scalar, which reads only the instance and the scalar ([D-077][d-077]),
 deriving nothing from layouts, so it runs before the [Stratum](#g-stratum) B probes that
 need it. Exactly one kind of terminal has no producer: **root
-slots**. The build synthesizes their values via `probe_value(::Type)`:
+inputs**. The build synthesizes their values via `probe_value(::Type)`:
 framework methods for `Real` (`zero(T)`), `Bool` (`false`), enums (first
 instance), ultimate fallback the zero-argument constructor `T()` — which is
 where well-behaved constrained types already put their valid default (`RQuat()`
@@ -3036,27 +3037,27 @@ names the [face](#g-face) and the type, and asks for one of the two fixes ("no
 `probe_value` for `Ranged{Float64, -1, 1}` at face `pilot.elevator_axis` —
 define `probe_value(::Type{Ranged{Float64, -1, 1}})` or a zero-argument
 constructor"). Synthesis never meets an abstract type:
-root slots are concrete by the tight-bound rule ([§8.2][s8-2]; the slot type
+root inputs are concrete by the tight-bound rule ([§8.2][s8-2]; the root-input type
 is the consuming entry evaluated at `Float64`), and [abstract
 entries](#g-abstract-entry) only
 occur on component-fed inputs, which the probe sources from upstream products.
 Physically silly values are acceptable by
 construction: the probe checks types, and return types that depend on input
 *values* are type instabilities (banned by the branch-shape rule); the [§4.3][s4-3]
-write-side granularity rule keeps root slots predominantly scalar, so the
+write-side granularity rule keeps root inputs predominantly scalar, so the
 surface is small. Rejected ([D-051][d-051]): inputs declared by value à la `init_x`, NaN
 poison values, and init-service values.
 
 **Probe values are strictly probe-scoped.** Everything the probe writes is
-garbage once the build finishes; probe values never double as initial slot
+garbage once the build finishes; probe values never double as initial root-input
 values — that would smuggle in the default semantics rejected above. The
 same doctrine covers the clock: `Δt` in seconds does not exist until
 `Simulation` binds `Δt_base` (deployment post-dates the build), so
 discrete-[tier](#g-tier) probes supply a placeholder period (`1.0`) in the bundle —
 a fabricated, probe-scoped value like any synthesized input; the probe
 checks types, not physics.
-`Simulation` must not reach its first [boundary](#g-boundary) with uninitialized slots;
-enforcement is the pre-write `UninitializedSlots` check carried by every
+`Simulation` must not reach its first [boundary](#g-boundary) with uninitialized root inputs;
+enforcement is the pre-write `UninitializedInputs` check carried by every
 complete-world application — `init!`, trim setup, trim commit
 ([§14.6][s14-6]).
 
@@ -3099,7 +3100,7 @@ different scalar:
   [component](#g-component)'s output declaration at `T` ([§8.2][s8-2]) — a
   continuous producer's two-argument declaration called at the scalar, a
   discrete producer's plain declaration pinning;
-- root-[slot](#g-slot) cells re-typed by *evaluating* the consuming
+- [root-input](#g-root-input) cells re-typed by *evaluating* the consuming
   `input_types` entry at `T`, which [§8.2][s8-2] reads permissively — a `T`
   entry follows the activation, a `Float64` entry stays frozen;
 - the state type by the walk over `init_x`'s, with table and state
@@ -3318,22 +3319,22 @@ The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
   way. Decision variables stay opaque to the framework (only the assignment's
   *output* is framework vocabulary). `assign!` inverts from in-place mutation +
   self-invoked `f_ode!` to a pure function returning a [condition](#g-condition) value (state
-  by path, modes, [slots](#g-slot) by [face](#g-face)) that the service writes and evaluates. Domain
+  by path, modes, [root inputs](#g-root-input) by [face](#g-face)) that the service writes and evaluates. Domain
   math — the pitch constraint, `Kinematics.Initializer`, per-residual scalings
   and the equilibrium-subset choice — survives aircraft-side, with one
   respelling: the initializer's `atmosphere::Model` argument becomes a
   [field handle](#g-field-handle) ([§4.4][s4-4]), built at value level by the atmosphere's
-  [value-level constructor](#g-value-level-constructor) or held directly as a rig slot value ([§14.1][s14-1], [§14.9][s14-9]).
+  [value-level constructor](#g-value-level-constructor) or held directly as a rig root-input value ([§14.1][s14-1], [§14.9][s14-9]).
 - **Linearization** is a `Dual` activation plus seeded sweeps: gather/scatter
   over the canonical layout replaces the hand-written
-  `get_x_ss`/`assign_x_ss!` layer (the deletion discharged, [§7.1][s7-1]); root slots are
+  `get_x_ss`/`assign_x_ss!` layer (the deletion discharged, [§7.1][s7-1]); root inputs are
   the input surface; frozen discrete outputs are constants with zero partials,
   which is exactly "linearize with the discrete state held" ([§8.2][s8-2]). Gradient-based trim —
   decision variables seeded through the `T`-generic assignment math — is the
   default ([§14.7][s14-7]).
 - The generic service loop (vectorization, optimizer setup, bounds packing,
-  solved-condition write-back including root slots and the [trace header](#g-trace-header)'s
-  slot capture) replaces today's per-aircraft NLopt plumbing. A failed trim
+  solved-condition write-back including root inputs and the [trace header](#g-trace-header)'s
+  root-input capture) replaces today's per-aircraft NLopt plumbing. A failed trim
   leaves the simulation's stores untouched — an improvement over today's
   warn-but-assign `f_init!`.
 
@@ -3505,7 +3506,7 @@ writes rather than delegates, the stepper seam integration is delegated across,
 the localization machinery that finds crossing instants inside a step, the
 multi-rate tick lattice, the event iteration at each boundary, and real-time
 pacing. [§11][s11] is the data plane between the loop and everything outside it.
-Outbound it fixes snapshot publication; inbound it fixes root input slots,
+Outbound it fixes snapshot publication; inbound it fixes root inputs,
 per-device staging and the drain; alongside both it fixes the device authoring
 contract and the input trace that makes a session replayable. [§12][s12] is the
 orchestration around them: the control plane, the wait primitives and thread
@@ -3513,7 +3514,7 @@ budget, the shutdown protocol, the five run states, and replay.
 
 Part III assumes the schedule rather than deriving it. The boundary sequence it
 dispatches is fixed in [§5.3][s5-3], the executor it dispatches through is built in
-[§9.7][s9-7], and the root input slots the periphery writes into are declared through
+[§9.7][s9-7], and the root inputs the periphery writes into are declared through
 `input_connections` in [§8.6][s8-6]. What Part III adds is timing, concurrency and
 orchestration around machinery the earlier parts already settled.
 
@@ -3637,7 +3638,7 @@ Two words carry the section, and they are not synonyms.
 
 - A **[frame](#g-frame)** is a grid step `[tₙ, tₙ₊₁]`, the unit of scheduling.
   Three things are keyed to it: the input [drain](#g-drain) (the frame-top swap
-  that publishes staged device inputs into the root slots, [§11.4][s11-4]), pacer
+  that publishes staged device writes into the root inputs, [§11.4][s11-4]), pacer
   deadlines ([§10.7][s10-7]) and [tick](#g-tick) eligibility ([§10.5][s10-5]).
 - A **[boundary](#g-boundary)** is a published consistency point, where the
   [§10.6][s10-6] macro-sequence completes and a [snapshot](#g-snapshot) goes out.
@@ -4558,7 +4559,7 @@ data crosses between them and the [§10][s10] loop:
 - the architecture that replaces the shared mutable model ([§11.1][s11-1]);
 - outbound [snapshot](#g-snapshot) publication ([§11.2][s11-2]);
 - the inbound path:
-  - root input [slots](#g-slot), [claims](#g-claim) and the [frozen roster](#g-roster) ([§11.3][s11-3]);
+  - [root inputs](#g-root-input), [claims](#g-claim) and the [frozen roster](#g-roster) ([§11.3][s11-3]);
   - per-device staging and the [drain](#g-drain) ([§11.4][s11-4]);
   - the input [trace](#g-trace) ([§11.5][s11-5]);
 - the device authoring contract ([§11.6][s11-6]);
@@ -4589,9 +4590,9 @@ keys the trace; "per frame" means this throughout the document. The kinematic
 appear compounded: the b frame, the ECEF frame.
 
 1. **Staging (inbound):** devices submit pending input writes at any wall-clock
-   moment, never touching live [slots](#g-slot) ([§11.4][s11-4]).
+   moment, never touching live [root inputs](#g-root-input) ([§11.4][s11-4]).
 2. **The drain:** exactly one point in each frame, at its top, where the loop
-   takes the staged batches and applies them to the root input slots. Never at
+   takes the staged batches and applies them to the root inputs. Never at
    a `t*` boundary ([§10.4][s10-4]). Between drains the loop owns its data
    exclusively, and no lock is held during stepping, ever.
 3. **Publication (outbound):** at the end of each boundary sequence the loop
@@ -4709,12 +4710,12 @@ filter. Private intermediates are not in it, never having been [cells](#g-cell) 
 line in `output_types`, and the value appears in the snapshot, the log, the GUI
 and the wiring alike. Its visibility is then an authored fact like every other.
 
-**The captured table also includes the root [slots](#g-slot)** ([§15.4][s15-4]). Slots are source
+**The captured table also includes the [root inputs](#g-root-input)** ([§15.4][s15-4]). Root inputs are source
 cells of the table, not state stores, so they ride along. That is load-bearing,
 not incidental. The [§11.7][s11-7] [peek](#g-peek) (showing a widget's own pending write, else the
 snapshot value) falls back to the snapshot, and that fallback is what an idle
-live widget displays. Read-only mirrors of claimed slots — the axis sliders
-under joystick [claim](#g-claim) — show the applied slot value from the snapshot. Slot
+live widget displays. Read-only mirrors of claimed root inputs — the axis sliders
+under joystick [claim](#g-claim) — show the applied root-input value from the snapshot. Root input
 values in the log are derived data, recomputable from the [trace](#g-trace), which is
 consistent: snapshots are derived wholesale.
 
@@ -4865,33 +4866,33 @@ conventional surface such consumers need, a library/migration deliverable
 a bare vector doesn't wire, and wrapping the wrong quantity is a deliberate lie,
 not a drift.
 
-### 11.3 Inbound: root input slots, claims and the frozen roster
+### 11.3 Inbound: root inputs, claims and the frozen roster
 
 **The [write surface](#g-write-surface) (the set of faces a writer's batch entries may reach)
-is root input [slots](#g-slot).** A root slot *is* the root [assembly](#g-assembly)'s own input
+is [root inputs](#g-root-input).** A root input *is* the root [assembly](#g-assembly)'s own input
 [face](#g-face), declared through `input_connections` ([§8.6][s8-6]): routed inward to
 consumers, produced by no [component](#g-component). At every non-root level an input face
 is fed by the parent's wire, and at the root there is no parent. No dedicated
 vocabulary is needed.
 
-A root slot is usefully read as the output face of the one producer the build
-never sees: the [periphery](#g-periphery) and the services. On that reading, slot
+A root input is usefully read as the output face of the one producer the build
+never sees: the [periphery](#g-periphery) and the services. On that reading, root-input
 exclusivity (below) is that producer's one-writer right, and the totality
 ([§14.6][s14-6]) is its completeness obligation.
 
-Slots are sources to the build-time scheduler, constants within a frame, and
+Root inputs are sources to the build-time scheduler, constants within a frame, and
 the *only* thing the periphery may write. The GUI reaches them through the
 resolution ([§11.7][s11-7]), and control commands are not writes ([§12.1][s12-1]).
-[Devices](#g-device), mappings, the [trace](#g-trace) and the GUI write path address slots by
+[Devices](#g-device), mappings, the [trace](#g-trace) and the GUI write path address root inputs by
 **face name** ([§8.6][s8-6]). Structural slash paths never cross the periphery's
 *write* boundary: the write side speaks the root [contract](#g-contract)'s names only.
 The read side chooses per binding — slash paths in the inspection register,
 face names in the integration register and in load-bearing service reads
 ([§11.2][s11-2]/[§13.5][s13-5]/[§14.4][s14-4]).
 
-**Slot exclusivity: one writer per slot at any time** ([§15.4][s15-4]). A
-device [claims](#g-claim) its slots at attach, and claiming an already-claimed slot is
-an attach-time error. Detaching releases the claims: a released slot's GUI
+**Root-input exclusivity: one writer per root input at any time** ([§15.4][s15-4]). A
+device [claims](#g-claim) its root inputs at attach, and claiming an already-claimed root input is
+an attach-time error. Detaching releases the claims: a released root input's GUI
 widgets are live again from the next run ([§11.7][s11-7]). Exclusivity replaces any
 cross-device conflict *policy* — attachment-order precedence at
 [drain](#g-drain), say ([D-044][d-044]). Per-device [cells](#g-staging-cell), the CAS merge and the
@@ -4910,7 +4911,7 @@ the device's GUI widget read-only even on faces the peer never writes. Narrow
 the binding to narrow the claim — the enumeration *is* the interface.
 
 **Every writer has a write surface, and the periphery enforces it.** A batch
-entry reaches a slot **iff the named face is inside the writer's surface**;
+entry reaches a root input **iff the named face is inside the writer's surface**;
 anything else is discarded with a runtime warning ([§13.2][s13-2]). Because surfaces
 are static per run (the [roster](#g-roster) freeze, below), enforcement runs entirely at
 *staging* — the earliest site, on the writer's own task. The drain performs no
@@ -4925,7 +4926,7 @@ two *sources*:
   mapping that has drifted onto an unenumerated face is a diagnosable anomaly
   (`OutOfClaimEntry`), never a silent write, claimed or not.
 - **Computed** — the binding declares `is_greedy(b) = true` ([§11.6][s11-6]) and the
-  framework computes the claim at attach: all root input faces minus the
+  framework computes the claim at attach: all root-input faces minus the
   union of the rostered claims, the unclaimed complement at that instant.
   This is the shipped GUI's claim ([§11.7][s11-7]) — everything unclaimed, without
   configuration. It is disjoint from every incumbent claim by construction, so
@@ -4941,7 +4942,7 @@ the greedy claimant last is the idiom: its computed claim is taken at the attach
 point and never recomputed, so attachment order is load-bearing by design.
 Opportunistic writing by autonomous devices does not exist: a device that
 wants a face enumerates it, and greediness is an explicit declaration, never a
-default. Cross-writer races on one slot therefore cannot arise structurally:
+default. Cross-writer races on one root input therefore cannot arise structurally:
 every claim is exclusive, whatever its source. That is what keeps drain order
 a diagnostic fact (below) and lets a drained GUI value simply stay
 ([§11.7][s11-7]).
@@ -4965,11 +4966,11 @@ register) drains **last**, by convention: with every surface disjoint the order
 is unobservable, so the rule exists to make the trace read the same way every
 time, not to arbitrate anything.
 
-**Slot initial values are owned by the init/trim services** ([§15.4][s15-4]).
+**Root-input initial values are owned by the init/trim services** ([§15.4][s15-4]).
 Input declarations are bare types ([§8.2][s8-2]) and carry no defaults, yet a
-slot unfed by any device must hold a defined value from the first frame.
+root input unfed by any device must hold a defined value from the first frame.
 Today's `U()` constructors provide these (`mixture = 0.5`). Export-entry
-defaults were rejected ([D-047][d-047]). `init!` establishes every slot, and the
+defaults were rejected ([D-047][d-047]). `init!` establishes every root input, and the
 [trace header](#g-trace-header) captures the result. Totality is enforced pre-write at every
 complete-world application — `init!`, trim setup, trim commit
 ([§14.6][s14-6]).
@@ -5030,7 +5031,7 @@ check after the identity check is what makes `ClaimConflict` always name two
 ([§11.6][s11-6], [§12.4][s12-4]) ends the device's *task*: the cell stops filling, the [§12.2][s12-2]
 heartbeat shows the death by name, and the roster entry — claims included —
 persists to the end of the run. The [orphaned claims](#g-orphaned-claims) are the accepted cost of
-[the freeze](#g-the-freeze): the device's slots hold their last-drained values and no other
+[the freeze](#g-the-freeze): the device's root inputs hold their last-drained values and no other
 writer inherits them. The read-only widgets ([§11.7][s11-7]) render the orphan visibly
 ("claimed by `T16000M` — task dead"), never mysteriously. Recovery is between
 runs: stop, `detach!`, and either `init!` (fresh trajectory) or
@@ -5054,13 +5055,13 @@ something has to hold each device's pending writes and hand the loop a value
 it can apply. That something is the staging cell. This section fixes the
 policy under which a device writes into its cell, the shape the cell holds,
 and the [drain](#g-drain) (the frame-top swap that publishes staged device
-inputs into the root slots) that empties it.
+writes into the root inputs) that empties it.
 
 **Rule.** Staging keeps one atomic [cell](#g-staging-cell) per attached
 [device](#g-device) under one [coalescing](#g-coalescing) policy: CAS merge,
 newest wins per [face](#g-face). Each cell has a single writer, its own device
 task, and holds that device's latest pending [batch](#g-batch) of
-[slot](#g-slot) writes. Staging merges the incoming batch into the pending
+[root input](#g-root-input) writes. Staging merges the incoming batch into the pending
 one. Untouched faces survive; re-staged faces take the newest level, the
 per-face ZOH. The CAS can fail only because a drain intercepted the old batch,
 so the retry is bounded. The failure case is precisely correct as well:
@@ -5078,7 +5079,7 @@ undiagnosable. A user-facing overwrite opt-in (`complete(binding)`) is closed
 ([D-104][d-104]).
 
 **Rule.** The staged representation is fixed per attachment, compiled at
-attach. An enumerated writer's [claim](#g-claim) set and slot types are both
+attach. An enumerated writer's [claim](#g-claim) set and root-input types are both
 known at attach, `claims(binding)` ([§11.6][s11-6]) read against the root
 [contract](#g-contract). So the framework fixes the cell's content type there:
 a pair of positional tuples over the claim set — a values tuple, concretely
@@ -5087,13 +5088,13 @@ position means *staged this time*; a clear one means *not touched*, never
 "reset". Untouched positions carry placeholder values and are never read: the
 mask guards every consumer, so no placeholder ever reaches the model. The
 batch is therefore isbits with one concrete layout per writer. The levels
-doctrine is untouched, and slots only ever receive masked positions. The
+doctrine is untouched, and root inputs only ever receive masked positions. The
 face-name → position schema lives in the [roster](#g-roster) entry.
 
 In sketch form:
 
 ```julia
-# claim set enumerated f₁ … fₙ; Tᵢ = declared type of the slot behind fᵢ
+# claim set enumerated f₁ … fₙ; Tᵢ = declared type of the root input behind fᵢ
 
 # attach fixes the cell's content type — values and mask, both concrete:
 values :: Tuple{T₁, …, Tₙ};  mask :: NTuple{n, Bool}
@@ -5106,7 +5107,7 @@ merged.values[i] = incoming.mask[i] ? incoming.values[i] : pending.values[i]
 merged.mask[i]   = incoming.mask[i] | pending.mask[i]
 
 # the drain scatters, unmasked positions skipped:
-batch.mask[i] && (the slot at position i receives batch.values[i])
+batch.mask[i] && (the root input at position i receives batch.values[i])
 ```
 
 **Why.** One concrete layout is what makes the frame-top drain compilable. The
@@ -5121,14 +5122,14 @@ unreachable behind the mask guard.
 The consequences are each mechanical. The merge is positional and mask-driven
 (the sketch above), so it compiles straight-line, leans on no small-tuple
 heuristic, and does not degrade with surface width ([D-202][d-202]). The drain applies
-each cell through an attach-compiled **scatter**: position → slot cell,
+each cell through an attach-compiled **scatter**: position → root-input cell,
 statically typed, masked-off positions skipped. That scatter is the exact
 mirror of the compiled output gather ([§11.2][s11-2]).
 
 Authors never build the shape by hand. `map_input` returns face ⇒ value pairs
 for whatever the datum touched, and `stage!` normalizes those pairs through an
 attach-compiled shim. The shim does three things: name → position, convert to
-the slot's declared type, set the mask. It thereby confines the residual
+the root input's declared type, set the mask. It thereby confines the residual
 name-shaped dynamism to one framework-owned conversion on the device task, at
 the boundary where wire-shaped data becomes system-shaped data.
 Author-built total tuples are rejected as a padding form, the same disease
@@ -5166,7 +5167,7 @@ better-attributed site than the drain for that rejection, and the kind and
 [payload](#g-payload) are the same either way. The GUI is included, its claim
 being an ordinary one. A **harness** write to a claimed face is rejected the
 same way, with `ClaimedFaceEntry` naming the incumbent device. And a value
-that cannot convert to its slot's declared type is discarded with
+that cannot convert to its root input's declared type is discarded with
 `EntryTypeMismatch` ([Appendix C][sC]), at the same spot.
 
 Nothing remains at the drain. With surfaces frozen for the run, there is no
@@ -5180,8 +5181,8 @@ edges ride as monotonic counters.
 `atomicswap(cell, nothing)`. The swap is an indivisible take, so there is no
 lost-write window. Each taken cell is then applied through its compiled
 scatter, **in attachment order**. Attachment order is retained as a
-deterministic application order. Under slot exclusivity, cross-device writes
-to one slot cannot arise, so the order matters only for diagnostics.
+deterministic application order. Under root-input exclusivity, cross-device writes
+to one root input cannot arise, so the order matters only for diagnostics.
 
 Which *frame* a write lands in remains wall-clock reality. What the drain
 guarantees is that the frame's outcome is a pure function of the drained
@@ -5196,17 +5197,17 @@ points. The specialization is an implementation freedom
 [the freeze](#g-the-freeze) creates, not an obligation. Iterating a roster
 array costs a handful of dispatches per frame and remains acceptable.
 
-Two shapes were rejected, both torture-tested in [§15.3][s15-3]: per-slot
+Two shapes were rejected, both torture-tested in [§15.3][s15-3]: per-input
 atomic cells, and a shared lock-free [batch](#g-batch) stack ([D-024][d-024]).
 
 **Mappings run on the device task.** Today's
 `assign_input!(mdl, mapping, data)` becomes the pure
 `map_input(data, mapping) → batch`. User-extensible code thereby never
-executes inside the loop's frame, and the trace consists of slot-level
+executes inside the loop's frame, and the trace consists of root-input-level
 batches.
 
 **Mappings are binding data, not shaping code** ([§15.4][s15-4]). A mapping is
-a declarative table: axis/button → slot path, plus per-axis conditioning
+a declarative table: axis/button → root input, plus per-axis conditioning
 parameters (deadzone, expo strength). The shipped `TableBinding` applies those
 parameters in its generic `map_input`, on the device task ([§11.6][s11-6] — the
 shared pure helper, with an owner).
@@ -5238,8 +5239,8 @@ the trajectory bit-identically, with staging fed from the recording and no
 devices or mappings present.
 
 **One record format: every batch is retained sparse.** At the
-[drain](#g-drain) — the frame-top swap that publishes staged device inputs
-into the root slots — each drained [cell](#g-staging-cell) is scanned. Its
+[drain](#g-drain) — the frame-top swap that publishes staged device writes
+into the root inputs — each drained [cell](#g-staging-cell) is scanned. Its
 masked (touched) entries are recorded as (position ⇒ value) pairs, against the
 writer's [face](#g-face)-name → position schema in the header (below). That is
 an O(surface-width) scan and one small allocation per drained batch.
@@ -5276,11 +5277,11 @@ marathon-session measurement ever asks for it. Such a return would leave the
 record semantics, the header and the replay path exactly as they are.
 
 **The [trace header](#g-trace-header) captures the full initial state** `(x, s, m)` **plus the
-initial root-[slot](#g-slot) values** at `init!`. The capture happens **after `apply!`
-and the slot writes, before the boundary-zero sequence runs** ([§14.5][s14-5]). Both
+initial [root-input](#g-root-input) values** at `init!`. The capture happens **after `apply!`
+and the root-input writes, before the boundary-zero sequence runs** ([§14.5][s14-5]). Both
 halves of that placement are load-bearing:
 
-- the header holds the *resolved* stores and slots as values, never the sparse
+- the header holds the *resolved* stores and root inputs as values, never the sparse
   authored overlay — replay must survive edits to declared defaults, the
   primary-data doctrine ([D-038][d-038]);
 - and it never holds the post-transition result, since
@@ -5289,8 +5290,8 @@ halves of that placement are load-bearing:
   already-latched state.
 
 An unfed `mixture = 0.5` never appears in any batch, so replay is broken
-without the slots; the init/trim services
-own slot initialization ([§14.6][s14-6]), and the header capture extends
+without the root inputs; the init/trim services
+own root-input initialization ([§14.6][s14-6]), and the header capture extends
 naturally. The header carries two further things:
 
 - **each writer's face-name → position schema** — the run's frozen surface
@@ -5682,12 +5683,12 @@ kills it for the rest of the run.
 
 Panels remain per-[component](#g-component) extensions in FlightCore's style — `GUI.draw!(ctx,
 ::LowPassFilter)`, discovered by walking the [assembly](#g-assembly) — but widgets name **the
-component's own [ports](#g-port)**, never root [slots](#g-slot). The build-time wiring answers, statically
-and exactly: *is this port transitively driven by a root input slot, and which one?*
+component's own [ports](#g-port)**, never [root inputs](#g-root-input). The build-time wiring answers, statically
+and exactly: *is this port transitively driven by a root input, and which one?*
 Every input port has exactly one source ([§6.1][s6-1]), so the resolution is total:
 
 - **root-driven, within the GUI's claim → live widget**: [peeks](#g-peek) and stages the
-  resolved slot through the GUI's own [staging cell](#g-staging-cell);
+  resolved root input through the GUI's own [staging cell](#g-staging-cell);
 - **component-driven, or root-driven under another device's claim → read-only
   rendering**: displays the driven value from the
   [snapshot](#g-snapshot), visually distinct, with the source as provenance ("driven by
@@ -5706,9 +5707,9 @@ GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
 
 **Liveness is a [derived property](#g-derived-liveness), and resolution is transitive.** A widget
-is live iff two things hold: its port's feed chain terminates in a root slot,
-*and* that slot lies **inside the GUI's own [claim](#g-claim)** in the run's
-frozen surface partition (slot exclusivity, [§11.3][s11-3]). The feed chain is
+is live iff two things hold: its port's feed chain terminates in a root input,
+*and* that root input lies **inside the GUI's own [claim](#g-claim)** in the run's
+frozen surface partition (root-input exclusivity, [§11.3][s11-3]). The feed chain is
 walked through wires and interface connections across *all*
 levels, not just the local assembly. The claim may have been computed from the
 unclaimed complement under `is_greedy`, or enumerated [face](#g-face) by face
@@ -5734,8 +5735,8 @@ value**. Own-[cell](#g-staging-cell) only: another [device](#g-device)'s pending
 by design. Its applied value arrives via the snapshot one frame later, and
 cross-device peek is rejected ([D-026][d-026]). While paused, staged edits display
 indefinitely and apply at the un-pause [drain](#g-drain) (the frame-top swap that publishes
-staged device inputs into the root slots). Fan-out is consistent for free:
-widgets on ports resolving to the same slot peek the same pending value.
+staged device writes into the root inputs). Fan-out is consistent for free:
+widgets on ports resolving to the same root input peek the same pending value.
 
 **Staging contract: widgets stage on interaction events only.** Value widgets (sliders, drags) stage
 the new absolute level on edit. Edge widgets (buttons) stage on activation, as a
@@ -5749,7 +5750,7 @@ and the snapshot catches up, re-staging from the peek would auto-repeat at
 frame rate. The activation edge is the intent.
 
 The alternative — active widgets staging on *every* render pass — is rejected
-([D-026][d-026]): under slot exclusivity ([§11.3][s11-3]) it has no motivation. Side
+([D-026][d-026]): under root-input exclusivity ([§11.3][s11-3]) it has no motivation. Side
 benefit: staging traffic (and trace noise) drops from
 render-rate-while-grabbed to actual edits.
 
@@ -5758,16 +5759,16 @@ mid-run (the freeze, [§11.3][s11-3]). The one liveness-adjacent display rule is
 the orphan case: a read-only widget whose claiming device's task has died
 renders the fact in its provenance — "claimed by `T16000M` — task dead", the
 heartbeat surfaced in place ([§12.2][s12-2]). What it displays beside that fact
-is the ordinary snapshot value, the orphaned slot's last drained level: an
+is the ordinary snapshot value, the orphaned root input's last drained level: an
 orphan widget is a read-only rendering like any other, never a blanked one. An
-orphaned slot is therefore visible where the user is looking, not only in the
+orphaned root input is therefore visible where the user is looking, not only in the
 status panel.
 
 The panel-authoring calling convention — what the drawing context carries,
 how widgets name their component's ports, how an assembly's panel composes
 its children's — is deferred to migration ([§16][s16]), where it is co-designed
 against the GUI library. Its constraints are fixed here: panels name their
-own ports by face-name string; resolution to root slots and the liveness
+own ports by face-name string; resolution to root inputs and the liveness
 verdict are baked at run start, never performed at render; liveness and peek
 arrive through the framework-supplied context, never by reaching into the
 loop; and assembly panels compose children by path.
@@ -6117,7 +6118,7 @@ loop itself ends first.
    absent: its [cell](#g-staging-cell) stops filling, and the loop is structurally
    indifferent. Its [roster](#g-roster) entry and its [claims](#g-claim) persist
    to run end, because [§11.3][s11-3] freezes the roster for the run and death is
-   not detach. The orphaned [slots](#g-slot) hold their last-drained values,
+   not detach. The orphaned [root inputs](#g-root-input) hold their last-drained values,
    visibly ([§11.7][s11-7]). A crashing device task is caught by the framework
    wrapper and follows the same path, logged with the device's name
    (`DeviceCrash`, [Appendix C][sC]).
@@ -6261,9 +6262,9 @@ receives a heartbeat timestamp. The cell therefore reads stale against the
 **Rule.** The claims of a failed device persist to run end.
 
 This is the death-is-not-detach disposition ([§11.3][s11-3]), applied one step
-earlier than (6)'s. The roster is frozen for the run, and the orphaned slots
-hold their initial values, well-defined by [slot totality](#g-slot-totality)
-([§14.6][s14-6]; every root slot must hold a value). An orphan of (6) holds a
+earlier than (6)'s. The roster is frozen for the run, and the orphaned root inputs
+hold their initial values, well-defined by [root-input totality](#g-root-input-totality)
+([§14.6][s14-6]; every root input must hold a value). An orphan of (6) holds a
 last drained batch instead.
 
 **The run's disposition splits on `should_abort`, uniformly with (6).** With the
@@ -6382,9 +6383,9 @@ device, by contrast, is traced and replayed from the trace.
 [periphery](#g-periphery)'s `f_step!`, and cheap composition leaves it without
 justification. Its call sites migrate to scenario components, not devices.
 
-**Manual event triggering needs no mechanism.** It takes a root input
-[slot](#g-slot) plus a [boundary-detected](#g-boundary-detected)
-[guard](#g-guard) reading that slot — an edge check at step boundaries only,
+**Manual event triggering needs no mechanism.** It takes a
+[root input](#g-root-input) plus a [boundary-detected](#g-boundary-detected)
+[guard](#g-guard) reading that root input — an edge check at step boundaries only,
 with no root-finding. That is already expressible in settled machinery. The
 levels doctrine applies: latched commands or counters. The demos' engine
 start/stop buttons are `u`-writes today.
@@ -6400,7 +6401,7 @@ un-decoded state.
 **The doctrine, final form.** While a simulation runs, the periphery stages
 root-input writes and issues control commands. Structurally, it does nothing
 else. Anything that wants to poke the model mid-run is one of three things. It
-is an *input* in disguise, so wire a slot and a guard. It is *model behavior*
+is an *input* in disguise, so wire a root input and a guard. It is *model behavior*
 in disguise, so add a scenario component. Or it is a *wall-clock interaction*,
 so attach a device. Graceful termination follows the same shape
 ([§13.5][s13-5]): a declared stop [face](#g-face) in the model, plus `stop_on`
@@ -6418,7 +6419,7 @@ the ordinary macro-sequence with an empty integrate ([§14.5][s14-5]).
 
 `run!` or `step!` on a simulation whose [boundary](#g-boundary) zero has not
 completed is an error in the kind set ([§13.2][s13-2]) naming `init!`. That is
-distinct from `UninitializedSlots`, which fires *inside* `init!`
+distinct from `UninitializedInputs`, which fires *inside* `init!`
 ([§14.6][s14-6]). `replay!` is the one alternative entry: it runs boundary zero
 from a [trace header](#g-trace-header) ([§12.7][s12-7]).
 
@@ -6545,7 +6546,7 @@ true of [replay](#g-replay):
 - **[Boundary zero](#g-boundary-zero) from the header** — the initialization
   boundary, the ordinary macro-sequence with an empty integrate. `replay!`
   stands in the `init!` position of the lifecycle ([§12.6][s12-6]): it applies
-  the header's resolved stores and [slot](#g-slot) values directly. There is no
+  the header's resolved stores and [root input](#g-root-input) values directly. There is no
   condition resolution, and the totality ([§14.6][s14-6]) holds by capture. It
   then executes the ordinary [boundary](#g-boundary)-zero sequence
   ([§14.5][s14-5]). Authored-condition events re-fire identically: the header
@@ -6605,10 +6606,10 @@ Everything else is the loop as already specified:
   A session that wants live input is a continuation (`run!` after replay), not a
   replay.
 - **Validation is loud and up front.** Before the first frame, the header is
-  validated against the `Build` (store layout, slot [faces](#g-face)), and the
+  validated against the `Build` (store layout, root input [faces](#g-face)), and the
   trace's batch entries against the root input-face list. Each writer's
   face-name → position schema ([§11.5][s11-5]) is **validated** in the same pass:
-  a recorded schema that disagrees with the target model's own root input faces
+  a recorded schema that disagrees with the target model's own root-input faces
   is a replay error. The checks are attach-style, and a failure reports
   [did-you-mean](#g-did-you-mean): the offending name plus the list-in-hand it
   should have matched. The kinds are
@@ -6650,10 +6651,10 @@ The dispositions, by header content:
 
 | header content | disposition |
 |---|---|
-| store layout, slot faces | compared against the `Build` |
+| store layout, root-input faces | compared against the `Build` |
 | the deployment block's seven trajectory-determining parameters: `Δt_base`, `h`, `n`, the algorithm, `localization_tol`, `localization_budget`, `firing_budget` | compared against the target `Simulation`'s own deployment binding |
-| each writer's face-name → position schema | validated against the target model's root input faces: disagreement is a replay error |
-| resolved stores, slot values | applied directly at boundary zero |
+| each writer's face-name → position schema | validated against the target model's root-input faces: disagreement is a replay error |
+| resolved stores, root-input values | applied directly at boundary zero |
 | `t₀` | applied; `replay!` takes no `t0` argument |
 | `t_end`, `stop_on` | neither compared nor applied: a recorded fact of the recorded session |
 
@@ -6831,7 +6832,7 @@ place:
   a face claimed in the run's frozen partition, naming the incumbent; also
   fired by the stopped-sim attach renormalizing a pending [batch](#g-batch)) and
   `EntryTypeMismatch` (a value unconvertible to its
-  [slot](#g-slot)'s declared type, rejected at staging for every writer);
+  [root input](#g-root-input)'s declared type, rejected at staging for every writer);
 - **a tolerated [device](#g-device)-side datum failure** ([§11.6][s11-6], [§13.4][s13-4]):
   `MalformedDatum` — emitted by the author's loop via `report!(handle, …)`
   into the device's own cell ([§11.8][s11-8]), the `InputMappingError` successor;
@@ -7306,7 +7307,7 @@ charter. The zero-contributor configurations ([§6.2][s6-2]) are one: a required
 aggregate input has no physical contributor, and the zero total must be spelled
 as a wire. The rig stub below is the other. The block's value is instance data,
 like junction arity, not an overridable default: a configuration wanting an
-externally settable source uses a root [slot](#g-slot) ([§11.3][s11-3]), which
+externally settable source uses a [root input](#g-root-input) ([§11.3][s11-3]), which
 keeps the block from drifting into a back-door input default. The library is a
 migration-phase deliverable.
 
@@ -7316,13 +7317,13 @@ migration-phase deliverable.
 idiom.** It is a one-child assembly whose `input_connections` surface the
 child's entire input face set — `input_passthrough(rig, "child")` verbatim
 ([§8.8][s8-8]). Any component can therefore be built and simulated in
-isolation: every input becomes a root slot fed by ordinary conditions and
+isolation: every input becomes a root input fed by ordinary conditions and
 [devices](#g-device), and every output is observable in the
 [snapshot](#g-snapshot) table.
 
-One qualification comes from the root-slot rule ([§8.2][s8-2]). An *abstract*
+One qualification comes from the root-input rule ([§8.2][s8-2]). An *abstract*
 input entry (`terrain = AbstractTerrainField`, [§4.4][s4-4]) cannot surface as a
-root slot, because abstract-at-root is a build error. The rig therefore
+root input, because abstract-at-root is a build error. The rig therefore
 satisfies that entry *inside* the rig: a concrete stub child (a
 `SampleTerrainField` provider) wired to the face, with the concrete remainder
 exposed via `input_passthrough(rig, "strut"; except = ("terrain",))`.
@@ -7361,18 +7362,18 @@ a standing ergonomics test of the declaration rules.
 
 [§9.6][s9-6] previewed the services as [Stratum](#g-stratum)-C clients:
 initialization, trim, linearization and [capture](#g-capture) (reading the
-current stores and slots back as a condition). Everything they share reduces to
+current stores and root inputs back as a condition). Everything they share reduces to
 one artifact: the **[condition](#g-condition) value**, the datum that says "set
 this build to this state."
 [§14.1][s14-1]–[§14.4][s14-4] settle its representation, composition and application;
-[§14.5][s14-5]–[§14.6][s14-6] the [boundary](#g-boundary)-zero sequence and [slot totality](#g-slot-totality)
+[§14.5][s14-5]–[§14.6][s14-6] the [boundary](#g-boundary)-zero sequence and [root-input totality](#g-root-input-totality)
 (the requirement that an application establishing a complete world cover every
-root slot); [§14.7][s14-7]–[§14.9][s14-9] the trim service in full;
+root input); [§14.7][s14-7]–[§14.9][s14-9] the trim service in full;
 [§14.10][s14-10] linearization and `capture`.
 
 **Lifecycle preconditions.** Every service requires a non-running simulation:
 while a run exists the loop owns the [stores](#g-store) between [drains](#g-drain)
-(the frame-top swap that publishes staged device inputs into the root slots),
+(the frame-top swap that publishes staged device writes into the root inputs),
 and a service reading or writing them would race it. Pause is no exception, by
 the doctrine that freezes the [roster](#g-roster): pause is a control-plane state
 *inside* a run, so a prohibition that holds mid-run holds while paused
@@ -7403,8 +7404,8 @@ operation is illegal in the current lifecycle state," distinct from
 A [condition](#g-condition) may specify state fields (`x` on the continuous
 [tier](#g-tier), `s` on the discrete) and modes (`m`,
 [continuous components](#g-continuous-component) only, [§3.2][s3-2]); all three
-are addressed by [§8.6][s8-6] slash path plus field name. It may also specify root
-input [slots](#g-slot), addressed by [face](#g-face). Never outputs, which are derived data.
+are addressed by [§8.6][s8-6] slash path plus field name. It may also specify
+[root inputs](#g-root-input), addressed by [face](#g-face). Never outputs, which are derived data.
 Never [workspace](#g-workspace) (component-declared mutable scratch arriving as the `ws`
 bundle field). Entries are validated in the [§13.1][s13-1] collecting [register](#g-register): full
 list, violations collected, one `BuildError`.
@@ -7413,8 +7414,8 @@ list, violations collected, one `BuildError`.
 declared initial value (declaration-by-initial-value, [§8.2][s8-2]), so conditions
 are naturally sparse. Applying one means "fresh run from the `init_*` defaults,
 with these overrides" ([D-063][d-063]). Warm restart needs no second semantics. A
-`capture` service reads the current stores **and root slots** back *as a
-condition value* (capture → tweak → apply). Slot coverage is what makes the
+`capture` service reads the current stores **and root inputs** back *as a
+condition value* (capture → tweak → apply). Root input coverage is what makes the
 captured condition total, hence re-applicable under [§14.6][s14-6]. That gather is
 the one the [trace header](#g-trace-header) already needs: one mechanism, two uses.
 
@@ -7439,8 +7440,8 @@ produce, and then calls the same query function the consuming component calls.
 One route to that handle is the [value-level constructor](#g-value-level-constructor) (the plain
 exported function building a field handle from the component and input values,
 [§4.4][s4-4]), applied to the same values the [`baseline`](#g-baseline) writes
-into the environment [component](#g-component)'s slots. The other applies in a
-rig where the handle itself is a root slot value: the condition simply holds
+into the environment [component](#g-component)'s root inputs. The other applies in a
+rig where the handle itself is a root-input value: the condition simply holds
 the value the `baseline` wrote there. One implementation of the field math, evaluated one level up: no
 pre-sweep, no new mechanism. Where closed-form enforcement of a target is not
 wanted at all, the second escape already covers the case: promote the eliminated
@@ -7477,7 +7478,7 @@ split costs no upstream edits. The three combinators are constructors of an
 **inert, lazy tree**: no path arithmetic happens at composition.
 
 ```julia
-struct Fragment{X,S,M,L}  x::X; s::S; m::M; slots::L  end  #self-vocabulary payloads; no paths
+struct Fragment{X,S,M,L}  x::X; s::S; m::M; inputs::L  end  #self-vocabulary payloads; no paths
 struct Scoped{N}  prefix::String; node::N  end             #at(prefix, node): stores, never applies
 struct Combined{T<:Tuple}  nodes::T  end                   #combine(ns...): collects; order = diagnostics only
 ```
@@ -7487,10 +7488,10 @@ the tree per trim iteration is stack-only construction** — the zero-alloc
 property of today's `assign!` loop, preserved structurally.
 
 `fragment`'s payloads speak only about the component at the authoring point;
-addressing children is exclusively `at`'s job (one way to say everything). A
-`slots` payload names faces *of the authoring level's [contract](#g-contract)*.
-Resolution walks the export chain to the root slot and errors if the face never
-surfaces. An internally-wired input has no slot, and writing it would be
+addressing children is exclusively `at`'s job (one way to say everything). An
+`inputs` payload names faces *of the authoring level's [contract](#g-contract)*.
+Resolution walks the export chain to the root input and errors if the face never
+surfaces. An internally-wired input has no root input behind it, and writing it would be
 meaningless because the first sweep overwrites it. Unexported stays unpokeable
 for init exactly as it does for the GUI ([§11.7][s11-7], [§15.4][s15-4]).
 
@@ -7500,7 +7501,7 @@ connections, conditions. Each level speaks its own fields, its declared
 children's names, and its own faces; delegation runs by dispatch at every
 genericity [seam](#g-seam); deep `at` paths are legitimate exactly where deep
 connections are, within an owned concrete subtree. Absolute paths exist only in
-the flattened entry list, a *compiled derivative* of the composition, as slot
+the flattened entry list, a *compiled derivative* of the composition, as cell
 offsets are of `child_connections`. Substituting a component invalidates
 precisely the fragments its owner shipped, nothing else. The enforcement status
 carries over from [§6.1][s6-1] as well: the law is convention. Ownership is a
@@ -7525,7 +7526,7 @@ nodes with nodes. The rejection carries a [kind](#g-kind) like every other:
 and the node kinds in hand. It is raised at composition time, before any
 resolution pass or provenance chain exists. That is why it is its own kind and
 not a `ConditionResolution` sub-kind ([§14.3][s14-3]). The explicit, *ordered*
-layering spelling — `override` — belongs with the use case [slot totality](#g-slot-totality)
+layering spelling — `override` — belongs with the use case [root-input totality](#g-root-input-totality)
 produces ([§14.6][s14-6]).
 
 ### 14.3 Resolution: flatten, validate, compile once
@@ -7541,13 +7542,13 @@ The collecting pass then checks each flat entry:
   plus the list-in-hand it should have matched) over children;
 - the field is declared in the target's `init_x`/`init_s`/`init_m`;
 - the value type is convertible to the declared leaf type;
-- [slot](#g-slot) [faces](#g-face) reach root slots;
+- input [faces](#g-face) reach [root inputs](#g-root-input);
 - no `(path, store, field)` is duplicated.
 
 The `Build` supplies two lookup families. **Schema** is the evaluated
 declarations — may you write this field, at what leaf type — and it is the
 authority. **Layout** is the destination: `x` backing ranges, store indices for
-`s` and for `m`, and slot indices from the [activation](#g-activation) (a re-run
+`s` and for `m`, and root-input indices from the [activation](#g-activation) (a re-run
 of Stratum C at a given scalar type).
 Layout also carries the face chains from [Stratum](#g-stratum) A (one of the
 build's three phases: structure, schedule, activation).
@@ -7630,7 +7631,7 @@ one plan:
 
 **The read-[selector](#g-selector) family is closed.** Its members are
 `get_state(path, field[, i])`, `get_deriv(path, field[, i])`,
-`get_output(path, field[, i])`, `get_slot(face)` and `get_face(name)` — one
+`get_output(path, field[, i])`, `get_input(face)` and `get_face(name)` — one
 address space for every reader of the model.
 
 The names carry a deliberate `get_` prefix. A selector is a *deferred read*: a
@@ -7648,7 +7649,7 @@ addresses a root-exported output [face](#g-face) — the *integration* register
 **Rule.** A selector resolves against a source, before any client policy
 applies.
 
-The table selectors — `get_output`, `get_slot`, `get_face` — resolve against a
+The table selectors — `get_output`, `get_input`, `get_face` — resolve against a
 *table source*: a [boundary](#g-boundary) [snapshot](#g-snapshot), or the
 scratch tables a service evaluation instantiates ([§14.8][s14-8]). The store
 selectors — `get_state`, `get_deriv` — resolve only against live stores. The
@@ -7672,12 +7673,12 @@ property:
 - **Load-bearing services speak the [contract](#g-contract).** Trim's `reads`
   and linearization's [taps](#g-taps) (the three selector lists declaring what
   linearization seeds and reports) name
-  `get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`, within the scopes
+  `get_state`/`get_deriv`/`get_output`/`get_input`/`get_face`, within the scopes
   the locality law ([§6.1][s6-1]) and [fragment](#g-fragment) scoping
   ([§14.2][s14-2]) own. `get_face` is the set's [seam](#g-seam)-crossing member:
   it resolves through export chains exactly as [mounting](#g-mounting)
   (relocating a whole problem or tap set with `at(prefix, …)`) resolves
-  [slot](#g-slot) faces ([§14.9][s14-9]), the read side mirroring the write
+  [root input](#g-root-input) faces ([§14.9][s14-9]), the read side mirroring the write
   side. So an equilibrium equation reaching behind a generically-held child
   binds the curated face register instead of a path the locality law forbids. A
   service evaluation needing an undeclared intermediate has one remedy, and it is
@@ -7699,7 +7700,7 @@ The five selectors, their sources, and their clients:
 | `get_state(path, field[, i])` | live stores | named in the contract | only clients that hold stores |
 | `get_deriv(path, field[, i])` | live stores | named in the contract | only clients that hold stores |
 | `get_output(path, field[, i])` | a table source | named in the contract | admitted |
-| `get_slot(face)` | a table source | named in the contract | admitted |
+| `get_input(face)` | a table source | named in the contract | admitted |
 | `get_face(name)` | a table source | named in the contract | admitted |
 
 **Compiled readers are the gather twin** over this family and the layout
@@ -7717,7 +7718,7 @@ macro-sequence with an empty integrate), [§14.5][s14-5].
 ### 14.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
 `apply!` establishes the stores at `t₀`. The [trace header](#g-trace-header)
-captures those stores, together with the [slot](#g-slot) values, *before anything
+captures those stores, together with the [root input](#g-root-input) values, *before anything
 below runs* (the capture placement, [§11.5][s11-5]). A post-sequence capture would
 hand [replay](#g-replay) already-transitioned state. The init service then
 completes the [§10.6][s10-6] macro-sequence with an empty integrate:
@@ -7743,7 +7744,7 @@ ordinary boundary is exact, not approximate. Piece by piece:
   buys is a `t₀` [snapshot](#g-snapshot) carrying the authored world fully
   evaluated: no published [cell](#g-cell) holds the [probe](#g-probe)'s
   synthesized values, the [§14.6][s14-6] barrier extended from the
-  [slots](#g-slot) to the whole table.
+  [root inputs](#g-root-input) to the whole table.
 - **Events run.** A condition can land a guard [predicate](#g-predicate) in
   [holding](#g-edge-semantics) territory (firing on not-holding → holding
   transitions, never bare sign changes): an authored stall flag, a strut authored
@@ -7755,7 +7756,7 @@ ordinary boundary is exact, not approximate. Piece by piece:
   [stage-on-interaction](#g-stage-on-interaction) lesson of [§11.7][s11-7] (widgets
   stage on edit or activation, never per render pass): insurance that masks
   invariant violations is anti-diagnostic ([D-026][d-026]). The header records the *resolved
-  pre-sequence* stores and slots ([§11.5][s11-5]), so replay re-executes
+  pre-sequence* stores and root inputs ([§11.5][s11-5]), so replay re-executes
   [boundary](#g-boundary) zero from the same starting point and whatever fires at
   `t₀` fires again identically ([§12.7][s12-7]). The firings are recomputed,
   never recorded. (A `stop_on` [face](#g-face) already `true` is a different
@@ -7809,25 +7810,25 @@ ordinary boundary is exact, not approximate. Piece by piece:
   at is no longer the point the verdict was read at. Both movers take the same
   remedy, specified with the report in [§14.8][s14-8].
 
-### 14.6 Slot totality: the missing-value error and the `override` combinator
+### 14.6 Root-input totality: the missing-value error and the `override` combinator
 
-[Slots](#g-slot) are the one initialized datum without declared defaults — the
+[Root inputs](#g-root-input) are the one initialized datum without declared defaults — the
 bare-types decision ([§11.3][s11-3]), upheld here ([D-068][d-068]). So a
-slot's only source before [boundary zero](#g-boundary-zero) (the initialization boundary: the
+root input's only source before [boundary zero](#g-boundary-zero) (the initialization boundary: the
 ordinary macro-sequence with an empty integrate) is the condition, and three
 consequences follow.
 
 **Totality is a precondition of starting, checked by the service.** A
 condition value is legitimately partial ([fragments](#g-fragment) compose; trim iterations
-write subsets; capture-then-tweak patches leaves) — "every root slot
+write subsets; capture-then-tweak patches leaves) — "every root input
 covered" is not a property of conditions but of *every application that
 establishes a complete world over virgin stores*. That principle, not an
 enumeration, names the sites: `init!`, trim's setup application to freshly
 allocated scratch stores, and trim's commit through [boundary](#g-boundary) zero
 ([§14.8][s14-8]) — one class, one mechanism, one kind. Each compares the resolved
-plan's slot coverage against the `Build`'s `input_faces` before writing
+plan's root-input coverage against the `Build`'s `input_faces` before writing
 anything; a shortfall is one collected, declaration-ordered diagnostic
-(`UninitializedSlots`, a [§13.2][s13-2] kind) naming every uncovered face.
+(`UninitializedInputs`, a [§13.2][s13-2] kind) naming every uncovered face.
 Coverage is a *plan-level fact* — both operands are resolution-time data —
 so the check is one comparison and runs before any evaluation, not merely
 before any write. Pre-write means all-or-nothing: a rejected init leaves
@@ -7839,13 +7840,13 @@ probes can exercise code
 with fabricated inputs; a fabricated zero is a fine probe input and a
 terrible flight condition (a silently zeroed `mixture` kills the engine and
 sends the user debugging aerodynamics). The services path simply contains
-no call to it: a slot gets a condition value or the application errors —
+no call to it: a root input gets a condition value or the application errors —
 no third branch. [Replay](#g-replay) likewise never synthesizes: the [trace header](#g-trace-header)
-records every slot value, and with totality enforced its slot capture is
+records every root-input value, and with totality enforced its root-input capture is
 complete by construction (the requirement discharged, [§11.3][s11-3]).
 
 **[Baselines](#g-baseline) are aircraft-shipped [condition](#g-condition) functions, layered by
-`override`.** Nobody hand-writes ~20 slot values per script; today
+`override`.** Nobody hand-writes ~20 root-input values per script; today
 `SystemsInitializer`'s `@kwdef` defaults carry that load, and their
 successor is ordinary user math in one authoritative home —
 `ready_for_taxi(ac)`, `cold_and_dark(ac)` — returning full-coverage
@@ -7919,11 +7920,11 @@ against today's `c172.jl`:
   the assignment is the pure `trim_condition(ac, params, d)` fragment-tree
   function ([§14.2][s14-2]), applied per iteration by the compiled plan ([§14.4][s14-4]).
 - **The read side is declared, then compiled**: `reads(name = get_state(path,
-  field) | get_deriv(path, field) | get_output(path, field) | get_slot([face](#g-face)) |
+  field) | get_deriv(path, field) | get_output(path, field) | get_input([face](#g-face)) |
   get_face(name), ...)` — the load-bearing set ([§14.4][s14-4]). `get_state` and
   `get_deriv` address a declared state field and its derivative (validated
   against `init_x`/`init_s`), `get_output` a declared output [port](#g-port) (validated against
-  `output_types`), `get_slot` and `get_face` a root input and output face
+  `output_types`), `get_input` and `get_face` a root input and output face
   (validated against the root face lists). The path [selectors](#g-selector) (the closed
   family of deferred reads resolving against a source) reach only through the
   locality scopes ([§6.1][s6-1]). An equilibrium equation crossing a generic seam reads
@@ -8103,7 +8104,7 @@ mysterious residuals.
 #### Scratch stores, stated without type luck
 
 Every `trim!` invocation instantiates a fresh working store set:
-`x` backing, `s` and `m` stores, [slot](#g-slot) and
+`x` backing, `s` and `m` stores, [root input](#g-root-input) and
 [signal tables](#g-signal-table), derivative [buffer](#g-buffer). The set is
 built from the [activation](#g-activation)'s *layout* (a re-run of Stratum C at
 a given scalar type). The layout is the reusable compiled artifact; the buffers
@@ -8121,8 +8122,8 @@ and that application's full coverage is *checked here* — the comparison of the
 resolved plan against the `Build`'s `input_faces` ([§14.6][s14-6]), one
 plan-level comparison before the first evaluation. [Sweeps](#g-sweep) therefore
 see a complete world. Raw instantiation is sound exactly because of that check:
-every slot is written before any read. An incomplete `baseline` is one
-declaration-ordered `UninitializedSlots` at setup rather than a whole solve
+every root input is written before any read. An incomplete `baseline` is one
+declaration-ordered `UninitializedInputs` at setup rather than a whole solve
 against undefined [cells](#g-cell).
 
 The commit applies the same composite over the same `baseline`
@@ -8149,7 +8150,7 @@ boundary masking ([§12.4][s12-4]).
 
 The committed solution is applied as an `init!` in every respect:
 `override(baseline, solution)` through boundary zero, with the pre-write
-[slot totality](#g-slot-totality) check ([§14.6][s14-6]), the sequence
+[root-input totality](#g-root-input-totality) check ([§14.6][s14-6]), the sequence
 ([§14.5][s14-5]) and [guards](#g-guard) at commit.
 
 The `t0` argument that anchors the grid, and its default, are the same for both
@@ -8291,9 +8292,9 @@ at(prefix::String, p::TrimProblem) = TrimProblem(
 
 Resolution then needs nothing new. The flattening accumulator of [§14.3][s14-3]
 enters the `Scoped` wrapper and prefixes every entry
-(`"vehicle/dynamics"` → `"wing/vehicle/dynamics"`). [Slot](#g-slot) entries authored
+(`"vehicle/dynamics"` → `"wing/vehicle/dynamics"`). [Root input](#g-root-input) entries authored
 in the aircraft's [face](#g-face) vocabulary resolve through the export chain *from
-the mount point* (`throttle` at `"wing"` → root slot `"wing.throttle"`).
+the mount point* (`throttle` at `"wing"` → root input `"wing.throttle"`).
 An unexported face fails resolution by name, and correctly so. An internally
 wired input (a [scenario component](#g-scenario-component) driving the wingman's throttle) is
 untrimmable from outside, and the build says so. The service compiles the
@@ -8301,8 +8302,8 @@ scoped condition and reads and runs the identical loop — it never knows
 where its paths are mounted.
 
 **A problem never authors the environment.** The environment is the world's
-and the `baseline`'s business: a sibling [component](#g-component)'s slots in a full world,
-a handle-valued root slot in a thin rig. The problem *receives* its handles
+and the `baseline`'s business: a sibling [component](#g-component)'s root inputs in a full world,
+a handle-valued root input in a thin rig. The problem *receives* its handles
 through the user parameter record ([§14.7][s14-7]), and only queries them.
 
 **Why.** The reason is the resolution rule just stated: a condition entry
@@ -8313,7 +8314,7 @@ guarantee would be lost.
 
 **The world wrapper dissolves.** Today's `f_init!(::Model{<:SimpleWorld})`
 (initialize environment, then call the aircraft's trim) has no successor
-method: the environment, the other aircraft and all slots are covered by
+method: the environment, the other aircraft and all root inputs are covered by
 the `baseline` condition ([§14.6][s14-6]), applied once at setup. The commit is
 `override(baseline, at(mount, condition(d*)))`. Method nesting became value
 layering.
@@ -8326,12 +8327,12 @@ shipped rig, `design_world(ac)` = aircraft + `SimpleAtmosphere(wind = NoWind())`
 promoted to a named artifact. One register: the "root" case is the shallowest
 world, the trim problem mounts at `"aircraft"` like anywhere else. Leaving an
 environment face *unconnected* is legal by construction, though. The face
-becomes an ordinary root slot holding the handle **value**, written by the
-`baseline` like any other slot. That is the test-rig register: the
+becomes an ordinary root input holding the handle **value**, written by the
+`baseline` like any other root input. That is the test-rig register: the
 function-valued sibling of a [constant source](#g-constant-source) (a library component publishing
 a value its instance holds), zero ceremony for a frozen environment. For
 design tasks the shipped rig stays `design_world(ac)`. That keeps the
-environment's tunables in the slot vocabulary that conditions, `capture`,
+environment's tunables in the root-input vocabulary that conditions, `capture`,
 linearization's input surface and the [trace header](#g-trace-header) already speak.
 
 **Swarm doctrine.** The service solves *one problem at a time*. Sequential
@@ -8350,14 +8351,14 @@ extension deliberately left unimplemented, its seams named).
 to ~150 lines of bookkeeping per variant. All of it becomes three
 [selector](#g-selector) lists (the closed family of deferred reads resolving
 against a source). Three members of the read-selector family supply them:
-`get_state`, `get_slot` and `get_output` ([§14.4][s14-4]). The lists carry the
+`get_state`, `get_input` and `get_output` ([§14.4][s14-4]). The lists carry the
 optional [component](#g-component) index, so a vector leaf yields *named
 scalars*. The NamedTuple key is the label control design slices by:
 
 ```julia
 x = (p = get_state("vehicle/dynamics", :ω_eb_b, 1),
      θ = get_state("vehicle/kinematics", :θ_nb), …)
-u = (throttle_cmd = get_slot("throttle"), …)
+u = (throttle_cmd = get_input("throttle"), …)
 y = (EAS = get_output("vehicle/airflow", :EAS), …)
 ```
 
@@ -8391,32 +8392,32 @@ That single pass replaces four `FiniteDiff` jacobians, their step-size
 heuristics and ~4n perturbed evaluations.
 
 **What the pass seeds, and what it holds frozen.** Unseeded states sit constant
-at the operating point, and so do unseeded [slots](#g-slot): the condition
-apply embeds their `Float64` values as zero-partial constants. A root-slot
+at the operating point, and so do unseeded [root inputs](#g-root-input): the condition
+apply embeds their `Float64` values as zero-partial constants. A root-input
 [cell](#g-cell) follows the [activation](#g-activation) scalar (a re-run of
 Stratum C at a given scalar type) by *evaluating* its consuming `input_types`
 entry at that scalar ([§8.2][s8-2]). The discrete [tier](#g-tier) is frozen
 with zero partials — precisely "linearize with the discrete state held"
 ([§8.2][s8-2]). Differentiation participation is a per-invocation
-*seeding* fact for every slot the schema leaves seedable, one register for `x`
-and slots alike. One declared exception is visible in the schema: a slot whose
+*seeding* fact for every root input the schema leaves seedable, one register for `x`
+and root inputs alike. One declared exception is visible in the schema: a root input whose
 entry is declared `Float64` is **declaredly unseedable**, its cell frozen at
 every activation. Selecting it as a `B`-matrix tap is therefore rejected at tap
 resolution with the offending entry in hand, rather than silently yielding a
 zero column ([D-167][d-167]). Under fan-out the rejection names the **pinning
-consumer**, not the face alone: a slot is unseedable whenever any one of its
+consumer**, not the face alone: a root input is unseedable whenever any one of its
 consumers demands frozen, which is the fan-out meet ([§8.2][s8-2]; [D-168][d-168]).
 The author's next move — promote that leaf to a tolerant entry, or route the
-tap around it — depends on knowing which leaf froze the slot. Seeded and
+tap around it — depends on knowing which leaf froze the root input. Seeded and
 frozen, side by side here:
 
 | leaf | in the one pass | what fixes it |
 |---|---|---|
 | a state leaf named by an `x` tap | seeded, one direction | per-invocation seeding |
 | any other state leaf | sits constant at the operating point | per-invocation seeding |
-| a root slot named by a `u` tap | seeded, one direction | per-invocation seeding |
-| any other seedable root slot | constant, its `Float64` value embedded as a zero-partial constant | per-invocation seeding |
-| a root slot whose entry is declared `Float64` | frozen at every activation, and rejected as a `B`-matrix tap | the schema: a declaration |
+| a root input named by a `u` tap | seeded, one direction | per-invocation seeding |
+| any other seedable root input | constant, its `Float64` value embedded as a zero-partial constant | per-invocation seeding |
+| a root input whose entry is declared `Float64` | frozen at every activation, and rejected as a `B`-matrix tap | the schema: a declaration |
 | any discrete-tier leaf | frozen, zero partials | the tier |
 
 **A pure query, and the shape of `capture`.** Linearization is the first
@@ -8426,8 +8427,8 @@ It works on scratch buffers only, and nothing it computes becomes
 authoritative. Today's restore-the-trim dance — re-`assign!` after
 `FiniteDiff` dirtied the model — has no successor. The default operating point
 is the sim's current committed state, taken through
-`capture(sim) → (condition, t)`. That gather covers stores *and root slots* in
-full, slot totality ([§14.6][s14-6]) making slot coverage mandatory for
+`capture(sim) → (condition, t)`. That gather covers stores *and root inputs* in
+full, root-input totality ([§14.6][s14-6]) making root-input coverage mandatory for
 capture → apply. After a `trim!` commit, `linearize(sim, taps)` is about the
 trim point with nothing re-specified. An `about = <condition>` keyword
 linearizes anywhere else without touching the sim.
@@ -8464,7 +8465,7 @@ instantaneous, and AD follows actual dataflow
 (`frozen_discrete_walkthrough.md` works the three-component chain through).
 
 Differentiating "through" the discrete side means differentiating a *different
-object*: the sampled-data step map $\Phi : ((x_k, s_k), \mathrm{slots}) \to
+object*: the sampled-data step map $\Phi : ((x_k, s_k), \mathrm{inputs}) \to
 (x_{k+1}, s_{k+1})$, taken over the model's *whole* state, both letters at
 once. One
 evaluation of $\Phi$ integrates one period, then runs the [due](#g-due)
@@ -8511,11 +8512,11 @@ conformance check holds them to it at every activation.
 
 The input half ([D-167][d-167]): a consumer's entries are per-leaf too, so a `Float64`
 entry declares "never hand me partials". That is the AD-incompatible
-component's own statement, enforced at the wire ([§6.1][s6-1]). At a root slot,
+component's own statement, enforced at the wire ([§6.1][s6-1]). At a root input,
 such an entry *is* the forbid-seeding marker itself. That marker carries
-semantics rather than mere protection: it types the slot cell at every
-activation. An unseeded slot is therefore a *choice* where a `Float64`-entry
-slot is a *declaration*, and tap resolution rejects the latter with the
+semantics rather than mere protection: it types the root-input cell at every
+activation. An unseeded root input is therefore a *choice* where a `Float64`-entry
+root input is a *declaration*, and tap resolution rejects the latter with the
 offending entry in hand instead of returning a silent zero column.
 
 What stays recorded is only the remaining **tooling** over that visibility.
@@ -8667,7 +8668,7 @@ inert parameters, reads the scheduling variables as inputs, and publishes one
 gain bundle per compensator; compensators consume gains as `u`. What mutation
 hid, ports expose. Gain trajectories become observable in log, [trace](#g-trace) and
 [replay](#g-replay); the `Ref` writes were invisible to all three. The [feedthrough](#g-feedthrough)
-graph carries the dependency. Linearization holds unseeded gain slots
+graph carries the dependency. Linearization holds unseeded gain inputs
 constant with zero special-casing ([§14.10][s14-10]). One-shot design-time gains
 (`robot2d`'s controller synthesis at init) are construction-time parameters or
 stopped-sim service outputs — not a runtime write path.
@@ -8713,25 +8714,25 @@ This case study is the exercise that selected per-[device](#g-device) [cells](#g
 ([§11.4][s11-4]) and produced the [§11.7][s11-7] staging contracts. Setup (the
 `sketch_io.jl` listing): a first-order filter with root inputs `u_cmd` and `τ`;
 a fictitious 100 Hz single-axis joystick streaming a slow ramp onto `u_cmd`
-(complete writer); a 60 Hz GUI with sliders for both [slots](#g-slot) (sparse
+(complete writer); a 60 Hz GUI with sliders for both [root inputs](#g-root-input) (sparse
 writer); 50 Hz [boundaries](#g-boundary); pace 1. The interference on `u_cmd` is
 the point.
 
-Three candidate staging shapes were on the table: **per-slot cells**, a shared
+Three candidate staging shapes were on the table: **per-input cells**, a shared
 **[batch](#g-batch) stack**, and **per-device cells**. The user-level listing
 came out identical across all three — ergonomics cannot discriminate between
 them; behavior under a concrete interleaving did.
 
-**Slot exclusivity rules out the very contest the setup builds.** Under slot
-exclusivity ([§11.3][s11-3]) the contested-`u_cmd` scenario cannot arise — a
+**Root-input exclusivity rules out the very contest the setup builds.** Under
+root-input exclusivity ([§11.3][s11-3]) the contested-`u_cmd` scenario cannot arise — a
 second writer on `u_cmd` is an attach-time error. What the test settles is
 therefore the cell *shapes*: atomicity, [coalescing](#g-coalescing), pause
 behavior and the peek rule. Its conflict-precedence comparison and the
-active-widget stage-every-pass contract ([§11.7][s11-7]) describe a contested-slot
+active-widget stage-every-pass contract ([§11.7][s11-7]) describe a contested-input
 world the design does not have. The findings below are read under that scope.
 
 - **Drag against the stream** — the user grabs the `u_cmd` slider while the
-  joystick streams. Under per-slot cells and the batch stack, each
+  joystick streams. Under per-input cells and the batch stack, each
   [frame](#g-frame)'s conflict resolves by last-store/last-push wall-clock order
   ([D-024][d-024]). With 16.7 ms renders against 10 ms polls, the applied input
   alternates between drag value and ramp on the cadence beat, the filter visibly
@@ -8740,10 +8741,10 @@ world the design does not have. The findings below are read under that scope.
   cells the GUI stages in every drag frame: ≥ one render per 20 ms frame, plus
   the active-widget stage-every-pass contract. The GUI therefore wins every
   [drain](#g-drain) (the
-  frame-top swap that publishes staged device inputs into the root slots) by
+  frame-top swap that publishes staged device writes into the root inputs) by
   attachment order. That win is a clean, deterministic override for exactly the
   grab duration. Same user code, qualitatively different physics.
-- **Edits while paused.** Under per-slot cells, the user's `u_cmd` edit is
+- **Edits while paused.** Under per-input cells, the user's `u_cmd` edit is
   overwritten by the still-polling joystick ~10 ms later ([D-024][d-024]); the knob
   visibly snaps back and the edit never applies. Under the batch stack, the edit
   is buried under newer pushes, and the pending chain grows at the polling rate
@@ -8752,12 +8753,12 @@ world the design does not have. The findings below are read under that scope.
   across the pause, the knob keeping the edit by the [§11.7][s11-7] peek rule. That
   edit merges with the `τ` edit — the sparse-accumulation case — and applies at
   the un-pause drain, for one deterministic frame before the joystick reclaims
-  the slot. That one-frame application is the honest semantics of one-shot
+  the root input. That one-frame application is the honest semantics of one-shot
   editing a streamed input. The uncontested `τ` edit works under all three
   shapes.
 - **Corrections the exercise forced.** The sparse-writer lost-write hazard is
-  specific to one-cell-per-device layouts: per-slot cells cannot lose
-  independent-slot writes; the CAS merge is per-device cells' antidote, not a
+  specific to one-cell-per-device layouts: per-input cells cannot lose
+  independent-input writes; the CAS merge is per-device cells' antidote, not a
   general need. And the batch stack's conflict order is temporal, not an
   attachment-order policy ([D-024][d-024]).
 - **Discoveries.** Two: the active-widget contract, and the
@@ -8782,7 +8783,7 @@ item's home:
 - **Streamed commands** (`throttle_axis`, `elevator/aileron/rudder_axis`): today
   written by joystick mappings after shaping *and* by GUI sliders on the same
   fields. Every dual-writer field in the demo is this pattern — a stream shadowed
-  by a mirror, where simultaneous live writing is a bug. This adjudicated [slot](#g-slot)
+  by a mirror, where simultaneous live writing is a bug. This adjudicated [root-input](#g-root-input)
   exclusivity ([§11.3][s11-3]): [claim](#g-claim)/disable covers every case found; none needs two
   concurrent writers.
 - **Edge-driven increments** (trim offsets ±5e-3 per hat release, flaps ±⅓ per
@@ -8849,12 +8850,12 @@ The demo line by line:
   binds `Δt_base = n·h` ([§10.5][s10-5]; default 1: base [tick](#g-tick) every step). The entire
   build pipeline runs here: [class](#g-class) resolution, path validation, face derivation
   (computed interface connections expanded, printable), two-producers/unconnected checks,
-  topological sort, [probe](#g-probe) passes, rate compilation, flat layout, [slot](#g-slot) table.
+  topological sort, [probe](#g-probe) passes, rate compilation, flat layout, [root input](#g-root-input) table.
 - `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services ([§14][s14];
   trim is its own service, `trim!(sim, problem; baseline, …)`, whose commit
-  runs the same boundary): they write `(x, s, m)`, **establish every root
-  slot's initial value**, and capture the [trace header](#g-trace-header). Slot initialization
-  decisively belongs here, not in declarations: the trim service writes slot
+  runs the same boundary): they write `(x, s, m)`, **establish every
+  root input's initial value**, and capture the [trace header](#g-trace-header). Root-input initialization
+  decisively belongs here, not in declarations: the trim service writes root-input
   values it *solved for* (throttle, elevator) — not declaration constants.
 - `attach!(sim, XPlane12Control(…), binding)` — output [device](#g-device): [claims](#g-claim) nothing,
   consumes [snapshots](#g-snapshot) via [§12.3][s12-3], pure `map_output` on its task. Its [binding](#g-binding) names
@@ -8891,26 +8892,26 @@ One [frame](#g-frame) each:
 
 - *Stick motion*: [device](#g-device) task polls, conditioning helper applies binding params,
   complete [batch](#g-batch) overwrites the [cell](#g-staging-cell) (inter-frame polls coalesce, ZOH-correct);
-  [drain](#g-drain) applies + [traces](#g-trace); avionics [tick](#g-tick) reads the [slot](#g-slot) fresh; worst-case
+  [drain](#g-drain) applies + [traces](#g-trace); avionics [tick](#g-tick) reads the [root input](#g-root-input) fresh; worst-case
   stick-to-physics latency = poll interval + frame, now by stated semantics.
 - *Flaps click*: button [peeks](#g-peek) counter `k` (own-pending-else-[snapshot](#g-snapshot)), stages
-  level `k+1` on activation; drain applies; avionics compares slot counter to its
+  level `k+1` on activation; drain applies; avionics compares the root-input counter to its
   `s` counter, moves the detent, stores. Multi-click in one window counts via
   own-pending-first peek; repeated staging idempotent ([§11.7][s11-7]).
 - *Mode engage*: the GUI stages `mode_req`, plus optionally peek-captured
-  setpoint slots. **Bumpless-engage semantics live in the FCS already**: the
+  setpoint root inputs. **Bumpless-engage semantics live in the FCS already**: the
   current `ControlLaws` latches each controller's reference from the present
   command vector on mode transitions. So the capture fork dissolved: semantic
   capture is aircraft design. That arrangement is the status quo, and it is uniform across
   writers — a script engages sanely staging one value.
   The GUI [peek](#g-peek)-batch ([§11.7][s11-7]) therefore
-  survives as display/slot-sync sugar only. Residual check for migration:
+  survives as display/input-sync sugar only. Residual check for migration:
   order-sensitivity of latch vs. sync-write on the same [boundary](#g-boundary)
   (believed none — both derive from the same measurements).
 - *Wind slider*: sparse CAS-merge, the uncontested-`τ` case ([§15.3][s15-3]), live in the
   real cast.
 - *Pause/un-pause*: [control plane](#g-control-plane); GUI edits hold in its cell (peek displays),
-  joystick cell coalesces bounded; un-pause drain applies both (disjoint slots —
+  joystick cell coalesces bounded; un-pause drain applies both (disjoint root inputs —
   exclusivity makes the contested question unaskable), pacer re-anchors.
 - *Window close*: [§12.4][s12-4] verbatim — complete boundary, final snapshot, sticky
   stopped, wake waits, unblock hooks, named-timeout joins.
@@ -9160,7 +9161,7 @@ disposition exceeds a cell are expanded below the table.
 | The [executor](#g-executor) compile-cost re-measurement | runs on the real vehicle skeleton, early — before the executor's shape hardens | [§9.7][s9-7] | — |
 | *Residual*: the `q_sf` home | aircraft design, so it belongs on this list | [§15.4][s15-4] | — |
 | *Residual*: a root-declared overridable `stop_on` default | reopen only if the constructor argument proves chronically forgotten | [§13.5][s13-5] | — |
-| *Residual*: the engage-boundary write-order check | verify the FCS latch and the GUI slot sync-write commute on one boundary — believed order-free, both deriving from the same measurements | [§15.4][s15-4] | — |
+| *Residual*: the engage-boundary write-order check | verify the FCS latch and the GUI input sync-write commute on one boundary — believed order-free, both deriving from the same measurements | [§15.4][s15-4] | — |
 | *Residual*: the C172 AD audit for trim | Interpolations tables (prefer cubic knots), saturation rank-deficiency (LM-tolerated, reported), the gear identically zero airborne | [§14.8][s14-8] | [D-070][d-070] |
 
 **The parametrization pass.** `Ranged` survives at [ports](#g-port) and
@@ -9326,7 +9327,7 @@ the in-memory side:
 
 - the log is the retained boundary snapshots ([§11.2][s11-2]);
 - the input trace is always on and device-tagged, carrying its header of
-  initial [stores](#g-store) and [slot](#g-slot) values ([§11.5][s11-5],
+  initial [stores](#g-store) and [root input](#g-root-input) values ([§11.5][s11-5],
   [§14.5][s14-5], [§14.6][s14-6]);
 - the primary/derived rule holds: the log is recomputable from the trace, never
   the reverse.
@@ -9470,7 +9471,7 @@ For periphery authors and consumers:
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
 - **Derived liveness** ([§11.7][s11-7]). A widget is live iff its port's feed chain
-  terminates in a root slot inside the GUI's own claim in the run's frozen
+  terminates in a root input inside the GUI's own claim in the run's frozen
   partition; there is no per-port marking, and unexported ports are
   unpokeable.
 - **The two observation registers** ([§11.2][s11-2], [§13.5][s13-5]). A deep snapshot path is
@@ -9532,7 +9533,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 **Build.**
 
 - `build(world) → Build` — standalone; the inspectable derived-contract artifact:
-  wire list, face table with provenance, schedule, root slots ([§9.2][s9-2]).
+  wire list, face table with provenance, schedule, root inputs ([§9.2][s9-2]).
   `build(world; activations = (Float64, ProbeDual))` additionally pins
   activation invariants for CI (`ProbeDual` the exported canonical concrete
   probe scalar, [§9.4][s9-4]), and pre-materializes activations so a parallel
@@ -9667,8 +9668,8 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 
 **Condition algebra** ([§14.1][s14-1]–[§14.6][s14-6]).
 
-- `fragment(; x, s, m, slots)` — self-vocabulary payloads at the authoring
-  level; `slots` names faces of that level's contract.
+- `fragment(; x, s, m, inputs)` — self-vocabulary payloads at the authoring
+  level; `inputs` names faces of that level's contract.
 - `at(prefix, node)` — scoping; stores, never applies. Also lifts whole
   `TrimProblem`s and linearization tap sets ([§14.9][s14-9], [§14.10][s14-10]).
 - `combine(nodes...)` — symmetric collection; duplicate leaves error with dual
@@ -9682,7 +9683,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 
 **Stopped-sim services** ([§14][s14]).
 
-- `init!(sim, condition; t0 = 0.0)` — slot totality checked pre-write
+- `init!(sim, condition; t0 = 0.0)` — root-input totality checked pre-write
   ([§14.6][s14-6]), then boundary zero: project → sweep → events → due `g` updates →
   header + first snapshot ([§14.5][s14-5]).
 - `trim!(sim, problem; baseline, t0 = 0.0, backend) → TrimReport` —
@@ -9691,7 +9692,7 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   (`residuals(reads, d) → NamedTuple`, packed in `tolerances`' field order as
   decisions pack in `guess`'s — names pair, order is the declared side's,
   within the problem [§14.7][s14-7] closes at seven fields); setup and commit
-  both carry the slot-totality
+  both carry the root-input-totality
   check ([§14.6][s14-6]); commit = `init!` with `override(baseline, solution)` —
   boundary zero anchored at `t0`, recordings cleared ([§12.6][s12-6]); resume-at-
   time = `capture`'s returned `t` as `t0`; `converged` = the service's
@@ -9703,11 +9704,11 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
   packed vectors in the declared orders, `status` an open `Symbol` recorded
   verbatim; non-convergence reports, never
   throws ([§14.7][s14-7], [§14.8][s14-8]).
-- `capture(sim) → (condition, t)` — full-store gather including root slots;
+- `capture(sim) → (condition, t)` — full-store gather including root inputs;
   warm restart = capture → tweak → apply ([§14.1][s14-1], [§14.10][s14-10]).
 - `linearize(sim, taps) → labeled (ẋ₀, x₀, u₀, y₀, A, B, C, D)` — pure query, one
   seeded Dual pass on scratch; operating point defaults to `capture(sim)`;
-  taps = `get_state`/`get_slot`/`get_output` selector lists with control-design
+  taps = `get_state`/`get_input`/`get_output` selector lists with control-design
   labels ([§14.10][s14-10]).
 
 **Running.**
@@ -9832,7 +9833,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1][s6-1], [§8.2][s8-2] | build (collected) |
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | [§6.1][s6-1], [§13.3][s13-3] | build (collected) |
 | `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, [§13.7][s13-7]) | [§8.2][s8-2] | build (collected) |
-| `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — the meet, [§8.2][s8-2]) | [§8.2][s8-2] | build (collected) |
+| `RootInputTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — the meet, [§8.2][s8-2]) | [§8.2][s8-2] | build (collected) |
 | `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | [§7.1][s7-1], [§8.2][s8-2] | build (collected) |
 | `StoreWithoutUpdate` | component path, the `init_x` or `init_s` store, the missing update (no `f` for the one, no `g` for the other); shadowing note when the parent module defines its own `f`/`g` ([§8.1][s8-1]) | [§8.2][s8-2] | build (collected) |
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | [§8.2][s8-2] | build (collected) |
@@ -9876,19 +9877,19 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | [§11.3][s11-3] | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§11.1][s11-1], [§11.3][s11-3] | service |
 | `ClaimConflict` | face name, claiming device id, incumbent device id | [§11.3][s11-3] | service |
-| `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root input face being claimed already | [§11.3][s11-3], [§11.6][s11-6] | warning (service) |
+| `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root-input face being claimed already | [§11.3][s11-3], [§11.6][s11-6] | warning (service) |
 | `BindingContractMismatch` | the binding type, the trait and the method at fault, and the direction: a declared side whose enumeration method is missing (`is_input`/`is_output` true, the root's error fallback reached), or a `claims`/`reads` method defined under a false trait (detected by `which` against the fallback); `is_greedy` without `is_input`, and `claims` defined on a greedy binding, report here too | [§11.6][s11-6] | service |
 | `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (the source rule, [§14.4][s14-4]) | [§11.2][s11-2], [§14.4][s14-4] | service |
-| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | [§14.2][s14-2], [§14.3][s14-3] | service (collected) |
+| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported root-input face | [§14.2][s14-2], [§14.3][s14-3] | service (collected) |
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2][s14-2] | service (collected) |
 | `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | [§14.2][s14-2] | service |
-| `UninitializedSlots` | every uncovered root face, in declaration order | [§14.6][s14-6] | service (collected), pre-write |
-| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates; for a declaredly-unseedable slot, the pinning consumer's path and its `input_types` entry | [§14.10][s14-10] | service (collected) |
+| `UninitializedInputs` | every uncovered root face, in declaration order | [§14.6][s14-6] | service (collected), pre-write |
+| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates; for a declaredly-unseedable root input, the pinning consumer's path and its `input_types` entry | [§14.10][s14-10] | service (collected) |
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7][s14-7], [§14.8][s14-8] | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.8][s14-8] | warning (service) |
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.8][s14-8] | warning (service) |
 | `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§9.1][s9-1], [§9.2][s9-2] | warning (service), at deployment binding (derivation path only) |
-| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or slot (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | service |
+| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | service |
 | `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | service (collected) |
 
@@ -9908,7 +9909,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§12.4][s12-4], [§11.6][s11-6], [§13.4][s13-4] | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§12.7][s12-7] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
 | `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§11.6][s11-6], [§13.4][s13-4] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
-| `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | [§11.4][s11-4] | warning (runtime) |
+| `EntryTypeMismatch` | writer id, face name, the offending value's type, the root input's declared type, the discarded value | [§11.4][s11-4] | warning (runtime) |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§12.4][s12-4]) | [Appendix B][sB], [§13.5][s13-5] | warning (runtime), at run start |
 
 ---
@@ -9929,8 +9930,8 @@ wherever a neighboring term is genuinely close.*
 <a id="g-abstract-entry"></a>**abstract entry** — an `input_types` entry whose declared type is abstract,
 stating **structural substitutability**: any concrete producer face below the
 bound wires to it (the field handles, [§4.4][s4-4], are the demonstrated client). Never
-needed for eltype genericity, and illegal where the face surfaces as a root
-slot (`AbstractAtRoot`) ([§8.2][s8-2]).
+needed for eltype genericity, and illegal where the face surfaces as a
+root input (`AbstractAtRoot`) ([§8.2][s8-2]).
 
 <a id="g-assembly"></a>**assembly** — pure composition: component-typed fields as children, plus
 `child_connections` (mandatory, the class marker), `input_connections`,
@@ -9990,7 +9991,7 @@ register of authority: by value, by type, by allocation ([§8.2][s8-2]).
 <a id="g-derived-contract"></a>**derived contract** — the checkable surface an assembly or the
 `Build` derives from its children's declarations and its own wiring instead of
 declaring itself: an assembly's effective face list, the `Build`'s wire list,
-face table, schedule and root slots. Plain printable data, and on a generic
+face table, schedule and root inputs. Plain printable data, and on a generic
 holding the constraint the referencing wires and interface connections impose on
 whatever concrete child is plugged in ([§8.6][s8-6], [§8.8][s8-8], [§9.2][s9-2]).
 
@@ -10100,18 +10101,18 @@ produced signals; no store mirrors another, and the table never holds
 transported data ([§5.2][s5-2], [§7.1][s7-1]).
 
 <a id="g-port"></a>**port** — the addressable unit of the model: one declared name, one cell, one
-root slot, one staged write, one device claim, one trace address, one GUI
+root input, one staged write, one device claim, one trace address, one GUI
 liveness verdict. Wiring is port-granular, and which stage computes a port is
 invisible outside the component ([§4.2][s4-2], [§4.3][s4-3]).
+
+<a id="g-root-input"></a>**root input** — the root assembly's own input face,
+produced by no component, constant within a frame, and the only thing the
+periphery may write ([§11.3][s11-3], [§8.6][s8-6]).
 
 <a id="g-signal-table"></a>**signal table** — the framework-owned collection of cells holding every
 produced signal of the flattened model; consumers gather views from it, and
 its consistency is a boundary property, transiently integrator scratch within
 a step ([§4.1][s4-1], [§10.3][s10-3]).
-
-<a id="g-slot"></a>**slot** — a root input slot: the root assembly's own input face,
-produced by no component, constant within a frame, and the only thing the
-periphery may write ([§11.3][s11-3], [§8.6][s8-6]).
 
 <a id="g-staging-cell"></a>**staging cell** — the per-device atomic holding place where a device's pending
 write batch waits between drains; mutated frame by frame, hence outside the
@@ -10119,7 +10120,7 @@ table's publish-once discipline ([§11.4][s11-4]). Not a table cell ([§4.1][s4-
 
 <a id="g-store"></a>**store** — the typed home of `m` and of a discrete leaf's `s`: overwritten by the framework when a
 handler or update returns a new value, never arithmetic-touched, snapshot-free
-to copy. Never called a cell — root slots, by contrast, *are* source cells of
+to copy. Never called a cell — root inputs, by contrast, *are* source cells of
 the table ([§7.3][s7-3], [§4.1][s4-1], [§11.2][s11-2]).
 
 <a id="g-summing-junction"></a>**summing junction** — an ordinary library component performing N-to-1
@@ -10322,7 +10323,7 @@ localized*.
 
 <a id="g-activation"></a>**activation** — a re-run of Stratum C at a given scalar type `T`: cells
 re-typed (producer-fed ones by evaluating the producer's output declaration at
-`T`, root slots by evaluating the consuming `input_types` entry at `T`, the
+`T`, root inputs by evaluating the consuming `input_types` entry at `T`, the
 state type by the leaf walk), buffers re-laid-out,
 workspace allocators re-invoked, probe chain re-run. Structure and schedule are `T`-independent;
 non-nominal activations are lazy, with an opt-in exhaustive set for CI ([§9.4][s9-4]).
@@ -10335,7 +10336,7 @@ semantics), both folding to zero instructions
 when the return type is proven ([§9.5][s9-5]).
 
 <a id="g-build"></a>**`Build`** — the artifact `build(world)` produces: wire list, face table with
-provenance, schedule and root slots as plain printable data — the inspectable
+provenance, schedule and root inputs as plain printable data — the inspectable
 contract of the instantiation, and what `attach!`, `stop_on`, replay and
 condition resolution all validate against ([§9.2][s9-2]).
 
@@ -10358,7 +10359,7 @@ declared nominal type: real leaves and `Real` type parameters follow the
 activation scalar, everything else pins. It applies on the **state** side alone
 (the type derived from `init_x`; `init_m` and `init_s` pin wholesale). **Cells are not
 walked**: an output cell comes from evaluating the producer's `output_types` at
-the activation scalar ([D-166][d-166]) and a root-slot cell from evaluating the
+the activation scalar ([D-166][d-166]) and a root-input cell from evaluating the
 consuming `input_types` entry at it ([D-167][d-167]), participation and tolerance
 authored per leaf in both ([§8.2][s8-2]; applied in Stratum C,
 [§9.1][s9-1]).
@@ -10386,9 +10387,9 @@ branch ([§9.3][s9-3]).
 
 <a id="g-probe-value"></a>**probe value / input synthesis** — the fabricated values a build-time probe
 runs on. `probe_value(::Type)` synthesizes them at the one kind of terminal
-with no producer, root slots (`zero(T)`/`false`/first enum/`T()`,
+with no producer, root inputs (`zero(T)`/`false`/first enum/`T()`,
 overridable); from there they flow the probe chain as the probed stages' own
-returns ([§13.1][s13-1]). Strictly probe-scoped: never an initial slot value,
+returns ([§13.1][s13-1]). Strictly probe-scoped: never an initial root-input value,
 which [§14.6][s14-6] makes a structural barrier ([§9.3][s9-3]).
 
 <a id="g-probedual"></a>**`ProbeDual`** — the framework's exported canonical concrete probe scalar
@@ -10399,7 +10400,7 @@ genericity, not a particular Jacobian ([§9.4][s9-4]).
 <a id="g-schema-vs-layout"></a>**schema vs. layout** — the two lookup families the `Build` supplies to
 condition resolution: *schema* is the evaluated declarations (may you write
 this field, at what leaf type — the authority), *layout* is where it
-physically lives (buffer ranges, store and slot indices) ([§14.3][s14-3]).
+physically lives (buffer ranges, store and root-input indices) ([§14.3][s14-3]).
 
 <a id="g-stratum"></a>**stratum** — one of the build's three phases: A structure (pure declaration
 reading), B schedule (the single evaluation-feeds-structure step), C
@@ -10463,7 +10464,7 @@ loop's wait and pause states; structurally not staging, since a paused loop
 drains nothing ([§12.1][s12-1]).
 
 <a id="g-derived-liveness"></a>**derived liveness** — the rule that a GUI widget is live iff its port's feed
-chain terminates in a root slot inside the GUI's own claim in the run's frozen
+chain terminates in a root input inside the GUI's own claim in the run's frozen
 surface partition; baked once at run start, with no per-port "GUI-controlled"
 marking anywhere ([§11.7][s11-7]).
 
@@ -10526,7 +10527,7 @@ one collapses the device joins; outside the REPL, SIGINT still kills the process
 ([§12.4][s12-4], [§12.1][s12-1]).
 
 <a id="g-orphaned-claims"></a>**orphaned claims** — the claims of a device whose task died mid-run. Death is
-not detach: the roster entry and claims persist to run end, the slots hold
+not detach: the roster entry and claims persist to run end, the root inputs hold
 their last-drained values, and the GUI renders the fact in the widget's
 provenance; recovery is between runs ([§11.3][s11-3]).
 
@@ -10550,7 +10551,7 @@ recomputation. The clock is the criterion — wall-clock interactions are
 devices ([§12.5][s12-5]).
 
 <a id="g-selector"></a>**selector (read-selector family)** — the closed set of deferred reads
-`get_state`/`get_deriv`/`get_output`/`get_slot`/`get_face`, each
+`get_state`/`get_deriv`/`get_output`/`get_input`/`get_face`, each
 resolving against a source (table sources — a boundary snapshot or a service
 evaluation's scratch tables — vs. live stores) before any client policy
 applies ([§14.4][s14-4]).
@@ -10564,7 +10565,7 @@ and load-bearing in another; the shipped GUI attaches with `true` ([§11.6][s11-
 [§12.4][s12-4]).
 
 <a id="g-snapshot"></a>**snapshot** — the immutable per-boundary publication: boundary-consistent
-signal table (root slots included), `t`, boundary index and
+signal table (root inputs included), `t`, boundary index and
 framework status. It deliberately carries no state stores — the state
 trajectory is derived data ([§11.2][s11-2]).
 
@@ -10609,7 +10610,7 @@ at a trim commit so they restart with the run they record ([§12.6][s12-6], [§1
 
 <a id="g-replay"></a>**replay** — the ordinary loop with exactly two substitutions: boundary zero
 from the trace header, and a drain reading the trace by frame ordinal. It
-re-records, ends `initialized`, and validates the header — stores, slot
+re-records, ends `initialized`, and validates the header — stores, root-input
 faces and deployment block — up front, applying the header's `t₀`
 ([§12.7][s12-7]).
 
@@ -10624,9 +10625,9 @@ device-tagged batches per frame, plus its header. On by default, because the
 log is recomputable from the trace and never the reverse ([§11.5][s11-5]).
 
 <a id="g-trace-header"></a>**trace header** — the trace's preamble: the resolved initial state
-`(x, s, m)`, the initial root-slot values, each writer's face-name →
+`(x, s, m)`, the initial root-input values, each writer's face-name →
 position schema, and the deployment block — captured after `apply!` and the
-slot writes, before the boundary-zero sequence runs ([§11.5][s11-5], [§14.5][s14-5]).
+root-input writes, before the boundary-zero sequence runs ([§11.5][s11-5], [§14.5][s14-5]).
 
 <a id="g-trace-record"></a>**trace record** — the retained form of a drained batch, uniform for every
 writer: (position ⇒ value) pairs for the masked (touched) entries, converted at
@@ -10656,8 +10657,8 @@ with an empty integrate — project → [sweep → guards → handlers]\* → du
 updates → header and first snapshot — run at `t₀` once `apply!` has
 established the stores ([§14.5][s14-5]).
 
-<a id="g-capture"></a>**capture** — the service reading the current committed stores *and* root
-slots back as a condition value, returning `(condition, t)`; the gather twin
+<a id="g-capture"></a>**capture** — the service reading the current committed stores *and*
+root inputs back as a condition value, returning `(condition, t)`; the gather twin
 of `apply!`, and what makes warm restart need no second semantics ([§14.1][s14-1],
 [§14.10][s14-10]).
 
@@ -10672,7 +10673,7 @@ wired to that face ([§13.7][s13-7]).
 
 <a id="g-condition"></a>**condition** — the datum that says "set this build to this state": a
 path-addressed sparse overlay on the declared defaults, covering `x`, `s` and
-`m` fields plus root slots by face — never outputs, never workspace ([§14.1][s14-1]).
+`m` fields plus root inputs by face — never outputs, never workspace ([§14.1][s14-1]).
 [§14][s14] owns the word; a guard defines a *predicate* ([§D.4][sD-4]).
 
 <a id="g-design_world"></a>**`design_world`** — the shipped thin world (aircraft +
@@ -10681,7 +10682,7 @@ aircraft for trim and linearization; "aircraft as root" is the shallowest
 world, not a special case ([§14.9][s14-9]).
 
 <a id="g-fragment"></a>**fragment** — the leaf node of the condition algebra: `fragment(; x, s, m,
-slots)` payloads speaking only about the component at the authoring point
+inputs)` payloads speaking only about the component at the authoring point
 (**self-vocabulary**), with addressing left entirely to `at` ([§14.2][s14-2]).
 
 <a id="g-fragment-tree"></a>**fragment tree** — the inert, lazy composition of `Fragment`/`Scoped`/
@@ -10696,16 +10697,16 @@ path-free, so the service never knows where its paths sit ([§14.9][s14-9]).
 the patch wins and provenance keeps both sources, while collisions *within* a
 layer remain errors; variadic ([§14.6][s14-6]).
 
+<a id="g-root-input-totality"></a>**root-input totality** — the pre-write requirement that an application establishing
+a complete world over virgin stores — `init!`, trim setup, trim commit —
+cover every root input. Conditions themselves are legitimately partial; a
+shortfall is `UninitializedInputs`, collected and declaration-ordered, leaving
+the simulation untouched ([§14.6][s14-6]).
+
 <a id="g-service-lifecycle"></a>**service lifecycle** — the `Simulation` states `built` / `initialized` /
 `running` / `stopped` / `errored` ([§12.6][s12-6]) and each service's legality against
 them; a violation is `ServiceLifecycle`, and `errored` is terminal for all
 four services ([§14][s14]).
-
-<a id="g-slot-totality"></a>**slot totality** — the pre-write requirement that an application establishing
-a complete world over virgin stores — `init!`, trim setup, trim commit —
-cover every root slot. Conditions themselves are legitimately partial; a
-shortfall is `UninitializedSlots`, collected and declaration-ordered, leaving
-the simulation untouched ([§14.6][s14-6]).
 
 <a id="g-taps"></a>**taps** — the three selector lists (`x`, `u`, `y`) declaring what
 linearization seeds and reports, with an optional component index so a vector
@@ -10973,7 +10974,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [s11]: #11-runtime-periphery-the-data-plane
 [s11-1]: #111-no-shared-mutable-model-staged-writes-snapshot-reads
 [s11-2]: #112-outbound-snapshot-publication
-[s11-3]: #113-inbound-root-input-slots-claims-and-the-frozen-roster
+[s11-3]: #113-inbound-root-inputs-claims-and-the-frozen-roster
 [s11-4]: #114-inbound-per-device-staging-representation-and-the-drain
 [s11-5]: #115-inbound-the-input-trace
 [s11-6]: #116-devices-one-authoring-contract-no-taxonomy
@@ -11002,7 +11003,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [s14-3]: #143-resolution-flatten-validate-compile-once
 [s14-4]: #144-two-application-registers-over-one-plan
 [s14-5]: #145-boundary-zero-an-ordinary-boundary-with-authored-incoming-transitions
-[s14-6]: #146-slot-totality-the-missing-value-error-and-the-override-combinator
+[s14-6]: #146-root-input-totality-the-missing-value-error-and-the-override-combinator
 [s14-7]: #147-the-trim-problem-namedtuple-decisions-declared-reads-named-residuals
 [s14-8]: #148-the-trim-service-solver-seam-scratch-stores-commit-and-report
 [s14-9]: #149-mounting-problems-as-relocatable-values

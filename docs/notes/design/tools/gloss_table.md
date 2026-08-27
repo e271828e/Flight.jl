@@ -48,8 +48,8 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | immutable value semantics | g-immutable-value-semantics | 0 | — | immutability plus frozen references, so concurrent reads are safe |
 | one home per datum | g-one-home-per-datum | 2 | A | each datum lives in exactly one store, mirrored nowhere |
 | port | g-port | 39 | B | the addressable unit of the model: one name, one cell |
+| root input | g-root-input | 38 | B | the root component's own input face, the only thing the periphery writes |
 | signal table | g-signal-table | 12 | B | the framework-owned collection of cells holding every produced signal |
-| slot | g-slot | 38 | B | a root input slot, the only thing the periphery writes |
 | staging cell | g-staging-cell | 16 | A | where a device's pending write batch waits between drains |
 | store | g-store | 7 | B | the typed home of `m` and a discrete leaf's `x` |
 | summing junction | g-summing-junction | 2 | B | a library component doing N-to-1 aggregation through explicit wires |
@@ -101,7 +101,7 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 |---|---|---|---|---|
 | activation | g-activation | 28 | A | a re-run of Stratum C at a given scalar type |
 | always-on conformance check | g-always-on-conformance-check | 0 | — | one type test of a stage return at the table-write point |
-| `Build` | g-build | 1 | B | the artifact `build(world)` produces: wires, faces, schedule, slots |
+| `Build` | g-build | 1 | B | the artifact `build(world)` produces: wires, faces, schedule, root inputs |
 | chunking | g-chunking | 2 | A | splitting a large phase body into statically typed chunks |
 | executable set | g-executable-set | 1 | A | the function set an activation can actually run, hence probes |
 | executor | g-executor | 10 | A | the compiled execution form of the schedule |
@@ -110,7 +110,7 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | measurement seam / phase bodies | g-measurement-seam | 2 | A | `phase_bodies(sim)`, the compiled bodies bound over the simulation's buffers |
 | nominal | g-nominal | 1 | A | the `Float64` activation, and a declaration's `Float64` face |
 | probe | g-probe | 19 | B | the build's single evaluation of a user function with real values |
-| probe value / input synthesis | g-probe-value | 2 | A | fabricated build-time values, synthesized at producerless root slots and flowing the probe chain |
+| probe value / input synthesis | g-probe-value | 2 | A | fabricated build-time values, synthesized at producerless root inputs and flowing the probe chain |
 | `ProbeDual` | g-probedual | 1 | B | the exported canonical concrete probe scalar |
 | schema vs. layout | g-schema-vs-layout | 0 | — | *(resists compression: the entry contrasts a pair)* |
 | stratum | g-stratum | 17 | A | one of the build's three phases: structure, schedule, activation |
@@ -131,7 +131,7 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | derived liveness | g-derived-liveness | 1 | A | widget liveness derived from the feed chain, never marked per port |
 | device | g-device | 36 | B | any attached participant in the periphery |
 | diagnostic cell | g-diagnostic-cell | 9 | A | the single-writer ring each writer owns for diagnostics and heartbeat |
-| drain | g-drain | 19 | A | the frame-top swap that publishes staged device inputs into the root slots |
+| drain | g-drain | 19 | A | the frame-top swap that publishes staged device writes into the root inputs |
 | framework status | g-framework-status | 5 | A | the frozen diagnostics value each snapshot carries beside the table |
 | greedy claim | g-greedy-claim | 3 | A | the unclaimed complement, computed by the framework instead of returned |
 | harness cell | g-harness-cell | 4 | A | the always-present staging cell of the harness register |
@@ -162,7 +162,7 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | replay | g-replay | 23 | B | the ordinary loop re-driven from the trace |
 | run metadata | g-run-metadata | 1 | B | the trace header's deployment block |
 | trace | g-trace | 27 | B | the primary record: drained, device-tagged batches per frame |
-| trace header | g-trace-header | 13 | B | the trace's preamble: initial stores, slot values, schemas, deployment |
+| trace header | g-trace-header | 13 | B | the trace's preamble: initial stores, root-input values, schemas, deployment |
 | trace record | g-trace-record | 0 | — | the retained form of a drained batch |
 | what-if register | g-what-if-register | 2 | A | replaying a trace against the same structure with changed parameters |
 
@@ -173,7 +173,7 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | `at` / `Scoped` | g-at | 1 | A | the scoping combinator storing a path prefix beside a node |
 | baseline | g-baseline | 3 | B | an aircraft-shipped, full-coverage condition function |
 | boundary zero | g-boundary-zero | 18 | A | the initialization boundary: the ordinary macro-sequence with an empty integrate |
-| capture | g-capture | 1 | A | reading the current stores and slots back as a condition |
+| capture | g-capture | 1 | A | reading the current stores and root inputs back as a condition |
 | component test rig | g-component-test-rig | 2 | B | a one-child assembly exporting the child's whole input face set |
 | condition | g-condition | 12 | A | the path-addressed sparse overlay that sets a build's state |
 | `design_world` | g-design_world | 1 | B | the shipped thin world that mounts an aircraft |
@@ -182,8 +182,8 @@ count of `](#g-…)` links to the anchor in chapters 1–16.
 | merge | g-merge | 1 | B | the symmetric, collision-intolerant combinator over condition nodes |
 | mounting | g-mounting | 2 | A | relocating a whole problem or tap set with `at(prefix, …)` |
 | override | g-override | 1 | B | the ordered, asymmetric layering combinator: the patch wins |
+| root-input totality | g-root-input-totality | 4 | A | the requirement that an application establishing a complete world cover every root input |
 | service lifecycle | g-service-lifecycle | 0 | — | the `Simulation` states and each service's legality against them |
-| slot totality | g-slot-totality | 4 | A | the requirement that an application establishing a complete world cover every root slot |
 | taps | g-taps | 3 | A | the three selector lists declaring what linearization seeds and reports |
 | `TrimProblem` | g-trimproblem | 1 | B | the closed seven-field value specifying a trim |
 
@@ -287,7 +287,7 @@ Appendix D grouping above.
 | capture | §14 |
 | condition | §8.2, §13.3, §13.5, §14.4, §14.5 |
 | mounting | §8.5, §14.4 |
-| slot totality | §14 |
+| root-input totality | §14 |
 | taps | §14.4, §14.10 |
 | did-you-mean | §5.2, §11.2, §12.7, §8.3, §8.4, §8.5, §9.1, §13.1, §13.2, §13.3, §14.3, §14.10 |
 | error locality | §8.1 |
