@@ -2186,6 +2186,8 @@ For an [assembly](#g-assembly) those are the faces declared through
 `input_types` keys directly, a leaf's faces being its own [port](#g-port) names
 ([§8.6][s8-6]); each is then its own consuming entry. The type derivation is one
 rule across both cases: the tight bound at the ultimate consuming entry, above.
+At the root the two contract declarations share one face namespace, so a key
+declared in both is a build error ([§8.6][s8-6]).
 
 Abstract-at-root is what the uniform doctrine does not relax. A leaf declaring an
 [abstract entry](#g-abstract-entry) (`terrain = AbstractTerrainField`) still cannot be
@@ -2461,7 +2463,10 @@ key segments included). The assembly's **boundary** is declared by two further m
 direction. **`input_connections(::A)`** is an ordered collection of pairs, face
 name => internal endpoint path — or a tuple of paths for an input face routed to
 several immediate children (fan-out through the boundary)
-(`"trn" => ("left/trn_field", "right/trn_field", …)`). **`output_connections(::A)`** runs the
+(`"trn" => ("left/trn_field", "right/trn_field", …)`). Every entry routes to
+**at least one** internal endpoint: an empty tuple is a declaration error, a
+face feeding nothing declaring nothing ([D-210][d-210]).
+**`output_connections(::A)`** runs the
 other way, internal source path => face name
 (`"aircraft/pose" => "view_pose"`), so that its pairs, like every other pair in
 the three declarations, read along the flow.
@@ -2473,6 +2478,16 @@ names. Every other naming choice (separators, grouping prefixes like
 `"pilot.throttle_axis"`) is author convention, not framework law. The
 `input_passthrough` helper's defaults ([§8.8][s8-8]) document the house style
 without legislating it.
+
+**At the root the uniqueness invariant follows the root's [class](#g-class)**
+([D-210][d-210]). A primitive root declares no boundary methods, so its face set is
+the union of its `input_types` and `output_types` keys, and a key declared in
+both is the same build error a duplicate face name is. The root is where those
+two declarations first share an address space: a
+[root input](#g-root-input) places a [cell](#g-cell) the [periphery](#g-periphery)
+writes ([§11.3][s11-3]), so a collision would put two cells at one name. Below the
+root nothing collides — a primitive's input faces alias their producers' cells
+and place nothing — and non-root leaves are left alone.
 
 The two-notation rule this rests on is directional — structure vs. derived
 contract, not read vs. write. **Slash is structure**: endpoint paths walking real children and
@@ -2965,10 +2980,11 @@ The `Build` is the
 inspectable derived contract of the instantiation [§8.8][s8-8] gestures at — wire list, face
 table, [schedule](#g-schedule), [root inputs](#g-root-input) as plain printable data.
 **The face table is two-sided.** Beside each level's output faces and their
-provenance it retains that level's *input* faces with the chain each routes
-through, down to the leaf entries consuming it — a total record, because
-one-level routing gives every signal a declared face at every boundary it
-crosses ([§6.1][s6-1], [D-207][d-207]). The input side is what a [fragment](#g-fragment)'s
+provenance it retains that level's *input* faces, each resolved producer-ward
+to the one feed its consumers share: a root input, or a producer inside the
+model. The record is total, because one-level routing gives every signal a
+declared face at every boundary it crosses ([§6.1][s6-1], [D-207][d-207]).
+The input side is what a [fragment](#g-fragment)'s
 `inputs` payload resolves against from any authoring level ([§14.2][s14-2],
 [§14.3][s14-3]). CI checks a model by
 calling `build`; the acceptance tests target `build` errors directly;
@@ -11042,6 +11058,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-207]: framework_decisions.md#d-207--route-every-connection-one-level-faces-are-the-only-cross-boundary-currency
 [d-208]: framework_decisions.md#d-208--root-inputs-are-the-root-components-input-faces-whatever-its-class
 [d-209]: framework_decisions.md#d-209--build-output_passthrough
+[d-210]: framework_decisions.md#d-210--tighten-the-input-boundary-class-uniform-face-uniqueness-and-no-empty-routing
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
