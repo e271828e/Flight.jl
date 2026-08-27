@@ -153,6 +153,16 @@ end
 child_connections(::SelfNamed) = ()
 transparent_container(::SelfNamed) = :kids
 
+struct Shadowed{K <: NamedTuple, U <: Tuple} <: AbstractComponent
+    kids::K                                      # ...and equal to a sibling *container's*
+    units::U                                     # — whose own children it would hide
+    trim::Gain
+end
+transparent_container(::Shadowed) = :kids
+child_connections(::Shadowed)  = ("trim/out" => "units/e",)
+input_connections(::Shadowed)  = ("in" => "trim/e",)
+output_connections(::Shadowed) = ("units/out" => "y",)
+
 struct OpaqueDeclared <: AbstractComponent       # the declaration names a component field
     c::TickCounter
 end
@@ -193,10 +203,35 @@ transparent_container(::AbsentDeclared) = :nope
                                            (TickCounter(),))))
     @test err isa BuildError && occursin("two children are named `units/1`", err.msg)
 
-    # The one ambiguity bare keys leave: an element keyed with its own field's
-    # name is indistinguishable from `sample_times`' field-name sugar (§8.7).
+    # The family's other two arms, both reachable only by a bare key and neither
+    # of them a duplicate *child* name, so the check above can see neither. An
+    # element keyed with its own field's name is indistinguishable from
+    # `sample_times`' field-name sugar (§8.7)...
     err = failure(() -> build(SelfNamed((kids = TickCounter(),))))
-    @test err isa BuildError && occursin("field-name sugar", err.msg)
+    @test err isa BuildError && occursin("the bare key `kids`", err.msg)
+    @test occursin("name-transparent container field `kids`, element `kids`", err.msg) &&
+          occursin("`sample_times`' field-name sugar", err.msg)
+
+    # ...and one equal to a sibling container field's name shadows the
+    # `"field/key"` grammar that reaches *its* children: no child bears the bare
+    # name, so nothing collides, yet `"units/1/e"` would resolve to the bare
+    # child and the one-level rejection would blame the wrong party (§6.1).
+    err = failure(() -> build(Shadowed((units = Gain(2.0),), (Gain(3.0),), Gain(3.0))))
+    @test err isa BuildError && occursin("the bare key `units`", err.msg)
+    @test occursin("name-transparent container field `kids`, element `units`", err.msg) &&
+          occursin("collides with container field `units`", err.msg)
+
+    # The exemption, on the same type one instantiation away: an *empty* sibling
+    # container reaches no children, so there is no grammar to shadow and the
+    # bare key stands. It has to be that way round — an empty `Tuple` is an empty
+    # container and empty inert data at once, so reserving its name would refuse
+    # over inert data, a false positive where no shadow exists. Legality is
+    # per-instantiation, as every wiring judgment already is.
+    sim = Simulation(Shadowed((units = Gain(2.0),), (), Gain(3.0)); h = 1//10)
+    @test sim.flat.paths == ["units", "trim"]          # the bare child, and nothing under it
+    init!(sim, fragment(inputs = (in = 1.0,)))
+    @test port(sim, "units", :out) === 6.0             # reads resolve `units` bare
+    @test port(sim, "", :y) === 6.0                    # and so does the wiring register
 
     # And the declaration must name a container field of the type — a component
     # field and an absent name are refused alike.

@@ -72,9 +72,13 @@ end
 # its elements are then contributed under their bare keys — `"key"`, `"1"` —
 # everywhere a child name appears. Naming is the only thing the declaration
 # changes: the elements are the parent's children exactly as before, in the same
-# declaration order, and the container keeps its transparency of contract. Two
-# checks pay for it: the declared symbol must name a container field, and no two
-# children may end up sharing a name.
+# declaration order, and the container keeps its transparency of contract. What
+# pays for it is one declaration check — the declared symbol must name a
+# container field — and a collision family in three arms: no two children may
+# end up sharing a name, and the two collisions a bare key reaches that no child
+# name can, its own field's name (which the rate declaration's sugar already
+# spells) and a sibling container field's name (whose `"field/key"` segment
+# grammar it would shadow).
 
 """`segment => instance` for every child of `c`, in field order."""
 children(path::String, c) = first(_children(path, c))
@@ -91,6 +95,20 @@ function _children(path::String, c)
     kids = Pair{String,Any}[]
     fields = Symbol[]
     prov = String[]                            # per child, who contributed it
+    # The sibling fields a bare key could shadow: those that currently contribute
+    # children, because the grammar a key shadows is the one that currently
+    # reaches something. An empty field reserves nothing, and it has to be that
+    # way round: an empty `Tuple` or `NamedTuple` is an empty container and empty
+    # inert parameter data at once — the value cannot tell them apart, and the
+    # walk below already treats them as one case — so reserving every empty
+    # field's name would refuse a bare key over inert data, a false positive
+    # where no shadow exists. Legality is then per-instantiation, which is the
+    # framework's norm: every wire is validated against the instance too.
+    # Collected before the walk, because the shadowed field may be declared
+    # after the transparent one.
+    shadowable = String[String(name) for name in fieldnames(typeof(c))
+                        if name !== tf && _is_container(getfield(c, name)) &&
+                           !isempty(getfield(c, name))]
     for name in fieldnames(typeof(c))
         v = getfield(c, name)
         if v isa AbstractComponent
@@ -107,19 +125,25 @@ function _children(path::String, c)
                                  "— a container holds components only (§8.5)"))
             bare = name === tf
             for k in keys(v)
-                # The one ambiguity bare keys leave: an element key equal to its
-                # own field's name would be indistinguishable from the rate
-                # declaration's field-name sugar. It joins the collision error
-                # below (§8.5, D-211).
+                p = "$(bare ? "name-transparent " : "")container field `$name`, element `$k`"
+                # The collision family's other two arms, both reachable only by a
+                # bare key and neither of them a duplicate *child* name, so
+                # `_check_child_names` below can see neither (§8.5, D-211).
                 bare && string(k) == string(name) &&
-                    throw(BuildError("$(_at(path)): the name-transparent container field " *
-                                     "`$name` holds an element keyed `$k` — a bare key equal " *
-                                     "to its own field's name collides with the `sample_times` " *
-                                     "field-name sugar (§8.5, D-211)"))
+                    throw(BuildError("$(_at(path)): the bare key `$k` — $p — collides with " *
+                                     "`sample_times`' field-name sugar, which spells one " *
+                                     "declaration for every element of `$name` under that " *
+                                     "same name (§8.5, §8.7, D-211)"))
+                bare && string(k) in shadowable &&
+                    throw(BuildError("$(_at(path)): the bare key `$k` — $p — collides with " *
+                                     "container field `$k`, whose own children are named " *
+                                     "`$k/<key>`: no child bears the bare name, but the " *
+                                     "segment grammar that reaches those children does, and " *
+                                     "the key shadows it — leaving them unreachable behind a " *
+                                     "diagnostic naming the wrong child (§8.5, §6.1, D-211)"))
                 push!(kids, (bare ? string(k) : string(name, "/", k)) => v[k])
                 push!(fields, name)
-                push!(prov, "$(bare ? "name-transparent " : "")container field `$name`, " *
-                            "element `$k`")
+                push!(prov, p)
             end
         end
     end
@@ -128,13 +152,15 @@ function _children(path::String, c)
     kids, fields
 end
 
+# The container form, the empty one included — it contributes zero children, and
+# parametric code then needs no special case (§8.5).
+_is_container(v) = (v isa NamedTuple || v isa Tuple) && all(e -> e isa AbstractComponent, v)
+
 # The declaration is checked after the walk, so a mixed container reports as one
 # rather than as a bad transparency declaration.
 function _check_transparent(path::String, c, tf)
     tf === nothing && return nothing
-    ok = tf in fieldnames(typeof(c)) && let v = getfield(c, tf)
-        (v isa NamedTuple || v isa Tuple) && all(e -> e isa AbstractComponent, v)
-    end
+    ok = tf in fieldnames(typeof(c)) && _is_container(getfield(c, tf))
     ok || throw(BuildError("$(_at(path)): `transparent_container` returns `:$tf`, which names " *
                            "no container field of `$(typeof(c))` — a name-transparent " *
                            "declaration names a `Tuple` or `NamedTuple` field whose elements " *

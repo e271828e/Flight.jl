@@ -380,15 +380,31 @@ defaulting to `nothing`: a component may name at most one of its container
 fields, and that field's elements are then contributed under their bare keys —
 `"key"`, `"1"` — in place of `"field/key"` and `"field/1"`. Naming is the only
 thing it changes, so the whole of it lives in `children`: the same fields in
-the same order, one branch on `name === tf` deciding the segment. Two checks
-pay for it. The declaration must name a container field of the type, validated
-*after* the field walk so that a mixed container still reports as one; and no
-two children may share a name — a check written generally over the collected
-list rather than over the transparent case, because bare keys only make the
-collision *reachable*, they do not define it. The message names both parties by
-provenance, and the general form catches the pathological cases (a bare key
-against a sibling field, against another container's composite name) in one
-place. `resolve_terminal`'s two-segment lookahead is untouched: it still serves
+the same order, one branch on `name === tf` deciding the segment. What pays for
+it is one declaration check and a collision family in three arms. The
+declaration must name a container field of the type, validated *after* the
+field walk so that a mixed container still reports as one. Then no two children
+may share a name — a check written generally over the collected list rather
+than over the transparent case, because bare keys only make the collision
+*reachable*, they do not define it, and the general form catches the
+pathological cases (a bare key against a sibling field, against another
+container's composite name) in one place. The family's other two arms sit where
+the bare key is formed, because no child name collides in either and the
+general check can see neither: an element keyed with its own field's name,
+which `sample_times`' field-name sugar already spells, and one keyed with a
+sibling *container* field's name **where that field contributes children**,
+which collides with no child yet shadows the `"field/key"` grammar reaching
+them — the review's find, spec'd as the §8.5 clause D-211 acquired: the elements
+stay in the flat list and become unreachable in the structural register, the
+exact-match-first lookup in `_one_level` answering with the bare child and the
+one-level rejection then blaming it rather than the shadowed container. The
+qualifier is load-bearing and was itself adjudicated: an *empty* container
+reaches nothing, so there is no grammar to shadow, and reserving its name anyway
+would refuse over empty *inert* data — an empty `Tuple` is both at once, the
+value cannot tell them apart, and the walk here already treats them as one case.
+That leaves legality per-instantiation, which is the framework's norm rather
+than an exception to it: every wire is validated against the instance too. All
+three arms name both parties by provenance. `resolve_terminal`'s two-segment lookahead is untouched: it still serves
 the undeclared containers, whose key segment D-211 leaves exactly as it was.
 
 The one place the rename reached past naming was the rate declaration's
@@ -949,13 +965,22 @@ Each of these is a spec claim rather than a programming convenience:
   flat list, the wiring endpoints, the read path and the exported face all land
   identically. The default is `nothing`, and `TupleRoster` sitting beside
   `TransparentRoster` in the same file is the control.
-- **The collision check is general; bare keys only make it reachable.** A bare
-  key against a sibling component field, and a bare key against another
-  container's composite name, are one error naming both parties by provenance.
-  The self-named case — an element keyed with its own field's name — is refused
-  where the bare key is formed, because that is the ambiguity §8.5 hands to the
-  same error. The declaration itself is checked too: a component field and an
-  absent name are refused alike.
+- **The collision family has three arms, and each names both parties.** The
+  duplicate-*name* check is the general one, written over the collected list
+  rather than over the transparent case: a bare key against a sibling component
+  field, and a bare key against another container's composite name, are one
+  error there. The other two arms exist because no child name collides at all,
+  so that check can see neither — an element keyed with its own field's name,
+  which `sample_times`' field-name sugar already spells, and one keyed with a
+  sibling *container* field's name **where that field contributes children**,
+  which shadows the `"field/key"` grammar reaching them. Both are refused where
+  the bare key is formed, in the same naming-both-parties form the general arm
+  uses. The qualifier is pinned by the same parametric type one instantiation
+  apart: populated, the bare key is refused; empty, it stands and both the
+  wiring register and the reads resolve it to the bare child — an empty
+  container reaches nothing, so nothing is shadowed, and the value cannot tell
+  it from empty inert data anyway. The declaration itself is checked too: a
+  component field and an absent name are refused alike.
 - **Bare rate keys drive the grid the composite ones did.** The same two
   children under the same two `sample_times` entries compile to the same
   `(D, Φ)` pairs whether the container is transparent (`a`, `b`) or not
@@ -965,9 +990,11 @@ Each of these is a spec claim rather than a programming convenience:
 - **A computed boundary is the authored one.** The assembly whose two boundary
   declarations are `input_passthrough`/`output_passthrough` calls and the twin
   that writes both out by hand produce equal declaration tuples, equal root
-  inputs, equal exported faces, equal flat lists and equal trajectories. The
-  helper is sugar, and the test is what says so: nothing downstream can tell
-  which of the two it was handed.
+  inputs, equal exported faces, equal flat lists, and equal port values at the
+  exported face after `init!`. The helper is sugar, and the test is what says
+  so: nothing downstream can tell which of the two it was handed. The twin is
+  stateless and never runs — a trajectory would pin nothing the boundary-zero
+  read does not.
 - **The helpers own two refusals and no more.** `except` and `only` together,
   and a filter naming a face the child does not have (with the child's face
   list in hand), are the helper's errors, because nothing downstream could name
