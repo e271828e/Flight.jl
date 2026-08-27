@@ -2348,7 +2348,11 @@ The edges of the container form are fixed by rule:
 
 `sample_times` needs no rule change. Element names are immediate child names,
 hence legal keys, and the bare field name is sugar for a uniform declaration
-across all elements.
+across all elements. The sugar keys on the *field*, not on a path segment, so
+a name-transparent container keeps it unchanged — `(children = Relative(2),)`
+is the uniform spelling for a `Group`. The one ambiguity this leaves, a
+transparent element's bare key equal to its own field's name, joins the
+bare-key collision error above.
 
 #### The builder is rejected
 
