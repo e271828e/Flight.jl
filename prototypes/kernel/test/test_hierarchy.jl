@@ -130,11 +130,11 @@ h_x(::PinnedLeaf, (; t)) = (a = t, frozen = 2.0)
 @testset "a pinned leaf lives in its own store (D-166, D-162)" begin
     # Nominally the pin and the activation scalar coincide: one buffer.
     sim = Simulation(single(PinnedLeaf()); h = 1//100)
-    @test keys(sim.exec.store.stores) === (Symbol(Float64),)
+    @test keys(sim.exec.store.stores) === (_cell_key(Float64),)
     # Off nominal the pin keeps a `Float64` buffer of its own beside the `Dual`
     # one, rather than being flattened into it as a zero-partial.
     sim = Simulation(single(PinnedLeaf()), D8; h = 1//100)
-    @test Set(keys(sim.exec.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
+    @test Set(keys(sim.exec.store.stores)) == Set([_cell_key(D8), _cell_key(Float64)])
     init!(sim)
     @test port(sim, "c", :a) isa D8
     @test port(sim, "c", :frozen) isa Float64
@@ -165,7 +165,7 @@ h_x(::PinnedInside, (; t)) = (out = PinnedPair(t, 2.0),)
     # The Int leaf beside T: mixed at every activation. The tag must come back
     # as a stored `Int`, not a converted double in the `T` buffer.
     sim = Simulation(single(MixedCell()); h = 1//100)
-    @test Set(keys(sim.exec.store.stores)) == Set([Symbol(Float64), Symbol(Int)])
+    @test Set(keys(sim.exec.store.stores)) == Set([_cell_key(Float64), _cell_key(Int)])
     init!(sim)
     out = port(sim, "c", :out)
     @test out isa TaggedValue{Float64} && out.n === 1
@@ -176,9 +176,9 @@ h_x(::PinnedInside, (; t)) = (out = PinnedPair(t, 2.0),)
     # (K = 1), mixed off it — same declaration, and at `Dual` the `T` half
     # walks while `ref` stays a pinned `Float64` in its own buffer.
     sim = Simulation(single(PinnedInside()); h = 1//100)
-    @test keys(sim.exec.store.stores) === (Symbol(Float64),)
+    @test keys(sim.exec.store.stores) === (_cell_key(Float64),)
     sim = Simulation(single(PinnedInside()), D8; h = 1//100)
-    @test Set(keys(sim.exec.store.stores)) == Set([Symbol(D8), Symbol(Float64)])
+    @test Set(keys(sim.exec.store.stores)) == Set([_cell_key(D8), _cell_key(Float64)])
     init!(sim)
     out = port(sim, "c", :out)
     @test out isa PinnedPair{D8}

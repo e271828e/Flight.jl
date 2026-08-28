@@ -32,6 +32,10 @@ struct Simulation{T,E,M}
     policy::RunPolicy             # the active advance's effective policy, bound per entry
     has_localized::Bool           # any localized event compiled in: the frame loop's fast-path key
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
+    D::Vector{Int}                # the bound entry data, per component (§9.7): the divisor,
+    Φ::Vector{Int}                # the offset and the period the executor compiles over —
+    Δt::Vector{Float64}           # retained so a service can compile an executor of its own
+    chunk_size::Int               # and unroll it exactly as this one was
     stepper::M                    # the seam's backend (§10.2), owning its own scratch
     xnext::Vector{T}              # the retained arrival pair (§10.4): xₙ₊₁ saved before trials clobber
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
@@ -150,6 +154,7 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         Int(localization_budget), Float64(join_timeout),
         t_end === nothing ? nothing : Float64(t_end), stop_faces, stop_addrs,
         RunPolicy(Symbol[], Any[], nothing), any(ex.events.localized), bound.sched,
+        bound.D, bound.Φ, bound.Δt, chunk_size,
         stepper, zeros(T, length(ex.xbuf)), zeros(T, length(ex.xbuf)),
         DataPlane(act.layout, ex.store), Published(nothing), Control(),
         SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)),

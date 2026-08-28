@@ -602,6 +602,78 @@ the write side and takes the same remedy: the store type is baked into the
 plan entry's own type and the assertion goes on the *reference*,
 `(ex.sstores[ci]::Base.RefValue{S})[] = v`.
 
+**Increment 21, part 4 — the trim service.** With both application registers,
+the compiled reader and `Executor{T}` in place, `trim!` turned out to be mostly
+the loop *between* them plus the vectorization at its edges. What it genuinely
+adds is the discipline §14.8 is about: the simulation's stores have exactly one
+writer, the commit through boundary zero. Every evaluation runs on executors
+the invocation instantiates from the build's cached layouts and drops on
+return, so "no convergence, no commit, the sim bit-for-bit untouched" is
+structural rather than promised — the tests assert it on a never-initialized
+simulation (still `built`, `run!` still refusing) and on an initialized one
+(every buffer equal to its pre-call copy), and neither assertion needed any
+code to defend it.
+
+D-213 is the part with real content, and it is invisible unless the fixture is
+chosen for it. The seeded activation freezes the discrete tier (§9.4), so
+nothing there can derive a discrete output cell from an authored `s`; without
+the ruling those cells hold the build probe's synthesized values for the whole
+solve. The fixture is a pendulum whose torque comes from a `DiscreteIntegrator`
+whose `acc` the *baseline* authors: the answer is `asin(acc/(g/l))` exactly when
+the scratch world's frozen cell holds the authored output, and `0` when it holds
+the probe's. Both halves fell out of machinery that already existed — the
+dynamic walk for the nominal set, `_round!(ex, ESTABLISH)` for the establishment
+round, and a value copy of the frozen components' output cells into the seeded
+set — which is the ruling's own argument for itself. Its other half, a decision
+variable authored *into* that frozen `s`, is refused by the seeded compile's own
+`ConditionResolution` and deliberately not folded into `TrimProblemInvalid`: the
+condition is what does not resolve, and the collected read-set violations *are*
+folded in, so the file now shows both dispositions side by side.
+
+The backend seam behaved exactly as §14.8 predicts, with one honest limit.
+`LevenbergMarquardt`'s `solve` is forty-odd lines — a damping loop, a small
+dense solve, the
+per-residual box test as its own stopping rule — and it converges the one-step
+linear problem in 3 iterations / 4 evaluations and the nonlinear one in 4 / 5,
+which is §14.7's "quadratic, ~5–15 evaluations" on a two-equation model. The
+limit is the *acceptance* test: it compares raw `norm(r)`, which is the "sums
+forces against moments" weakness §14.8 names for the derivative-free
+objective, transplanted onto the accept/reject decision. On a problem whose
+residuals differ by orders of magnitude in physical scale *and* whose box is
+active, the raw norm can reject every projected step and stall short of a point
+the box test would accept; the saturated-decision fixture is the one that ran
+into it, and it is posed one-decision (an actuator limit under a slack force
+balance) rather than two so that the property under test — converged, at a
+bound, with the bound named — is not hostage to that. The remedy, if it ever
+matters, is one line: accept on `norm(r ./ tol)`, the normalization §14.8
+already specifies for the fallback objective, moved onto the descent test.
+
+One trap cost an afternoon and is worth recording because it is invisible in
+the diff. The store bundle keys its per-eltype buffers by `Symbol(L)`, and
+`show` for a type abbreviates the module prefix when the type is *visible from
+the printing module* — which is not the same module inside a `@generated` body
+as it is in `compile`. Every scalar the prototype had used until now was tagged
+by something in `Base` (`Float64`, `Dual{Nothing,…}`), where the two spellings
+coincide. `TrimTag` is the service's own, declared where the prototype declares
+everything, and the bundle was built with a field named
+`ForwardDiff.Dual{TrimTag, Float64, 1}` while the generated gather looked up
+`ForwardDiff.Dual{Main.TrimTag, Float64, 1}` — a `FieldError` from inside
+`compile`, on the first `Dual` activation any service ever asks for. The fix is
+one shared `_cell_key(L)` printing with no module context at all, so both sites
+agree on the fully-qualified spelling; the three tests that named the old
+spelling were updated with it. Any user tag would have hit this, so it is a
+defect the increment found rather than one it caused.
+
+Two smaller choices, both "the simplest thing that does not foreclose". A guess
+outside its own box is not an error and is not clamped: `solve` is handed it as
+given, and §14.8's "box bounds are honored by step projection" pulls it in on
+the first step, which is the only statement the spec makes about the box. And
+`nevals`/`niters` in the report are the *backend's*, verbatim — the service's
+own verdict evaluation at the returned point is not counted, because §14.8 calls
+those counts "the backend's returned status together with its
+iteration/evaluation counts" and the verdict evaluation is noise against the
+solve by the same paragraph's argument.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -1225,6 +1297,83 @@ Each of these is a spec claim rather than a programming convenience:
   A decision variable authored into a discrete `s`, frozen `Float64` at every
   activation, is refused at resolution with the clause that says why, and the
   nominal activation's own refusals are unchanged.
+
+- **A trim problem solves, commits, and the commit is an `init!`.** The
+  one-step linear problem lands `u = (g/l)·sin θ` to its tolerance in four
+  evaluations, and afterwards the simulation is `initialized` at the `t₀` it
+  was given, with the authored attitude in its state and the solved torque in
+  the root-input cell. A twin `init!`ed by hand with `override(baseline,
+  condition(report.solution))` at the same anchor has identical buffers,
+  stores, root inputs and clock — the commit is not *like* an init, it is one.
+- **The nonlinear problem converges, and the box picks the branch.**
+  `−(g/l)·sin θ + u = 0` has two roots in `[0, π]`; the declared box admits
+  one, and the solve lands on it in four iterations, with the `Dual` decision
+  leaf and the held `Float64` leaf meeting inside one fragment payload —
+  §14.3's two converter arms in a single write.
+- **Names pair, order never does.** The same two-decision problem with both
+  bound spellings permuted *and* the tolerances permuted with them returns the
+  same solution bit for bit; only the residual NamedTuple's key order follows
+  the tolerances it was canonicalized to.
+- **No convergence, no commit, and nothing moves.** An infeasible balance
+  reports `converged == false` with the backend's status recorded and
+  `committed_residuals === nothing` — the absence of a commit, not a flag. On a
+  never-initialized simulation the lifecycle stays `built` and `run!` still
+  refuses; on an initialized one every buffer equals its pre-call copy.
+- **A saturated decision is named at the solution.** An actuator bound below
+  the equilibrium torque, under a force balance declared to a tolerance the
+  bound still meets, converges with `saturated == [(:u, :upper)]` and the
+  bound's own value committed. The same problem unbounded names nothing.
+- **The empty problem is the equilibrium probe.** `guess = (;)` bypasses the
+  solver outright — `status == :bypassed`, one evaluation, no iterations, no
+  seeded activation — and the nominal half's establishment round *is* the
+  evaluation. On an equilibrium baseline it converges and commits; on one that
+  is not, it answers no by the ordinary box test and leaves the sim `built`.
+- **The setup diagnostic collects, in two observable stages.** A bounds key-set
+  mismatch, an `Int` guess field and an unresolvable selector come back as one
+  `TrimProblemInvalid` naming all three, the read set's own `ReadResolution`
+  line kept verbatim inside it. The residual/tolerances key-set disagreement is
+  the one check only the guess evaluation can make (§14.7 says so), so it is
+  reported from there, in its own collected throw of the same kind. Every
+  refusal leaves the simulation untouched.
+- **An incomplete baseline is `UninitializedInputs` at setup.** Trim's
+  application to its own scratch stores is one of §14.6's three sites, and
+  coverage is a plan-level fact: the check runs before any evaluation, names
+  the uncovered face, and names `trim!` as the operation.
+- **The scratch world's frozen cells are the authored world's (D-213).** With
+  the pendulum's torque arriving from a discrete producer whose `s` the
+  baseline authors, the solution is `asin(acc/(g/l))` — reachable only if the
+  seeded world's frozen cell holds what that `s` publishes; the probe's
+  synthesized zero would put it at `0`. Changing the authored `acc` moves the
+  solution with it, which is what makes the copy load-bearing rather than
+  incidental. And a decision variable authored *into* that frozen `s` is
+  refused by the seeded compile's own `ConditionResolution`, with the
+  frozen/pinned clause, before anything is written.
+- **The commit is an ordinary boundary zero, and its movers are reported.** A
+  guard the solved attitude already holds fires at `t₀` — derived, not asserted
+  — and the report carries `[("trig", :fire)]` beside a `TrimCommitEvents`
+  warning. A handler that only writes modes moves no residual, so the
+  committed-state numbers are still the solved ones.
+- **A residual mover shows in the committed-state residuals.** A handler that
+  resets the solved attitude raises both warnings, in order, and
+  `committed_residuals.torque` is the residual at the *reset* point, not the
+  solved one. The verdict is not re-litigated: it gated the commit at the
+  solved point, and both sets of numbers stand as reported.
+- **A warm restart is `capture` handed back.** `run!`, then `(c, t) =
+  capture(sim)`, then `trim!(sim, problem; baseline = c, t₀ = t)` commits with
+  the clock at `t` — the resumed spelling §14.8 names, with continuity explicit
+  rather than implied.
+- **The per-iteration write and read are free.** At the service's own seeded
+  scalar, `apply!(ex, plan, tree)` and `gather(reader, ex)` both measure zero
+  allocations, and one seeded pass yields the residual value and its Jacobian
+  column together (`value` and `partials` of the same gathered leaf). The
+  residual lambda is the user's and is not gated; building the tree is not
+  free either, for the `at`-prefix reason increment 21's part 3 records.
+- **`trim!` is a stopped-sim service on a nominal deployment.** A
+  `Simulation{D8}` is refused outright — the commit runs through boundary zero
+  on the simulation's own stores, and those are the nominal world's — a
+  non-problem value gets a directive rather than a `MethodError`, and `running`
+  is the §11.3 freeze, refused as `ServiceLifecycle` exactly as `init!` and
+  `capture` are.
 
 ## Stand-in retirement history
 

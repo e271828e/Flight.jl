@@ -770,7 +770,7 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
     mstores = Any[isempty(init_m(c)) ? nothing : Ref(init_m(c)) for c in flat.comps]
     wss = _workspaces(flat, tiers, T)
 
-    store = StoreBundle(NamedTuple{tuple((Symbol(L) for (L, _) in layout.sizes)...)}(
+    store = StoreBundle(NamedTuple{tuple((_cell_key(L) for (L, _) in layout.sizes)...)}(
         tuple((CellStore(zeros(L, n)) for (L, n) in layout.sizes)...)))
 
     x_offs, nx = Int[], 0

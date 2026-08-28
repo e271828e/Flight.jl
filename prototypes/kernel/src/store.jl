@@ -30,9 +30,18 @@ struct StoreBundle{NT<:NamedTuple}
     stores::NT
 end
 
+# The bundle's field name for one leaf eltype. `Symbol(L)` will not do: `show`
+# for a type abbreviates the module prefix when the type is visible from the
+# *printing* module, and the module a `@generated` body prints from is not the
+# one `compile` prints from — so a scalar tagged by a type outside `Base` (a
+# service's own seeding tag, §9.4) keys the bundle one way at construction and
+# is looked up another way at the gather. Printing with no module context at all
+# fixes one fully-qualified spelling for every site.
+_cell_key(::Type{L}) where {L} = Symbol(sprint(show, L; context = :module => nothing))
+
 @generated function gather(b::StoreBundle, a::CellAddr{P,K}) where {P,K}
     Ls = leaf_eltypes(P)
-    binds = [:($(Symbol(:buf, k)) = getfield(b.stores, $(QuoteNode(Symbol(L)))).buf)
+    binds = [:($(Symbol(:buf, k)) = getfield(b.stores, $(QuoteNode(_cell_key(L)))).buf)
              for (k, L) in enumerate(Ls)]
     expr = _mreconstruct_expr(P, Ls, zeros(Int, K))
     quote
@@ -45,7 +54,7 @@ end
 
 @generated function scatter!(b::StoreBundle, a::CellAddr{P,K}, v) where {P,K}
     Ls = leaf_eltypes(P)
-    binds = [:($(Symbol(:buf, k)) = getfield(b.stores, $(QuoteNode(Symbol(L)))).buf)
+    binds = [:($(Symbol(:buf, k)) = getfield(b.stores, $(QuoteNode(_cell_key(L)))).buf)
              for (k, L) in enumerate(Ls)]
     block = _mflatten_expr(P, :v, Ls, zeros(Int, K))
     quote

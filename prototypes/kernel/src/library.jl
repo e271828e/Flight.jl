@@ -754,3 +754,28 @@ Readout(; sel...) = Readout(NamedTuple(sel))
 is_output(::Readout) = true
 reads(b::Readout) = b.r
 map_output(nt, ::Readout) = nt
+
+# --- the trim coverage set (§14.7) ----------------------------------------------
+# One nonlinear continuous component with a torque input, which is the smallest
+# thing a trim problem can be posed on: a decision reaching it through a root
+# input or through its own authored state, a residual read off `ẋ`, and a
+# solution that is analytic in both directions (`u = g/l·sin θ` one way,
+# `θ = asin(u·l/g)` the other, the box picking the branch).
+
+"""Damped pendulum under a torque input: θ̈ = −(g/l)·sin θ − c·θ̇ + u."""
+struct Pendulum <: AbstractComponent
+    g_l::Float64
+    c::Float64
+end
+
+Pendulum(; g_l = 9.81, c = 0.5) = Pendulum(g_l, c)
+
+init_x(::Pendulum) = (θ = 0.0, ω = 0.0)
+input_types(::Pendulum, ::Type{T}) where {T <: Real} = (u = T,)
+output_types(::Pendulum, ::Type{T}) where {T <: Real} = (θ = T, ω = T)
+
+h_x(::Pendulum, (; x)) = (θ = x.θ, ω = x.ω)
+f(c::Pendulum, (; x, u)) = (θ = x.ω, ω = -c.g_l * sin(x.θ) - c.c * x.ω + u.u)
+
+"""The pendulum's own vocabulary, in the fragment-function idiom (§14.2)."""
+condition(::Pendulum; θ = 0.0, ω = 0.0) = fragment(x = (θ = θ, ω = ω))

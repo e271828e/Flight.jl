@@ -69,8 +69,11 @@ end
     @test modes(sim, "moded") === (phase = :idle,)
 
     # `Int` and `Bool` cells force their own buffers — the plural in
-    # "per-eltype stores", first exercised here.
-    @test Set(keys(sim.exec.store.stores)) == Set([Symbol(Int), Symbol(Bool), Symbol(Float64)])
+    # "per-eltype stores", first exercised here. The field names are the
+    # eltypes' fully-qualified spellings (`_cell_key`), which is the one
+    # spelling a `@generated` gather and a plain `compile` agree on.
+    @test Set(keys(sim.exec.store.stores)) ==
+          Set([_cell_key(Int), _cell_key(Bool), _cell_key(Float64)])
 
     init!(sim)
     @test state(sim, "counter") === (n = 1,)   # boundary zero is a tick
