@@ -485,3 +485,78 @@ function apply!(ex::Executor, plan::ConditionPlan)
 end
 
 apply!(sim::Simulation, plan::ConditionPlan) = apply!(sim.exec, plan)
+
+# --- capture: the gather twin of the application register (§14.1, §14.10) -------
+
+"""
+    capture(sim) → (condition, t)
+
+Read the current committed stores **and root inputs** back as a condition value
+(§14.1, glossary): every component's `x` field by field, every discrete `s`,
+every mode store and every root input, as one `combine` of per-component
+fragments plus the root-input fragment. The pair is capture → tweak → apply:
+`init!(sim, c; t₀ = t)` re-establishes exactly the world that was read, and a
+`trim!` resumes from it as `trim!(sim, problem; baseline = c, t₀ = t)`
+(§14.8).
+
+Root-input coverage is what makes the captured condition **total**, hence
+re-applicable under §14.6 — a capture is by construction the one condition that
+never needs a baseline under it. The condition is time-free: `t` rides beside
+it, because time is not a store of any component (§14.5), and it is passed back
+as the `t₀` argument.
+
+Legal in `initialized` and `stopped`, the states whose stores are committed and
+boundary-consistent. A `built` simulation has no such stores yet — boundary
+zero has never run — and `running` and `errored` are the ordinary service
+refusals (§14, §11.3, §13.6); all four are one `ServiceLifecycle`.
+
+Re-applying reproduces the captured world bit for bit, with one caveat that is
+boundary zero's rather than capture's: the re-application runs the sequence
+(§14.5), so `project` and any guard already holding in the captured state fire
+again there — which is exactly what makes a warm restart a *fresh run from
+these values* rather than a resumption.
+"""
+function capture(sim::Simulation{T}) where {T}
+    lc = lifecycle(sim)
+    lc === :running && throw(BuildError(
+        "ServiceLifecycle: `capture` is a stopped-sim operation and the simulation " *
+        "is running — the loop owns the stores between drains (§11.3, §14)"))
+    lc === :errored && throw(BuildError(
+        "ServiceLifecycle: this simulation ended `errored` — terminally stopped; " *
+        "post-mortem inspection of its stores stays a diagnostic read, and may not " *
+        "become a condition value (§13.6, §14)"))
+    lc === :built && throw(BuildError(
+        "ServiceLifecycle: `capture` reads committed, boundary-consistent stores, and " *
+        "this simulation has never been initialized — `capture` is legal in " *
+        "`initialized` and `stopped` (§14, §12.6)"))
+    ex, flat, tiers = sim.exec, sim.build.flat, sim.build.tiers
+    act = activation(sim.build, T)
+    offs = _x_offsets(act.decls, tiers)
+    nodes = ConditionNode[]
+    for ci in eachindex(flat.comps)
+        d = act.decls[ci]
+        payload = NamedTuple()
+        tiers[ci] === CONTINUOUS && !isempty(d.x) &&
+            (payload = merge(payload, (x = _capture_x(d.x, ex.xbuf, offs[ci]),)))
+        ex.sstores[ci] === nothing || (payload = merge(payload, (s = ex.sstores[ci][],)))
+        ex.mstores[ci] === nothing || (payload = merge(payload, (m = ex.mstores[ci][],)))
+        isempty(payload) && continue
+        push!(nodes, at(flat.paths[ci], fragment(; payload...)))
+    end
+    isempty(flat.root_inputs) || push!(nodes, fragment(inputs =
+        NamedTuple{Tuple(flat.root_inputs)}(Tuple(gather(ex.store, act.layout.addr[("", f)])
+                                                  for f in flat.root_inputs))))
+    (combine(nodes...), ex.clock.t)
+end
+
+# One component's `x` payload, field by field: the flat buffer is read through
+# the same declaration walk the plan writes through, so what comes back is
+# exactly what goes in (§7.1).
+function _capture_x(x::NamedTuple, buf::Vector, base::Int)
+    off, vals = base, Any[]
+    for v in values(x)
+        push!(vals, reconstruct(typeof(v), buf, off))
+        off += nleaves(typeof(v))
+    end
+    NamedTuple{keys(x)}(Tuple(vals))
+end

@@ -491,6 +491,60 @@ invisible in the diff: naming the local `evset` was forced, because a local
 named `events` inside `compile` shadows the `events(c)` declaration accessor
 the same function calls, and the model then fails to build at all.
 
+**Increment 21, part 2 — the read side, and `capture`.** §14.4's read-selector
+family was already half-built: increment 15 gave the output binding
+`get_output`/`get_input`/`get_face` as deferred-read values, because a binding
+needed them. The two store members close the family, and closing it moved it:
+the five selectors, `reads(…)` as the labeled set in one type, and the compiled
+`Reader` now live in `src/readers.jl`, which is included *above* the data
+plane — the binding register is a client of the family, not its owner, and its
+`_resolve_read` methods dispatch on selector types that therefore have to exist
+by then. What readers.jl needs from the condition algebra in the other
+direction — the `x`-offset walk, the "is this path a level of the build at all"
+predicate — it calls at resolution time, long after conditions.jl has been read,
+which is the ordinary late-binding this file layout already relies on
+(`init!` calls `resolve_condition` the same way).
+
+The reader is `apply!`'s **gather twin** in the literal sense: one entry per
+selector, its leaf type baked into the entry's own type, and a `map` over the
+entry tuple that the compiler unrolls into the four reads a model can offer —
+an `xbuf` offset, the `ẋbuf` offset beside it (`ẋ` has `x`'s shape at the
+activation scalar, so the derivative of a field sits at the field's own
+offset), a discrete store's index and field, and a cell address. One trap is
+worth recording. The `s` stores are held in a `Vector{Any}`, so the read needs
+a type assertion to stay inferable — and the assertion has to go on the
+*reference*: `ex.sstores[ci][]::S` infers correctly and still allocates 16
+bytes per read, because the `[]` on an `Any` is a dynamic call that boxes its
+return before the assertion sees it. `(ex.sstores[ci]::Base.RefValue{S})[]`
+measures zero.
+
+Closing the family also made §14.4's **source rule** enforceable for the first
+time: the store selectors resolve only against live stores, and a binding reads
+a published snapshot, which carries none — so `get_state` in a binding's
+`reads` is now `ReadBindingUnresolved` at attach, with the honest remedy
+named, where before it could not be spelled at all. `capture` sits at the end
+of `conditions.jl` rather than in readers.jl: it reads stores directly rather
+than through selectors, it builds a condition tree out of `fragment`/`at`/
+`combine`, and it is the gather twin of the `apply!` it now follows in the
+file. Its round trip has one caveat that belongs to boundary zero rather than
+to capture, and the test fixture is built around it: re-applying a captured
+condition runs the §14.5 sequence, so `project` and any guard already holding
+fire again — and so does a *due* `g`, the outgoing transition of §14.5's
+table. A bit-for-bit round trip is a claim about the establishment, not about
+a `g` that would run a second time, so the fixture holds the integrator's
+input at zero and the claim stands undiluted.
+
+Two names had to move. `Reader` was taken by a coverage binding in
+`test_roster.jl` (`struct Reader <: AbstractBinding`), and since every file
+here is included into `Main`, the test's definition silently replaced the
+framework type before `test_readers.jl` ran; the binding is now `Unwritten`,
+which is what it was for. And the collected refusals lead with
+`ReadResolution`, a kind name Appendix C does not carry — the section's own
+spelling for an unresolved read is `TrimProblemInvalid` where trim owns the
+setup and `TapResolution` where linearization does, so the standalone
+`compile_reads` needed a name of its own, and its collecting half is factored
+apart from the throw exactly so trim can fold the same list into its kind.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -1045,6 +1099,42 @@ Each of these is a spec claim rather than a programming convenience:
   the activation it was materialized from. `evaluate!(sim)` and
   `evaluate!(sim.exec)` leave the same derivative buffer, and the executor form
   allocates nothing — the `Simulation` method is a spelling, not a layer.
+
+- **Five selectors, one address space, both activations.** Each member reads
+  exactly what it names off an executor — the whole `x` leaf out of `xbuf`, the
+  discrete `s` out of the component's own store, `f`'s output out of `ẋbuf`, a
+  port's cell, a root input's cell, and an exported face's producer cell, the
+  face reading identically to the port it aliases — and `i` indexes the read
+  value. At `D8` the leaf types are the activation's throughout, while the
+  frozen discrete store stays pinned `Float64` (§9.4, D-166): the same read set
+  compiles at both scalars and the test runs it at both.
+- **The gather twin costs nothing.** `gather(reader, executor)` allocates zero
+  and infers a concrete NamedTuple, which is what makes a per-iteration read
+  free against the sweep it follows. The empty read set gathers `(;)` — a
+  service with nothing to read pays a no-op, not a special case.
+- **One call, every violation.** A misspelled path, an undeclared port, a
+  `get_deriv` on a discrete `s` and an unknown root face come back as one
+  refusal naming all four, each by its own label and its selector as authored;
+  a second call collects the assembly path, a root input read as a face, an
+  index on a scalar leaf and an undeclared state field. §13.1's register, one
+  register over from the condition algebra's.
+- **A read set is a type, not a NamedTuple.** The bare spelling is refused with
+  the directive `combine` gives for its own misuse, and a non-selector value in
+  a `reads(…)` call is refused where it is written.
+- **The source rule is enforced where the source is known.** A store selector
+  in a binding's `reads` is `ReadBindingUnresolved` at attach, naming the
+  remedy (declare the field public, read the published port); so is an indexed
+  selector, the binding register reading whole cells. Both rejections leave the
+  roster untouched, like every other attach refusal.
+- **`capture` is the door back out, and it is total.** The captured pair
+  re-establishes the world it was read from — `xbuf`, every `s` and `m` store,
+  every root input cell and the clock — through an ordinary `init!` on a twin,
+  at boundary zero and again after a trajectory; its coverage is the build's
+  root inputs exactly, so nothing lies under it and §14.6's check passes by
+  construction. The condition is time-free and `t` rides beside it, which is
+  what `t₀ = t` spends. Legality is the §14 table's: `initialized` and
+  `stopped`, with `built` refused for want of committed stores and `running`
+  refused by the §11.3 freeze, all as one `ServiceLifecycle`.
 
 ## Stand-in retirement history
 

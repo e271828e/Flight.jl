@@ -95,42 +95,16 @@ end
 
 # --- the output side: selectors, resolution, the compiled gather (§14.4, §11.2) --
 
-"""
-The table members of §14.4's read-selector family: `get_output(path, name)`,
-`get_input(face)` and `get_face(name)` — one address space for every reader of
-the model. A selector is a *deferred read*, a value describing the read the
-compiled gather will perform; the `get_` prefix names that action and keeps
-the short nouns out of the namespace user declarations share. The store
-selectors (`get_state`, `get_deriv`) are absent with the stores' clients
-(README): a snapshot-bound reader could never resolve them (§14.4's source
-rule), and no other reader exists here. Sub-port field and index addressing
-(`get_output(path, field, i)`) is absent depth — a selector here reads whole
-cells, as every reader of the table does.
-
-`get_output` is the *inspection* register — deep paths, zero promises, free
-access, right for looking at *this* build — and `get_face` the *integration*
-register: a root-exported output face, named, curated, meaning-stable under
-substitution (§11.2). `get_input` reads a root input back, the source
-cell it is. Only cells are addressable: there is no selector for a value a
-component computes without declaring, and the remedy is the same at every
-register — the component exports it.
-"""
-struct GetOutput
-    path::String
-    name::Symbol
-end
-struct GetInput
-    face::Symbol
-end
-struct GetFace
-    name::Symbol
-end
-get_output(path::AbstractString, name::Union{Symbol,AbstractString}) =
-    GetOutput(String(path), Symbol(name))
-get_input(face::Union{Symbol,AbstractString}) = GetInput(Symbol(face))
-get_face(name::Union{Symbol,AbstractString}) = GetFace(Symbol(name))
-
-const ReadSelector = Union{GetOutput,GetInput,GetFace}
+# The selectors themselves are §14.4's closed family, declared in readers.jl
+# above this file: the three *table* members are what a snapshot-bound reader
+# may name, and the source rule is enforced here, at the attach point where the
+# source is finally known (§14.4). `get_output` is the inspection register —
+# deep paths, zero promises, free access, right for looking at *this* build —
+# and `get_face` the integration register: a root-exported output face, named,
+# curated, meaning-stable under substitution (§11.2). `get_input` reads a root
+# input back, the source cell it is. What this register does not take is depth
+# *inside* a cell: a binding read is a whole cell, as every reader of the
+# published table is (README).
 
 """
 The compiled gather (§11.2, §14.4): one attachment's `reads`, resolved and
@@ -171,7 +145,20 @@ end
 
 _root_input_names(layout::Layout) = Symbol[f for (f, _) in layout.root_inputs]
 
+# §14.4's source rule, enforced where the source is known: a snapshot carries
+# no state stores by construction (§11.2) and `ẋ` is integrator scratch, so a
+# snapshot-bound reader naming a store selector is a resolution error at
+# attach — in the didactic register, with the remedy named.
+_resolve_read(::Layout, s::StoreSelector, T::Type) = throw(BuildError(
+    "ReadBindingUnresolved: $T reads $(_spell(s)), a *store* selector — the store " *
+    "selectors resolve only against live stores, and a binding reads a published " *
+    "snapshot, which deliberately carries none (§14.4, §11.2). The remedy is to " *
+    "declare the field public and read the port published from it"))
+
 function _resolve_read(layout::Layout, s::GetOutput, T::Type)
+    s.i === nothing || throw(BuildError(
+        "ReadBindingUnresolved: $T reads $(_spell(s)) — a binding read is a whole cell, " *
+        "and sub-cell index addressing is absent in this register (§14.4, README)"))
     haskey(layout.addr, (s.path, s.name)) || throw(BuildError(
         "ReadBindingUnresolved: $T reads get_output(\"$(s.path)\", :$(s.name)), which " *
         "names no cell — only declared outputs, assembly faces and root inputs are " *

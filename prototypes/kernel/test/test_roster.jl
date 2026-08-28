@@ -23,8 +23,8 @@ struct Drifted <: AbstractBinding end                # `claims` under a false `i
 is_output(::Drifted) = true
 claims(::Drifted) = ("a",)
 
-struct Reader <: AbstractBinding end                 # output side only: absent here
-is_output(::Reader) = true
+struct Unwritten <: AbstractBinding end              # output side only: absent here
+is_output(::Unwritten) = true
 
 @testset "the binding conformance check names every drift at the attach point (§11.6)" begin
     sim = Simulation(two_root_inputs(); h = 1//10)
@@ -41,7 +41,7 @@ is_output(::Reader) = true
     # The output side is an absence, not a conformance drift, and it is named
     # *after* the conformance clauses — which is why Drifted above reported its
     # drift rather than falling through to this.
-    err = failure(() -> attach!(sim, d, Reader()))
+    err = failure(() -> attach!(sim, d, Unwritten()))
     @test err isa BuildError && occursin("output side", err.msg)
     @test isempty(sim.plane.roster)                  # none of the six was rostered
 end
