@@ -8257,6 +8257,24 @@ every root input is written before any read. An incomplete `baseline` is one
 declaration-ordered `UninitializedInputs` at setup rather than a whole solve
 against undefined [cells](#g-cell).
 
+**The frozen cells are established, not probe-seeded.** At the seeded activation the
+discrete [tier](#g-tier) is frozen ([§9.4][s9-4]): its stages never run there, so nothing at that
+activation can derive a discrete output cell from the authored `s`. Setup
+therefore instantiates the [scratch](#g-scratch) set in two halves. A [nominal](#g-nominal) set takes the
+composite first, by the dynamic walk ([§14.4][s14-4]), and runs one establishment round —
+boundary zero's sweep with every discrete output stage admitted, due or not
+([D-205][d-205]), with no [projection](#g-projection), no [guards](#g-guard) and no `g`. The seeded set is then
+written by the specialized register, and its frozen cells are copied from the
+nominal set as zero-partial constants (the embedding of [§14.3][s14-3]). Every cell the
+iterations read is thus derived from the authored world: a frozen cell holds
+what the authored discrete state publishes, "held at the operating point" made
+literal, and no scratch cell holds the [probe](#g-probe)'s synthesized values — the [§14.6][s14-6]
+barrier reaching the scratch world as [D-205][d-205] made it reach the published one. The
+iterations are untouched: raw write → sweep → read cycles at the seeded
+activation, the continuous chain and `f` alone ([§14.5][s14-5]). The zero-decision
+problem (below) is the nominal half alone; its one evaluation is that
+establishment round. ([D-213][d-213])
+
 The commit applies the same composite over the same `baseline`
 (`override(baseline, condition(d*))`, [§14.9][s14-9]), so its coverage is
 setup's. Commit's totality check is therefore structurally unfailable through
@@ -10247,6 +10265,14 @@ an assembly's `input_connections` key, a primitive's `input_types` key —
 produced by no component, constant within a frame, and the only thing the
 periphery may write ([§11.3][s11-3], [§8.2][s8-2], [§8.6][s8-6]).
 
+<a id="g-scratch"></a>**scratch** — mutable working storage whose contents are never authoritative: no
+boundary-consistent fact of the simulation is read from it. Three kinds: a
+component's workspace (`ws`, [§7.3][s7-3]); the integrator's buffers and the mid-step
+table ([§7.5][s7-5], [§10.4][s10-4]); and the store set a service invocation instantiates from
+the activation's layout and discards with the call ([§9.2][s9-2], [§14.8][s14-8]). Not to be
+confused with the simulation's own buffer set, which has the same shape and is
+the authoritative one — scratch names the role, not the type.
+
 <a id="g-signal-table"></a>**signal table** — the framework-owned collection of cells holding every
 produced signal of the flattened model; consumers gather views from it, and
 its consistency is a boundary property, transiently integrator scratch within
@@ -11106,6 +11132,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-210]: framework_decisions.md#d-210--tighten-the-input-boundary-class-uniform-face-uniqueness-and-no-empty-routing
 [d-211]: framework_decisions.md#d-211--let-a-component-declare-one-container-name-transparent
 [d-212]: framework_decisions.md#d-212--refuse-the-transparent-bare-key-that-shadows-a-sibling-container-field
+[d-213]: framework_decisions.md#d-213--establish-a-services-frozen-cells-from-the-authored-discrete-state
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop

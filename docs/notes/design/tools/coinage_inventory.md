@@ -48,6 +48,7 @@ context wants.
 |---|---|---|
 | handler return law | 3 | §5.2; never defined in glossary prose |
 | termination record | 13 | defined in §13.5; also §11.8, §12.1, §12.4, §12.6, §13.2, §13.6 and Appendix C |
+| scratch | 45 | promoted to an Appendix D entry (`g-scratch`) with D-213; bucket A from here on |
 
 The handler return law is a §5.2 hand-off law, sibling of the bundle law
 (bucket B). Settled the third way: it got its own `####` sub-heading in §5.2,
