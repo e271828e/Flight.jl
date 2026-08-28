@@ -81,6 +81,12 @@ condition(::Snapback; θ = 0.0, ω = 0.0) = fragment(x = (θ = θ, ω = ω))
 snap_decide_u(d) = combine(at("c", condition(Snapback(0.3); θ = 0.5)),
                            fragment(inputs = (in = d.u,)))
 
+# §14.7's residual return has two observation points, because a lambda may
+# answer differently at each: the nominal guess evaluation runs at `Float64`
+# and the first seeded one at `Dual`, and this one branches on the scalar it is
+# handed — user machinery no shape check can anticipate.
+eltype_split(r, d) = r.ω̇ isa Float64 ? (torque = r.ω̇,) : (wrong = r.ω̇,)
+
 @testset "a one-step linear problem solves, commits and reads back (§14.7, §14.8)" begin
     sim = Simulation(fed(Pendulum(), :u); h = 1//10)
     report = trim!(sim, u_problem(); baseline = pend_base(), t₀ = 0.25)
@@ -257,6 +263,83 @@ end
     @test occursin("`tolerances` field(s) `torque`::Int64", e3.msg)
     @test occursin("`reads` is", e3.msg) && occursin("reads(", e3.msg)
     @test world(sim) == before
+
+    # An inverted box admits no point at all, and the collecting pass says so
+    # per decision, with both values in hand — before the projection at the
+    # pack site could quietly answer the upper bound instead.
+    e4 = failure(() -> trim!(sim, TrimProblem(
+        guess = (θ = 0.1, u = 0.0), lower = (θ = -π/2, u = 1.0),
+        upper = (θ = π/2, u = -1.0), condition = decide_both, reads = both_reads(),
+        residuals = both_residuals, tolerances = (torque = 1e-9, hold = 1e-9));
+        baseline = pend_base()))
+    @test e4 isa BuildError && startswith(e4.msg, "TrimProblemInvalid:")
+    @test occursin("1 violation ", e4.msg)
+    @test occursin("`lower` names `u` = 1.0 above `upper`'s -1.0", e4.msg)
+    @test occursin("an inverted pair admits no point at all", e4.msg)
+    @test world(sim) == before
+
+    # A tolerance is the half-width of a box, so zero and negative name no box
+    # at all — and the normalized acceptance test divides by them, which would
+    # otherwise reject every trial step and stall the solve at the guess. Both
+    # named in one throw.
+    e5 = failure(() -> trim!(sim, TrimProblem(
+        guess = (θ = 0.1, u = 0.0), lower = (θ = -π/2, u = -Inf),
+        upper = (θ = π/2, u = Inf), condition = decide_both, reads = both_reads(),
+        residuals = both_residuals, tolerances = (torque = 0.0, hold = -1e-9));
+        baseline = pend_base()))
+    @test e5 isa BuildError && startswith(e5.msg, "TrimProblemInvalid:")
+    @test occursin("2 violations", e5.msg)
+    @test occursin("`tolerances` names `torque` = 0.0", e5.msg)
+    @test occursin("`tolerances` names `hold` = -1.0e-9", e5.msg)
+    @test occursin("finite and strictly positive", e5.msg)
+    @test world(sim) == before
+end
+
+@testset "the box is honored at every point the backend returns (§14.8, D-070)" begin
+    # The guess is projected at the pack site, so the point the backend starts
+    # from already lies in the box — including the two returns that never step,
+    # the already-within-tolerance one and a stall at the first iteration.
+    # Without it an out-of-box guess commits as converged with `saturated`
+    # empty, sitting at no bound because it is outside both.
+    outside = TrimProblem(guess = (u = 100.0,), lower = (u = -1.0,), upper = (u = 1.0,),
+                          condition = decide_u, reads = torque_reads(),
+                          residuals = torque_only, tolerances = (torque = 10.0,))
+    sim = Simulation(fed(Pendulum(), :u); h = 1//10)
+    report = trim!(sim, outside; baseline = pend_base())
+
+    @test report.converged                            # the box point meets the loose tolerance
+    @test report.solution.u === 1.0                   # projected, not the 100.0 it was given
+    @test report.saturated == [(:u, :upper)]          # and honestly named as saturated
+    @test port(sim, "", :in) === 1.0                  # the committed root input is the box's
+
+    # A degenerate box pins the decision outright: `lower == upper`, and the
+    # projected guess is that one point. `_saturated` tests `lower` first, so a
+    # point that is both bounds is reported as `:lower`.
+    degenerate = TrimProblem(guess = (u = 0.0,), lower = (u = 2.0,), upper = (u = 2.0,),
+                             condition = decide_u, reads = torque_reads(),
+                             residuals = torque_only, tolerances = (torque = 10.0,))
+    pinned = Simulation(fed(Pendulum(), :u); h = 1//10)
+    r2 = trim!(pinned, degenerate; baseline = pend_base())
+    @test r2.converged && r2.solution.u === 2.0
+    @test r2.saturated == [(:u, :lower)]
+    @test port(pinned, "", :in) === 2.0
+end
+
+@testset "the residual return is re-checked at the first seeded point (§14.7, §14.8)" begin
+    # The nominal guess evaluation observes the return at `Float64`; a lambda
+    # that branches on the scalar answers a different key set at the seeded
+    # activation, and that is the problem being malformed rather than the bare
+    # `ErrorException` the reorder to `tolerances`' order would raise.
+    sim = Simulation(fed(Pendulum(), :u); h = 1//10)
+    before = world(sim)
+    e = failure(() -> trim!(sim, TrimProblem(
+        guess = (u = 0.0,), lower = (u = -Inf,), upper = (u = Inf,),
+        condition = decide_u, reads = torque_reads(),
+        residuals = eltype_split, tolerances = (torque = 1e-9,)); baseline = pend_base()))
+    @test e isa BuildError && startswith(e.msg, "TrimProblemInvalid:")
+    @test occursin("`residuals` returns `wrong`", e.msg) &&
+          occursin("`tolerances` names `torque`", e.msg)
+    @test world(sim) == before && lifecycle(sim) === :built
 end
 
 @testset "an incomplete baseline is `UninitializedInputs` at setup (§14.6, §14.8)" begin

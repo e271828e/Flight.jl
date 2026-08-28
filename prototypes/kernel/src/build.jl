@@ -757,6 +757,26 @@ struct Executor{T,S,B,CL,EV}
     events::EV             # the compiled event set, likewise (nominal only)
 end
 
+"""
+The refusal every product compiled *against one activation* owes the executor
+it is handed: `ActivationMismatch`. A reader's `xbuf` offsets and store types
+and a plan's cell addresses and converters are one activation's (§9.4), so
+running one against another's buffer set would read and write the wrong slot in
+silence rather than fail. The scalar rides in each product's own type and the
+executor carries it too, so the mismatch is dispatch — the fallback method,
+never a runtime test on the hot path.
+
+The kind name is the prototype's own, as `ReadResolution` is: Appendix C names
+no kind for it, the situation being one the spec's typed products cannot
+express.
+"""
+@noinline _activation_mismatch(what::String, ::Type{T}, ::Type{S}) where {T,S} =
+    throw(BuildError(
+        "ActivationMismatch: this $what was compiled at $T and the executor handed to " *
+        "it runs at $S — the offsets, store types and cell addresses it bakes belong to " *
+        "one activation (§9.4), and against another's buffer set they would read and " *
+        "write the wrong slot in silence; compile one product per activation (§14.4, §9.2)"))
+
 function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{Int},
                  Δt_c::Vector{Float64}; chunk_size::Int = 16) where {T}
     flat, tiers, decls, layout = b.flat, b.tiers, act.decls, act.layout

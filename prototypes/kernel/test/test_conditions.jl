@@ -393,7 +393,7 @@ landed(sim) = (copy(sim.exec.xbuf),
 
     # The tree type is the plan's own type parameter, and the positions the
     # flattening recorded are the step tuples down to the authored values.
-    @test plan isa SpecializedPlan{typeof(later)}
+    @test plan isa SpecializedPlan{Float64,typeof(later)}   # activation, then shape
     @test only(plan.xs).authored isa Authored{(:nodes, 1, :node, :x, :q),SVector{2,Float64}}
 end
 
@@ -435,11 +435,7 @@ end
     @test landed(sim) == before
 
     # The prefixes are runtime fields the type cannot carry, so the `===` sweep
-    # closes the remainder — and it runs before any write. The sweep is a
-    # pointer compare, which is honest because `at` stores the string it was
-    # given (`String(::String)` returns its argument) and equal literals are one
-    # object: the all-literal case §14.4 assumes, where the compares fold away.
-    @test at("plant", fragment()).prefix === at("plant", fragment()).prefix
+    # closes the remainder — and it runs before any write.
     drifted = combine(at("plant", fragment(x = (q = SVector(9.0, 8.0),))),
                       at("plant", fragment(s = (acc = 7.0,))),   # was "ctl"
                       at("trig", fragment(m = (state = :armed,))),
@@ -450,6 +446,30 @@ end
     @test occursin("(.nodes[2].prefix)", e2.msg)       # the position, in tree-step spelling
     @test occursin("\"ctl\"", e2.msg) && occursin("\"plant\"", e2.msg)
     @test landed(sim) == before
+end
+
+@testset "the prefix sweep compares content, so a computed prefix passes (§14.4)" begin
+    # `===` on `String` is *content* equality, not pointer identity — `egal` is
+    # specialized for it — so a prefix built afresh on every call passes the
+    # sweep whenever it still spells the same path. That is the property a
+    # service rebuilding its tree per evaluation actually needs, and it is both
+    # stronger and truer than "equal literals are one object".
+    sim = Simulation(tri(); h = 1//10)
+    plan = compile_plan(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0), sim.build)
+
+    paths = split("plant ctl trig")             # the prefixes as data, not literals
+    fresh(i) = String(paths[i])                 # a new `String` object per call
+    @test pointer(fresh(1)) != pointer(fresh(1))
+    @test fresh(1) === "plant"                  # and `===` still says yes: content, not pointer
+
+    computed = combine(at(fresh(1), fragment(x = (q = SVector(9.0, 8.0),))),
+                       at(fresh(2), fragment(s = (acc = 7.0,))),
+                       at(fresh(3), fragment(m = (state = :armed,))),
+                       fragment(inputs = (u = 6.0, e = 5.5)))
+    apply!(sim.exec, plan, computed)             # other objects, same paths: the sweep passes
+    @test sim.exec.xbuf == [9.0, 8.0]
+    @test state(sim, "ctl") === (acc = 7.0,)
+    @test port(sim, "", :u) === 6.0
 end
 
 @testset "the converters are baked per leaf, at the activation (§14.3)" begin

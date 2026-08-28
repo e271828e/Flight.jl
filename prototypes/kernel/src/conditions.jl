@@ -232,8 +232,12 @@ application is a walk with no decisions left in it.
 
 `faces` is the plan's root-input coverage, in entry order: the resolution-time
 operand of §14.6's totality check.
+
+`T` is the activation the plan was resolved at: the offsets, addresses and
+converters baked here are that activation's, so `apply!` pairs plan and
+executor by dispatch and a mismatch is `ActivationMismatch` (build.jl).
 """
-struct ConditionPlan
+struct ConditionPlan{T}
     xs::Vector{Tuple{Int,Any}}             # (xbuf offset, value)
     stores::Vector{Tuple{Symbol,Int,Any}}  # (:s | :m, component index, whole store value)
     inputs::Vector{Tuple{Symbol,Any,Any}}  # (root face, cell address, value)
@@ -286,7 +290,7 @@ function resolve_condition(node::ConditionNode, b::Build, ::Type{T} = Float64) w
         ov === nothing && continue
         push!(stores, (store, ci, convert(typeof(defaults), merge(defaults, (; ov...)))))
     end
-    ConditionPlan(xs, stores, inputs, faces)
+    ConditionPlan{T}(xs, stores, inputs, faces)
 end
 
 # --- the collecting pass, shared by both registers (§14.3, §13.1) ---------------
@@ -538,7 +542,7 @@ fifty compiles. Which register a service uses is internal, never user-facing:
 the specialized `apply!` below is the other register over the same checks, for
 the services that hold one shape fixed and vary its values.
 """
-function apply!(ex::Executor, plan::ConditionPlan)
+function apply!(ex::Executor{T}, plan::ConditionPlan{T}) where {T}
     for (off, v) in plan.xs
         flatten!(ex.xbuf, off, v)
     end
@@ -550,6 +554,9 @@ function apply!(ex::Executor, plan::ConditionPlan)
     end
     nothing
 end
+
+apply!(::Executor{S}, ::ConditionPlan{T}) where {S,T} =
+    _activation_mismatch("plan", T, S)
 
 apply!(sim::Simulation, plan::ConditionPlan) = apply!(sim.exec, plan)
 
@@ -644,8 +651,12 @@ end
 # One `Scoped` node's prefix: the tree type carries the nesting, every field
 # name and every leaf type, but a prefix is a runtime `String` field, so the
 # plan records the one it was compiled from and `apply!` closes the remainder
-# with a `===` compare. Those pointer compares fold to nothing in the
-# all-literal case, which is every case a fragment function produces.
+# with a `===` compare. On `String` that compare is *content* equality rather
+# than pointer identity — `egal` is specialized for it — so what the sweep tests
+# is that the prefix still spells the same path, whether it was written as a
+# literal or computed afresh per iteration (`at("gear/$i", …)`); the cost is a
+# length check and a short `memcmp`, and in the all-literal case the compiler
+# folds it away.
 struct Prefix{P}
     expected::String
 end
@@ -659,16 +670,21 @@ Application is `apply!(ex, plan, tree)` for any tree of that shape. Nothing is
 decided there: the destinations, the converters and the merge bases were all
 settled at compile time, and what is left is the fold-away shape check plus the
 writes.
+
+`T`, the leading parameter, is the activation the plan was compiled at — the
+same identity `Reader` carries, for the same reason: the lenses' converters and
+the writes' destinations are one activation's, and pairing them with another's
+executor is `ActivationMismatch` (build.jl) rather than a wrong slot.
 """
-struct SpecializedPlan{NT,XS<:Tuple,ST<:Tuple,IN<:Tuple,PF<:Tuple}
+struct SpecializedPlan{T,NT,XS<:Tuple,ST<:Tuple,IN<:Tuple,PF<:Tuple}
     xs::XS
     stores::ST
     inputs::IN
     prefixes::PF
 end
 
-SpecializedPlan{NT}(xs::XS, stores::ST, inputs::IN, prefixes::PF) where {NT,XS,ST,IN,PF} =
-    SpecializedPlan{NT,XS,ST,IN,PF}(xs, stores, inputs, prefixes)
+SpecializedPlan{T,NT}(xs::XS, stores::ST, inputs::IN, prefixes::PF) where {T,NT,XS,ST,IN,PF} =
+    SpecializedPlan{T,NT,XS,ST,IN,PF}(xs, stores, inputs, prefixes)
 
 """
     compile_plan(node, b::Build, T = Float64) → SpecializedPlan
@@ -709,8 +725,8 @@ function compile_plan(node::ConditionNode, b::Build, ::Type{T} = Float64) where 
             ci, defaults, Tuple(Authored{r.e.pos,r.L}() for r in ov)))
     end
 
-    SpecializedPlan{typeof(node)}(Tuple(xs), Tuple(stores), Tuple(inputs),
-                                  Tuple(Prefix{p}(v) for (p, v) in _scoped_prefixes(node)))
+    SpecializedPlan{T,typeof(node)}(Tuple(xs), Tuple(stores), Tuple(inputs),
+                                    Tuple(Prefix{p}(v) for (p, v) in _scoped_prefixes(node)))
 end
 
 compile_plan(other, ::Build, ::Type = Float64) = _node_misuse(other, ())
@@ -737,7 +753,7 @@ _scoped!(n::Override, pos::Tuple, out::Vector) =
     end
 
 """
-    apply!(ex::Executor, plan::SpecializedPlan{NT}, tree::NT)
+    apply!(ex::Executor{T}, plan::SpecializedPlan{T,NT}, tree::NT)
 
 §14.4's specialized walk: write every leaf of `tree` through its baked lens and
 converter — `x` leaves flattened at their offsets, each `s` and `m` store as one
@@ -755,7 +771,7 @@ silent corruption.
 The sweep runs before any write, so a refused application leaves the executor
 exactly as it found it.
 """
-function apply!(ex::Executor, plan::SpecializedPlan{NT}, tree::NT) where {NT}
+function apply!(ex::Executor{T}, plan::SpecializedPlan{T,NT}, tree::NT) where {T,NT}
     _sweep_prefixes(plan.prefixes, tree)
     _writes!(plan.xs, ex, tree)
     _writes!(plan.stores, ex, tree)
@@ -763,7 +779,11 @@ function apply!(ex::Executor, plan::SpecializedPlan{NT}, tree::NT) where {NT}
     nothing
 end
 
-apply!(::Executor, ::SpecializedPlan{NT}, tree) where {NT} = _shape_drift(NT, typeof(tree))
+apply!(::Executor{T}, ::SpecializedPlan{T,NT}, tree) where {T,NT} =
+    _shape_drift(NT, typeof(tree))
+
+apply!(::Executor{S}, ::SpecializedPlan{T}, tree) where {S,T} =
+    _activation_mismatch("plan", T, S)
 
 @inline _writes!(::Tuple{}, ::Executor, tree) = nothing
 @inline function _writes!(ws::Tuple, ex::Executor, tree)

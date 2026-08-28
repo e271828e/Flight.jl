@@ -186,16 +186,22 @@ service's per-iteration read cost nothing beyond the sweep it follows.
 
 A reader is compiled at one activation and resolves against an executor at that
 activation: store selectors reach live stores (§14.4's source rule), and the
-executor is the only live-store holder here.
+executor is the only live-store holder here. That activation is `T`, the first
+type parameter — the entries bake offsets, store types and cell addresses that
+are one activation's, so the pairing is dispatch and a mismatch is
+`ActivationMismatch` (build.jl) rather than a silent read of another cell's
+slot.
 """
-struct Reader{L,E<:Tuple}
+struct Reader{T,L,E<:Tuple}
     entries::E
 end
 
-Reader{L}(entries::E) where {L,E<:Tuple} = Reader{L,E}(entries)
+Reader{T,L}(entries::E) where {T,L,E<:Tuple} = Reader{T,L,E}(entries)
 
-@inline gather(r::Reader{L}, ex::Executor) where {L} =
+@inline gather(r::Reader{T,L}, ex::Executor{T}) where {T,L} =
     NamedTuple{L}(map(e -> _read(e, ex), r.entries))
+
+gather(::Reader{T}, ::Executor{S}) where {T,S} = _activation_mismatch("reader", T, S)
 
 # --- resolution (§14.4, §13.1) --------------------------------------------------
 
@@ -243,7 +249,7 @@ function _resolve_reads(rs::Reads, b::Build, ::Type{T}) where {T}
         e = _resolve_selector(s, label, b, act, offs, viol)
         e === nothing || push!(entries, e)
     end
-    (isempty(viol) ? Reader{keys(rs.sels)}(Tuple(entries)) : nothing, viol)
+    (isempty(viol) ? Reader{T,keys(rs.sels)}(Tuple(entries)) : nothing, viol)
 end
 
 # The component a path-addressed selector names. The treatment is

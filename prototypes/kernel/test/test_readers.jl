@@ -117,6 +117,30 @@ end
     @test isempty(sim.plane.roster)              # every rejection left the roster untouched
 end
 
+@testset "a reader and a plan belong to one activation, by dispatch (§9.4, §14.4)" begin
+    # The offsets, store types and cell addresses a compiled product bakes are
+    # one activation's, so a `Float64` product against a `Dual` executor would
+    # read and write another cell's slot in silence. The scalar rides in each
+    # product's type, the pairing is dispatch, and the mismatch is refused with
+    # both scalars named — before anything is touched.
+    nominal = Simulation(readable(); h = 1//10)
+    seeded = Simulation(readable(), D8; h = 1//10)
+    init!(seeded, readable_condition())
+    before = world(seeded)
+
+    e = failure(() -> gather(compile_reads(readable_reads(), nominal.build), seeded.exec))
+    @test e isa BuildError && startswith(e.msg, "ActivationMismatch:")
+    @test occursin("compiled at Float64", e.msg) && occursin("Dual{Nothing, Float64, 8}", e.msg)
+
+    c = readable_condition()
+    e2 = failure(() -> apply!(seeded.exec, resolve_condition(c, nominal.build)))
+    @test e2 isa BuildError && startswith(e2.msg, "ActivationMismatch:")
+    e3 = failure(() -> apply!(seeded.exec, compile_plan(c, nominal.build), c))
+    @test e3 isa BuildError && startswith(e3.msg, "ActivationMismatch:")
+
+    @test world(seeded) == before                # every refusal left the executor alone
+end
+
 @testset "`capture` reads the committed world back as a total condition (§14.1, §14.10)" begin
     sim = Simulation(readable(); h = 1//10)
     twin = Simulation(readable(); h = 1//10)

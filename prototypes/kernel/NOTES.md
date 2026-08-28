@@ -583,12 +583,15 @@ plan type parameter, so a tree of another shape simply does not match
 naming both types; a prefix, being a runtime `String` field, cannot ride in the
 type, so the plan records the prefixes it was compiled from and `apply!` sweeps
 them with `===` before any write. Two things make that sweep honest here.
-`at(prefix, node)` calls `String(prefix)`, which returns its argument unchanged
-for a `String`, so a literal written at one source location is one object across
-every call — the all-literal case the spec assumes, and the reason the compares
-fold away. And the sweep running *first* is what makes a refused application
-leave the executor bit-for-bit as it found it, which the drift tests assert on
-both halves.
+`===` on `String` is *content* equality, not pointer identity — `egal` is
+specialized for it, and `f(i) = string("ge", "ar/", i)` gives `f(1) === f(1)`
+at two different addresses — so what the sweep tests is that the prefix still
+spells the same path, and a prefix a service *computes* afresh per iteration
+(`at("gear/$i", …)`) passes it exactly when it should. Only the all-literal
+case additionally folds the compare away at compile time; elsewhere the cost is
+a length check and a short `memcmp`. And the sweep running *first* is what
+makes a refused application leave the executor bit-for-bit as it found it,
+which the drift tests assert on both halves.
 
 The store write is where the composite matters. A service compiles its plan
 from the whole tree it builds, `override(baseline, condition(d))`, never from
@@ -630,23 +633,28 @@ variable authored *into* that frozen `s`, is refused by the seeded compile's own
 condition is what does not resolve, and the collected read-set violations *are*
 folded in, so the file now shows both dispositions side by side.
 
-The backend seam behaved exactly as §14.8 predicts, with one honest limit.
-`LevenbergMarquardt`'s `solve` is forty-odd lines — a damping loop, a small
-dense solve, the
+The backend seam behaved exactly as §14.8 predicts. `LevenbergMarquardt`'s
+`solve` is forty-odd lines — a damping loop, a small dense solve, the
 per-residual box test as its own stopping rule — and it converges the one-step
 linear problem in 3 iterations / 4 evaluations and the nonlinear one in 4 / 5,
 which is §14.7's "quadratic, ~5–15 evaluations" on a two-equation model. The
-limit is the *acceptance* test: it compares raw `norm(r)`, which is the "sums
-forces against moments" weakness §14.8 names for the derivative-free
-objective, transplanted onto the accept/reject decision. On a problem whose
-residuals differ by orders of magnitude in physical scale *and* whose box is
-active, the raw norm can reject every projected step and stall short of a point
-the box test would accept; the saturated-decision fixture is the one that ran
-into it, and it is posed one-decision (an actuator limit under a slack force
-balance) rather than two so that the property under test — converged, at a
-bound, with the bound named — is not hostage to that. The remedy, if it ever
-matters, is one line: accept on `norm(r ./ tol)`, the normalization §14.8
-already specifies for the fallback objective, moved onto the descent test.
+one decision worth recording is the *acceptance* test, which measures
+`‖r ./ tol‖` rather than raw `norm(r)`. §14.8 puts the normalization on the
+derivative-free objective, but its reason is not the backend's: a raw norm sums
+forces against moments, and on a problem whose residuals differ by orders of
+magnitude in physical scale *and* whose box is active it can reject every
+projected step and stall short of a point the box test would accept. In the
+least-squares register the section's own sentence settles it — "the tolerances
+*are* the stopping criterion … LM's damping loop testing exactly what the
+service will re-test" — so descent test and stopping rule are read in the same
+units, and `_scaled_norm` is a fold rather than `norm(r ./ tol)` so it costs no
+temporary. The division is what makes a non-positive tolerance a *setup* error
+rather than a numerical curiosity: `tol = 0` sends the acceptance test to
+`Inf`/`NaN`, every trial step is rejected, and the solve returns `:stalled` at
+the guess — so the collecting pass now requires each tolerance finite and
+`> 0`, beside the `lower ≤ upper` clause and for the same reason, that a bound
+no arithmetic can honor is the problem being malformed. Neither iteration count
+moved: still 3/4 and 4/5.
 
 One trap cost an afternoon and is worth recording because it is invisible in
 the diff. The store bundle keys its per-eltype buffers by `Symbol(L)`, and
@@ -664,15 +672,29 @@ agree on the fully-qualified spelling; the three tests that named the old
 spelling were updated with it. Any user tag would have hit this, so it is a
 defect the increment found rather than one it caused.
 
-Two smaller choices, both "the simplest thing that does not foreclose". A guess
-outside its own box is not an error and is not clamped: `solve` is handed it as
-given, and §14.8's "box bounds are honored by step projection" pulls it in on
-the first step, which is the only statement the spec makes about the box. And
+A guess outside its own box is **projected at the pack site**, `clamp.(d0,
+lower, upper)`, not handed to the backend as given. Step projection alone does
+not cover it: `solve` has two returns that never take a step — the
+already-within-tolerance return at the top of the first iteration, and a stall
+at iteration one — and through either of them an unprojected guess comes back
+as the solution, is committed as converged, and is reported with `saturated`
+empty because a point outside both bounds sits at neither. Projecting the one
+point the backend starts from makes every point it sees and returns lie in the
+box, which is what §14.8's bound treatment is *for*, and it costs one line. The
+degenerate box `lower == upper` falls out of the same clamp: the decision is
+pinned, and `_saturated` testing `lower` first reports it as `:lower`.
+
 `nevals`/`niters` in the report are the *backend's*, verbatim — the service's
 own verdict evaluation at the returned point is not counted, because §14.8 calls
 those counts "the backend's returned status together with its
 iteration/evaluation counts" and the verdict evaluation is noise against the
 solve by the same paragraph's argument.
+
+One thing the no-throw doctrine deliberately does not cover: a residual lambda
+that throws at the *committed* point — after `init!` has run — escapes `trim!`
+as that exception with the simulation committed, because the doctrine is about
+non-convergence being an outcome rather than about catching broken user
+machinery, and the service does not catch it.
 
 ## The properties the tests pin down
 
@@ -1290,6 +1312,11 @@ Each of these is a spec claim rather than a programming convenience:
   different `at` prefix at the same position reaches the `===` sweep and names
   the position and both strings. Either way the executor is bit-for-bit what it
   was before the call.
+- **The prefix sweep compares content, not pointers.** A prefix built afresh
+  per call — a `String` at a different address, asserted to be one — passes the
+  sweep of a plan compiled from the literal, because `===` on `String` is
+  content equality. That is what a service rebuilding its tree per evaluation
+  needs, and it is a stronger claim than "equal literals are one object".
 - **The converter is the destination leaf type, and it is baked.** A plain
   `Float64` leaf into a seeded activation's `x` reads back with zero partials —
   the embedding that is exact for a value held at the operating point — and a
@@ -1297,6 +1324,11 @@ Each of these is a spec claim rather than a programming convenience:
   A decision variable authored into a discrete `s`, frozen `Float64` at every
   activation, is refused at resolution with the clause that says why, and the
   nominal activation's own refusals are unchanged.
+- **A compiled product belongs to one activation, by dispatch.** A `Float64`
+  `Reader`, `ConditionPlan` and `SpecializedPlan` each refuse a `Dual` executor
+  with `ActivationMismatch` naming both scalars, and the executor is untouched.
+  The scalar rides in the product's own type, so the pairing costs a method
+  signature rather than a runtime test — the §7.5 gates measure zero unchanged.
 
 - **A trim problem solves, commits, and the commit is an `init!`.** The
   one-step linear problem lands `u = (g/l)·sin θ` to its tolerance in four
@@ -1323,18 +1355,33 @@ Each of these is a spec claim rather than a programming convenience:
   the equilibrium torque, under a force balance declared to a tolerance the
   bound still meets, converges with `saturated == [(:u, :upper)]` and the
   bound's own value committed. The same problem unbounded names nothing.
+- **The box is honored at every point the backend returns.** A guess of `100.0`
+  under `[-1, 1]` comes back as `1.0`, saturated at `:upper`, with `1.0`
+  committed: the guess is projected at the pack site, so the returns that never
+  step — the already-within-tolerance one, a stall at iteration one — cannot
+  hand back an out-of-box point as converged with `saturated` empty. A
+  degenerate box (`lower == upper`) pins the decision to that one value, named
+  `:lower` because the saturation check tests `lower` first.
 - **The empty problem is the equilibrium probe.** `guess = (;)` bypasses the
   solver outright — `status == :bypassed`, one evaluation, no iterations, no
   seeded activation — and the nominal half's establishment round *is* the
   evaluation. On an equilibrium baseline it converges and commits; on one that
   is not, it answers no by the ordinary box test and leaves the sim `built`.
-- **The setup diagnostic collects, in two observable stages.** A bounds key-set
-  mismatch, an `Int` guess field and an unresolvable selector come back as one
-  `TrimProblemInvalid` naming all three, the read set's own `ReadResolution`
-  line kept verbatim inside it. The residual/tolerances key-set disagreement is
-  the one check only the guess evaluation can make (§14.7 says so), so it is
-  reported from there, in its own collected throw of the same kind. Every
-  refusal leaves the simulation untouched.
+- **The setup diagnostic collects, in three observable stages.** A bounds
+  key-set mismatch, an `Int` guess field and an unresolvable selector come back
+  as one `TrimProblemInvalid` naming all three, the read set's own
+  `ReadResolution` line kept verbatim inside it; an inverted box (`lower` above
+  `upper` on one decision) is collected there too, with both values named,
+  because no projection can honor it, and so is a non-positive tolerance —
+  zero and negative in one problem come back as one throw naming both, the
+  acceptance test's divisor being the reason. The residual/tolerances key-set
+  disagreement is the check only an evaluation can make (§14.7 says so), so it
+  is reported from there, in its own collected throw of the same kind — and
+  from *both* evaluations that can observe it: a lambda branching on the scalar
+  it is handed answers one key set at the nominal guess and another at the
+  first seeded point, and the seeded re-check turns what would be a bare
+  `ErrorException` from the reorder into the same named refusal. Every refusal
+  leaves the simulation untouched.
 - **An incomplete baseline is `UninitializedInputs` at setup.** Trim's
   application to its own scratch stores is one of §14.6's three sites, and
   coverage is a plan-level fact: the check runs before any evaluation, names

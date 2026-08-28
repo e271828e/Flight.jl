@@ -141,12 +141,19 @@ precedent applied to the solver (a tiny needed core against a heavy dependency),
 sharpened by the fact that the per-residual physical tolerances are a
 convergence test no external package spells natively.
 
-A damping loop on `(JᵀJ + λ·diag(JᵀJ)) δ = −Jᵀr`, accept/reject on the residual
-norm with `λ` scaled down by 10 on an accepted step and up by 10 on a rejected
-one, each step **projected onto the box** (§14.8's bound treatment), stopping
-when `all(abs.(r) .≤ tol)` — the per-residual test in the service's own units,
-LM testing exactly what the service will re-test — or at `maxiter`, or when a
-step stalls below the `eps` scale of the decisions it would move.
+A damping loop on `(JᵀJ + λ·diag(JᵀJ)) δ = −Jᵀr`, accept/reject on the
+**normalized** residual norm `‖r ./ tol‖` with `λ` scaled down by 10 on an
+accepted step and up by 10 on a rejected one, each step **projected onto the
+box** (§14.8's bound treatment), stopping when `all(abs.(r) .≤ tol)` — the
+per-residual test in the service's own units — or at `maxiter`, or when a step
+stalls below the `eps` scale of the decisions it would move.
+
+Descent test and stopping rule are measured in the same units on purpose. In
+this register "the tolerances *are* the stopping criterion" (§14.8), so LM's
+damping loop tests exactly what the service will re-test: a raw `norm(r)` sums
+forces against moments, and on a problem whose residuals differ by orders of
+magnitude in physical scale it can reject every projected step short of a point
+the box test would accept.
 """
 struct LevenbergMarquardt
     maxiter::Int
@@ -163,6 +170,11 @@ const LM_λMIN = 1e-12
 const LM_λMAX = 1e12
 
 _within(r, tol) = all(i -> abs(r[i]) ≤ tol[i], eachindex(r))
+
+# The residual norm in the tolerances' own units — the descent test, measured
+# where the box test is (§14.8). Written as a fold rather than `norm(r ./ tol)`
+# so it costs no temporary.
+_scaled_norm(r, tol) = sqrt(sum(i -> (r[i] / tol[i])^2, eachindex(r)))
 
 function solve(bk::LevenbergMarquardt, eval!, d0::Vector{Float64},
                lower::Vector{Float64}, upper::Vector{Float64}, tol::Vector{Float64})
@@ -182,7 +194,7 @@ function solve(bk::LevenbergMarquardt, eval!, d0::Vector{Float64},
         # case §14.7 names — takes the floor and keeps the system definite.
         A, g = J' * J, J' * r
         damp = Diagonal(max.(diag(A), LM_λMIN))
-        nrm = norm(r)
+        nrm = _scaled_norm(r, tol)
         accepted = false
         while true
             δ = (A + λ * damp) \ (-g)
@@ -194,7 +206,7 @@ function solve(bk::LevenbergMarquardt, eval!, d0::Vector{Float64},
             maximum(abs, dt .- d) ≤ eps(maximum(abs, d) + 1.0) && break
             eval!(rt, Jt, dt)
             nevals += 1
-            if norm(rt) < nrm
+            if _scaled_norm(rt, tol) < nrm
                 d .= dt; r .= rt; J .= Jt
                 λ = max(λ / 10, LM_λMIN)
                 accepted = true
@@ -243,6 +255,42 @@ function _check_decisions!(viol::Vector{String}, p::TrimProblem)
     end
     for (name, v) in ((:guess, p.guess), (:lower, p.lower), (:upper, p.upper))
         _check_floats!(viol, name, v, "decisions and bounds are `Float64`")
+    end
+    # And the box has to admit a point at all. Checked per decision, over the
+    # pairs that survived the two checks above, because an inverted pair is a
+    # box no projection can honor — `clamp` would answer the upper bound and
+    # the report would name a saturation nobody authored.
+    for k in keys(p.guess)
+        (haskey(p.lower, k) && haskey(p.upper, k) &&
+         p.lower[k] isa Float64 && p.upper[k] isa Float64) || continue
+        p.lower[k] ≤ p.upper[k] || push!(viol, _tviol(:lower,
+            "names `$k` = $(p.lower[k]) above `upper`'s $(p.upper[k]) — a decision's box " *
+            "is `lower ≤ upper`, and an inverted pair admits no point at all"))
+    end
+    nothing
+end
+
+# `tolerances`: a NamedTuple of `Float64`s, each finite and strictly positive.
+# Positivity is load-bearing rather than cosmetic. A tolerance is the half-width
+# of the box its residual has to sit in, so zero and negative name no box at
+# all — and the acceptance test measures `‖r ./ tol`‖ (§14.8), so a non-positive
+# one sends the descent test to `Inf`/`NaN`, rejects every trial step and
+# returns `:stalled` at the guess. That is a malformed problem, named here.
+function _check_tolerances!(viol::Vector{String}, p::TrimProblem)
+    if !(p.tolerances isa NamedTuple)
+        push!(viol, _tviol(:tolerances, "is $(typeof(p.tolerances)) — the per-residual " *
+                                        "convergence test is an all-`Float64` NamedTuple"))
+        return nothing
+    end
+    _check_floats!(viol, :tolerances, p.tolerances,
+                   "a tolerance is a `Float64` in its residual's own physical units")
+    for k in keys(p.tolerances)
+        v = p.tolerances[k]
+        v isa Float64 || continue           # the type violation is already named above
+        (isfinite(v) && v > 0) || push!(viol, _tviol(:tolerances,
+            "names `$k` = $v — a tolerance is finite and strictly positive: it is the " *
+            "half-width of the box its residual has to sit in, and the normalized " *
+            "acceptance test divides by it"))
     end
     nothing
 end
@@ -353,11 +401,7 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
     b = sim.build
     viol = String[]
     _check_decisions!(viol, problem)
-    problem.tolerances isa NamedTuple ?
-        _check_floats!(viol, :tolerances, problem.tolerances,
-                       "a tolerance is a `Float64` in its residual's own physical units") :
-        push!(viol, _tviol(:tolerances, "is $(typeof(problem.tolerances)) — the per-residual " *
-                                        "convergence test is an all-`Float64` NamedTuple"))
+    _check_tolerances!(viol, problem)
     reader = _check_reads!(viol, problem, b)
     _report_trim!(viol)                       # one collected throw, before any evaluation
 
@@ -396,11 +440,26 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
     # One evaluation: write the decisions through the shape-compiled plan, sweep,
     # gather, and take `r` off the values and `J` off the partials of one and the
     # same seeded pass (§14.7).
+    #
+    # §14.7's return check runs a second time on the *first* seeded evaluation.
+    # The nominal guess evaluation observes the return at `Float64`; a residual
+    # lambda that branches on the scalar it is handed — on `eltype`, on a
+    # method that has no `Dual` arm — can answer a different key set here, and
+    # without the re-check the reorder below raises a bare `ErrorException`
+    # from `NamedTuple{RK}` instead of the collected `TrimProblemInvalid` that
+    # names what is wrong. Once only: the per-iteration path takes one `Bool`
+    # load and no work at all.
+    checked = Ref(false)
     function eval!(r::Vector{Float64}, J, d::Vector{Float64})
         d_nt = _seeded(K, d, TD)
         apply!(ex, plan_d, override(baseline, problem.condition(d_nt)))
         evaluate!(ex)
-        res = NamedTuple{RK}(problem.residuals(gather(reader_d, ex), d_nt))
+        raw = problem.residuals(gather(reader_d, ex), d_nt)
+        if !checked[]
+            checked[] = true
+            _check_residuals(raw, tolerances)
+        end
+        res = NamedTuple{RK}(raw)
         for i in eachindex(r)
             v = res[i]
             r[i] = ForwardDiff.value(v)
@@ -414,7 +473,15 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
 
     lower = Float64[problem.lower[k] for k in K]
     upper = Float64[problem.upper[k] for k in K]
-    out = solve(backend, eval!, Float64[guess[k] for k in K], lower, upper, tol)
+    # The guess enters the box here, once. §14.8 honors bounds by step
+    # projection, and a backend's returns that never *step* — the
+    # already-within-tolerance return, a stall at the first iteration — would
+    # otherwise hand back the unprojected guess: an out-of-box point committed
+    # as converged, with `saturated` empty because it sits at no bound. Every
+    # point the backend sees and returns lies in the box because the one it
+    # starts from does.
+    d0 = clamp.(Float64[guess[k] for k in K], lower, upper)
+    out = solve(backend, eval!, d0, lower, upper, tol)
 
     # The verdict, at the backend's returned point and in the service's own
     # units: one residual evaluation, noise against the solve that produced it.
