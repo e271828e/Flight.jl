@@ -131,6 +131,12 @@ _node_misuse(v, kinds) = throw(BuildError(
 # of one root input are then one leaf everywhere it matters: `override` layers
 # them and `combine` collides on them, which is what §14.6's central use case —
 # a root-level baseline under a component-local patch — requires.
+#
+# The recursion carries a third accumulator, the entry's **tree position**
+# (§14.3): the `getfield`/`getindex` step tuple from the root node down to the
+# authored value. The dynamic register ignores it — it bakes the value itself —
+# and the specialized register lifts it to a `Getter{P}` lens, which is what
+# lets one compiled plan be applied to every later tree of the same shape.
 
 struct CEntry
     path::String
@@ -139,6 +145,7 @@ struct CEntry
     value::Any
     prov::String
     face::Union{Nothing,Symbol}   # input entries: the root input the chain lands on
+    pos::Tuple                    # the tree position: the step tuple to this value
 end
 
 _key(e::CEntry) = e.face === nothing ? (e.path, e.store, e.field) : ("", :input, e.face)
@@ -147,43 +154,49 @@ _leaf(e::CEntry) = e.face !== nothing ? "root input `$(e.face)`" :
                                        "`$(e.store).$(e.field)` at $(_at(e.path))"
 _step(prov::String, s::String) = isempty(prov) ? s : prov * " → " * s
 
-function _flat(n::Fragment, path::String, prov::String, flat::Flat, viol::Vector{String})
+function _flat(n::Fragment, path::String, prov::String, pos::Tuple,
+               flat::Flat, viol::Vector{String})
     out = CEntry[]
-    for (store, label, payload) in ((:x, "x", n.x), (:s, "s", n.s),
-                                    (:m, "m", n.m), (:input, "inputs", n.inputs))
+    for (store, name, payload) in ((:x, :x, n.x), (:s, :s, n.s),
+                                   (:m, :m, n.m), (:input, :inputs, n.inputs))
         for (field, v) in pairs(payload)
-            e = CEntry(path, store, field, v, _step(prov, "fragment($label).$field"), nothing)
+            e = CEntry(path, store, field, v, _step(prov, "fragment($name).$field"),
+                       nothing, (pos..., name, field))
             store === :input &&
                 (e = CEntry(e.path, e.store, e.field, e.value, e.prov,
-                            _root_input(flat, e, viol)))
+                            _root_input(flat, e, viol), e.pos))
             push!(out, e)
         end
     end
     out
 end
 
-_flat(n::Scoped, path::String, prov::String, flat::Flat, viol::Vector{String}) =
-    _flat(n.node, _join(path, n.prefix), _step(prov, "at(\"$(n.prefix)\")"), flat, viol)
+_flat(n::Scoped, path::String, prov::String, pos::Tuple,
+      flat::Flat, viol::Vector{String}) =
+    _flat(n.node, _join(path, n.prefix), _step(prov, "at(\"$(n.prefix)\")"),
+          (pos..., :node), flat, viol)
 
-_flat(n::Combined, path::String, prov::String, flat::Flat, viol::Vector{String}) =
-    reduce(vcat, (_flat(k, path, _step(prov, "combine[$i]"), flat, viol)
+_flat(n::Combined, path::String, prov::String, pos::Tuple,
+      flat::Flat, viol::Vector{String}) =
+    reduce(vcat, (_flat(k, path, _step(prov, "combine[$i]"), (pos..., :nodes, i), flat, viol)
                   for (i, k) in enumerate(n.nodes)); init = CEntry[])
 
 # Layering (§14.6): each layer is flattened and checked on its own — a
 # within-layer collision is still an error — and then folded onto the
 # accumulator, the patch replacing the leaf it overrode and inheriting its
 # provenance beside its own.
-function _flat(n::Override, path::String, prov::String, flat::Flat, viol::Vector{String})
+function _flat(n::Override, path::String, prov::String, pos::Tuple,
+               flat::Flat, viol::Vector{String})
     acc = CEntry[]
     for (i, layer) in enumerate(n.layers)
         label = i == 1 ? "override[base]" : "override[patch $(i - 1)]"
-        es = _flat(layer, path, _step(prov, label), flat, viol)
+        es = _flat(layer, path, _step(prov, label), (pos..., :layers, i), flat, viol)
         _check_duplicates!(es, viol)
         for e in es
             j = findfirst(a -> _key(a) == _key(e), acc)
             j === nothing ? push!(acc, e) :
                 (acc[j] = CEntry(e.path, e.store, e.field, e.value,
-                                 "$(e.prov) (overrode $(acc[j].prov))", e.face))
+                                 "$(e.prov) (overrode $(acc[j].prov))", e.face, e.pos))
         end
     end
     acc
@@ -246,27 +259,75 @@ authority on *may you write this, at what type*; the activation's layout
 supplies the destination.
 """
 function resolve_condition(node::ConditionNode, b::Build, ::Type{T} = Float64) where {T}
-    flat, tiers = b.flat, b.tiers
-    act = activation(b, T)
-    decls, layout = act.decls, act.layout
-    viol = String[]
-    entries = _flat(node, "", "", flat, viol)
-    _check_duplicates!(entries, viol)
+    resolved, viol, act = _resolve_entries(node, b, T)
+    _report_violations(viol)
 
-    x_offs = _x_offsets(decls, tiers)
     xs = Tuple{Int,Any}[]
     inputs = Tuple{Symbol,Any,Any}[]
     faces = Symbol[]
     overlays = Dict{Tuple{Symbol,Int},Vector{Pair{Symbol,Any}}}()
+    for r in resolved
+        e = r.e
+        if e.store === :input
+            push!(inputs, (e.face, r.dest, r.v))
+            push!(faces, e.face)
+        elseif e.store === :x
+            push!(xs, (r.dest, r.v))
+        else
+            push!(get!(() -> Pair{Symbol,Any}[], overlays, (e.store, r.dest)), e.field => r.v)
+        end
+    end
 
+    # Overlay partiality baked now (§14.3): the store's write is one whole
+    # value, `merge(defaults, overlay)`, so application decides nothing.
+    stores = Tuple{Symbol,Int,Any}[]
+    for (store, ci, defaults) in _store_bases(b, act)
+        ov = get(overlays, (store, ci), nothing)
+        ov === nothing && continue
+        push!(stores, (store, ci, convert(typeof(defaults), merge(defaults, (; ov...)))))
+    end
+    ConditionPlan(xs, stores, inputs, faces)
+end
+
+# --- the collecting pass, shared by both registers (§14.3, §13.1) ---------------
+
+"""
+One entry that survived §14.3's checks, beside everything either register needs
+to bake from it. The two registers differ in *what* they bake — the dynamic one
+takes `v`, the specialized one lifts `e.pos` to a lens and keeps `L` as the
+converter — and in nothing else, which is why the checks have one implementation.
+"""
+struct Resolved
+    e::CEntry
+    dest::Any   # :x → the `xbuf` offset; :s, :m → the component index; :input → the cell address
+    L::Any      # the destination leaf type at this activation — §14.3's converter
+    v::Any      # the authored value, through that converter
+end
+
+# §14.3's list, run once: the path resolves to a component, the field is
+# declared in that component's `init_x`/`init_s`/`init_m`, the value converts to
+# the declared leaf type, an input face resolves through the export chain to a
+# root input, and no leaf is written twice. Violations are collected (§13.1) and
+# handed back with the survivors, so a service that owns its own setup
+# diagnostic can fold the same list into its kind.
+function _resolve_entries(node::ConditionNode, b::Build, ::Type{T}) where {T}
+    flat, tiers = b.flat, b.tiers
+    act = activation(b, T)
+    decls, layout = act.decls, act.layout
+    viol = String[]
+    entries = _flat(node, "", "", (), flat, viol)
+    _check_duplicates!(entries, viol)
+
+    x_offs = _x_offsets(decls, tiers)
+    out = Resolved[]
     for e in entries
         if e.store === :input
             e.face === nothing && continue     # the chain was reported at flattening
             addr = layout.addr[("", e.face)]
-            (ok, v) = _convert(_port_type(addr), e.value)
-            ok || (push!(viol, _unconvertible(e, e.value, _port_type(addr))); continue)
-            push!(inputs, (e.face, addr, v))
-            push!(faces, e.face)
+            P = _port_type(addr)
+            (ok, v) = _convert(P, e.value)
+            ok || (push!(viol, _unconvertible(e, e.value, P, T)); continue)
+            push!(out, Resolved(e, addr, P, v))
             continue
         end
         ci = _component(flat, e, viol)
@@ -281,26 +342,18 @@ function resolve_condition(node::ConditionNode, b::Build, ::Type{T} = Float64) w
             (push!(viol, _undeclared(e, c, tier, declared, T)); continue)
         L = typeof(declared[e.field])
         (ok, v) = _convert(L, e.value)
-        ok || (push!(viol, _unconvertible(e, e.value, L)); continue)
-        if e.store === :x
-            push!(xs, (x_offs[ci] + _leaf_offset(d.x, e.field), v))
-        else
-            push!(get!(() -> Pair{Symbol,Any}[], overlays, (e.store, ci)), e.field => v)
-        end
+        ok || (push!(viol, _unconvertible(e, e.value, L, T)); continue)
+        push!(out, Resolved(e, e.store === :x ? x_offs[ci] + _leaf_offset(d.x, e.field) : ci,
+                            L, v))
     end
-    _report_violations(viol)
-
-    # Overlay partiality baked now (§14.3): the store's write is one whole
-    # value, `merge(defaults, overlay)`, so application decides nothing.
-    stores = Tuple{Symbol,Int,Any}[]
-    for ci in eachindex(flat.comps), store in (:s, :m)
-        ov = get(overlays, (store, ci), nothing)
-        ov === nothing && continue
-        defaults = store === :s ? decls[ci].s : init_m(flat.comps[ci])
-        push!(stores, (store, ci, convert(typeof(defaults), merge(defaults, (; ov...)))))
-    end
-    ConditionPlan(xs, stores, inputs, faces)
+    (out, viol, act)
 end
+
+# The merge bases, in one order both registers walk: per component, the discrete
+# store's declared defaults and then the mode store's (§14.3's fork).
+_store_bases(b::Build, act::Activation) =
+    [(store, ci, store === :s ? act.decls[ci].s : init_m(b.flat.comps[ci]))
+     for ci in eachindex(b.flat.comps) for store in (:s, :m)]
 
 # Anything that is not a node reaching a service entry point is the §14.2
 # misuse, not a `MethodError`: the directive is the same one `combine` prints,
@@ -419,9 +472,23 @@ end
 _declared_workspace(c, tier::Tier, ::Type{T}) where {T} =
     tier === CONTINUOUS ? workspace(c, T) : workspace(c)
 
-_unconvertible(e::CEntry, v, ::Type{P}) where {P} =
+# The one refusal §14.3's converter table cannot bake around. Its second clause
+# is the non-nominal case: at a seeded activation the leaves a decision descends
+# into are the ones the activation retyped, and a *frozen* discrete `s` (§9.4,
+# D-166) or a leaf pinned `Float64` by its own declaration is not one of them —
+# so the value cannot be carried and there is nowhere to put its partials.
+function _unconvertible(e::CEntry, v, ::Type{P}, ::Type{T}) where {P,T}
     "ConditionResolution: $(_leaf(e)) takes $(P), and the authored value is " *
-    "$(repr(v))::$(typeof(v)), which does not convert (§14.3) [$(e.prov)]"
+    "$(repr(v))::$(typeof(v)), which does not convert" *
+    (_seeded_into_pinned(typeof(v), P, T) ?
+     "; this is the seeded activation's own refusal — a value at $(T) is a decision " *
+     "variable and this leaf is pinned, and a decision variable descends into neither " *
+     "a frozen discrete `s` nor a pinned leaf (§14.3, §9.4)" : "") *
+    " (§14.3) [$(e.prov)]"
+end
+
+_seeded_into_pinned(::Type{V}, ::Type{P}, ::Type{T}) where {V,P,T} =
+    T !== Float64 && T in leaf_types(V) && !(T in leaf_types(P))
 
 # §13.1's collecting register: the full list, every violation, one throw.
 function _report_violations(viol::Vector{String})
@@ -468,8 +535,8 @@ write — microseconds total, allocation permitted, the stopped-sim path never
 having been under §7.5's zero-alloc regime — with no per-shape codegen, so
 fifty structurally different scripted conditions cost fifty walks rather than
 fifty compiles. Which register a service uses is internal, never user-facing:
-the specialized `apply!` the iterating services want is the same plan unrolled
-(absent here, README).
+the specialized `apply!` below is the other register over the same checks, for
+the services that hold one shape fixed and vary its values.
 """
 function apply!(ex::Executor, plan::ConditionPlan)
     for (off, v) in plan.xs
@@ -485,6 +552,252 @@ function apply!(ex::Executor, plan::ConditionPlan)
 end
 
 apply!(sim::Simulation, plan::ConditionPlan) = apply!(sim.exec, plan)
+
+# --- the specialized application register (§14.3, §14.4, D-066) -----------------
+# The other register over the same checks. The dynamic walk bakes *values*, so a
+# plan is good for one tree; this one bakes *lenses*, so a plan compiled from a
+# tree's shape applies to every later tree of that shape. That is the trade
+# §14.4 states: ~10–50 ms of codegen once per shape, against a per-iteration
+# write with no strings, no dispatch and no allocation — the shape being fixed
+# and the values varying is exactly what an iterating service does.
+#
+# All string work, addressing and validation are functions of the shape, so all
+# of it happens here, once. What survives into `apply!` is a tuple of baked
+# writes and a tuple of prefix compares.
+
+"""
+The lens (§14.3, glossary): a condition entry's tree position lifted to a type
+parameter, callable on any tree of the shape it was compiled from. Navigation is
+generated from `P`, so the access is a chain of static `getfield`/`getindex`
+steps the compiler folds into offsets — the authored value reached with no
+search and no runtime fact consulted.
+"""
+struct Getter{P} end
+
+@generated function (::Getter{P})(tree) where {P}
+    ex = :tree
+    for step in P
+        ex = step isa Symbol ? :(getfield($ex, $(QuoteNode(step)))) : :(getindex($ex, $step))
+    end
+    quote
+        $(Expr(:meta, :inline))
+        $ex
+    end
+end
+
+"""
+One leaf's compiled read half: the lens that finds the authored value in the
+tree, and `L`, the destination leaf type at this activation — which *is*
+§14.3's converter, selected once at resolution and never consulted again.
+
+Both of §14.3's cases are this one call. A leaf already at the activation's
+scalar takes the type's own methods, partials flowing through untouched; a
+plain `Float64` leaf against a seeded activation takes the zero-partial
+embedding `convert` already performs, which is semantically exact for a value
+held at the operating point and in no other case.
+"""
+struct Authored{P,L} end
+
+@inline (::Authored{P,L})(tree) where {P,L} = convert(L, Getter{P}()(tree))
+
+# The three destinations, one write each: the flat state buffer at a baked
+# offset, a component's own store as one whole value, and a root input's cell.
+
+struct XWrite{A}
+    authored::A
+    off::Int
+end
+
+struct InputWrite{A,D}
+    authored::A
+    addr::D
+end
+
+# The `s`/`m` fork (§14.3): the store's write is one whole value,
+# `merge(defaults, overlay)`, with the base baked and the overlay's fields read
+# through their lenses. `K` is `:s` or `:m` and `S` the store's value type, both
+# in the type — `S` because the stores are held in a `Vector{Any}` and the
+# assertion has to go on the *reference*: asserting the dereferenced value
+# instead leaves the `[]` a dynamic call, which boxes.
+struct StoreWrite{K,S,F,A<:Tuple}
+    ci::Int
+    defaults::S
+    authored::A
+end
+
+StoreWrite{K,S,F}(ci::Int, defaults::S, authored::A) where {K,S,F,A<:Tuple} =
+    StoreWrite{K,S,F,A}(ci, defaults, authored)
+
+@inline _write!(w::XWrite, ex::Executor, tree) =
+    flatten!(ex.xbuf, w.off, w.authored(tree))
+
+@inline _write!(w::InputWrite, ex::Executor, tree) =
+    scatter!(ex.store, w.addr, w.authored(tree))
+
+@inline function _write!(w::StoreWrite{K,S,F}, ex::Executor, tree) where {K,S,F}
+    ov = NamedTuple{F}(map(a -> a(tree), w.authored))
+    ((K === :s ? ex.sstores : ex.mstores)[w.ci]::Base.RefValue{S})[] =
+        convert(S, merge(w.defaults, ov))
+    nothing
+end
+
+# One `Scoped` node's prefix: the tree type carries the nesting, every field
+# name and every leaf type, but a prefix is a runtime `String` field, so the
+# plan records the one it was compiled from and `apply!` closes the remainder
+# with a `===` compare. Those pointer compares fold to nothing in the
+# all-literal case, which is every case a fragment function produces.
+struct Prefix{P}
+    expected::String
+end
+
+"""
+What a condition *shape* compiles to (§14.3, §14.4): the tree type it was
+compiled from in the plan's own type, and its writes as tuples, so `apply!`
+unrolls into the same machine operations an in-place write would be.
+
+Application is `apply!(ex, plan, tree)` for any tree of that shape. Nothing is
+decided there: the destinations, the converters and the merge bases were all
+settled at compile time, and what is left is the fold-away shape check plus the
+writes.
+"""
+struct SpecializedPlan{NT,XS<:Tuple,ST<:Tuple,IN<:Tuple,PF<:Tuple}
+    xs::XS
+    stores::ST
+    inputs::IN
+    prefixes::PF
+end
+
+SpecializedPlan{NT}(xs::XS, stores::ST, inputs::IN, prefixes::PF) where {NT,XS,ST,IN,PF} =
+    SpecializedPlan{NT,XS,ST,IN,PF}(xs, stores, inputs, prefixes)
+
+"""
+    compile_plan(node, b::Build, T = Float64) → SpecializedPlan
+
+Compile a condition tree's **shape** into the specialized register's plan,
+running exactly the checks `resolve_condition` runs — one implementation, in
+§13.1's collecting register, the two registers differing only in what they bake
+(§14.3).
+
+The tree handed here is a genuine tree, and its values matter to exactly one
+check: convertibility, which is where a decision variable authored into a
+frozen or pinned leaf is refused. Everything else the compile reads is shape —
+paths, field names, tree positions, the destination leaf types at this
+activation.
+"""
+function compile_plan(node::ConditionNode, b::Build, ::Type{T} = Float64) where {T}
+    resolved, viol, act = _resolve_entries(node, b, T)
+    _report_violations(viol)
+
+    xs, inputs = Any[], Any[]
+    overlays = Dict{Tuple{Symbol,Int},Vector{Resolved}}()
+    for r in resolved
+        e = r.e
+        if e.store === :input
+            push!(inputs, InputWrite(Authored{e.pos,r.L}(), r.dest))
+        elseif e.store === :x
+            push!(xs, XWrite(Authored{e.pos,r.L}(), r.dest))
+        else
+            push!(get!(() -> Resolved[], overlays, (e.store, r.dest)), r)
+        end
+    end
+
+    stores = Any[]
+    for (store, ci, defaults) in _store_bases(b, act)
+        ov = get(overlays, (store, ci), nothing)
+        ov === nothing && continue
+        push!(stores, StoreWrite{store,typeof(defaults),Tuple(r.e.field for r in ov)}(
+            ci, defaults, Tuple(Authored{r.e.pos,r.L}() for r in ov)))
+    end
+
+    SpecializedPlan{typeof(node)}(Tuple(xs), Tuple(stores), Tuple(inputs),
+                                  Tuple(Prefix{p}(v) for (p, v) in _scoped_prefixes(node)))
+end
+
+compile_plan(other, ::Build, ::Type = Float64) = _node_misuse(other, ())
+
+# Every `Scoped` node's prefix field, positioned, in tree order. A separate walk
+# from `_flat`'s: a prefix belongs to a *node*, not to a leaf, and a scope
+# wrapping no payload at all still has a prefix that can drift.
+function _scoped_prefixes(node::ConditionNode)
+    out = Tuple{Tuple,String}[]
+    _scoped!(node, (), out)
+    out
+end
+
+_scoped!(::Fragment, ::Tuple, ::Vector) = nothing
+_scoped!(n::Scoped, pos::Tuple, out::Vector) =
+    (push!(out, ((pos..., :prefix), n.prefix)); _scoped!(n.node, (pos..., :node), out))
+_scoped!(n::Combined, pos::Tuple, out::Vector) =
+    for (i, k) in enumerate(n.nodes)
+        _scoped!(k, (pos..., :nodes, i), out)
+    end
+_scoped!(n::Override, pos::Tuple, out::Vector) =
+    for (i, k) in enumerate(n.layers)
+        _scoped!(k, (pos..., :layers, i), out)
+    end
+
+"""
+    apply!(ex::Executor, plan::SpecializedPlan{NT}, tree::NT)
+
+§14.4's specialized walk: write every leaf of `tree` through its baked lens and
+converter — `x` leaves flattened at their offsets, each `s` and `m` store as one
+whole `merge(defaults, overlay)` value, root inputs scattered — with no
+allocation, no string work and no dispatch left in the path.
+
+**The shape check is folded.** The tree type is proven by dispatch: `NT` carries
+the full nesting, every field name and every leaf type, so a tree of another
+shape does not match this method and reaches the fallback below. The `===` sweep
+over the `Scoped` prefixes closes the remainder, those being runtime fields the
+type cannot carry. This is §9.5's mechanism transferred: on conformant code the
+compiler decides it and deletes it, and drift is a structured error rather than
+silent corruption.
+
+The sweep runs before any write, so a refused application leaves the executor
+exactly as it found it.
+"""
+function apply!(ex::Executor, plan::SpecializedPlan{NT}, tree::NT) where {NT}
+    _sweep_prefixes(plan.prefixes, tree)
+    _writes!(plan.xs, ex, tree)
+    _writes!(plan.stores, ex, tree)
+    _writes!(plan.inputs, ex, tree)
+    nothing
+end
+
+apply!(::Executor, ::SpecializedPlan{NT}, tree) where {NT} = _shape_drift(NT, typeof(tree))
+
+@inline _writes!(::Tuple{}, ::Executor, tree) = nothing
+@inline function _writes!(ws::Tuple, ex::Executor, tree)
+    _write!(first(ws), ex, tree)
+    _writes!(Base.tail(ws), ex, tree)
+end
+
+@inline _sweep_prefixes(::Tuple{}, tree) = nothing
+@inline function _sweep_prefixes(ps::Tuple, tree)
+    _compare(first(ps), tree)
+    _sweep_prefixes(Base.tail(ps), tree)
+end
+
+@inline function _compare(p::Prefix{P}, tree) where {P}
+    observed = Getter{P}()(tree)
+    observed === p.expected || _prefix_drift(P, p.expected, observed)
+    nothing
+end
+
+_position(P::Tuple) = "(" * join((s isa Symbol ? ".$s" : "[$s]" for s in P), "") * ")"
+
+@noinline _shape_drift(::Type{NT}, ::Type{O}) where {NT,O} = throw(BuildError(
+    "ConditionShapeDrift: this plan was compiled from a condition tree of type\n    $NT\n" *
+    "and the tree handed to `apply!` is\n    $O\nThe specialized register proves the shape " *
+    "by dispatch, so a condition function has to return one shape for every decision it is " *
+    "evaluated at — a branch that authors a different field set, a different nesting or a " *
+    "different leaf type is a different shape, and needs its own plan (§14.4, §9.5, D-066)"))
+
+@noinline _prefix_drift(P::Tuple, expected::String, observed::String) = throw(BuildError(
+    "ConditionShapeDrift: the `at` prefix at tree position $(_position(P)) was " *
+    "$(repr(expected)) when this plan was compiled and is $(repr(observed)) now — prefixes " *
+    "are runtime `String` fields the tree type cannot carry, so the register closes the " *
+    "shape with a `===` sweep over them, and a condition function has to return one shape " *
+    "for every decision it is evaluated at (§14.4, §9.5, D-066)"))
 
 # --- capture: the gather twin of the application register (§14.1, §14.10) -------
 

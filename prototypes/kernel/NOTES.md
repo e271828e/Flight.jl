@@ -545,6 +545,63 @@ setup and `TapResolution` where linearization does, so the standalone
 `compile_reads` needed a name of its own, and its collecting half is factored
 apart from the throw exactly so trim can fold the same list into its kind.
 
+**Increment 21, part 3 — the specialized register.** §14.4's two application
+registers finally both exist, and the second one is what an iterating service
+spends. The dynamic walk bakes *values*, so a plan is good for exactly one
+tree; the specialized register bakes *lenses*, so a plan compiled from a tree's
+shape applies to every later tree of that shape. Making that real took one new
+fact in the flattening pass — each entry's **tree position**, the
+`getfield`/`getindex` step tuple from the root node down to the authored value,
+which for an `override` leaf is the winning layer's — and then `Getter{P}`, the
+position lifted to a type parameter with a generated navigation, exactly as the
+glossary describes it.
+
+The interesting part of the increment was not the lens but the **factoring**.
+§14.3's checks had one implementation and had to keep having one, so
+`resolve_condition`'s body split in two: `_resolve_entries` runs the collecting
+pass and hands back the survivors as `Resolved` values — the authored entry, the
+destination the activation's layout supplies, the destination leaf type, and the
+value through that type's `convert` — and the two registers then bake what they
+need from the same list. The dynamic one takes the value; the specialized one
+takes the position and the leaf type. Nothing else differs, which is exactly the
+claim §14.4 makes about the pair.
+
+Both of §14.3's converter arms turned out to be the same call. The destination
+leaf type at the activation *is* the converter, so `convert(L, lens(tree))`
+covers a `Dual` into a `Dual` leaf (partials untouched) and a plain `Float64`
+into a `Dual` leaf (the zero-partial embedding) with no branch anywhere — and
+the one case no converter covers, a decision variable authored into a leaf that
+is pinned `Float64` at the seeded activation, was already refused by the
+existing `_unconvertible` path, which now carries a clause saying *why*: a
+decision variable descends into neither a frozen discrete `s` nor a pinned leaf.
+That clause fires on a type test rather than a message guess — the value's leaf
+eltypes contain the activation scalar and the destination's do not.
+
+The shape check folds in two halves, per §9.5's mechanism. The tree type is a
+plan type parameter, so a tree of another shape simply does not match
+`apply!`'s method and lands on a fallback that raises `ConditionShapeDrift`
+naming both types; a prefix, being a runtime `String` field, cannot ride in the
+type, so the plan records the prefixes it was compiled from and `apply!` sweeps
+them with `===` before any write. Two things make that sweep honest here.
+`at(prefix, node)` calls `String(prefix)`, which returns its argument unchanged
+for a `String`, so a literal written at one source location is one object across
+every call — the all-literal case the spec assumes, and the reason the compares
+fold away. And the sweep running *first* is what makes a refused application
+leave the executor bit-for-bit as it found it, which the drift tests assert on
+both halves.
+
+The store write is where the composite matters. A service compiles its plan
+from the whole tree it builds, `override(baseline, condition(d))`, never from
+the patch alone — the `s`/`m` write is one whole `merge(defaults, overlay)`
+value with the base baked, so a plan over the patch alone would silently reset
+every field the baseline authored and the patch did not. No coverage component
+declares a two-field `s`, which is what a single-field store hides behind
+`override`'s own last-wins, so the test fixture `Ledger` exists to make the
+property visible. The allocation trap Stage 1 recorded reappears verbatim on
+the write side and takes the same remedy: the store type is baked into the
+plan entry's own type and the assertion goes on the *reference*,
+`(ex.sstores[ci]::Base.RefValue{S})[] = v`.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -1135,6 +1192,39 @@ Each of these is a spec claim rather than a programming convenience:
   what `t₀ = t` spends. Legality is the §14 table's: `initialized` and
   `stopped`, with `built` refused for want of committed stores and `running`
   refused by the §11.3 freeze, all as one `ServiceLifecycle`.
+
+- **One plan, one shape, many trees.** A plan compiled from a condition tree
+  lands, from a *second* tree of that shape with other values everywhere, the
+  same four homes the dynamic walk lands from that second tree — flat buffer,
+  discrete store, mode store and both root-input cells compared whole. The plan
+  holds lenses, not the values it was shown, and its type carries the tree type
+  it was compiled from.
+- **The specialized write is free.** `apply!(ex, plan, tree)` allocates zero
+  over the four-home fixture — the prefix sweep, the flat-buffer write, both
+  stores as whole values and both root-input scatters — with the tree handed in
+  already built. Building it is the caller's cost, and it is *not* free here: an
+  `at` node holds a `String`, so any tree carrying one is not isbits, and this
+  fixture's construction measures 912 bytes — §14.2's "rebuilding the tree per
+  trim iteration is stack-only construction" does not hold for a tree with `at`
+  prefixes as things stand, which is recorded here rather than papered over.
+  The register is measured where its own work is.
+- **The store merge is the composite's.** A baseline authoring one field of a
+  store and a patch authoring the other both survive the write, because the
+  plan is compiled from the composite tree and the merge base is the declared
+  defaults. A plan over the patch alone would reset the baseline's field to its
+  default, which is the trap the composite exists to avoid.
+- **Shape drift is structured, and nothing is written.** A tree of another type
+  reaches the fallback and names both types; a tree of the right type with a
+  different `at` prefix at the same position reaches the `===` sweep and names
+  the position and both strings. Either way the executor is bit-for-bit what it
+  was before the call.
+- **The converter is the destination leaf type, and it is baked.** A plain
+  `Float64` leaf into a seeded activation's `x` reads back with zero partials —
+  the embedding that is exact for a value held at the operating point — and a
+  leaf already at the activation's scalar reads back with its partials intact.
+  A decision variable authored into a discrete `s`, frozen `Float64` at every
+  activation, is refused at resolution with the clause that says why, and the
+  nominal activation's own refusals are unchanged.
 
 ## Stand-in retirement history
 

@@ -335,3 +335,153 @@ end
     @test port(sim, "", :ref) === 5.0
     @test state(sim, "loop/plant").q === SVector(0.0, 0.0)   # the baseline's own defaults
 end
+
+# --- the specialized application register (§14.3, §14.4, D-066) -----------------
+# The other register over the same checks: a plan compiled from a tree's shape,
+# applied to every later tree of that shape. The fixtures stay at top level for
+# the README's local-scope reason.
+
+# A discrete component with two `s` fields. The composite store merge needs one
+# store whose fields two layers can author separately, and no coverage component
+# declares one — a single-field store lets `override` hide the property behind
+# its own last-wins.
+struct Ledger <: AbstractComponent end
+
+init_s(::Ledger) = (a = 0.0, b = 0.0)
+output_types(::Ledger) = (total = Float64,)
+
+h_s(::Ledger, (; s)) = (total = s.a + s.b,)
+g(::Ledger, (; s)) = (a = s.a, b = s.b)
+
+# One shape over `tri()`'s four homes, its values the parameters: the `at`
+# literals sit at one source location, which is what makes the `===` prefix
+# sweep a pointer compare rather than a string compare (§14.4).
+tri_tree(q, acc, state, u, e) =
+    combine(at("plant", fragment(x = (q = q,))),
+            at("ctl", fragment(s = (acc = acc,))),
+            at("trig", fragment(m = (state = state,))),
+            fragment(inputs = (u = u, e = e)))
+
+# The composite a service compiles from: a baseline authoring one field of the
+# store and the per-iteration layer authoring the other (§14.3's fork).
+ledger_tree(a, b) = override(at("led", fragment(s = (a = a,))),
+                             at("led", fragment(s = (b = b,))))
+
+# Everything an `apply!` can land in, for the comparisons below.
+landed(sim) = (copy(sim.exec.xbuf),
+               [s === nothing ? nothing : s[] for s in sim.exec.sstores],
+               [m === nothing ? nothing : m[] for m in sim.exec.mstores],
+               [port(sim, "", f) for f in sim.build.flat.root_inputs])
+
+@testset "a shape-compiled plan lands what the dynamic walk lands (§14.4, D-066)" begin
+    specialized = Simulation(tri(); h = 1//10)
+    dynamic = Simulation(tri(); h = 1//10)
+    # Compiled from one tree, applied to a second of the same shape with other
+    # values everywhere: the plan holds lenses, not the values it was shown.
+    plan = compile_plan(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0), specialized.build)
+    later = tri_tree(SVector(9.0, 8.0), 7.0, :armed, 6.0, 5.5)
+
+    apply!(specialized.exec, plan, later)
+    apply!(dynamic.exec, resolve_condition(later, dynamic.build))
+    @test landed(specialized) == landed(dynamic)
+
+    # And what it landed is the second tree's values, in all four homes.
+    @test specialized.exec.xbuf == [9.0, 8.0]
+    @test state(specialized, "ctl") === (acc = 7.0,)
+    @test modes(specialized, "trig") === (state = :armed, count = 0)
+    @test port(specialized, "", :u) === 6.0 && port(specialized, "", :e) === 5.5
+
+    # The tree type is the plan's own type parameter, and the positions the
+    # flattening recorded are the step tuples down to the authored values.
+    @test plan isa SpecializedPlan{typeof(later)}
+    @test only(plan.xs).authored isa Authored{(:nodes, 1, :node, :x, :q),SVector{2,Float64}}
+end
+
+@testset "the specialized register writes without allocating (§14.4, §7.5)" begin
+    sim = Simulation(tri(); h = 1//10)
+    plan = compile_plan(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0), sim.build)
+    tree = tri_tree(SVector(9.0, 8.0), 7.0, :armed, 6.0, 5.5)
+    # The whole path: the prefix sweep, the flat-buffer write, both stores as
+    # whole values, and the two root-input scatters. The tree is handed in
+    # already built — an `at` node holds a `String` and is therefore not isbits,
+    # so its construction is the caller's cost, not the register's.
+    @test (@ballocated apply!($(sim.exec), $plan, $tree)) == 0
+end
+
+@testset "the store merge is the composite's, not one layer's (§14.3)" begin
+    sim = Simulation(Group((; led = Ledger())); h = 1//10)
+    # The plan is compiled from the whole composite tree a service builds, so
+    # the two layers' fields meet in one `merge(defaults, overlay)`. A plan over
+    # the patch alone would write `(a = 0.0, b = 4.0)` — the baseline's `a`
+    # replaced by the declared default, which is the trap the composite avoids.
+    plan = compile_plan(ledger_tree(1.0, 2.0), sim.build)
+    apply!(sim.exec, plan, ledger_tree(3.0, 4.0))
+    @test state(sim, "led") === (a = 3.0, b = 4.0)
+    @test (@ballocated apply!($(sim.exec), $plan, $(ledger_tree(3.0, 4.0)))) == 0
+end
+
+@testset "shape drift is a structured error, and nothing is written (§14.4, §9.5)" begin
+    sim = Simulation(tri(); h = 1//10)
+    plan = compile_plan(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0), sim.build)
+    before = landed(sim)
+
+    # A tree of another type never reaches a write: the shape is proven by
+    # dispatch, and the fallback method names both types.
+    e = failure(() -> apply!(sim.exec, plan, at("plant", fragment(x = (q = SVector(1.0, 2.0),)))))
+    @test e isa BuildError
+    @test occursin("ConditionShapeDrift", e.msg)
+    @test occursin(string(typeof(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0))), e.msg)
+    @test occursin("Scoped{Fragment", e.msg)          # the observed tree's own type
+    @test landed(sim) == before
+
+    # The prefixes are runtime fields the type cannot carry, so the `===` sweep
+    # closes the remainder — and it runs before any write. The sweep is a
+    # pointer compare, which is honest because `at` stores the string it was
+    # given (`String(::String)` returns its argument) and equal literals are one
+    # object: the all-literal case §14.4 assumes, where the compares fold away.
+    @test at("plant", fragment()).prefix === at("plant", fragment()).prefix
+    drifted = combine(at("plant", fragment(x = (q = SVector(9.0, 8.0),))),
+                      at("plant", fragment(s = (acc = 7.0,))),   # was "ctl"
+                      at("trig", fragment(m = (state = :armed,))),
+                      fragment(inputs = (u = 6.0, e = 5.5)))
+    e2 = failure(() -> apply!(sim.exec, plan, drifted))
+    @test e2 isa BuildError
+    @test occursin("ConditionShapeDrift", e2.msg)
+    @test occursin("(.nodes[2].prefix)", e2.msg)       # the position, in tree-step spelling
+    @test occursin("\"ctl\"", e2.msg) && occursin("\"plant\"", e2.msg)
+    @test landed(sim) == before
+end
+
+@testset "the converters are baked per leaf, at the activation (§14.3)" begin
+    sim = Simulation(tri(), D8; h = 1//10)
+    b = sim.build
+
+    # A plain `Float64` leaf against a seeded activation: the zero-partial
+    # embedding, which is semantically exact for a value held at the operating
+    # point and in no other case.
+    held = at("plant", fragment(x = (q = SVector(1.0, 2.0),)))
+    apply!(sim.exec, compile_plan(held, b, D8), held)
+    @test sim.exec.xbuf == D8[1.0, 2.0]
+    @test all(iszero, ForwardDiff.partials(sim.exec.xbuf[1]))
+
+    # A leaf already at the activation's scalar — decision-descended — takes the
+    # type's own methods, partials flowing through untouched.
+    d = ForwardDiff.Dual{Nothing}(2.5, ntuple(i -> i == 1 ? 1.0 : 0.0, 8)...)
+    seeded = at("plant", fragment(x = (q = SVector(d, zero(d)),)))
+    apply!(sim.exec, compile_plan(seeded, b, D8), seeded)
+    @test ForwardDiff.value(sim.exec.xbuf[1]) === 2.5
+    @test ForwardDiff.partials(sim.exec.xbuf[1])[1] === 1.0
+
+    # And the one case no converter covers: a discrete `s` is frozen at a
+    # non-nominal activation (§9.4), so a decision variable authored into it is
+    # refused at resolution, with the clause that says why.
+    e = failure(() -> compile_plan(at("ctl", fragment(s = (acc = d,))), b, D8))
+    @test e isa BuildError
+    @test occursin("ConditionResolution: `s.acc` at `ctl` takes Float64", e.msg)
+    @test occursin("a decision variable descends into neither a frozen discrete `s` nor a " *
+                   "pinned leaf", e.msg)
+    # The nominal activation's own refusals are unchanged: no clause where the
+    # value is simply the wrong kind of thing.
+    e0 = failure(() -> compile_plan(at("ctl", fragment(s = (acc = :nope,))), b))
+    @test occursin("which does not convert (§14.3)", e0.msg)
+end
