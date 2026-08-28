@@ -2342,12 +2342,16 @@ The edges of the container form are fixed by rule:
   is the [generic holding](#g-generic-holding) — a parent holding a child
   through a non-concrete field type — that [§8.8][s8-8] allows.
 - A bare key from a name-transparent container colliding with any sibling child
-  name is a build error naming both. A bare key equal to a sibling *container
-  field's* name is refused the same way: no child bears that name, but the key
-  would shadow the container's `"field/key"` segment grammar ([§6.1][s6-1]),
-  leaving its elements unreachable behind a diagnostic that blames the wrong
-  child. `transparent_container` must name a container field of the type, and
-  declaring two transparent containers on one type is a declaration error.
+  name is a build error naming both. A bare key equal to the name of a sibling
+  *container field* that contributes children is refused the same way: no child
+  bears that name, but the key would shadow the container's `"field/key"`
+  segment grammar ([§6.1][s6-1]), leaving its elements unreachable behind a
+  diagnostic that blames the wrong child. An empty field reserves nothing — it
+  reaches no children, and its value cannot be told from empty inert parameter
+  data — so the judgment is per-instantiation, like every wiring judgment
+  ([D-212][d-212]). `transparent_container` must name a container field of the
+  type, and declaring two transparent containers on one type is a declaration
+  error.
 
 `sample_times` needs no rule change. Element names are immediate child names,
 hence legal keys, and the bare field name is sugar for a uniform declaration
@@ -11097,6 +11101,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-209]: framework_decisions.md#d-209--build-output_passthrough
 [d-210]: framework_decisions.md#d-210--tighten-the-input-boundary-class-uniform-face-uniqueness-and-no-empty-routing
 [d-211]: framework_decisions.md#d-211--let-a-component-declare-one-container-name-transparent
+[d-212]: framework_decisions.md#d-212--refuse-the-transparent-bare-key-that-shadows-a-sibling-container-field
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
