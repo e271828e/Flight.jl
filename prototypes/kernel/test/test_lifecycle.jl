@@ -91,7 +91,7 @@ end
     @test t isa TerminationRecord{Float64}           # the deployment's own scalar (§7.2, D-203)
     @test t.source === EndTimeReached() && t.t == 1.0
     @test isempty(t.residue)                         # a quiet tail contributes no record
-    @test sim.clock.step == 50
+    @test sim.exec.clock.step == 50
 
     init!(sim, fragment(inputs = (ref = 0.0,)))
     run!(sim; t_end = 0.5)                           # this run only
@@ -129,7 +129,7 @@ end
     t = termination(sim)
     @test t.source === ModelRequestedStop(:hit)      # kind + payload, one typed value (D-203)
     @test t.t == 4 * sim.h                           # the sweep at boundary 4 saw 0.4 ≥ 0.35
-    @test sim.clock.step == 4                        # the run ended there, not at t_end
+    @test sim.exec.clock.step == 4                        # the run ended there, not at t_end
     @test latest(sim).t === t.t                      # that snapshot is the final one
 end
 
@@ -140,7 +140,7 @@ end
     run!(sim)
     t = termination(sim)
     @test t.source === ModelRequestedStop(:stop) && t.t == 0.0
-    @test sim.clock.step == 0                        # zero frames: the check precedes the first step
+    @test sim.exec.clock.step == 0              # zero frames: the check precedes the first step
 end
 
 @testset "a localized stop ends the run at t*, the crossing state final (§13.5, §10.4)" begin
@@ -150,7 +150,7 @@ end
     t = termination(sim)
     @test t.source === ModelRequestedStop(:tripped)
     @test t.t ≈ 0.315 atol = 1e-6                    # the analytic crossing, not a frame top
-    @test t.t == sim.clock.t                         # the frame's remainder was abandoned
+    @test t.t == sim.exec.clock.t                         # the frame's remainder was abandoned
     @test latest(sim).t === t.t
     @test logged(sim)[end] === latest(sim)           # the log's terminal endpoint is the t* boundary
 end

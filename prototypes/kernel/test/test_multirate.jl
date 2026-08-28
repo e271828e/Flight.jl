@@ -66,9 +66,9 @@ end
 
     # The gate is structural: the interior variants carry no discrete entry, the
     # boundary variants gate every one of them, and nothing else.
-    @test isempty(walked(sim.bodies.sweep_2, :interior))
-    @test gated(sim.bodies.sweep_2) == 3
-    @test gated(sim.bodies.sweep_1) == 0            # the ramp is continuous
+    @test isempty(walked(sim.exec.bodies.sweep_2, :interior))
+    @test gated(sim.exec.bodies.sweep_2) == 3
+    @test gated(sim.exec.bodies.sweep_1) == 0            # the ramp is continuous
 end
 
 @testset "the hyperperiod chart is readable off the cells (§10.5)" begin
@@ -135,7 +135,7 @@ sample_times(r::OpaqueRoster) = r.rates
                                         var"kids/b" = Relative(3, 1))); h = 1//10)
     @test [(e.D, e.Φ) for e in bare.sched] == [(2, 0), (3, 1)]
     @test [(e.D, e.Φ) for e in bare.sched] == [(e.D, e.Φ) for e in opaque.sched]
-    @test bare.flat.paths == ["a", "b"] && opaque.flat.paths == ["kids/a", "kids/b"]
+    @test bare.build.flat.paths == ["a", "b"] && opaque.build.flat.paths == ["kids/a", "kids/b"]
 end
 
 # --- multi-rate: deployment binding (§9.1, §9.2) --------------------------------

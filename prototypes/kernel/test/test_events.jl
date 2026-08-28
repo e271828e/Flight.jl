@@ -244,7 +244,7 @@ end
 
 @testset "events compile out at a non-nominal activation (§9.4, D-052)" begin
     sim = Simulation(fed(Trigger(0.5), "sig"), D8; h = 1//10)
-    @test isempty(sim.events.entries)
+    @test isempty(sim.exec.events.entries)
     init!(sim, fragment(inputs = (in = D8(1.0),)))
     run!(sim; t_end = 0.3)
     @test modes(sim, "c").count == 0            # the guard never ran

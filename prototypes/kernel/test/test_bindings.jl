@@ -149,7 +149,7 @@ end
     ref_val = last(only(map_input((; stick = 0.55),
                                   TableBinding(stick = (face = "a", deadzone = 0.1)))))
     stage!(ref, "a" => ref_val, "b" => 0.7)
-    run!(ref; t_end = sim.clock.step * sim.h)
+    run!(ref; t_end = sim.exec.clock.step * sim.h)
     @test port(sim, "s", :e) === port(ref, "s", :e)
     # An unknown channel in a real loop body crashes the device by name, the
     # run continuing (§11.6: any non-datum exception propagates to the wrapper).
@@ -159,7 +159,7 @@ end
     logs, _ = Test.collect_test_logs() do
         run!(sim2; t_end = 0.2)
     end
-    @test sim2.clock.step == 2               # the crash is the device's alone
+    @test sim2.exec.clock.step == 2               # the crash is the device's alone
     @test crash_accounted(sim2, logs, "device 1 (Poller)")
 end
 

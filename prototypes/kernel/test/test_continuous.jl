@@ -21,10 +21,10 @@ end
     sim = Simulation(feedback_model(); h = 1//1000)
     # sum first (both its inputs are loop-breaking), then ctl, then plant
     paths = [e.comp isa Sum ? :sum : e.comp isa Gain ? :ctl : :plant
-             for e in walked(sim.bodies.sweep_2)]
+             for e in walked(sim.exec.bodies.sweep_2)]
     @test paths == [:sum, :ctl, :plant]
-    @test length(walked(sim.bodies.sweep_1)) == 1
-    @test length(walked(sim.bodies.rhs)) == 1
+    @test length(walked(sim.exec.bodies.sweep_1)) == 1
+    @test length(walked(sim.exec.bodies.rhs)) == 1
 end
 
 @testset "an algebraic loop is a build error (§5.5)" begin
@@ -69,6 +69,24 @@ end
     end
 end
 
+@testset "a simulation owns one executor, and it is the one the loop runs (§9.2, §9.7)" begin
+    sim = Simulation(feedback_model(); h = 1//100)
+    ex = sim.exec
+    @test ex isa Executor{Float64}
+    @test ex.act === activation(sim.build, Float64)   # the activation it was compiled from
+    @test phase_bodies(sim) === ex.bodies             # the loop's bodies, not a re-derivation
+
+    # The evaluation entry points are the executor's; the `Simulation` forms
+    # delegate to the one executor it owns, buffers and all.
+    init!(sim, fragment(inputs = (ref = 0.5,)))
+    evaluate!(sim)
+    ẋ = copy(ex.ẋbuf)
+    fill!(ex.ẋbuf, 0.0)
+    evaluate!(ex)
+    @test ex.ẋbuf == ẋ
+    @test @ballocated(evaluate!($ex)) == 0
+end
+
 @testset "the chunk walk is allocation-free at any width (§9.7)" begin
     # Six independent loops at chunk_size = 1: sweep_2 walks 18 one-entry
     # chunks — a chunk count no other fixture approaches — so the §7.5 canary
@@ -77,7 +95,7 @@ end
     six = Group(NamedTuple{ntuple(i -> Symbol(:m, i), 6)}(ntuple(_ -> feedback_model(), 6));
                 inputs = ("ref" => ntuple(i -> "m$(i)/ref", 6),))
     sim = Simulation(six; h = 1//100, chunk_size = 1)
-    @test length(sim.bodies.sweep_2.interior) > 16
+    @test length(sim.exec.bodies.sweep_2.interior) > 16
     for name in keys(phase_bodies(sim))
         body = phase_bodies(sim)[name]
         body(); body(0)
@@ -110,20 +128,20 @@ end
                 inputs = ("ref" => ("a/ref", "b/ref"),))
     sim = Simulation(two; h = 1//100)
     types(body) = unique(typeof(e) for e in walked(body))
-    @test length(types(sim.bodies.sweep_1)) == 1     # two Plants, one h_x body
-    @test length(types(sim.bodies.sweep_2)) == 3    # Plant, Gain, Sum
-    @test length(types(sim.bodies.rhs)) == 1
+    @test length(types(sim.exec.bodies.sweep_1)) == 1     # two Plants, one h_x body
+    @test length(types(sim.exec.bodies.sweep_2)) == 3    # Plant, Gain, Sum
+    @test length(types(sim.exec.bodies.rhs)) == 1
 
     # The discrete tier keeps the property: a state store is a `Ref` whose
     # *type* every instance of a component type shares, so the store lives in a
     # field and two counters still compile to one `g` body.
     counters = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter()));
                           h = 1//10)
-    @test length(walked(counters.bodies.ticks)) == 2
-    @test length(types(counters.bodies.ticks)) == 1
-    @test length(types(counters.bodies.sweep_1)) == 1
+    @test length(walked(counters.exec.bodies.ticks)) == 2
+    @test length(types(counters.exec.bodies.ticks)) == 1
+    @test length(types(counters.exec.bodies.sweep_1)) == 1
     # And one bundle type per model, whatever the eltype count (D-162).
-    @test counters.store isa StoreBundle
+    @test counters.exec.store isa StoreBundle
 end
 
 # Malformed components for the probe tests. Defined at top level, not inside the

@@ -42,10 +42,10 @@ end
     # Structural: the interior variants carry continuous entries only, so there
     # is no gating test on the hot path — the hold is not implemented, it is
     # the absence of any way to change the cell.
-    @test length(walked(sim.bodies.sweep_1, :interior)) == 1        # plant only
-    @test length(walked(sim.bodies.sweep_1)) == 2                   # plus ctl
-    @test isempty(walked(sim.bodies.ticks, :interior))
-    @test length(walked(sim.bodies.ticks)) == 1
+    @test length(walked(sim.exec.bodies.sweep_1, :interior)) == 1        # plant only
+    @test length(walked(sim.exec.bodies.sweep_1)) == 2                   # plus ctl
+    @test isempty(walked(sim.exec.bodies.ticks, :interior))
+    @test length(walked(sim.exec.bodies.ticks)) == 1
 
     # Semantic: a step is made of interior evaluations, so the discrete cell
     # cannot move across one, while the continuous table does. Run a few
@@ -64,13 +64,13 @@ end
                      h = 1//10)
     # The flat buffer is continuous state only; the counter's `Int` is in its
     # own store, and no store mirrors another.
-    @test isempty(sim.xbuf)
+    @test isempty(sim.exec.xbuf)
     @test state(sim, "counter") === (n = 0,)
     @test modes(sim, "moded") === (phase = :idle,)
 
     # `Int` and `Bool` cells force their own buffers — the plural in
     # "per-eltype stores", first exercised here.
-    @test Set(keys(sim.store.stores)) == Set([Symbol(Int), Symbol(Bool), Symbol(Float64)])
+    @test Set(keys(sim.exec.store.stores)) == Set([Symbol(Int), Symbol(Bool), Symbol(Float64)])
 
     init!(sim)
     @test state(sim, "counter") === (n = 1,)   # boundary zero is a tick
@@ -125,8 +125,8 @@ end
     # has none) — and its cell holds the nominal products §9.4 carried across,
     # pinned for the whole run.
     simd = Simulation(sampled_loop(), D8; h = 1//50)
-    @test isempty(walked(simd.bodies.ticks))
-    @test length(walked(simd.bodies.sweep_1)) == 1          # plant only; ctl frozen
+    @test isempty(walked(simd.exec.bodies.ticks))
+    @test length(walked(simd.exec.bodies.sweep_1)) == 1          # plant only; ctl frozen
     @test port(simd, "ctl", :u) isa Float64
 
     init!(simd, fragment(inputs = (ref = 0.0,)))

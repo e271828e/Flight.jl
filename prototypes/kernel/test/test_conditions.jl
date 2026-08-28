@@ -244,7 +244,7 @@ end
     free = Simulation(single(Sawtooth(1.0)); h = 1//10)
     init!(free)                                    # nothing to cover: total by construction
     @test lifecycle(free) === :initialized
-    @test isempty(free.flat.root_inputs)
+    @test isempty(free.build.flat.root_inputs)
 end
 
 @testset "a sparse overlay lands on the declared defaults (§14.1, §14.3)" begin
@@ -317,7 +317,7 @@ end
                        fragment(inputs = (u = 0.0, e = 0.0))))
     @test modes(sim, "trig") === (state = :fired, count = 1)
     @test port(sim, "trig", :on) === true
-    @test latest(sim).t == 0.0 && sim.clock.step == 0
+    @test latest(sim).t == 0.0 && sim.exec.clock.step == 0
 end
 
 @testset "the fragment-function idiom composes by pull across two levels (§14.2)" begin

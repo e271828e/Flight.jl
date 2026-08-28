@@ -25,7 +25,7 @@ fed(c, face) = Group((; c = c); inputs = ("in" => "c/$face",))
 # is exactly what the drain-equivalence tests need as their reference. Not
 # framework API, and used nowhere else.
 poke!(sim, face, v) =
-    (scatter!(sim.store, sim.layout.addr[("", Symbol(face))], v); nothing)
+    (scatter!(sim.exec.store, sim.exec.act.layout.addr[("", Symbol(face))], v); nothing)
 
 # The error a build raises, for the tests that read the message.
 failure(f) =

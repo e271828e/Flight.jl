@@ -11,7 +11,7 @@
 # not a frame top.
 
 """Frame top `k`, computed from the index and `t₀` — never accumulated (§10.4)."""
-_grid_time(sim::Simulation, k::Int) = sim.clock.t₀ + k * sim.h
+_grid_time(sim::Simulation, k::Int) = sim.exec.clock.t₀ + k * sim.h
 
 """
     frame!(sim, k)
@@ -28,7 +28,7 @@ and the frame top is never stamped.
 function frame!(sim::Simulation{T}, k::Int) where {T}
     t_to = _grid_time(sim, k)
     sim.has_localized ? _localized_frame!(sim, t_to) : step!(sim, T(sim.h))
-    sim.policy.hit === nothing && (sim.clock.t = t_to)
+    sim.policy.hit === nothing && (sim.exec.clock.t = t_to)
     nothing
 end
 
@@ -39,20 +39,20 @@ end
 # are already structurally bounded (at most one per declared event), while the
 # segment count is the quantity chattering inflates without bound.
 function _localized_frame!(sim::Simulation{T}, t_to) where {T}
-    es = sim.events
+    es = sim.exec.events
     n = length(es.prior)
     (x₀, _) = startpoint(sim.stepper)         # the seam's retained pair (§10.2):
     count = 0                                 # x₀ = x(t_seg) after each step!
     fill!(es.loc_warned, false)
     while true
-        t_seg = sim.clock.t
+        t_seg = sim.exec.clock.t
         h′ = t_to - t_seg
         step!(sim, h′)
 
         # The arrival sweep at the segment's end — interior, on the raw
         # unprojected state, before any discrete cell refreshes (§10.4): the
         # sweep that closes the integration step is what raises the trigger.
-        sim.bodies.sweep_1(); sim.bodies.sweep_2()
+        sim.exec.bodies.sweep_1(); sim.exec.bodies.sweep_2()
         _guards!(es)
         copyto!(es.σ1, es.σ)
 
@@ -80,7 +80,7 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
             return nothing
         end
 
-        copyto!(sim.xnext, sim.xbuf)          # retain xₙ₊₁ before the trials clobber it
+        copyto!(sim.xnext, sim.exec.xbuf)          # retain xₙ₊₁ before the trials clobber it
 
         # The θ = 0 validation (§10.4): x(t_seg) back into the buffer, one
         # interior sweep, no interpolant — x̂(0) = xₙ identically. σ₀ is the left
@@ -88,9 +88,9 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
         # the frame-top drain flipped the guard (`u` is the only thing that can
         # differ from the prior's evaluation context), so no in-frame crossing
         # exists — not localizing is the action, and it consumes no budget.
-        copyto!(sim.xbuf, x₀)
-        sim.clock.t = t_seg
-        sim.bodies.sweep_1(); sim.bodies.sweep_2()
+        copyto!(sim.exec.xbuf, x₀)
+        sim.exec.clock.t = t_seg
+        sim.exec.bodies.sweep_1(); sim.exec.bodies.sweep_2()
         _guards!(es)
         copyto!(es.σ0, es.σ)
         remaining = false
@@ -99,16 +99,16 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
             remaining |= es.trig[i]
         end
         if !remaining
-            copyto!(sim.xbuf, sim.xnext)      # epoch-caused only: fall through to the frame top
+            copyto!(sim.exec.xbuf, sim.xnext)   # epoch-caused only: fall through to the frame top
             return nothing
         end
 
         # ẋₙ₊₁, paid only past a validated trigger (§10.4): one sweep and the
         # RHS block at the arrival state completes the interpolant's data.
-        copyto!(sim.xbuf, sim.xnext)
-        sim.clock.t = t_seg + h′
+        copyto!(sim.exec.xbuf, sim.xnext)
+        sim.exec.clock.t = t_seg + h′
         evaluate!(sim)
-        copyto!(sim.ẋnext, sim.ẋbuf)
+        copyto!(sim.ẋnext, sim.exec.ẋbuf)
 
         # Root-find each validated event; the boundary fires at the earliest t*
         # (§10.4). Ties need no decision — every standing edge at θ★ fires in
@@ -123,7 +123,7 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
             # Degenerate: the crossing is the frame top itself (§10.4). The
             # localization is discarded and the event fires inside the frame
             # top's ordinary iteration — one boundary, no zero-length remainder.
-            copyto!(sim.xbuf, sim.xnext)
+            copyto!(sim.exec.xbuf, sim.xnext)
             return nothing
         end
 
@@ -136,8 +136,8 @@ function _localized_frame!(sim::Simulation{T}, t_to) where {T}
         # before integration resumes (§11.2): every boundary is a published
         # consistency point. The interpolant is invalidated by falling out of
         # scope — the handlers made it a lie for t > t*.
-        dense!(sim.stepper, sim.xbuf, sim.xnext, sim.ẋnext, θ★, h′)
-        sim.clock.t = t_seg + θ★ * h′
+        dense!(sim.stepper, sim.exec.xbuf, sim.xnext, sim.ẋnext, θ★, h′)
+        sim.exec.clock.t = t_seg + θ★ * h′
         offtick_boundary!(sim)
         publish!(sim)
 
@@ -161,10 +161,10 @@ ZOH-hold through it — the interior sweep has no discrete entries — and the
 state is raw: projection's reach is the boundary, not the trial.
 """
 function _trial!(sim::Simulation, θ::Float64, t_seg, h′)
-    dense!(sim.stepper, sim.xbuf, sim.xnext, sim.ẋnext, θ, h′)
-    sim.clock.t = t_seg + θ * h′
-    sim.bodies.sweep_1(); sim.bodies.sweep_2()
-    _guards!(sim.events)
+    dense!(sim.stepper, sim.exec.xbuf, sim.xnext, sim.ẋnext, θ, h′)
+    sim.exec.clock.t = t_seg + θ * h′
+    sim.exec.bodies.sweep_1(); sim.exec.bodies.sweep_2()
+    _guards!(sim.exec.events)
     nothing
 end
 
@@ -180,7 +180,7 @@ there. A return of exactly 1.0 is the degenerate crossing-at-the-frame-top,
 discarded by the caller.
 """
 function _crossing(sim::Simulation, i::Int, σ₀::Float64, σ₁::Float64, t_seg, h′)
-    es, tol = sim.events, sim.localization_tol
+    es, tol = sim.exec.events, sim.localization_tol
     lo, hi = 0.0, 1.0
     σlo, σhi = σ₀, σ₁
     # ITP constants over the unit bracket: κ₁ = 0.2, κ₂ = 2, n₀ = 1; ε is the

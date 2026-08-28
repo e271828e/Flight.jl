@@ -110,7 +110,7 @@ mutable struct Loopless <: AbstractDevice end
     h = attach!(sim, dev, Enumerated("a"); should_abort = true)
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 1000.0)                        # ends by the device's stop, not t_end
-    @test sim.clock.step < 10000             # the stop truncated the run
+    @test sim.exec.clock.step < 10000             # the stop truncated the run
     @test dev.log[1:3] == [:init, :loop, :shutdown]
     @test !running(h)                        # the sticky status, read off the handle
     # The record names the channel and its issuer (§13.5, D-203): the stop
@@ -156,7 +156,7 @@ end
     stopper = Threads.@spawn (sleep(0.05); stop!(sim))
     run!(sim; t_end = 1.0e6)
     wait(stopper)
-    @test sim.clock.step < 10^7              # truncated, and stopped is sticky:
+    @test sim.exec.clock.step < 10^7              # truncated, and stopped is sticky:
     @test !running(sim.plane.roster[1].handle)
     # One channel, and the record names who spoke (§13.5, D-203): stop!(sim)
     # is calling code from any task, issuer :code.
@@ -164,7 +164,7 @@ end
     # A fresh trajectory owes nothing to this stop: init! clears the word.
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     @test step!(sim; frames = 3) == 3
-    @test sim.clock.step == 3
+    @test sim.exec.clock.step == 3
 end
 
 @testset "a crash is caught, shutdown! runs, the run continues, claims persist (§12.4(6))" begin
@@ -175,7 +175,7 @@ end
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 0.5)
     end
-    @test sim.clock.step == 5                # the run reached t_end regardless
+    @test sim.exec.clock.step == 5                # the run reached t_end regardless
     @test dev.log == [:loop, :shutdown]      # the bracket held on the crash path
     @test crash_accounted(sim, logs, "device 1 (Crasher)")
     # Death is not detach: the claim stands, and the harness cannot take the face.
@@ -191,7 +191,7 @@ end
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 1000.0)
     end
-    @test sim.clock.step < 10000             # ended by the crash's stop, not t_end
+    @test sim.exec.clock.step < 10000             # ended by the crash's stop, not t_end
     @test crash_accounted(sim, logs, "device 1 (Crasher)")
 end
 
@@ -202,7 +202,7 @@ end
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     run!(sim; t_end = 0.5)
     @test dev.log == [:init, :shutdown]      # loop never ran: no task was spawned
-    @test sim.clock.step == 5                # flag clear: the run proceeds without it
+    @test sim.exec.clock.step == 5                # flag clear: the run proceeds without it
     # The report was written pre-spawn, addressed by the entry (§12.4), so it
     # deterministically makes the first frame top's fold: the first frame's
     # snapshot carries the delta, the terminal status the totals.
@@ -224,7 +224,7 @@ end
     logs, _ = Test.collect_test_logs() do
         run!(sim2; t_end = 0.5)
     end
-    @test sim2.clock.step == 0
+    @test sim2.exec.clock.step == 0
     @test any(occursin("DeviceCrash from device 1 (BadInit), past the final", string(l.message))
               for l in logs)
     # The same crash is recorded, not just presented (D-203): the residue
@@ -284,7 +284,7 @@ end
     run!(sim; t_end = 0.5)
     @test dev.task === caller                # the pinning: the body ran on run!'s task
     @test dev.log == [:returned]             # and left through the ordinary predicate
-    @test sim.clock.step == 5
+    @test sim.exec.clock.step == 5
     ref = Simulation(two_root_inputs(); h = 1//10) # the movable loop moved nothing else
     init!(ref, fragment(inputs = (a = 0.0, b = 0.0)))
     run!(ref; t_end = 0.5)
@@ -298,7 +298,7 @@ end
     logs, _ = Test.collect_test_logs() do
         run!(sim; t_end = 0.2)
     end
-    @test sim.clock.step == 2                # the crash is the device's alone
+    @test sim.exec.clock.step == 2                # the crash is the device's alone
     @test crash_accounted(sim, logs, "device 1 (Loopless)")
 end
 

@@ -465,6 +465,32 @@ this paragraph's): `prefix` defaults to `child_path` with its slash folded into
 legally (`"units.1.…"`) by default instead of minting a slash-bearing face name
 for §8.6's check to refuse; an explicit `prefix` is used verbatim.
 
+**Increment 21, part 1 — the compile product gets a name.** `compile` returned
+a NamedTuple of fresh buffers with the phase bodies closed over them; that
+product is the spec's *executor* (§9.7) — the compiled execution form of the
+schedule over its own buffers, at one scalar — and it is now `Executor{T}`,
+declared beside `compile` in `build.jl`. The `Simulation` traded ten fields for
+one: `store`, `xbuf`, `ẋbuf`, `clock`, `bodies`, `events`, `sstores` and
+`mstores` all live on the executor it owns, and `layout` and `flat` were
+duplicates of `exec.act.layout` and `build.flat`. No `getproperty` forwarding
+was added, deliberately: every call site now spells `sim.exec.xbuf`, and that
+is what keeps ownership visible once the services arrive and instantiate
+executors of their own (§9.2: "every buffer set has exactly one owner"). The
+three evaluation entry points moved with the buffers — `evaluate!`, `_round!`
+in its three arities and the condition register's `apply!` all take an
+`Executor` now, with one-line `Simulation` methods delegating — so a service
+can evaluate a scratch world with no `Simulation` to hang it on.
+
+Nothing else changed, and nothing was meant to: the extraction is
+behaviour-preserving by construction, and §7.5's gates are its acceptance test.
+`step!`, `evaluate!`, the four phase bodies in both arities, `boundary!`,
+`offtick_boundary!`, `frame!` and `drain!` all still measure zero — the extra
+`getfield` through `sim.exec` folds away exactly as the seam's other
+indirections do. One trap surfaced on the way, worth recording because it is
+invisible in the diff: naming the local `evset` was forced, because a local
+named `events` inside `compile` shadows the `events(c)` declaration accessor
+the same function calls, and the model then fails to build at all.
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -1011,6 +1037,14 @@ Each of these is a spec claim rather than a programming convenience:
   deeper `child_path` meets the same rejection a wiring endpoint does, and a
   child living in a name-transparent container is addressed by its bare key —
   the helper never learns which kind of field held it.
+
+- **A simulation owns one executor, and it is the one the loop runs.**
+  `phase_bodies(sim) === sim.exec.bodies`, and `sim.exec.act` is
+  `activation(sim.build, Float64)` itself: the bodies §7.5's measurements time
+  are the executor's own rather than a re-derivation, and the executor carries
+  the activation it was materialized from. `evaluate!(sim)` and
+  `evaluate!(sim.exec)` leave the same derivative buffer, and the executor form
+  allocates nothing — the `Simulation` method is a spelling, not a layer.
 
 ## Stand-in retirement history
 

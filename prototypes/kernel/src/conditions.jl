@@ -460,6 +460,7 @@ end
 # --- the dynamic-walk application register (§14.4) ------------------------------
 
 """
+    apply!(ex::Executor, plan)
     apply!(sim, plan)
 
 §14.4's dynamic walk: execute the validated entry list by runtime dispatch per
@@ -470,15 +471,17 @@ fifty compiles. Which register a service uses is internal, never user-facing:
 the specialized `apply!` the iterating services want is the same plan unrolled
 (absent here, README).
 """
-function apply!(sim::Simulation, plan::ConditionPlan)
+function apply!(ex::Executor, plan::ConditionPlan)
     for (off, v) in plan.xs
-        flatten!(sim.xbuf, off, v)
+        flatten!(ex.xbuf, off, v)
     end
     for (store, ci, v) in plan.stores
-        (store === :s ? sim.sstores : sim.mstores)[ci][] = v
+        (store === :s ? ex.sstores : ex.mstores)[ci][] = v
     end
     for (_, addr, v) in plan.inputs
-        scatter!(sim.store, addr, v)
+        scatter!(ex.store, addr, v)
     end
     nothing
 end
+
+apply!(sim::Simulation, plan::ConditionPlan) = apply!(sim.exec, plan)

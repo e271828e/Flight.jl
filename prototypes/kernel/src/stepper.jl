@@ -47,17 +47,17 @@ end
 RK4(::Type{T}, n::Int) where {T} = RK4{T}(ntuple(_ -> zeros(T, n), 5)...)
 
 function step!(m::RK4, sim, h)
-    x, ẋ = sim.xbuf, sim.ẋbuf
+    x, ẋ = sim.exec.xbuf, sim.exec.ẋbuf
     (; x₀, k₁, k₂, k₃, k₄) = m
-    t₀ = sim.clock.t
+    t₀ = sim.exec.clock.t
     copyto!(x₀, x)
 
     evaluate!(sim); copyto!(k₁, ẋ)
-    _advance!(x, x₀, k₁, h / 2); sim.clock.t = t₀ + h / 2
+    _advance!(x, x₀, k₁, h / 2); sim.exec.clock.t = t₀ + h / 2
     evaluate!(sim); copyto!(k₂, ẋ)
     _advance!(x, x₀, k₂, h / 2)
     evaluate!(sim); copyto!(k₃, ẋ)
-    _advance!(x, x₀, k₃, h); sim.clock.t = t₀ + h
+    _advance!(x, x₀, k₃, h); sim.exec.clock.t = t₀ + h
     evaluate!(sim); copyto!(k₄, ẋ)
 
     @inbounds for i in eachindex(x)
@@ -83,13 +83,13 @@ end
 Heun(::Type{T}, n::Int) where {T} = Heun{T}(ntuple(_ -> zeros(T, n), 3)...)
 
 function step!(m::Heun, sim, h)
-    x, ẋ = sim.xbuf, sim.ẋbuf
+    x, ẋ = sim.exec.xbuf, sim.exec.ẋbuf
     (; x₀, k₁, k₂) = m
-    t₀ = sim.clock.t
+    t₀ = sim.exec.clock.t
     copyto!(x₀, x)
 
     evaluate!(sim); copyto!(k₁, ẋ)
-    _advance!(x, x₀, k₁, h); sim.clock.t = t₀ + h
+    _advance!(x, x₀, k₁, h); sim.exec.clock.t = t₀ + h
     evaluate!(sim); copyto!(k₂, ẋ)
 
     @inbounds for i in eachindex(x)

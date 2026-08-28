@@ -736,6 +736,27 @@ function establish_defaults!(xbuf::Vector{T}, sstores::Vector, mstores::Vector,
     nothing
 end
 
+"""
+One executor (§9.7, glossary): the compiled execution form of the schedule over
+its own buffers, at one scalar — the entries' concretely-typed tuples closed
+into the phase bodies, beside the store set they read and write.
+
+Buffers are never cached, because every buffer set has exactly one owner
+(§9.2): a `Simulation` owns its nominal executor, and every service invocation
+instantiates its own from the same cached layouts.
+"""
+struct Executor{T,S,B,CL,EV}
+    act::Activation{T}     # the layout and probe products it was materialized from
+    store::S               # the signal table: cells and root inputs
+    xbuf::Vector{T}        # continuous state, the flat buffer (§7.1)
+    ẋbuf::Vector{T}        # its derivative — integrator scratch (§7.5)
+    sstores::Vector{Any}   # discrete state stores, by component index
+    mstores::Vector{Any}   # mode stores, by component index
+    clock::CL
+    bodies::B              # the phase bodies, closed over the buffers above
+    events::EV             # the compiled event set, likewise (nominal only)
+end
+
 function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{Int},
                  Δt_c::Vector{Float64}; chunk_size::Int = 16) where {T}
     flat, tiers, decls, layout = b.flat, b.tiers, act.decls, act.layout
@@ -871,10 +892,9 @@ function compile(b::Build, act::Activation{T}, D_c::Vector{Int}, Φ_c::Vector{In
               rhs = body(rhs_entries, rhs_gates),
               ticks = body(tick_entries, tick_gates))
 
-    (store = store, xbuf = xbuf, ẋbuf = ẋbuf, clock = clock, bodies = bodies,
-     sstores = sstores, mstores = mstores,
-     events = EventSet(ev_entries, proj_entries, store, xbuf, ev_owner, ev_names,
-                       ev_localized, length(flat.comps)))
+    evset = EventSet(ev_entries, proj_entries, store, xbuf, ev_owner, ev_names,
+                     ev_localized, length(flat.comps))
+    Executor(act, store, xbuf, ẋbuf, sstores, mstores, clock, bodies, evset)
 end
 
 # A probed input value: the producer's product, or the synthesized value of the

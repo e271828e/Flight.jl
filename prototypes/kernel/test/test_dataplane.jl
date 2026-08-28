@@ -104,7 +104,7 @@ end
 
     step!(sim; t_plus = 0.5)
     snap = latest(sim)
-    @test snap.frame == 5 && snap.t == sim.clock.t
+    @test snap.frame == 5 && snap.t == sim.exec.clock.t
     # Boundary-consistent and whole-table: every port bitwise the live table's,
     # the root inputs riding along as the source cells they are (§11.2).
     for (path, name) in (("p", :y), ("p", :power),
@@ -150,7 +150,7 @@ end
     stop[] = true
     (seen, bad, mono) = fetch(reader)
     @test seen > 0 && bad == 0 && mono
-    @test latest(sim).t == sim.clock.t
+    @test latest(sim).t == sim.exec.clock.t
 end
 
 @testset "staging from another task: the CAS merge loses nothing it shouldn't (§11.4)" begin

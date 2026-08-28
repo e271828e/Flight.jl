@@ -16,15 +16,8 @@ mutable struct RunPolicy
     hit::Union{Nothing,Symbol}
 end
 
-struct Simulation{T,S,B,CL,EV,M}
-    store::S
-    xbuf::Vector{T}
-    ẋbuf::Vector{T}
-    clock::CL
-    bodies::B
-    events::EV                    # the compiled event set with its §10.6 registers
-    layout::Layout
-    flat::Flat
+struct Simulation{T,E,M}
+    exec::E                       # the nominal executor this simulation owns (§9.2, §9.7)
     build::Build                  # the schema authority a condition resolves against (§14.3)
     h::Float64                    # the continuous step, bound at deployment
     n::Int                        # steps per base tick: Δt_base = n·h (§10.5)
@@ -39,8 +32,6 @@ struct Simulation{T,S,B,CL,EV,M}
     policy::RunPolicy             # the active advance's effective policy, bound per entry
     has_localized::Bool           # any localized event compiled in: the frame loop's fast-path key
     sched::Vector{@NamedTuple{path::String, D::Int, Φ::Int, Δt::Float64}}   # the bound schedule (§9.2)
-    sstores::Vector{Any}          # discrete state stores, by component index
-    mstores::Vector{Any}          # mode stores, by component index
     stepper::M                    # the seam's backend (§10.2), owning its own scratch
     xnext::Vector{T}              # the retained arrival pair (§10.4): xₙ₊₁ saved before trials clobber
     ẋnext::Vector{T}              # the buffer, ẋₙ₊₁ paid only past a validated trigger
@@ -69,6 +60,11 @@ the nominal one directly, any other via `activation(b, T)`'s cached Stratum-C
 re-run (§9.4). The convenience form is *defined as* `Simulation(build(root), T;
 …)`; entry compilation lives behind the binding because `Δt`, `D` and `Φ` are
 entry data, and one `Build` backs many `Simulation`s.
+
+What compilation returns is one `Executor` (§9.7), and the `Simulation` owns
+it: every buffer set has exactly one owner (§9.2), so a service invocation
+instantiates an executor of its own from the same cached layouts rather than
+writing through this one.
 
 `method` selects the integration backend across the stepper seam (§10.2): a
 stepper type — `RK4`, the default, or `Heun` — materialized against the flat
@@ -146,17 +142,16 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     act = activation(b, T)
     (stop_faces, stop_addrs) = _stop_faces(act.layout, stop_on)
     bound = bind_schedule(b, h, n, Δt_base)
-    c = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
-    stepper = method(T, length(c.xbuf))
-    Simulation{T,typeof(c.store),typeof(c.bodies),typeof(c.clock),typeof(c.events),
-               typeof(stepper)}(
-        c.store, c.xbuf, c.ẋbuf, c.clock, c.bodies, c.events, act.layout, b.flat, b,
+    ex = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
+    stepper = method(T, length(ex.xbuf))
+    Simulation{T,typeof(ex),typeof(stepper)}(
+        ex, b,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
         Int(localization_budget), Float64(join_timeout),
         t_end === nothing ? nothing : Float64(t_end), stop_faces, stop_addrs,
-        RunPolicy(Symbol[], Any[], nothing), any(c.events.localized), bound.sched,
-        c.sstores, c.mstores, stepper, zeros(T, length(c.xbuf)), zeros(T, length(c.xbuf)),
-        DataPlane(act.layout, c.store), Published(nothing), Control(),
+        RunPolicy(Symbol[], Any[], nothing), any(ex.events.localized), bound.sched,
+        stepper, zeros(T, length(ex.xbuf)), zeros(T, length(ex.xbuf)),
+        DataPlane(act.layout, ex.store), Published(nothing), Control(),
         SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)),
         DiagCell(EMPTY_DIAG), WriterAccount())
 end
@@ -269,7 +264,7 @@ with no discrete components still gets `ticks`, empty, compiling to a no-op
 whose `@ballocated` assertion passes vacuously, so consumers iterate uniformly
 with no per-model branching.
 """
-phase_bodies(sim::Simulation) = sim.bodies
+phase_bodies(sim::Simulation) = sim.exec.bodies
 
 # --- evaluation ---------------------------------------------------------------
 
@@ -278,12 +273,14 @@ One RHS evaluation: *evaluating the RHS means running the sweep* (§5.3). The
 interior variant of each sweep block, then the `f` block against the complete
 fresh table. Leaves `ẋbuf` holding the derivative of whatever `xbuf` holds.
 """
-@inline function evaluate!(sim::Simulation)
-    sim.bodies.sweep_1()
-    sim.bodies.sweep_2()
-    sim.bodies.rhs()
+@inline function evaluate!(ex::Executor)
+    ex.bodies.sweep_1()
+    ex.bodies.sweep_2()
+    ex.bodies.rhs()
     nothing
 end
+
+@inline evaluate!(sim::Simulation) = evaluate!(sim.exec)
 
 """
 The boundary macro-sequence at a base tick, final form (§5.3, §10.6):
@@ -300,9 +297,9 @@ produces `s[k+1]` — the sampled-data recursion, ordered by construction rather
 than by convention.
 """
 @inline function boundary!(sim::Simulation, tick::Int)
-    _projects!(sim.events)
+    _projects!(sim.exec.events)
     event_phase!(sim, tick)
-    sim.bodies.ticks(tick)
+    sim.exec.bodies.ticks(tick)
     nothing
 end
 
@@ -316,7 +313,7 @@ projection and the event phase run in full — every step boundary is a boundary
 (§10.4).
 """
 @inline function offtick_boundary!(sim::Simulation)
-    _projects!(sim.events)
+    _projects!(sim.exec.events)
     event_phase!(sim, nothing)
     nothing
 end
@@ -337,21 +334,22 @@ entries here at all (§9.4's executable set), so its pinned cells keep the
 carried nominal products — at boundary zero as everywhere.
 """
 @inline function boundary_zero!(sim::Simulation)
-    _projects!(sim.events)
+    _projects!(sim.exec.events)
     event_phase!(sim, ESTABLISH)
-    sim.bodies.ticks(0)
+    sim.exec.bodies.ticks(0)
     nothing
 end
 
 # One iteration round's sweep: the whole gated schedule (§10.6), in the due-set
 # arity the boundary fixed — never the update laws, which wait for quiescence.
-@inline _round!(sim::Simulation, tick::Int) =
-    (sim.bodies.sweep_1(tick); sim.bodies.sweep_2(tick); nothing)
-@inline _round!(sim::Simulation, ::Nothing) =
-    (sim.bodies.sweep_1(); sim.bodies.sweep_2(); nothing)
+@inline _round!(ex::Executor, tick::Int) =
+    (ex.bodies.sweep_1(tick); ex.bodies.sweep_2(tick); nothing)
+@inline _round!(ex::Executor, ::Nothing) =
+    (ex.bodies.sweep_1(); ex.bodies.sweep_2(); nothing)
 # Boundary zero's round: the whole schedule, gated by nothing (§14.5, D-205).
-@inline _round!(sim::Simulation, e::Establish) =
-    (sim.bodies.sweep_1(e); sim.bodies.sweep_2(e); nothing)
+@inline _round!(ex::Executor, e::Establish) =
+    (ex.bodies.sweep_1(e); ex.bodies.sweep_2(e); nothing)
+@inline _round!(sim::Simulation, tick) = _round!(sim.exec, tick)
 
 """
 The event phase (§10.6): [sweep → guards → handlers] iterated to quiescence,
@@ -372,7 +370,7 @@ is updated unconditionally from the final samples — every prior an honest
 observation of a settled boundary.
 """
 function event_phase!(sim::Simulation, tick)
-    es = sim.events
+    es = sim.exec.events
     _round!(sim, tick)
     n = length(es.prior)
     n == 0 && return nothing
@@ -391,7 +389,7 @@ function event_phase!(sim::Simulation, tick)
                 es.warned[i] = true       # at most one report per event per boundary
                 (path, name) = es.names[i]
                 _report!(sim.loop_diag,   # the loop's own cell (§11.8): folded at the next frame top
-                         FiringBudget(path, name, Float64(sim.clock.t), budget, es.count[i]))
+                         FiringBudget(path, name, Float64(sim.exec.clock.t), budget, es.count[i]))
             end
             firing = eligible && !es.comp_fired[es.owner[i]]
             es.fire[i] = firing
@@ -424,7 +422,7 @@ the backend is simply not called, and no backend contract has to say what it
 would do at N = 0.
 """
 @inline function step!(sim::Simulation, h)
-    isempty(sim.xbuf) ? (sim.clock.t += h) : step!(sim.stepper, sim, h)
+    isempty(sim.exec.xbuf) ? (sim.exec.clock.t += h) : step!(sim.stepper, sim, h)
     nothing
 end
 
@@ -486,13 +484,13 @@ function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) wh
         "never re-initialized; reproduction is trace replay, absent here (§13.6)"))
     plan = resolve_condition(condition, sim.build, T)      # both refusals precede every write
     assert_total(plan, sim.build.flat, "init!")  # (§14.6): all-or-nothing
-    establish_defaults!(sim.xbuf, sim.sstores, sim.mstores, sim.build.flat.comps,
+    establish_defaults!(sim.exec.xbuf, sim.exec.sstores, sim.exec.mstores, sim.build.flat.comps,
                         activation(sim.build, T).decls, sim.build.tiers)   # D-063's reset
     apply!(sim, plan)
-    sim.clock.t = t₀
-    sim.clock.t₀ = t₀
-    sim.clock.step = 0
-    fill!(sim.events.prior, false)
+    sim.exec.clock.t = t₀
+    sim.exec.clock.t₀ = t₀
+    sim.exec.clock.step = 0
+    fill!(sim.exec.events.prior, false)
     _reset!(sim.log)
     _reset_accounts!(sim)         # a new trajectory opens a fresh account (§11.8)
     for e in sim.plane.roster     # §12.6: no staged batch survives into the
@@ -559,7 +557,7 @@ function run!(sim::Simulation; t_end = nothing, stop_on = nothing)
         "nor here — the constructor value is the default and the run! keyword " *
         "the per-run override (§13.5)"))
     (faces, addrs) = stop_on === nothing ? (sim.stop_on, sim.stop_addrs) :
-                                           _stop_faces(sim.layout, stop_on)
+                                           _stop_faces(sim.exec.act.layout, stop_on)
     target = round(Int, te / sim.h)
     pol = sim.policy
     pol.faces, pol.addrs, pol.hit = faces, addrs, nothing
@@ -661,11 +659,11 @@ function _advance!(sim::Simulation, pol::RunPolicy, upto::Int, t_end_frame::Int)
     while true
         issuer = @atomic ctl.stop_issuer
         issuer === nothing || return (ControlRequestedStop(issuer), adv)
-        sim.clock.step < t_end_frame || return (EndTimeReached(), adv)
-        sim.clock.step < upto || return (nothing, adv)
+        sim.exec.clock.step < t_end_frame || return (EndTimeReached(), adv)
+        sim.exec.clock.step < upto || return (nothing, adv)
         isempty(plane.roster) || yield()
         drain!(sim)
-        k = (sim.clock.step += 1)
+        k = (sim.exec.clock.step += 1)
         adv += 1
         frame!(sim, k)
         if pol.hit === nothing
@@ -729,7 +727,7 @@ function step!(sim::Simulation; frames = nothing, t_plus = nothing)
     @atomic :release ctl.lifecycle = :running   # the freeze holds within the call
     term, adv, err_src = nothing, 0, nothing
     try
-        (term, adv) = _advance!(sim, pol, sim.clock.step + nf, t_end_frame)
+        (term, adv) = _advance!(sim, pol, sim.exec.clock.step + nf, t_end_frame)
     catch err
         err_src = LoopError(err)              # the record is assembled below,
         rethrow()                             # after the sweep (D-203)
@@ -815,23 +813,23 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
             "CallerTaskConflict: $(typeof(dev)) declares `needs_calling_task`, and " *
             "$(_who(plane.roster[i])) already holds the calling task (§11.1, §11.3)"))
     end
-    claim = is_input(b) ? _claim(plane, sim.layout, b) : Symbol[]
+    claim = is_input(b) ? _claim(plane, sim.exec.act.layout, b) : Symbol[]
     for f in claim                                 # claims: face exclusivity
         haskey(plane.claimedby, f) && throw(BuildError(
             "ClaimConflict: `$f` is claimed by both $(typeof(dev)) and " *
             "$(plane.claimedby[f]) — one writer per root input at any time (§11.3)"))
     end
-    rg = is_output(b) ?                            # the output side: reads → one gather,
-        _compile_reads(sim.layout, reads(b), typeof(b)) : nothing   # resolved before admission commits
+    # The output side: reads → one gather, resolved before admission commits.
+    rg = is_output(b) ? _compile_reads(sim.exec.act.layout, reads(b), typeof(b)) : nothing
     id = plane.next_id                             # assigned on admission alone: a
     plane.next_id += 1                             # rejected attach consumes no id
-    w = Writer(sim.layout, claim)
+    w = Writer(sim.exec.act.layout, claim)
     diag = DiagCell(EMPTY_DIAG)                    # the device's diagnostic cell (§11.8)
     h = DeviceHandle(id, "device $id ($(typeof(dev)))", b, w, plane, sim.control,
                      sim.published, diag, rg, sim.control.counter)
-    push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.store, w),
+    push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.exec.store, w),
                                     should_abort, diag, WriterAccount(), h))
-    reclaim!(plane, sim.layout)
+    reclaim!(plane, sim.exec.act.layout)
     is_greedy(b) && isempty(claim) &&
         @warn "EmptyGreedyClaim: device $id ($(typeof(dev))) under $(typeof(b)) staked " *
               "the empty remainder — every root input face is already claimed (§11.6)"
@@ -855,7 +853,7 @@ function detach!(sim::Simulation, dev::AbstractDevice)
         "this $(typeof(dev)) instance is not rostered — `detach!` releases an " *
         "existing attachment (§11.3)"))
     deleteat!(plane.roster, i)
-    reclaim!(plane, sim.layout)
+    reclaim!(plane, sim.exec.act.layout)
     nothing
 end
 
@@ -931,8 +929,8 @@ writer.
 """
 function publish!(sim::Simulation)
     ctl = sim.control
-    snap = Snapshot(sim.clock.t, sim.clock.step, ctl.counter, capture(sim.store),
-                    sim.layout, _status(sim))
+    snap = Snapshot(sim.exec.clock.t, sim.exec.clock.step, ctl.counter, capture(sim.exec.store),
+                    sim.exec.act.layout, _status(sim))
     @atomic :release sim.published.latest = snap
     log!(sim.log, snap)
     lock(ctl.cond)
@@ -1013,23 +1011,24 @@ end
 # §8.6's canonical strings, and an assembly's own path addresses its faces —
 # which resolve to the cells they derive from.
 
-port(sim::Simulation, path::String, name::Symbol) = gather(sim.store, sim.layout.addr[(path, name)])
+port(sim::Simulation, path::String, name::Symbol) =
+    gather(sim.exec.store, sim.exec.act.layout.addr[(path, name)])
 
 """
 State at `path`, from whichever home owns it: `x` in the flat buffer on the
 continuous tier, `s` in the component's own store on the discrete one (§7.3).
 """
 function state(sim::Simulation{T}, path::String) where {T}
-    ci = index_of(sim.flat, path)
-    sim.sstores[ci] === nothing || return sim.sstores[ci][]
-    _tier(i) = classify_tier(sim.flat.paths[i], sim.flat.comps[i])
-    _decls(i) = declarations(sim.flat.comps[i], _tier(i), T)
+    ci = index_of(sim.build.flat, path)
+    sim.exec.sstores[ci] === nothing || return sim.exec.sstores[ci][]
+    _tier(i) = classify_tier(sim.build.flat.paths[i], sim.build.flat.comps[i])
+    _decls(i) = declarations(sim.build.flat.comps[i], _tier(i), T)
     off = 0
     for i in 1:(ci-1)
         _tier(i) === CONTINUOUS && (off += nleaves(typeof(_decls(i).x)))
     end
-    reconstruct(typeof(_decls(ci).x), sim.xbuf, off)
+    reconstruct(typeof(_decls(ci).x), sim.exec.xbuf, off)
 end
 
 """Modes at `path` (§7.3). Read-only here: modes are written by handlers alone."""
-modes(sim::Simulation, path::String) = sim.mstores[index_of(sim.flat, path)][]
+modes(sim::Simulation, path::String) = sim.exec.mstores[index_of(sim.build.flat, path)][]
