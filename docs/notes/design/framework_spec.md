@@ -2650,8 +2650,9 @@ declaration_error(path::AbstractString, why::Symbol)      # e.g. :both_given
 declaration_error(path::AbstractString, unknown, legal)   # did-you-mean against the legal set
 
 function input_passthrough(asm, child_path::AbstractString;
-                     prefix::AbstractString = child_path,   # "" → no prefixing
                      sep::AbstractString = ".",
+                     prefix::AbstractString =               # "" → no prefixing
+                         replace(child_path, "/" => sep),
                      except::Tuple = (), only::Tuple = ())  # mutually exclusive
 
     child = resolve(asm, child_path)      # getfield walk along "/" segments
@@ -2716,7 +2717,10 @@ output_connections(sys::Systems) = (
 Its consumer is one-level routing ([§6.1][s6-1]): every level re-exports the outputs
 it surfaces, so the output side needs the computed spelling the input side
 already has. Both helpers take `child_path` naming an **immediate** child,
-container key segments included; a deeper path meets `resolve`'s one-level
+container key segments included — the default `prefix` folds the path's slash
+into `sep`, so `"gear/1"` labels its faces `"gear.1.…"` and the default stays a
+legal face name for every blessed `child_path`, while an explicit `prefix` is
+used verbatim; a deeper path meets `resolve`'s one-level
 rejection like any other wiring endpoint ([§13.3][s13-3]). Two helpers rather
 than one keyword, because after the boundary
 split a single call cannot emit entries into two different declarations.
