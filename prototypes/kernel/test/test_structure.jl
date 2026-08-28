@@ -690,6 +690,14 @@ end
     @test output_passthrough(m, "g") == ("g/out" => "g.out",)
     @test output_passthrough(m, "s"; only = ("e",), prefix = "") == ("s/e" => "e",)
 
+    # The default `prefix` folds a container element's slash into `sep`, so the
+    # blessed `"units/1"` child path labels legally by default — with the sep
+    # actually given — while an explicit `prefix` is used verbatim.
+    r = TupleRoster((Gain(2.0), Gain(3.0)))
+    @test input_passthrough(r, "units/1") == ("units.1.e" => "units/1/e",)
+    @test output_passthrough(r, "units/2"; sep = "_") == ("units/2/out" => "units_2_out",)
+    @test input_passthrough(r, "units/1"; prefix = "u1") == ("u1.e" => "units/1/e",)
+
     # Exclusivity is enforced, not documented.
     err = failure(() -> input_passthrough(m, "s"; except = ("a",), only = ("b",)))
     @test err isa BuildError && occursin("mutually exclusive", err.msg)

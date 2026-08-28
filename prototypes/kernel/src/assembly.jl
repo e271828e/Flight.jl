@@ -320,19 +320,23 @@ output_faces(c) = classify("", c) === PRIMITIVE ?
 # every check that meets them is the build's own.
 
 """
-    input_passthrough(asm, child_path; prefix = child_path, sep = ".",
+    input_passthrough(asm, child_path; sep = ".",
+                      prefix = replace(child_path, "/" => sep),
                       except = (), only = ())
 
 Every input face of `child_path` the assembly does not feed, exposed on its own
 boundary under `prefix * sep * face` — splatted into `input_connections` (§8.8).
-`prefix = ""` drops the prefixing entirely; `except` and `only` filter face names
+The default `prefix` folds the path's slash into `sep`, so an undeclared
+container element (`"units/1"`) labels its faces `"units.1.…"` — a legal face
+name — by default; an explicit `prefix` is used verbatim, and `prefix = ""`
+drops the prefixing entirely. `except` and `only` filter face names
 within the child's set and are mutually exclusive. `child_path` names an
 immediate child (a bare key where the container is name-transparent); a deeper
 path meets `resolve`'s one-level rejection like any other wiring endpoint.
 """
 function input_passthrough(asm, child_path::AbstractString;
-                           prefix::AbstractString = child_path,
                            sep::AbstractString = ".",
+                           prefix::AbstractString = replace(child_path, "/" => sep),
                            except::Tuple = (), only::Tuple = ())
     names = input_faces(resolve(asm, child_path))
     wanted = _passthrough_faces("input_passthrough", child_path, names, except, only)
@@ -340,19 +344,21 @@ function input_passthrough(asm, child_path::AbstractString;
 end
 
 """
-    output_passthrough(asm, child_path; prefix = child_path, sep = ".",
+    output_passthrough(asm, child_path; sep = ".",
+                       prefix = replace(child_path, "/" => sep),
                        except = (), only = ())
 
 `input_passthrough`'s sibling on the outward boundary (D-209), splatted into
-`output_connections`: the same surface over `output_faces`, its pairs reading
+`output_connections`: the same surface over `output_faces` — the same folded
+default `prefix` included — its pairs reading
 along the flow — internal source => face name — as every pair in that
 declaration does. Its consumer is one-level routing (§6.1): every level
 re-exports the outputs it surfaces, so the output side needs the computed
 spelling the input side already has.
 """
 function output_passthrough(asm, child_path::AbstractString;
-                            prefix::AbstractString = child_path,
                             sep::AbstractString = ".",
+                            prefix::AbstractString = replace(child_path, "/" => sep),
                             except::Tuple = (), only::Tuple = ())
     names = output_faces(resolve(asm, child_path))
     wanted = _passthrough_faces("output_passthrough", child_path, names, except, only)

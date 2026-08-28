@@ -458,7 +458,12 @@ passed through meets §6.1's one-producer rule with both claimants named, and an
 `except`ed face the assembly then fails to wire is an ordinary unconnected
 input. The tests pin exactly that division. `declaration_error`'s two shapes in
 the spec sketch are §13.2's structured carrier, which the README records as
-absent: these throw a plain `BuildError`, the house framing.
+absent: these throw a plain `BuildError`, the house framing. One default was
+amended after the increment closed (the §8.8 doc ruling in the same commit as
+this paragraph's): `prefix` defaults to `child_path` with its slash folded into
+`sep`, so the blessed container-element path (`"units/1"`) labels its faces
+legally (`"units.1.…"`) by default instead of minting a slash-bearing face name
+for §8.6's check to refuse; an explicit `prefix` is used verbatim.
 
 ## The properties the tests pin down
 
