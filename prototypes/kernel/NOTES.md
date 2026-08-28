@@ -394,7 +394,7 @@ general check can see neither: an element keyed with its own field's name,
 which `sample_times`' field-name sugar already spells, and one keyed with a
 sibling *container* field's name **where that field contributes children**,
 which collides with no child yet shadows the `"field/key"` grammar reaching
-them — the review's find, spec'd as the §8.5 clause D-211 acquired: the elements
+them — the review's find, spec'd as the §8.5 clause D-212 records: the elements
 stay in the flat list and become unreachable in the structural register, the
 exact-match-first lookup in `_one_level` answering with the bare child and the
 one-level rejection then blaming it rather than the shadowed container. The

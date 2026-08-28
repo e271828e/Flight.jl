@@ -77,8 +77,8 @@ end
 # container field — and a collision family in three arms: no two children may
 # end up sharing a name, and the two collisions a bare key reaches that no child
 # name can, its own field's name (which the rate declaration's sugar already
-# spells) and a sibling container field's name (whose `"field/key"` segment
-# grammar it would shadow).
+# spells) and a sibling container field's name, where that field contributes
+# children (whose `"field/key"` segment grammar it would shadow).
 
 """`segment => instance` for every child of `c`, in field order."""
 children(path::String, c) = first(_children(path, c))
@@ -128,7 +128,7 @@ function _children(path::String, c)
                 p = "$(bare ? "name-transparent " : "")container field `$name`, element `$k`"
                 # The collision family's other two arms, both reachable only by a
                 # bare key and neither of them a duplicate *child* name, so
-                # `_check_child_names` below can see neither (§8.5, D-211).
+                # `_check_child_names` below can see neither (§8.5, D-211, D-212).
                 bare && string(k) == string(name) &&
                     throw(BuildError("$(_at(path)): the bare key `$k` — $p — collides with " *
                                      "`sample_times`' field-name sugar, which spells one " *
@@ -140,7 +140,7 @@ function _children(path::String, c)
                                      "`$k/<key>`: no child bears the bare name, but the " *
                                      "segment grammar that reaches those children does, and " *
                                      "the key shadows it — leaving them unreachable behind a " *
-                                     "diagnostic naming the wrong child (§8.5, §6.1, D-211)"))
+                                     "diagnostic naming the wrong child (§8.5, §6.1, D-212)"))
                 push!(kids, (bare ? string(k) : string(name, "/", k)) => v[k])
                 push!(fields, name)
                 push!(prov, p)
