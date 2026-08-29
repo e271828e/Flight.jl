@@ -177,7 +177,11 @@ end
 end
 
 @testset "a populated drain is as free as an empty one, whatever the batch touches (§11.4, D-202)" begin
-    sim = Simulation(two_root_inputs(); h = 1//10)
+    # `trace = false`: what this measures is the *scatter's* cost, and §11.5's
+    # sparse record is the drain's one admitted allocation (D-176, pinned in
+    # test_trace.jl) — it would otherwise stand between the measurement and
+    # D-202's claim.
+    sim = Simulation(two_root_inputs(); h = 1//10, trace = false)
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     stage!(sim, "a" => 1.0); drain!(sim)             # warm the writer's one scatter
     @test @ballocated(drain!($sim), setup = (stage!($sim, "a" => 1.0)), evals = 1) == 0
@@ -201,7 +205,8 @@ wide_zero(n) = fragment(inputs = NamedTuple(Symbol(p, i) => 0.0
                                            for p in ("a", "b") for i in 1:n))
 
 @testset "a wide surface stages, merges and drains like a narrow one (§11.4, D-202)" begin
-    sim = Simulation(wide_root_inputs(17); h = 1//10)      # 34 root faces
+    # `trace = false` for the two allocation assertions below, as above
+    sim = Simulation(wide_root_inputs(17); h = 1//10, trace = false)   # 34 root faces
     init!(sim, wide_zero(17))
     stage!(sim, "a3" => 1.5)
     stage!(sim, "b9" => -2.0, "a3" => 2.5)           # merge: newest wins, untouched survive

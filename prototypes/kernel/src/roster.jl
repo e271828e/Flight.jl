@@ -3,9 +3,9 @@
 # contract with its bidirectional conformance check, the three-part admission,
 # both claim sources, and the harness register as the derived remainder. The
 # task side of the contract — the handle, the wrapper, the run's bracket and
-# tail — lives in devices.jl; what stands further out in the spec —
-# the trace — is deliberately absent (README); the binding conventions and
-# the compiled gather live in bindings.jl.
+# tail — lives in devices.jl, the trace whose schema list the roster's writers
+# grow in trace.jl; the binding conventions and the compiled gather live in
+# bindings.jl.
 #
 # This file holds the types and the pure mechanics; `attach!`/`detach!` and
 # the staging entry points live in sim.jl, beside the loop whose frames they
@@ -137,8 +137,11 @@ _who(e::RosterEntry) = "device $(e.id) ($(typeof(e.dev)))"
 # the drain, empty or populated, stays allocation-free (D-202). The per-entry
 # dispatch this leaves is
 # the iteration §11.4 licenses in place of the tuple specialization the freeze
-# would also permit.
-_drain_thunk(store, w::Writer) = () -> _drain!(store, w)
+# would also permit. The trace register and this writer's index into its schema
+# list ride along (§11.5), which is why every thunk is compiled at one site
+# alone — `_install_writers!` (trace.jl) — and recompiled whenever the indices
+# move.
+_drain_thunk(store, w::Writer, reg, widx::Int) = () -> _drain!(store, w, reg, widx)
 
 """
 The data plane's mutable holder: the roster in attachment order — which is the
@@ -174,9 +177,13 @@ mutable struct DataPlane
     next_id::Int
 end
 
-function DataPlane(layout::Layout, store)
+# The register is an argument because the drain thunks close over it (§11.5):
+# with the roster empty the harness register is the sole writer, index 1 of the
+# first set the header captures, and `_install_writers!` re-fixes that at the
+# capture and at every roster change.
+function DataPlane(layout::Layout, store, reg)
     w = Writer(layout, Symbol[f for (f, _) in layout.root_inputs])
-    DataPlane(RosterEntry[], w, _drain_thunk(store, w), DiagCell(EMPTY_DIAG),
+    DataPlane(RosterEntry[], w, _drain_thunk(store, w, reg, 1), DiagCell(EMPTY_DIAG),
               WriterAccount(), Dict{Int,Task}(), Dict{Symbol,String}(), store, 1)
 end
 
@@ -215,8 +222,12 @@ claim covers. The batch is taken, reshaped through the new schema and
 re-staged — newly claimed faces discarded with `ClaimedFaceEntry` — so the run
 always starts with cells matching the run's schemas. At `detach!` the surface
 only broadens and every pending entry survives the reshape.
+
+The roster change is also where the trace's schema list grows (§11.5): the
+current writer set is appended and every drain thunk recompiled against its
+new index, which is what `_install_writers!` does at the tail here.
 """
-function reclaim!(plane::DataPlane, layout::Layout)
+function reclaim!(plane::DataPlane, layout::Layout, reg)
     empty!(plane.claimedby)
     for e in plane.roster, f in e.writer.faces
         plane.claimedby[f] = _who(e)
@@ -225,7 +236,7 @@ function reclaim!(plane::DataPlane, layout::Layout)
     pending = @atomicswap old.cell.pending = nothing
     w = Writer(layout, Symbol[f for (f, _) in layout.root_inputs if !haskey(plane.claimedby, f)])
     plane.harness = w
-    plane.harness_drain = _drain_thunk(plane.store, w)
+    _install_writers!(reg, plane)          # §11.5: the schema list grows, the thunks follow
     if pending !== nothing
         batch = pending[]
         entries = [old.faces[i] => batch.vals[i] for i in 1:length(old.faces) if batch.mask[i]]

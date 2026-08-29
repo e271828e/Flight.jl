@@ -788,6 +788,64 @@ pseudo-field, and every `op`/`call` payload — `MissingInit`, `ServiceLifecycle
 and `UninitializedInputs` included — is a `Symbol` now, matching
 `ArgumentInvalid`'s own.
 
+**Increment 23, stage 1 — the input trace's recording half (§11.5).** The
+header at `init!` and one sparse record per drained batch; replay (§12.7) and
+its kinds are stages 2 and 3, and the absence list keeps them until they land.
+Three things carried the design.
+
+*The recording site is the drain, and it rides inside the thunk.* §11.5 puts
+the conversion at the drain rather than at the staging shim because the drained
+tuple is the *coalesced* truth — a shim-side log would need its own merge — and
+the prototype's drain was already a stopped-sim-compiled closure per writer
+(D-202). So `_drain!` gained the register and the writer's schema index, both
+closed over at compile time, and `_record!` scans the mask by index. The cost
+is exactly what D-176 records and no more: the `entries` vector plus its boxed
+values, once per *drained* batch. A quiet frame allocates nothing — the frame
+stamp and the length counter are field writes on the register — which is why
+`test_dataplane.jl`'s empty-drain assertion needed no change while the two
+populated-drain ones now measure under `trace = false`: what they pin is
+D-202's claim about the *scatter*, and §11.5's record would otherwise stand
+between the measurement and the claim.
+
+*The schema list only grows.* §11.5 calls the schemas "the run's frozen surface
+partition", and within one run they are. But a trace spans a whole trajectory —
+`init!`, then any number of `step!`/`run!` cycles — and `attach!`/`detach!` are
+legal at every stopped-sim point between them (§12.6). A roster change
+recompiles the harness writer against a new complement, so the very same face
+sits at a different position afterwards, while batches already recorded
+reference the old positions. Rewriting them is not an option (the values are
+recorded, the positions are the index into a schema), so the rule is: every
+capture and every roster change *appends* the current writer set whole, and
+every drain thunk is recompiled against its new index. `live_writers` names the
+current entries, a run's `schemas` may carry superseded ones, and a consumer
+resolves a record only ever through `schemas[batch.writer]`. This is the
+prototype running ahead of §11.5's letter, and the spec pass should decide
+whether the section says so.
+
+The rule bought one structural decision. `_install_writers!` is the **one**
+site a drain thunk is compiled at — the capture calls it, and `reclaim!` calls
+it at its tail for both `attach!` and `detach!` — because the index rides in
+the closure and nothing else may fix it. Its per-entry recompilation replaces
+the `RosterEntry` value rather than making the type mutable: the entry is
+immutable by design and this is a stopped-sim operation. And the header is
+*rebuilt* on each growth rather than having its `schemas` vector pushed to, so
+a `Trace` already handed out keeps the list it was given — a valid prefix for
+its own batches, indices only ever growing — which is what makes "detached from
+the register" true of the whole value and not just of the batch vector.
+
+*`frames` is a field §11.5 does not name.* The spec's record is header plus
+batches; the register counts drains as well, one per frame, so that a recording
+whose last frames staged nothing still knows how long it ran. Replay needs the
+number (the frame budget is the recording's length, not its last batch's
+frame), and deriving it from the batches would be wrong. Flagged for the spec
+pass with the growth rule above.
+
+The refusals reuse what was there. `trace(sim)` under `trace = false` is
+`ArgumentInvalid(call = :trace, reason = :disabled)`; before the first `init!`
+it is `MissingInit(op = :trace)`, which fits better than a second
+`ArgumentInvalid` reason — with no header there is no recording, and the way
+out is exactly the mandatory `init!` an advance entry names (§12.6).
+
 
 ## The properties the tests pin down
 
@@ -1135,7 +1193,9 @@ Each of these is a spec claim rather than a programming convenience:
   one does — nothing — for the harness register and device writers alike,
   and a 34-face surface (past the 32-wide threshold where Base's tuple `map`
   leaves its inlined path, which the generated merge never touches) drains
-  as free as a two-face one.
+  as free as a two-face one. Measured under `trace = false` since increment
+  23: §11.5's sparse record is the drain's one admitted allocation, and what
+  these assertions are about is the scatter.
 - **Termination is a state with a typed record, never an exception (D-203).**
   Every ended run answers "why did it stop?" and "how did the stop go?"
   through `termination(sim)`: `EndTimeReached` with the final frame top,
@@ -1554,6 +1614,38 @@ Each of these is a spec claim rather than a programming convenience:
   `init!`, neither of which ever calls `loop`. `gather` against a handle whose
   binding declares no output side throws the same kind directly, `reason =
   :no_output_side`, on whichever task calls it.
+
+- **One sparse record per drained batch, against the writer's schema.** A
+  single staged face on a three-face surface records one `TraceBatch` with one
+  `position ⇒ value` entry, `frame == 1` — the drain runs before the clock's
+  step increments — and the harness register's schema index; the position
+  resolves to the face through `header.schemas[batch.writer]`, which is the
+  only way a consumer may resolve it. A merged batch is recorded once,
+  coalesced, because the drain is where the conversion happens. A frame nobody
+  staged into records nothing and still advances `frames`, and its drain
+  allocates nothing.
+- **The header is the pre-sequence state, resolved.** On a model whose
+  boundary zero fires a trigger and runs a due `g`, the header's `m` and `s`
+  hold the *authored* values while `modes`/`state` hold the post-sequence ones
+  — §14.5's placement, load-bearing because replay re-executes boundary zero
+  and a post-sequence capture would re-fire authored-condition events on top of
+  already-latched state. The root inputs ride along as resolved values, which
+  is the half no batch could supply: neither face in the fixture is ever
+  staged. The deployment block is captured at the same instant, with the
+  effective termination pair `init!` knows — the constructor's, `run!`'s
+  override post-dating the capture.
+- **The kill switch is a construction-time fact, and `init!` clears.** Under
+  `trace = false` the drain records nothing and `trace(sim)` is refused
+  (`ArgumentInvalid`, `reason = :disabled`); before the first `init!` there is
+  no header and the refusal is `MissingInit`, the same way out an advance entry
+  names. A warm restart empties the batches and re-captures the header against
+  the new condition — a new trajectory, D-029's "cleared at `init!`".
+- **A roster change appends the writer set, and earlier records still
+  resolve.** A face at position 2 of the whole-surface harness schema sits at
+  position 1 of the narrowed one an `attach!` leaves behind; both records
+  resolve to the same face because the appended set is a new entry rather than
+  a rewrite, and `live_writers` names the current one. A `detach!` appends
+  again and the batches recorded under the wider set stand unchanged.
 
 ## Stand-in retirement history
 

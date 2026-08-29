@@ -43,6 +43,7 @@ struct Simulation{T,E,M}
     published::Published          # §11.2's `@atomic latest` holder
     control::Control              # §12.1's stop word, §12.4's sticky status, §12.3's wait (devices.jl)
     log::SnapshotLog              # §11.2's retained snapshots, loop-task bookkeeping
+    trace::TraceRegister          # §11.5's input trace: the header and its sparse records
     loop_diag::DiagCell           # the loop's own diagnostic cell (§11.8): the budget degradations
     loop_acct::WriterAccount      # and the account behind it
 end
@@ -51,7 +52,7 @@ end
     Simulation(build::Build, T = Float64; h, n = 1, Δt_base = nothing,
                method = RK4, firing_budget = 4, localization_tol = 1e-6,
                localization_budget = 8, join_timeout = 5.0,
-               t_end = nothing, stop_on = (), log = true,
+               t_end = nothing, stop_on = (), trace = true, log = true,
                log_every = 1, log_max = 65536, chunk_size = 16)
     Simulation(root, T = Float64; …)
 
@@ -109,6 +110,14 @@ as at `run!`: an unknown face, a root input, or a non-`Bool` face is
 refused at whichever site names it. The default `()` is no stop faces — a run
 to `t_end`.
 
+`trace` is §11.5's kill switch (default `true`): the input trace is on by
+default because it is **primary** data and the log derived — given the initial
+state and the trace the log is recomputable, never the reverse, and an
+untraced interactive session is unreproducible permanently (D-029). The switch
+covers the memory-constrained marathon session, and nothing else: no sampling,
+no rolling window. Like the log keywords below it is a view policy, never
+trajectory-determining — recording reads the drained batch and writes nowhere.
+
 `log`, `log_every` and `log_max` are §11.2's retention keywords: the plain
 switch (default `true`), the keep-every-kth stride over published boundaries
 (an integer ≥ 1, default 1) and the bound on retained snapshot references (an
@@ -122,7 +131,7 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                     Δt_base = nothing, method = RK4, firing_budget = 4,
                     localization_tol = 1e-6, localization_budget = 8,
                     join_timeout = 5.0, t_end = nothing, stop_on = (),
-                    log = true, log_every = 1,
+                    trace = true, log = true, log_every = 1,
                     log_max = 65536, chunk_size::Int = 16) where {T}
     diags = Diagnostic[]
     method isa Type && method <: AbstractStepper ||
@@ -135,6 +144,8 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         push!(diags, DeploymentInvalid(parameter = :localization_budget, reason = :range, value = localization_budget))
     join_timeout isa Real && join_timeout > 0 ||
         push!(diags, DeploymentInvalid(parameter = :join_timeout, reason = :range, value = join_timeout))
+    trace isa Bool ||
+        push!(diags, DeploymentInvalid(parameter = :trace, reason = :range, value = trace))
     log isa Bool ||
         push!(diags, DeploymentInvalid(parameter = :log, reason = :range, value = log))
     log_every isa Integer && log_every ≥ 1 ||
@@ -151,6 +162,7 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
     bound = bind_schedule(b, h, n, Δt_base)
     ex = compile(b, act, bound.D, bound.Φ, bound.Δt; chunk_size)
     stepper = method(T, length(ex.xbuf))
+    reg = TraceRegister(trace)     # the drain thunks close over it, so it precedes the plane
     Simulation{T,typeof(ex),typeof(stepper)}(
         ex, b,
         bound.h, bound.n, bound.Δt_base, Int(firing_budget), Float64(localization_tol),
@@ -159,9 +171,9 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
         RunPolicy(Symbol[], Any[], nothing), any(ex.events.localized), bound.sched,
         bound.D, bound.Φ, bound.Δt, chunk_size,
         stepper, zeros(T, length(ex.xbuf)), zeros(T, length(ex.xbuf)),
-        DataPlane(act.layout, ex.store), Published(nothing), Control(),
+        DataPlane(act.layout, ex.store, reg), Published(nothing), Control(),
         SnapshotLog(log, Int(log_every), log_max === Inf ? typemax(Int) : Int(log_max)),
-        DiagCell(EMPTY_DIAG), WriterAccount())
+        reg, DiagCell(EMPTY_DIAG), WriterAccount())
 end
 
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
@@ -475,7 +487,12 @@ predicate already holding in the authored state fires at `t₀` — derived, not
 asserted — and a warm restart (`init!` again) resets all three registers from
 scratch: such predicates fire again at the new `t₀`. The log resets with them
 (§11.2): a warm restart is a new trajectory, and its boundary zero lands as a
-fresh first endpoint.
+fresh first endpoint. The trace resets with them (§11.5) and its header is
+captured *here* — after `apply!` and the clock writes, before the sequence
+runs — which is §14.5's placement, load-bearing on both sides: the header
+holds the resolved stores and root inputs rather than the authored overlay
+(D-038), and it never holds the post-transition result, boundary zero being
+re-executed under replay (§12.7).
 
 `init!` is §12.6's one door into `initialized`, and it is mandatory: `run!`
 and `step!` refuse a simulation whose boundary zero has not completed. It
@@ -512,6 +529,8 @@ function init!(sim::Simulation{T}, condition = fragment(); t0::T = zero(T)) wher
     @atomic sim.plane.harness.cell.pending = nothing
     @atomic ctl.stop_issuer = nothing
     ctl.termination = nothing
+    _reset!(sim.trace)            # §11.5: the trace is cleared at init!, header and all
+    _capture!(sim)                # and re-captured here, at §14.5's placement
     boundary_zero!(sim)
     publish!(sim)                 # the boundary-zero snapshot (§11.2, §14.5)
     @atomic :release ctl.lifecycle = :initialized
@@ -834,9 +853,12 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
     diag = DiagCell(EMPTY_DIAG)                    # the device's diagnostic cell (§11.8)
     h = DeviceHandle(id, "device $id ($(typeof(dev)))", b, w, plane, sim.control,
                      sim.published, diag, rg, sim.control.counter)
-    push!(plane.roster, RosterEntry(dev, b, id, w, _drain_thunk(sim.exec.store, w),
+    push!(plane.roster, RosterEntry(dev, b, id, w,
+                                    _drain_thunk(sim.exec.store, w, sim.trace, 0),
                                     should_abort, diag, WriterAccount(), h))
-    reclaim!(plane, sim.exec.act.layout)
+    # the writer index above is a placeholder: `reclaim!` appends the new writer
+    # set to the trace's schema list and recompiles every thunk against it (§11.5)
+    reclaim!(plane, sim.exec.act.layout, sim.trace)
     is_greedy(b) && isempty(claim) &&
         @warn logline(EmptyGreedyClaim(device = "device $id ($(typeof(dev)))", binding = string(typeof(b))))
     h
@@ -858,7 +880,7 @@ function detach!(sim::Simulation, dev::AbstractDevice)
     i === nothing && throw(BuildError(NotAttached(
         device = string(typeof(dev)), roster = [_who(e) for e in plane.roster])))
     deleteat!(plane.roster, i)
-    reclaim!(plane, sim.exec.act.layout)
+    reclaim!(plane, sim.exec.act.layout, sim.trace)
     nothing
 end
 
@@ -901,9 +923,19 @@ with every surface disjoint the order is unobservable, so the rule exists to
 make the record read the same way every time, not to arbitrate (§11.3). Never
 at a `t*` boundary (§10.4). Between drains the loop owns its data exclusively,
 and the frame's outcome is a pure function of the drained batches.
+
+The drain is also the trace's conversion site (§11.5, D-176): the drained
+tuple is the *coalesced* truth, so each taken batch is recorded sparse against
+its writer's schema on the way through — inside the thunk, where the writer's
+index is closed over — and the frame's ordinal is stamped here, once, before
+any thunk runs.
 """
 function drain!(sim::Simulation)
-    plane = sim.plane
+    plane, reg = sim.plane, sim.trace
+    # the ordinal this frame's records take (§11.5): the drain runs before the
+    # clock's step increments, so a batch taken at the top of frame `k` is
+    # recorded — and replayed — at `k`
+    reg.enabled && (reg.frame = sim.exec.clock.step + 1)
     for e in plane.roster
         e.drain()
         _fold!(e.acct, e.diag)    # the diagnostic cells drain at the same point (§11.8):
@@ -911,6 +943,7 @@ function drain!(sim::Simulation)
     plane.harness_drain()         # occurrence into the totals
     _fold!(plane.harness_acct, plane.harness_diag)
     _fold!(sim.loop_acct, sim.loop_diag)
+    reg.enabled && (reg.frames += 1)   # one drain per frame: the recording's length (§11.5)
     nothing
 end
 
@@ -1008,6 +1041,28 @@ function logged(sim::Simulation)
     end
     L.last === out[end] || push!(out, L.last)
     out
+end
+
+"""
+    trace(sim)
+
+§11.5's recording, as a value detached from the register: the header captured
+at the last `init!`, the sparse records of every batch drained since, and the
+number of frames drained behind them. Header plus batches are the run's
+*primary* record — the state trajectory, the log included, is derived from it
+(D-038) — and what consumes it is replay (§12.7), absent here.
+
+Refused under `trace = false`, the construction-time kill switch (D-029), and
+before the first `init!`, which is where the header is captured: with no
+header there is no recording, and `MissingInit` names the way out exactly as
+an advance entry's refusal does (§12.6).
+"""
+function trace(sim::Simulation)
+    reg = sim.trace
+    reg.enabled || throw(BuildError(ArgumentInvalid(call = :trace, reason = :disabled)))
+    h = reg.header
+    h === nothing && throw(BuildError(MissingInit(op = :trace, status = lifecycle(sim))))
+    Trace(h, copy(reg.batches), reg.frames)
 end
 
 # --- reading and writing the table outside the loop ---------------------------

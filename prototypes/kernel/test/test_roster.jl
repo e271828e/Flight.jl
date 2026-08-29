@@ -247,7 +247,9 @@ end
 end
 
 @testset "a populated device drain is as free as an empty one (§11.4, D-202)" begin
-    sim = Simulation(two_root_inputs(); h = 1//10)
+    # `trace = false`: the scatter's cost is what this measures, §11.5's sparse
+    # record being the drain's one admitted allocation (test_dataplane.jl)
+    sim = Simulation(two_root_inputs(); h = 1//10, trace = false)
     ha = attach!(sim, Pad("da"), Enumerated("a"))
     hg = attach!(sim, Pad("gui"), Greedy())
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))

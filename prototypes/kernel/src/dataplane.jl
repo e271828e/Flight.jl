@@ -3,9 +3,9 @@
 # channel with the published framework status (§11.8, §13.2), snapshot
 # publication, plane 3, and the log riding behind it (§11.2). The cells'
 # owners — the roster's device entries and the harness register beside them —
-# live in roster.jl, the device tasks that stage into them in devices.jl;
-# what stands further out in the spec — the trace, the pacer diagnostics —
-# is deliberately absent (README).
+# live in roster.jl, the device tasks that stage into them in devices.jl,
+# the trace the drain feeds in trace.jl; what stands further out in the spec —
+# the pacer diagnostics — is deliberately absent (README).
 #
 # This file holds the types and the pure mechanics; the `Simulation`-facing
 # surface — `stage!`, `drain!`, `publish!`, `latest` — lives in sim.jl, beside
@@ -510,12 +510,17 @@ end
 
 # One cell's drain (§11.4): the indivisible take by `atomicswap`, then the
 # compiled scatter. Reached at frame top through the stopped-sim-compiled
-# thunks (roster.jl's `_drain_thunk`), inside which both arguments are
-# concrete.
-function _drain!(store, w::Writer)
+# thunks (roster.jl's `_drain_thunk`), inside which every argument is
+# concrete. The trace's conversion rides here (§11.5): the drained tuple is
+# the *coalesced* truth, so the record is taken at the drain and nowhere
+# earlier, against the writer's own schema index — closed into the thunk with
+# the register (trace.jl, `reg` untyped for include order alone).
+function _drain!(store, w::Writer, reg, widx::Int)
     ref = @atomicswap w.cell.pending = nothing
     ref === nothing && return nothing
-    _apply!(store, w.addrs, ref[])
+    batch = ref[]
+    _apply!(store, w.addrs, batch)
+    reg.enabled && _record!(reg, widx, batch)
     nothing
 end
 

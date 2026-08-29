@@ -672,6 +672,7 @@ _dep_constraint(p::Symbol) =
     p === :localization_budget ? "must be an integer ≥ 1" :
     p === :join_timeout        ? "must be a positive real — the shutdown tail's join cap " *
                                  "in seconds of wall clock" :
+    p === :trace               ? "must be true or false — §11.5's trace kill switch" :
     p === :log                 ? "must be true or false — the retention switch" :
     p === :log_every           ? "must be an integer ≥ 1" :
     p === :log_max             ? "must be an integer ≥ 1, or Inf as the explicit opt-out" :
@@ -685,6 +686,7 @@ _dep_section(p::Symbol) =
     p === :firing_budget       ? " (§10.6)" :
     (p === :localization_tol || p === :localization_budget) ? " (§10.4)" :
     p === :join_timeout        ? " (§12.4)" :
+    p === :trace               ? " (§11.5)" :
     (p === :log || p === :log_every || p === :log_max) ? " (§11.2)" :
     p === :t_end               ? " (§13.5)" :
     p === :n                   ? " (§9.1)" : ""
@@ -1125,7 +1127,7 @@ message(d::ConditionShapeDrift) =
 
 "§8.7, §11.6, §12.6, §14.7, D-215: an argument outside its constraint — `DeploymentInvalid`'s twin off the deployment surface."
 Base.@kwdef struct ArgumentInvalid <: Diagnostic
-    call::Symbol                             # :Period|:Hz|:Absolute|:step!|:run!|:trim!|:TableBinding|:selector
+    call::Symbol                             # :Period|:Hz|:Absolute|:step!|:run!|:trim!|:trace|:TableBinding|:selector
     reason::Symbol
     argument::Union{Nothing,Symbol} = nothing
     value::Any = nothing
@@ -1162,6 +1164,10 @@ function message(d::ArgumentInvalid)
         return "`trim!` takes a `TrimProblem` and was given $(d.value) — the problem is " *
                "one value with a closed field set: TrimProblem(; guess, lower, upper, " *
                "condition, reads, residuals, tolerances) (§14.7)"
+    d.reason === :disabled &&
+        return "this simulation was built with `trace = false`, so there is no recording to " *
+               "hand back — the switch is §11.5's plain kill switch for the " *
+               "memory-constrained marathon session, fixed at construction (D-029)"
     d.reason === :index_not_integer &&
         return "a selector's index must be an integer — the component index of §14.10, " *
                "applied to the read value — got $(repr(d.value)) (§14.4)"

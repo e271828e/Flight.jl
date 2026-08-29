@@ -32,6 +32,7 @@ alone. On demand:
 | `src/stepper.jl` | the seam's backend side: RK4 and Heun, the retained `startpoint`, dense output | §10.2, D-017 |
 | `src/localize.jl` | the frame loop: arrival sweep, θ = 0 validation, ITP bracketing, `t*` boundaries, the localization budget | §10.4, D-018, D-133 |
 | `src/dataplane.jl` | the compiled writer and staging cells, the drain, snapshots and the log with re-decimation, the typed diagnostic kinds and cells, the framework status | §11.1–§11.4, §11.8, §12.6, D-137 |
+| `src/trace.jl` | the input trace: the header captured at `init!` — resolved stores, root inputs, the writers' schemas and the deployment block — one sparse record per drained batch behind it, the only-growing schema list, and `trace(sim)` | §11.5, D-029, D-038, D-176 |
 | `src/roster.jl` | device/binding traits and conformance, the roster, both claim sources, the harness register | §11.3, §11.4, §11.6 |
 | `src/bindings.jl` | `TableBinding`, `map_input` and the conditioning helper, binding reads resolved at attach (`ReadBindingUnresolved`, the source rule) | §11.2, §11.6, §14.4 |
 | `src/devices.jl` | the device contract, the handle, the task wrapper, the init bracket and the tail under `join_timeout` | §11.1, §11.6, §12.1–§12.4, D-198 |
@@ -87,7 +88,7 @@ The long form, with reasons, is in `MAP.md`. In brief:
 - **§14**: `linearize` (§14.10), mounting (§14.9), the NLopt fallback and the
   nominal-activation loop it would run on; sub-port-field addressing; index
   addressing in the binding register.
-- **§11.5's input trace**, **§11.7's GUI write path**, §10.7 pacing and its
+- **§11.7's GUI write path**, §10.7 pacing and its
   diagnostics, the §11.8 remainder (`DebtReanchor`, `ThreadBudget`,
   `ReplayDiscardedStaging`, `UnboundedRun`, the maxlog renderer).
 - **§12 beyond its built slices**: pause and the control plane's surface, the

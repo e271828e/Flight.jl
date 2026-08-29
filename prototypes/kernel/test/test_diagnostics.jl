@@ -428,6 +428,7 @@ using InteractiveUtils: subtypes    # the coverage check below
         ArgumentInvalid(call = :trim!, reason = :non_nominal, value = "Simulation{Dual}"),
         ArgumentInvalid(call = :trim!, argument = :problem, reason = :not_a_problem,
                         value = "NamedTuple"),
+        ArgumentInvalid(call = :trace, reason = :disabled),
         ArgumentInvalid(call = :selector, reason = :index_not_integer, value = 1.5),
         ArgumentInvalid(call = :TableBinding, reason = :entry_shape, entry = :a),
         ArgumentInvalid(call = :TableBinding, reason = :no_face, entry = :a),
