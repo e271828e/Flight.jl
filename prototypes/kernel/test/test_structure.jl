@@ -66,7 +66,7 @@ end
 
     # Totality reaches it like any other root input, and the condition's own
     # vocabulary composes at the root with no `at` prefix in sight.
-    @test occursin("UninitializedInputs", failure(() -> init!(sim)).msg)   # stage 4's site
+    @test only(failure(() -> init!(sim)).diagnostics) isa UninitializedInputs
     sim2 = Simulation(Plant(; ω, ζ); h = 1//1000)
     init!(sim2, combine(condition(Plant(); y = 1.0), fragment(inputs = (u = 0.0,))))
     @test state(sim2, "").q === SVector(1.0, 0.0)

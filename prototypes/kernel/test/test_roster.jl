@@ -134,7 +134,7 @@ end
 
     # A second greedy stakes the empty remainder: legal, useless, said out loud.
     g2 = Pad("gui2")
-    @test_logs (:warn, r"staked the empty remainder") attach!(sim, g2, Greedy())
+    @test_logs (:warn, r"^EmptyGreedyClaim: ") attach!(sim, g2, Greedy())   # `logged`, kind first
     @test isempty(sim.plane.roster[3].writer.faces)
 end
 

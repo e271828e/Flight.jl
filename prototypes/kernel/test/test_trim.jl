@@ -236,11 +236,15 @@ end
         condition = decide_u, reads = reads(ω̇ = get_deriv("c", :ω),
                                             nope = get_state("nope", :q)),
         residuals = torque_only, tolerances = (torque = 1e-9,)); baseline = pend_base()))
-    @test e isa BuildError && startswith(e.msg, "TrimProblemInvalid:")
-    @test occursin("3 violations", e.msg)
-    @test occursin("`lower` names `v` and `guess` names `u`", e.msg)
-    @test occursin("`u`::Int64", e.msg)
-    @test occursin("the read labeled `nope` is get_state(\"nope\", :q)", e.msg)
+    @test e isa BuildError && length(e.diagnostics) == 3
+    ks = only(d for d in e.diagnostics if d isa TrimProblemInvalid && d.reason === :key_set)
+    @test ks.field === :lower && ks.names == [:v] && ks.expected == [:u]
+    ft = only(d for d in e.diagnostics if d.reason === :field_types)
+    @test ft.field === :guess && ft.bad == Pair{Symbol,Any}[:u => Int64]
+    # The read set keeps its own kind, spliced in beside the problem's fields.
+    tap = only(d for d in e.diagnostics if d isa TapResolution)
+    @test tap.label === :nope && tap.selector == "get_state(\"nope\", :q)" &&
+          tap.reason === :unknown_path
     @test world(sim) == before
 
     # The residual key set is the one thing only the setup guess evaluation can
@@ -250,9 +254,9 @@ end
         condition = decide_u, reads = torque_reads(),
         residuals = (r, d) -> (wrong = r.ω̇, extra = 1), tolerances = (torque = 1e-9,));
         baseline = pend_base()))
-    @test e2 isa BuildError && startswith(e2.msg, "TrimProblemInvalid:")
-    @test occursin("`residuals` returns `wrong`, `extra`", e2.msg) &&
-          occursin("`tolerances` names `torque`", e2.msg)
+    d2 = only(e2.diagnostics)
+    @test e2 isa BuildError && d2 isa TrimProblemInvalid && d2.field === :residuals
+    @test d2.reason === :key_set && d2.names == [:wrong, :extra] && d2.expected == [:torque]
     @test world(sim) == before
 
     # A tolerance that is not a `Float64`, and a read set spelled bare.
@@ -260,8 +264,11 @@ end
         guess = (u = 0.0,), lower = (u = -Inf,), upper = (u = Inf,),
         condition = decide_u, reads = (ω̇ = get_deriv("c", :ω),),
         residuals = torque_only, tolerances = (torque = 1,)); baseline = pend_base()))
-    @test occursin("`tolerances` field(s) `torque`::Int64", e3.msg)
-    @test occursin("`reads` is", e3.msg) && occursin("reads(", e3.msg)
+    @test all(d -> d isa TrimProblemInvalid, e3.diagnostics)
+    tol = only(d for d in e3.diagnostics if d.field === :tolerances)
+    @test tol.reason === :field_types && tol.bad == Pair{Symbol,Any}[:torque => Int64]
+    rd = only(d for d in e3.diagnostics if d.field === :reads)
+    @test rd.reason === :not_a_read_set && rd.observed === NamedTuple{(:ω̇,),Tuple{GetDeriv}}
     @test world(sim) == before
 
     # An inverted box admits no point at all, and the collecting pass says so
@@ -272,10 +279,9 @@ end
         upper = (θ = π/2, u = -1.0), condition = decide_both, reads = both_reads(),
         residuals = both_residuals, tolerances = (torque = 1e-9, hold = 1e-9));
         baseline = pend_base()))
-    @test e4 isa BuildError && startswith(e4.msg, "TrimProblemInvalid:")
-    @test occursin("1 violation ", e4.msg)
-    @test occursin("`lower` names `u` = 1.0 above `upper`'s -1.0", e4.msg)
-    @test occursin("an inverted pair admits no point at all", e4.msg)
+    d4 = only(e4.diagnostics)
+    @test e4 isa BuildError && d4 isa TrimProblemInvalid && d4.reason === :inverted_box
+    @test d4.field === :lower && d4.key === :u && d4.value === 1.0 && d4.bound === -1.0
     @test world(sim) == before
 
     # A tolerance is the half-width of a box, so zero and negative name no box
@@ -287,11 +293,10 @@ end
         upper = (θ = π/2, u = Inf), condition = decide_both, reads = both_reads(),
         residuals = both_residuals, tolerances = (torque = 0.0, hold = -1e-9));
         baseline = pend_base()))
-    @test e5 isa BuildError && startswith(e5.msg, "TrimProblemInvalid:")
-    @test occursin("2 violations", e5.msg)
-    @test occursin("`tolerances` names `torque` = 0.0", e5.msg)
-    @test occursin("`tolerances` names `hold` = -1.0e-9", e5.msg)
-    @test occursin("finite and strictly positive", e5.msg)
+    @test e5 isa BuildError && length(e5.diagnostics) == 2
+    @test all(d -> d isa TrimProblemInvalid && d.field === :tolerances &&
+                   d.reason === :nonpositive_tolerance, e5.diagnostics)
+    @test [(d.key, d.value) for d in e5.diagnostics] == [(:torque, 0.0), (:hold, -1.0e-9)]
     @test world(sim) == before
 end
 
@@ -336,9 +341,9 @@ end
         guess = (u = 0.0,), lower = (u = -Inf,), upper = (u = Inf,),
         condition = decide_u, reads = torque_reads(),
         residuals = eltype_split, tolerances = (torque = 1e-9,)); baseline = pend_base()))
-    @test e isa BuildError && startswith(e.msg, "TrimProblemInvalid:")
-    @test occursin("`residuals` returns `wrong`", e.msg) &&
-          occursin("`tolerances` names `torque`", e.msg)
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa TrimProblemInvalid && d.field === :residuals
+    @test d.reason === :key_set && d.names == [:wrong] && d.expected == [:torque]
     @test world(sim) == before && lifecycle(sim) === :built
 end
 
@@ -353,8 +358,9 @@ end
         condition = d -> at("c", fragment(x = (θ = d.θ, ω = 0.0))),
         reads = torque_reads(), residuals = torque_only, tolerances = (torque = 1e-9,));
         baseline = fragment()))
-    @test e isa BuildError && startswith(e.msg, "UninitializedInputs:")
-    @test occursin("root input(s) `in`", e.msg) && occursin("`trim!`", e.msg)
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa UninitializedInputs
+    @test d.faces == [:in] && d.op == "trim!"
     @test world(sim) == before && lifecycle(sim) === :built
 end
 
@@ -390,9 +396,10 @@ end
                                  at("ctl", fragment(s = (acc = d.acc,)))),
         reads = torque_reads(), residuals = torque_only, tolerances = (torque = 1e-9,));
         baseline = fragment(inputs = (in = 0.0,))))
-    @test e isa BuildError && occursin("ConditionResolution: `s.acc` at `ctl`", e.msg)
-    @test occursin("a decision variable descends into neither a frozen discrete `s` nor a " *
-                   "pinned leaf", e.msg)
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa ConditionResolution && d.reason === :unconvertible
+    @test d.path == "ctl" && d.store === :s && d.field === :acc
+    @test d.activation <: ForwardDiff.Dual    # the seeded activation's own refusal
     @test lifecycle(refused) === :built               # nothing was written to the sim
 end
 
@@ -497,12 +504,15 @@ end
     # deployment's.
     dual = Simulation(fed(Pendulum(), :u), D8; h = 1//10)
     e = failure(() -> trim!(dual, u_problem(); baseline = pend_base()))
-    @test e isa BuildError && occursin("needs a nominal `Simulation{Float64}`", e.msg)
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa ArgumentInvalid && d.call === :trim! &&
+          d.reason === :non_nominal && occursin("Dual", d.value)
 
     # And a value that is not a problem is a directive, not a `MethodError`.
     plain = Simulation(fed(Pendulum(), :u); h = 1//10)
     e2 = failure(() -> trim!(plain, (guess = (u = 0.0,),); baseline = pend_base()))
-    @test e2 isa BuildError && occursin("takes a `TrimProblem`", e2.msg)
+    d2 = only(e2.diagnostics)
+    @test e2 isa BuildError && d2 isa TrimProblemInvalid && d2.reason === :not_a_problem
 
     # `running` is the §11.3 freeze, as for every other §14 service. Both ends
     # of the run are test-controlled, exactly as in test_readers.
@@ -515,6 +525,7 @@ end
     err = failure(() -> trim!(live, u_problem(); baseline = pend_base()))
     stage!(live, "in" => 1.0)
     wait(task)
-    @test err isa BuildError && occursin("ServiceLifecycle", err.msg)
-    @test occursin("stopped-sim operation and the simulation is running", err.msg)
+    d3 = only(err.diagnostics)
+    @test err isa BuildError && d3 isa ServiceLifecycle && d3.op == "trim!"
+    @test d3.status === :running
 end

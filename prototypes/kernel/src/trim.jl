@@ -222,39 +222,38 @@ end
 
 # --- setup validation (§14.7, §13.1) --------------------------------------------
 # One collecting pass over what a build can answer, then the guess evaluation,
-# which is where the residual return is observed. Both throws lead with
-# `TrimProblemInvalid` and enumerate; §13.1's register, with the read set's own
-# violations spliced in verbatim — they carry no kind of their own, the service
-# owning the setup, which is what `_resolve_reads` was factored apart for.
+# which is where the residual return is observed. Both throws are §13.1's
+# register: `TrimProblemInvalid` values for the problem's own fields, with the
+# read set's `TapResolution` values spliced in beside them — the read keeps its
+# own kind and the *problem* is what the setup is refusing, which is what
+# `_resolve_reads` was factored apart for.
 
-function _report_trim!(viol::Vector{String})
+function _report_trim!(viol::Vector{Diagnostic})
     isempty(viol) && return nothing
-    throw(BuildError("TrimProblemInvalid: this trim problem does not resolve against " *
-                     "this build — $(length(viol)) violation$(length(viol) == 1 ? "" : "s") " *
-                     "(§14.7, §14.8, §13.1):\n  " * join(viol, "\n  ")))
+    throw(BuildError(viol))
 end
 
-_tviol(field::Symbol, what::String) = "TrimProblemInvalid: `$field` $what (§14.7)"
+_tviol(field::Symbol, reason::Symbol; kw...) =
+    TrimProblemInvalid(; field = field, reason = reason, kw...)
 
 # `guess`, `lower` and `upper`: NamedTuples, one key set between them, all
 # fields `Float64`. The key-set comparison is by *set*, order being no
 # mismatch — the canonicalization below pairs a permuted spelling by name.
-function _check_decisions!(viol::Vector{String}, p::TrimProblem)
+function _check_decisions!(viol::Vector{Diagnostic}, p::TrimProblem)
     named = true
     for (name, v) in ((:guess, p.guess), (:lower, p.lower), (:upper, p.upper))
         v isa NamedTuple && continue
-        push!(viol, _tviol(name, "is $(typeof(v)) — the decisions and their two bounds are " *
-                                 "same-named all-`Float64` NamedTuples"))
+        push!(viol, _tviol(name, :not_a_namedtuple; observed = typeof(v)))
         named = false
     end
     named || return nothing
     for (name, v) in ((:lower, p.lower), (:upper, p.upper))
-        Set(keys(v)) == Set(keys(p.guess)) || push!(viol, _tviol(name,
-            "names $(_names(keys(v))) and `guess` names $(_names(keys(p.guess))) — the " *
-            "three share one key set, a permuted spelling pairing by name"))
+        Set(keys(v)) == Set(keys(p.guess)) ||
+            push!(viol, _tviol(name, :key_set; names = collect(keys(v)),
+                               expected = collect(keys(p.guess))))
     end
     for (name, v) in ((:guess, p.guess), (:lower, p.lower), (:upper, p.upper))
-        _check_floats!(viol, name, v, "decisions and bounds are `Float64`")
+        _check_floats!(viol, name, v)
     end
     # And the box has to admit a point at all. Checked per decision, over the
     # pairs that survived the two checks above, because an inverted pair is a
@@ -263,9 +262,9 @@ function _check_decisions!(viol::Vector{String}, p::TrimProblem)
     for k in keys(p.guess)
         (haskey(p.lower, k) && haskey(p.upper, k) &&
          p.lower[k] isa Float64 && p.upper[k] isa Float64) || continue
-        p.lower[k] ≤ p.upper[k] || push!(viol, _tviol(:lower,
-            "names `$k` = $(p.lower[k]) above `upper`'s $(p.upper[k]) — a decision's box " *
-            "is `lower ≤ upper`, and an inverted pair admits no point at all"))
+        p.lower[k] ≤ p.upper[k] ||
+            push!(viol, _tviol(:lower, :inverted_box; key = k, value = p.lower[k],
+                               bound = p.upper[k]))
     end
     nothing
 end
@@ -276,41 +275,35 @@ end
 # all — and the acceptance test measures `‖r ./ tol`‖ (§14.8), so a non-positive
 # one sends the descent test to `Inf`/`NaN`, rejects every trial step and
 # returns `:stalled` at the guess. That is a malformed problem, named here.
-function _check_tolerances!(viol::Vector{String}, p::TrimProblem)
+function _check_tolerances!(viol::Vector{Diagnostic}, p::TrimProblem)
     if !(p.tolerances isa NamedTuple)
-        push!(viol, _tviol(:tolerances, "is $(typeof(p.tolerances)) — the per-residual " *
-                                        "convergence test is an all-`Float64` NamedTuple"))
+        push!(viol, _tviol(:tolerances, :not_a_namedtuple; observed = typeof(p.tolerances)))
         return nothing
     end
-    _check_floats!(viol, :tolerances, p.tolerances,
-                   "a tolerance is a `Float64` in its residual's own physical units")
+    _check_floats!(viol, :tolerances, p.tolerances)
     for k in keys(p.tolerances)
         v = p.tolerances[k]
         v isa Float64 || continue           # the type violation is already named above
-        (isfinite(v) && v > 0) || push!(viol, _tviol(:tolerances,
-            "names `$k` = $v — a tolerance is finite and strictly positive: it is the " *
-            "half-width of the box its residual has to sit in, and the normalized " *
-            "acceptance test divides by it"))
+        (isfinite(v) && v > 0) ||
+            push!(viol, _tviol(:tolerances, :nonpositive_tolerance; key = k, value = v))
     end
     nothing
 end
 
-function _check_floats!(viol::Vector{String}, name::Symbol, v::NamedTuple, why::String)
-    bad = [k for k in keys(v) if !(v[k] isa Float64)]
-    isempty(bad) || push!(viol, _tviol(name,
-        "field(s) " * join(("`$k`::$(typeof(v[k]))" for k in bad), ", ") * " — $why"))
+function _check_floats!(viol::Vector{Diagnostic}, name::Symbol, v::NamedTuple)
+    bad = Pair{Symbol,Any}[k => typeof(v[k]) for k in keys(v) if !(v[k] isa Float64)]
+    isempty(bad) || push!(viol, _tviol(name, :field_types; bad = bad))
     nothing
 end
 
 # The read set: a `reads(…)` value whose selectors resolve against this build.
-# Its violations are §14.4's own, kept verbatim — the read is named as authored,
-# with the list in hand — and folded into this kind, because here the *problem*
-# is what is malformed (§14.8); a read set is compiled only inside a client, so
-# its violations name no kind of their own.
-function _check_reads!(viol::Vector{String}, p::TrimProblem, b::Build)
+# Its violations are §14.4's own `TapResolution` values, spliced into this list
+# as they are — the read is named as authored, with the list in hand — because
+# here the *problem* is what is malformed (§14.8) and one throw reports both
+# halves of it.
+function _check_reads!(viol::Vector{Diagnostic}, p::TrimProblem, b::Build)
     if !(p.reads isa Reads)
-        push!(viol, _tviol(:reads, "is $(typeof(p.reads)) — the declared read set is a " *
-            "`reads(…)` value: reads(name = get_deriv(\"path\", :field), …) (§14.4)"))
+        push!(viol, _tviol(:reads, :not_a_read_set; observed = typeof(p.reads)))
         return nothing
     end
     (reader, rviol) = _resolve_reads(p.reads, b, Float64)
@@ -323,18 +316,15 @@ end
 # packing — and every field is a real scalar, the residual system being named
 # *equations*.
 function _check_residuals(r, tolerances::NamedTuple)
-    viol = String[]
+    viol = Diagnostic[]
     if !(r isa NamedTuple)
-        push!(viol, _tviol(:residuals, "returned $(typeof(r)) — the residual system is a " *
-            "NamedTuple of named equations, same-named as `tolerances`"))
+        push!(viol, _tviol(:residuals, :not_a_namedtuple; observed = typeof(r)))
     else
-        Set(keys(r)) == Set(keys(tolerances)) || push!(viol, _tviol(:residuals,
-            "returns $(_names(keys(r))) and `tolerances` names $(_names(keys(tolerances))) " *
-            "— the two share one key set, and order is never a mismatch"))
-        bad = [k for k in keys(r) if !(r[k] isa Real)]
-        isempty(bad) || push!(viol, _tviol(:residuals,
-            "field(s) " * join(("`$k`::$(typeof(r[k]))" for k in bad), ", ") *
-            " — each residual is a real scalar"))
+        Set(keys(r)) == Set(keys(tolerances)) ||
+            push!(viol, _tviol(:residuals, :key_set; names = collect(keys(r)),
+                               expected = collect(keys(tolerances))))
+        bad = Pair{Symbol,Any}[k => typeof(r[k]) for k in keys(r) if !(r[k] isa Real)]
+        isempty(bad) || push!(viol, _tviol(:residuals, :field_types; bad = bad))
     end
     _report_trim!(viol)
 end
@@ -392,15 +382,11 @@ operating point an equilibrium?" probe, useful in its own right and free.
 function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
                t₀::Real = 0.0, backend = LevenbergMarquardt())
     lc = lifecycle(sim)
-    lc === :running && throw(BuildError(
-        "ServiceLifecycle: `trim!` is a stopped-sim operation and the simulation " *
-        "is running (§11.3, §12.6)"))
-    lc === :errored && throw(BuildError(
-        "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
-        "never re-initialized; reproduction is trace replay, absent here (§13.6)"))
+    lc === :running && throw(BuildError(ServiceLifecycle(op = "trim!", status = :running)))
+    lc === :errored && throw(BuildError(ServiceLifecycle(op = "trim!", status = :errored)))
 
     b = sim.build
-    viol = String[]
+    viol = Diagnostic[]
     _check_decisions!(viol, problem)
     _check_tolerances!(viol, problem)
     reader = _check_reads!(viol, problem, b)
@@ -498,14 +484,10 @@ end
 # nominal world's. The seeded activation trim needs is the service's scratch,
 # never the deployment's.
 trim!(sim::Simulation, ::TrimProblem; kw...) = throw(BuildError(
-    "`trim!` needs a nominal `Simulation{Float64}` and this one is $(typeof(sim)) — trim " *
-    "commits through the nominal world, and the seeded activation it iterates on is the " *
-    "service's own scratch, instantiated per invocation (§14.8, §9.4)"))
+    ArgumentInvalid(call = :trim!, reason = :non_nominal, value = string(typeof(sim)))))
 
 trim!(::Simulation, other; kw...) = throw(BuildError(
-    "`trim!` takes a `TrimProblem` and was given $(typeof(other)) — the problem is one " *
-    "value with a closed field set: TrimProblem(; guess, lower, upper, condition, reads, " *
-    "residuals, tolerances) (§14.7)"))
+    TrimProblemInvalid(field = :problem, reason = :not_a_problem, observed = typeof(other))))
 
 # --- the pieces the service is built out of --------------------------------------
 
@@ -578,10 +560,7 @@ function _verdict!(sim::Simulation, p::TrimProblem, baseline, solution::NamedTup
     # (§10.6, §14.5).
     es = sim.exec.events
     fired = Tuple{String,Symbol}[es.names[i] for i in eachindex(es.count) if es.count[i] > 0]
-    isempty(fired) || @warn("TrimCommitEvents: boundary zero fired " *
-        join(("`$path`.$name" for (path, name) in fired), ", ") * " at the commit — a " *
-        "handler that fires there moves the committed stores off the solved point, and " *
-        "the committed-state residuals below are where they actually sit (§14.5, §14.8)")
+    isempty(fired) || @warn logged(TrimCommitEvents(events = fired))
 
     # The committed-state residuals, nearly free: that boundary's sweep has just
     # run, so the declared reads need only gather from it — with one `rhs` for
@@ -589,13 +568,10 @@ function _verdict!(sim::Simulation, p::TrimProblem, baseline, solution::NamedTup
     # evaluation (§7.5, §14.8).
     sim.exec.bodies.rhs()
     committed = NamedTuple{RK}(p.residuals(gather(reader, sim.exec), solution))
-    off = [(k, committed[k], tol[i]) for (i, k) in enumerate(RK)
-           if !(abs(committed[k]) ≤ tol[i])]
-    isempty(off) || @warn("TrimCommitResiduals: this solve converged, and the residuals " *
-        "re-gathered after the commit leave the box: " *
-        join(("`$k` = $v against $t" for (k, v, t) in off), ", ") * " — the mover is " *
-        "boundary zero's `project` or a commit-fired handler, and the verdict is not " *
-        "re-litigated: it gated the commit, at the solved point (§14.5, §14.8)")
+    off = Tuple{Symbol,Float64,Float64}[(k, Float64(committed[k]), tol[i])
+                                        for (i, k) in enumerate(RK)
+                                        if !(abs(committed[k]) ≤ tol[i])]
+    isempty(off) || @warn logged(TrimCommitResiduals(residuals = off))
 
     TrimReport(true, solution, residuals, p.tolerances, committed, status, nevals, niters,
                saturated, fired)

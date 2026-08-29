@@ -82,8 +82,7 @@ const StoreSelector = Union{GetState,GetDeriv}
 _index_arg(::Nothing) = nothing
 _index_arg(i::Integer) = Int(i)
 _index_arg(i) = throw(BuildError(
-    "a selector's index must be an integer — the component index of " *
-    "§14.10, applied to the read value — got $(repr(i)) (§14.4)"))
+    ArgumentInvalid(call = :selector, reason = :index_not_integer, value = i)))
 
 get_state(path::AbstractString, field::Union{Symbol,AbstractString}, i = nothing) =
     GetState(String(path), Symbol(field), _index_arg(i))
@@ -127,10 +126,8 @@ reads(; sels...) = _reads(NamedTuple(sels))
 
 function _reads(nt::NamedTuple)
     for (label, s) in pairs(nt)
-        s isa ReadSelector || throw(BuildError(
-            "the read labeled `$label` is $(typeof(s)) — a read set is " *
-            "labeled *selectors*, get_state / get_deriv / get_output / get_input / " *
-            "get_face (§14.4)"))
+        s isa ReadSelector || throw(BuildError(ReadSetMisuse(
+            observed = typeof(s), reason = :not_a_selector, label = label)))
     end
     Reads(nt)
 end
@@ -217,24 +214,23 @@ for a discrete `s`, a cell address for a port, a root input or a root-exported
 face.
 
 The standalone entry point is internal, because a read set is only ever
-compiled inside a client, and the client owns the diagnostic: `trim!` folds the
-collected list into `TrimProblemInvalid` (§14.8), a device binding into
-`ReadBindingUnresolved` (§11.2). That is why the collecting pass is factored
-apart from the throw, and why the violations carry no kind of their own.
+compiled inside a client: `trim!` splices the collected list into its own throw
+beside the problem's `TrimProblemInvalid` values (§14.8), and a device binding
+raises `ReadBindingUnresolved` at attach instead (§11.2). That is why the
+collecting pass is factored apart from the throw. The violations are
+`TapResolution` values either way — the kind is the read's own, and it is the
+*site* that decides where they surface (§13.2, Appendix C).
 """
 function _compile_reads(rs::Reads, b::Build, ::Type{T} = Float64) where {T}
     reader, viol = _resolve_reads(rs, b, T)
-    isempty(viol) || throw(BuildError(
-        "the read set does not resolve against this build — $(length(viol)) " *
-        "violation$(length(viol) == 1 ? "" : "s") (§14.4, §13.1):\n  " * join(viol, "\n  ")))
+    isempty(viol) || throw(BuildError(viol))
     reader
 end
 
 # A bare NamedTuple of selectors is the §14.2 misuse in the read register: the
 # same slip, the same directive, and not a `MethodError`.
 _compile_reads(other, ::Build, ::Type = Float64) = throw(BuildError(
-    "$(typeof(other)) is not a read set — wrap the labeled selectors " *
-    "in `reads(…)`: reads(name = get_deriv(\"path\", :field), …) (§14.4, §14.7)"))
+    ReadSetMisuse(observed = typeof(other), reason = :not_a_read_set)))
 
 """
 The collecting half of `_compile_reads`, shared with the services that own their
@@ -244,7 +240,7 @@ list, the reader being `nothing` when anything failed.
 function _resolve_reads(rs::Reads, b::Build, ::Type{T}) where {T}
     act = activation(b, T)
     offs = _x_offsets(act.decls, b.tiers)
-    viol = String[]
+    viol = Diagnostic[]
     entries = Any[]
     for (label, s) in pairs(rs.sels)
         e = _resolve_selector(s, label, b, act, offs, viol)
@@ -257,47 +253,57 @@ end
 # `_component`'s, one register over: the offender named plainly, an assembly
 # discriminated from a path that is nothing at all (candidate lists are absent
 # here, README).
-function _read_component(s, label::Symbol, flat::Flat, viol::Vector{String})
+function _read_component(s, label::Symbol, flat::Flat, viol::Vector{Diagnostic})
     i = findfirst(==(s.path), flat.paths)
     i === nothing || return i
     # An empty path names the root, which is a level of every build — the
     # prefix test cannot see that, the root's segment being no segment at all.
     push!(viol, _rviol(label, s, (isempty(s.path) || _addresses_level(flat, s.path)) ?
-        "$(_at(s.path)) is an assembly — a path selector addresses a component's own " *
-        "declarations, and a root-exported face is read with `get_face`" :
-        "$(_at(s.path)) is no component of this build"))
+                          :assembly_path : :unknown_path))
     nothing
 end
 
-_rviol(label::Symbol, s, what::String) =
-    "the read labeled `$label` is $(_spell(s)), and $what (§14.4)"
+# One `TapResolution` off a selector: the label and the selector as authored are
+# what makes a collected list readable, and the tap set, path and index come off
+# the selector's own kind (§14.10's payload); each arm adds what it observed.
+_rviol(label::Symbol, s, reason::Symbol; kw...) =
+    TapResolution(; label = label, selector = _spell(s), reason = reason, tap = _tap(s),
+                  path = _selpath(s), index = _selindex(s), kw...)
+
+_tap(::Union{GetState,GetDeriv}) = :x
+_tap(::Union{GetOutput,GetFace}) = :y
+_tap(::GetInput) = :u
+
+_selpath(s::Union{GetState,GetDeriv,GetOutput}) = s.path
+_selpath(::Union{GetInput,GetFace}) = ""
+_selindex(s::Union{GetState,GetDeriv,GetOutput}) = s.i
+_selindex(::Union{GetInput,GetFace}) = nothing
 
 # `i` is checked against the resolved leaf's declared type in exactly one
 # respect: `getindex` has to mean something there. A scalar leaf is refused;
 # nothing further is checked, the index being the author's own coordinate
 # choice over a value whose length the schema does not fix everywhere.
-function _check_index(s, label::Symbol, ::Type{P}, viol::Vector{String}) where {P}
+function _check_index(s, label::Symbol, ::Type{P}, viol::Vector{Diagnostic}) where {P}
     (s.i === nothing || !(P <: Real)) && return true
-    push!(viol, _rviol(label, s, "the leaf it names is declared $P — a scalar has no " *
-                                 "index, and `i` addresses a component of a vector leaf"))
+    push!(viol, _rviol(label, s, :scalar_index; declared = P))
     false
 end
 
-_declares(label::Symbol, s, kind::String, declared::NamedTuple) =
-    _rviol(label, s, "$(_at(s.path)) declares no $kind `$(_field(s))` — its $kind names " *
-                     "are $(_names(keys(declared)))")
+_declares(label::Symbol, s, declares::Symbol, declared::NamedTuple) =
+    _rviol(label, s, :undeclared; declares = declares, field = _field(s),
+           candidates = collect(keys(declared)))
 
 _field(s::Union{GetState,GetDeriv}) = s.field
 _field(s::GetOutput) = s.name
 
 function _resolve_selector(s::GetState, label::Symbol, b::Build, act::Activation,
-                       offs::Vector{Int}, viol::Vector{String})
+                       offs::Vector{Int}, viol::Vector{Diagnostic})
     ci = _read_component(s, label, b.flat, viol)
     ci === nothing && return nothing
     d, t = act.decls[ci], b.tiers[ci]
     declared = state_decls(d, t)
     haskey(declared, s.field) ||
-        (push!(viol, _declares(label, s, "state field", declared)); return nothing)
+        (push!(viol, _declares(label, s, :state_field, declared)); return nothing)
     P = typeof(declared[s.field])
     _check_index(s, label, P, viol) || return nothing
     t === CONTINUOUS ?
@@ -306,18 +312,16 @@ function _resolve_selector(s::GetState, label::Symbol, b::Build, act::Activation
 end
 
 function _resolve_selector(s::GetDeriv, label::Symbol, b::Build, act::Activation,
-                       offs::Vector{Int}, viol::Vector{String})
+                       offs::Vector{Int}, viol::Vector{Diagnostic})
     ci = _read_component(s, label, b.flat, viol)
     ci === nothing && return nothing
     d, t = act.decls[ci], b.tiers[ci]
     if t !== CONTINUOUS
-        push!(viol, _rviol(label, s, "$(_at(s.path)) is a discrete component — a discrete " *
-                                     "`s` has no derivative, and `ẋ` exists on the " *
-                                     "continuous tier alone (§7.1, D-195)"))
+        push!(viol, _rviol(label, s, :discrete_deriv; field = s.field))
         return nothing
     end
     haskey(d.x, s.field) ||
-        (push!(viol, _declares(label, s, "state field", d.x)); return nothing)
+        (push!(viol, _declares(label, s, :state_field, d.x)); return nothing)
     P = typeof(d.x[s.field])
     _check_index(s, label, P, viol) || return nothing
     # `ẋ` has `x`'s shape at the activation scalar (§7.1), so the derivative of
@@ -326,22 +330,22 @@ function _resolve_selector(s::GetDeriv, label::Symbol, b::Build, act::Activation
 end
 
 function _resolve_selector(s::GetOutput, label::Symbol, b::Build, act::Activation,
-                       ::Vector{Int}, viol::Vector{String})
+                       ::Vector{Int}, viol::Vector{Diagnostic})
     ci = _read_component(s, label, b.flat, viol)
     ci === nothing && return nothing
     d = act.decls[ci]
     haskey(d.outs, s.name) ||
-        (push!(viol, _declares(label, s, "output port", d.outs)); return nothing)
+        (push!(viol, _declares(label, s, :output_port, d.outs)); return nothing)
     _check_index(s, label, d.outs[s.name], viol) || return nothing
     addr = act.layout.addr[(s.path, s.name)]
     CellRead{typeof(addr),typeof(s.i)}(addr, s.i)
 end
 
 function _resolve_selector(s::GetInput, label::Symbol, b::Build, act::Activation,
-                       ::Vector{Int}, viol::Vector{String})
+                       ::Vector{Int}, viol::Vector{Diagnostic})
     if !(s.face in b.flat.root_inputs)
-        push!(viol, _rviol(label, s, "`$(s.face)` is no root input face — the root's " *
-                                     "inputs are $(_names(b.flat.root_inputs))"))
+        push!(viol, _rviol(label, s, :unknown_root_input; field = s.face,
+                           candidates = b.flat.root_inputs))
         return nothing
     end
     addr = act.layout.addr[("", s.face)]
@@ -349,14 +353,13 @@ function _resolve_selector(s::GetInput, label::Symbol, b::Build, act::Activation
 end
 
 function _resolve_selector(s::GetFace, label::Symbol, b::Build, act::Activation,
-                       ::Vector{Int}, viol::Vector{String})
+                       ::Vector{Int}, viol::Vector{Diagnostic})
     exported = Symbol[f for ((p, f), _) in b.flat.out_faces if isempty(p)]
     if !(s.name in exported)
-        push!(viol, _rviol(label, s, s.name in b.flat.root_inputs ?
-            "`$(s.name)` is a root *input* face — the integration register is the " *
-            "root-exported output faces, and a root input is read back with `get_input`" :
-            "`$(s.name)` is no root-exported output face — the root exports " *
-            "$(_names(exported))"))
+        push!(viol, s.name in b.flat.root_inputs ?
+                    _rviol(label, s, :root_input_not_face; field = s.name) :
+                    _rviol(label, s, :unknown_output_face; field = s.name,
+                           candidates = exported))
         return nothing
     end
     addr = act.layout.addr[("", s.name)]

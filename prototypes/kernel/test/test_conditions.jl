@@ -55,12 +55,11 @@ end
     e = failure(() -> resolve_condition(combine(at("plant", condition(Plant(); y = 1.0)),
                                       at("plant",
                                          fragment(x = (q = SVector(2.0, 0.0),)))), b))
-    @test e isa BuildError
-    @test occursin("DuplicateConditionLeaf", e.msg)
-    @test occursin("`x.q` at `plant`", e.msg)
-    @test occursin("combine[1] → at(\"plant\")", e.msg)
-    @test occursin("combine[2] → at(\"plant\")", e.msg)
-    @test occursin("collision-intolerant by design — use `override(base, patch)`", e.msg)
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa DuplicateConditionLeaf
+    @test d.path == "plant" && d.store === :x && d.field === :q      # the leaf, by coordinates
+    @test d.provenance == ["combine[1] → at(\"plant\") → fragment(x).q",
+                           "combine[2] → at(\"plant\") → fragment(x).q"]
 end
 
 @testset "`override` layers: the patch wins, untouched leaves pass through (§14.6)" begin
@@ -84,14 +83,14 @@ end
     # beside it — surfaced here through a violation on the overridden leaf.
     e = failure(() -> resolve_condition(override(fragment(inputs = (u = 1.0,)),
                                        fragment(inputs = (u = "high",))), b))
-    @test occursin("override[patch 1] → fragment(inputs).u", e.msg)
-    @test occursin("overrode override[base] → fragment(inputs).u", e.msg)
+    @test only(e.diagnostics).provenance ==
+          "override[patch 1] → fragment(inputs).u (overrode override[base] → fragment(inputs).u)"
 
     # A collision *within* one layer is still an error (§14.6).
     e = failure(() -> resolve_condition(override(combine(fragment(inputs = (u = 1.0,)),
                                                fragment(inputs = (u = 2.0,))),
                                        fragment(inputs = (u = 3.0,))), b))
-    @test occursin("DuplicateConditionLeaf", e.msg)
+    @test any(d -> d isa DuplicateConditionLeaf, e.diagnostics)
 
     # §14.6's central use case: a full-coverage baseline authored at the root,
     # under a patch a component's own `condition` method ships against its own
@@ -106,8 +105,8 @@ end
     e = failure(() -> resolve_condition(combine(fragment(inputs = (u = 1.0,)),
                                       at("plant",
                                          fragment(inputs = (u = 9.0,)))), b))
-    @test occursin("DuplicateConditionLeaf", e.msg) && occursin("root input `u`", e.msg)
-    @test occursin("use `override(base, patch)`", e.msg)
+    d = only(e.diagnostics)
+    @test d isa DuplicateConditionLeaf && d.face === :u   # the resolved root input is the leaf
 end
 
 @testset "blending a node with a bare NamedTuple is a directive error method (§14.2)" begin
@@ -120,14 +119,15 @@ end
               () -> override(fragment(), (q = 1.0,)),
               () -> fragment(x = 3.0))                      # and a non-NamedTuple payload
         e = failure(f)
-        @test e isa BuildError && occursin("ConditionNodeMisuse", e.msg)
+        @test e isa BuildError && only(e.diagnostics) isa ConditionNodeMisuse
     end
-    @test occursin("wrap the NamedTuple in `fragment(…)`",
-                   failure(() -> combine(fragment(), (q = 1.0,))).msg)
+    d = only(failure(() -> combine(fragment(), (q = 1.0,))).diagnostics)
+    @test d.observed === NamedTuple{(:q,),Tuple{Float64}} && d.in_hand == [:Fragment]
+    @test only(failure(() -> fragment(x = 3.0)).diagnostics).reason === :fragment_payload
     # And the service entry point itself: a bare NamedTuple where a condition
     # belongs gets the directive, never a `MethodError`.
     e = failure(() -> init!(Simulation(tri(); h = 1//10), (u = 1.0, e = 2.0)))
-    @test e isa BuildError && occursin("ConditionNodeMisuse", e.msg)
+    @test e isa BuildError && only(e.diagnostics) isa ConditionNodeMisuse
 end
 
 @testset "resolution collects every violation into one throw (§14.3, §13.1)" begin
@@ -140,28 +140,32 @@ end
                   at("plant", fragment(inputs = (u = 2.0,))))   # one root input, twice
     e = failure(() -> resolve_condition(bad, b))
     @test e isa BuildError
-    @test occursin("5 violations", e.msg)                  # the full list, one throw
-    @test occursin("no component of this build", e.msg)
-    @test occursin("`init_x` at `plant` declares `q`", e.msg)
-    @test occursin("does not convert", e.msg)
-    @test occursin("wired internally", e.msg)
-    @test occursin("root input `u` is written twice", e.msg)
+    @test length(e.diagnostics) == 5                       # the full list, one throw
+    cr = [d for d in e.diagnostics if d isa ConditionResolution]
+    @test Set(d.reason for d in cr) == Set([:unknown_path, :undeclared_field,
+                                            :unconvertible, :internally_wired])
+    u = only(d for d in cr if d.reason === :undeclared_field)
+    @test u.path == "plant" && u.store === :x && u.field === :nope && u.candidates == [:q]
+    dup = only(d for d in e.diagnostics if d isa DuplicateConditionLeaf)
+    @test dup.face === :u
 
     # An assembly path owns no state, and saying so beats "no such path".
     e = failure(() -> resolve_condition(at("loop", fragment(x = (q = 1.0,))), build(Vehicle())))
-    @test occursin("is an assembly", e.msg)
+    @test only(e.diagnostics).reason === :assembly_path
 
     # A tier's own state letter: `s` on a continuous component is not a typo
     # the resolver should guess at.
-    e = failure(() -> resolve_condition(at("plant", fragment(s = (q = 1.0,))), b))
-    @test occursin("continuous component and declares no `init_s`", e.msg)
+    d = only(failure(() -> resolve_condition(at("plant", fragment(s = (q = 1.0,))), b)).diagnostics)
+    @test d.reason === :no_store && d.store === :s && d.tier === :continuous
 end
 
 @testset "a condition names state, modes and root inputs — never outputs, never workspace (§14.1)" begin
-    e = failure(() -> resolve_condition(at("plant", fragment(x = (y = 1.0,))), build(tri())))
-    @test occursin("`y` is an output port", e.msg)
-    e = failure(() -> resolve_condition(at("sm", fragment(s = (tmp = 1.0,))), build(scratchy())))
-    @test occursin("`tmp` is a workspace entry", e.msg)
+    d = only(failure(() -> resolve_condition(at("plant", fragment(x = (y = 1.0,))),
+                                             build(tri()))).diagnostics)
+    @test d.reason === :undeclared_field && d.field === :y && d.role === :output_port
+    d = only(failure(() -> resolve_condition(at("sm", fragment(s = (tmp = 1.0,))),
+                                             build(scratchy()))).diagnostics)
+    @test d.reason === :undeclared_field && d.field === :tmp && d.role === :workspace
 end
 
 @testset "input faces resolve through the export chain to a root input (§14.2)" begin
@@ -173,22 +177,21 @@ end
     @test Set(p.faces) == Set([:u, :e])
     # An internally wired input reaches no root input: writing it would be
     # meaningless, the first sweep overwriting it. Unexported stays unpokeable.
-    @test occursin("reaches no root input",
-                   failure(() -> resolve_condition(at("trig",
-                                            fragment(inputs = (sig = 1.0,))), b)).msg)
-    @test occursin("declares no input face",
-                   failure(() -> resolve_condition(at("plant",
-                                            fragment(inputs = (nope = 1.0,))), b)).msg)
+    @test only(failure(() -> resolve_condition(at("trig",
+                       fragment(inputs = (sig = 1.0,))), b)).diagnostics).reason ===
+          :internally_wired
+    @test only(failure(() -> resolve_condition(at("plant",
+                       fragment(inputs = (nope = 1.0,))), b)).diagnostics).reason ===
+          :no_input_face
     # The discrimination an `inputs` payload makes on its own: a prefix naming no
     # level of this build reads "no component", not the face-typo message the
     # real component earns above — an empty face list alone cannot tell them
     # apart, assemblies leaving no row in the flat list (§14.3).
-    @test occursin("no component of this build",
-                   failure(() -> resolve_condition(at("nope",
-                                                       fragment(inputs = (dead = 1.0,))),
-                                                    b)).msg)
-    @test occursin("no root input face",
-                   failure(() -> resolve_condition(fragment(inputs = (nope = 1.0,)), b)).msg)
+    @test only(failure(() -> resolve_condition(at("nope",
+                       fragment(inputs = (dead = 1.0,))), b)).diagnostics).reason ===
+          :unknown_path
+    @test only(failure(() -> resolve_condition(fragment(inputs = (nope = 1.0,)),
+                                               b)).diagnostics).reason === :unexported_face
 end
 
 @testset "an `at` prefix stopping at an assembly resolves its faces (§14.2, D-207)" begin
@@ -203,18 +206,19 @@ end
 
     # A component-fed face is still unpokeable, at an assembly prefix as at a
     # primitive's: `Vehicle` feeds the loop's `ref` from its own `trim`.
-    @test occursin("reaches no root input",
-                   failure(() -> resolve_condition(at("loop", fragment(inputs = (ref = 1.0,))),
-                                         build(Vehicle()))).msg)
+    @test only(failure(() -> resolve_condition(at("loop", fragment(inputs = (ref = 1.0,))),
+                       build(Vehicle()))).diagnostics).reason === :internally_wired
 
     # A face the level does not declare, with the level's face list in hand.
-    e = failure(() -> resolve_condition(at("loop", fragment(inputs = (nope = 1.0,))), b))
-    @test occursin("declares no input face `nope`", e.msg) && occursin("`ref`", e.msg)
+    d = only(failure(() -> resolve_condition(at("loop",
+                       fragment(inputs = (nope = 1.0,))), b)).diagnostics)
+    @test d.reason === :no_input_face && d.field === :nope && d.candidates == [:ref]
 
     # State at an assembly prefix stays refused: assemblies own no state, and
     # only the `inputs` payload gained a level to resolve at.
-    e = failure(() -> resolve_condition(at("loop", fragment(x = (q = 1.0,))), b))
-    @test occursin("is an assembly", e.msg) && occursin("components and root inputs", e.msg)
+    d = only(failure(() -> resolve_condition(at("loop",
+                       fragment(x = (q = 1.0,))), b)).diagnostics)
+    @test d.reason === :assembly_path && d.path == "loop"
 end
 
 @testset "root-input totality is checked pre-write, and a rejection changes nothing (§14.6, D-068)" begin
@@ -226,8 +230,9 @@ end
     e = failure(() -> init!(sim, combine(at("plant",
                                             fragment(x = (q = SVector(5.0, 5.0),))),
                                          fragment(inputs = (u = 3.0,)))))
-    @test e isa BuildError && occursin("UninitializedInputs", e.msg)
-    @test occursin("`e`", e.msg) && !occursin("`u`", e.msg)   # only the uncovered face
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa UninitializedInputs && d.op == "init!"
+    @test d.faces == [:e]                                     # only the uncovered face
     # All-or-nothing: the plan's x write and its root-input write both stayed home.
     @test state(sim, "plant").q === q
     @test state(sim, "ctl").acc === acc
@@ -236,7 +241,7 @@ end
 
     # Every uncovered face, in declaration order (§14.6).
     fresh = Simulation(tri(); h = 1//10)
-    @test occursin("`u`, `e`", failure(() -> init!(fresh)).msg)
+    @test only(failure(() -> init!(fresh)).diagnostics).faces == [:u, :e]
     @test lifecycle(fresh) === :built
 end
 
@@ -428,10 +433,10 @@ end
     # A tree of another type never reaches a write: the shape is proven by
     # dispatch, and the fallback method names both types.
     e = failure(() -> apply!(sim.exec, plan, at("plant", fragment(x = (q = SVector(1.0, 2.0),)))))
-    @test e isa BuildError
-    @test occursin("ConditionShapeDrift", e.msg)
-    @test occursin(string(typeof(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0))), e.msg)
-    @test occursin("Scoped{Fragment", e.msg)          # the observed tree's own type
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa ConditionShapeDrift && d.reason === :tree_type
+    @test d.compiled === typeof(tri_tree(SVector(1.0, 2.0), 3.0, :fired, 4.0, 5.0))
+    @test d.observed <: Scoped                        # the observed tree's own type
     @test landed(sim) == before
 
     # The prefixes are runtime fields the type cannot carry, so the `===` sweep
@@ -441,10 +446,10 @@ end
                       at("trig", fragment(m = (state = :armed,))),
                       fragment(inputs = (u = 6.0, e = 5.5)))
     e2 = failure(() -> apply!(sim.exec, plan, drifted))
-    @test e2 isa BuildError
-    @test occursin("ConditionShapeDrift", e2.msg)
-    @test occursin("(.nodes[2].prefix)", e2.msg)       # the position, in tree-step spelling
-    @test occursin("\"ctl\"", e2.msg) && occursin("\"plant\"", e2.msg)
+    d2 = only(e2.diagnostics)
+    @test e2 isa BuildError && d2 isa ConditionShapeDrift && d2.reason === :prefix
+    @test d2.position == (:nodes, 2, :prefix)          # the position, as a tree-step tuple
+    @test d2.compiled == "ctl" && d2.observed == "plant"
     @test landed(sim) == before
 end
 
@@ -496,12 +501,12 @@ end
     # non-nominal activation (§9.4), so a decision variable authored into it is
     # refused at resolution, with the clause that says why.
     e = failure(() -> compile_plan(at("ctl", fragment(s = (acc = d,))), b, D8))
-    @test e isa BuildError
-    @test occursin("ConditionResolution: `s.acc` at `ctl` takes Float64", e.msg)
-    @test occursin("a decision variable descends into neither a frozen discrete `s` nor a " *
-                   "pinned leaf", e.msg)
+    r = only(e.diagnostics)
+    @test e isa BuildError && r isa ConditionResolution && r.reason === :unconvertible
+    @test r.path == "ctl" && r.store === :s && r.field === :acc && r.declared === Float64
+    @test r.activation === D8      # the clause naming the seeded activation's own refusal
     # The nominal activation's own refusals are unchanged: no clause where the
     # value is simply the wrong kind of thing.
-    e0 = failure(() -> compile_plan(at("ctl", fragment(s = (acc = :nope,))), b))
-    @test occursin("which does not convert (§14.3)", e0.msg)
+    r0 = only(failure(() -> compile_plan(at("ctl", fragment(s = (acc = :nope,))), b)).diagnostics)
+    @test r0.reason === :unconvertible && r0.activation === nothing
 end

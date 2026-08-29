@@ -78,33 +78,35 @@ end
                                            b = get_output("plant", :thrust),
                                            c = get_deriv("ctl", :acc),
                                            d = get_face(:nope)), b))
-    @test e isa BuildError && occursin("4 violations", e.msg)
-    @test occursin("`plnt` is no component of this build", e.msg)         # the offender, plainly
-    @test occursin("declares no output port `thrust`", e.msg) &&
-          occursin("`y`, `power`", e.msg)                                 # the list in hand
-    @test occursin("get_deriv(\"ctl\", :acc)", e.msg) &&
-          occursin("a discrete `s` has no derivative", e.msg)
-    @test occursin("`nope` is no root-exported output face", e.msg) && occursin("`y`", e.msg)
-    for label in ("`a`", "`b`", "`c`", "`d`")                             # each read, by label
-        @test occursin(label, e.msg)
-    end
+    @test e isa BuildError && length(e.diagnostics) == 4                  # the full list, one throw
+    @test all(d -> d isa TapResolution, e.diagnostics)
+    (a, b_, c, d) = e.diagnostics
+    @test a.reason === :unknown_path && a.path == "plnt" && a.tap === :x   # the offender, plainly
+    @test b_.reason === :undeclared && b_.declares === :output_port &&
+          b_.field === :thrust && b_.candidates == [:y, :power]            # the list in hand
+    @test c.selector == "get_deriv(\"ctl\", :acc)" && c.reason === :discrete_deriv
+    @test d.reason === :unknown_output_face && d.field === :nope && d.candidates == [:y]
+    @test [x.label for x in e.diagnostics] == [:a, :b, :c, :d]             # each read, by label
 
     # An assembly path, a root input read as a face, an index on a scalar leaf,
     # and a state field the component does not declare.
     e = failure(() -> _compile_reads(reads(a = get_output("", :y), b = get_face(:u),
                                            c = get_output("plant", :y, 1),
                                            d = get_state("plant", :ω)), b))
-    @test occursin("the root component is an assembly", e.msg) &&
-          occursin("read with `get_face`", e.msg)
-    @test occursin("`u` is a root *input* face", e.msg) && occursin("get_input", e.msg)
-    @test occursin("a scalar has no index", e.msg)
-    @test occursin("declares no state field `ω`", e.msg) && occursin("`q`", e.msg)
+    (a, b_, c, d) = e.diagnostics
+    @test a.reason === :assembly_path && a.path == "" && a.tap === :y
+    @test b_.reason === :root_input_not_face && b_.field === :u
+    @test c.reason === :scalar_index && c.index == 1 && c.declared === Float64
+    @test d.reason === :undeclared && d.declares === :state_field && d.field === :ω &&
+          d.candidates == [:q]
 
     # The read set is a type, not a NamedTuple: the bare spelling is refused
     # with a directive, not a `MethodError` (§14.2's rule, one register over).
     e = failure(() -> _compile_reads((q = get_state("plant", :q),), b))
-    @test e isa BuildError && occursin("is not a read set", e.msg) && occursin("reads(", e.msg)
-    @test failure(() -> reads(q = 2.0)) isa BuildError                     # nor is 2.0 a selector
+    @test e isa BuildError && only(e.diagnostics) isa ReadSetMisuse
+    @test only(e.diagnostics).reason === :not_a_read_set
+    d = only(failure(() -> reads(q = 2.0)).diagnostics)                    # nor is 2.0 a selector
+    @test d isa ReadSetMisuse && d.reason === :not_a_selector && d.label === :q
 end
 
 @testset "the source rule: a snapshot-bound reader may not name a store selector (§14.4)" begin
@@ -135,6 +137,8 @@ end
     e = failure(() -> gather(_compile_reads(readable_reads(), nominal.build), seeded.exec))
     @test e isa InternalInvariant           # not a diagnostic kind, and not a BuildError
     @test occursin("compiled at Float64", e.msg) && occursin("Dual{Nothing, Float64, 8}", e.msg)
+    # `InternalInvariant` carries a message and no payload by design (D-215),
+    # so it is matched on text — it is no diagnostic kind.
 
     c = readable_condition()
     e2 = failure(() -> apply!(seeded.exec, resolve_condition(c, nominal.build)))
@@ -177,8 +181,9 @@ end
 @testset "`capture` is legal in `initialized` and `stopped`, and nowhere else (§14)" begin
     sim = Simulation(readable(); h = 1//10)
     e = failure(() -> capture(sim))
-    @test e isa BuildError && occursin("ServiceLifecycle", e.msg)
-    @test occursin("never been initialized", e.msg)      # `built`: no committed stores yet
+    d = only(e.diagnostics)
+    @test e isa BuildError && d isa ServiceLifecycle && d.op == "capture"
+    @test d.status === :built && d.legal == [:initialized, :stopped]  # no committed stores yet
     init!(sim, readable_condition())
     @test capture(sim) isa Tuple                         # `initialized`
     run!(sim; t_end = 0.1)
@@ -195,6 +200,7 @@ end
     err = failure(() -> capture(live))
     stage!(live, "in" => 1.0)
     wait(task)
-    @test err isa BuildError && occursin("ServiceLifecycle", err.msg)
-    @test occursin("stopped-sim operation and the simulation is running", err.msg)
+    d = only(err.diagnostics)
+    @test err isa BuildError && d isa ServiceLifecycle && d.op == "capture"
+    @test d.status === :running
 end

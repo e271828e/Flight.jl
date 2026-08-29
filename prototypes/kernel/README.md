@@ -21,7 +21,7 @@ alone. On demand:
 | file | implements | spec |
 | --- | --- | --- |
 | `src/leaves.jl` | the leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 |
-| `src/diagnostics.jl` | the closed diagnostic kind set, the one `BuildError` carrier with its compiler-style rendering, `severity`/`path`/`message`, and the `InternalInvariant` assertions raise | §13.1, §13.2, Appendix C, D-214, D-215 |
+| `src/diagnostics.jl` | the diagnostic kinds, `severity`/`path`/`message`, the `BuildError` carrier and its compiler-style rendering, `logged`, `InternalInvariant` | §13.1, §13.2, Appendix C, D-214, D-215 |
 | `src/declare.jl` | the declaration layer: both tiers' name families and arities, the bundle law, `probe_value`, the connection declarations beside `transparent_container`, the rate registers with `sample_times`, the event surface | §5.2, §8.2, §8.5–§8.7, §9.3, D-211 |
 | `src/assembly.jl` | class by declaration shape; children and containers (bare-key transparency and its three-arm collision family); paths, §6.1's one-level rule, endpoint and face resolution, the root's face invariants; the flatten pass with its two-sided face graph and the sample-time fold; §13.3's `resolve`/`resolve_terminal`/face-list primitives and §8.8's `input_passthrough`/`output_passthrough` | §6.1, §8.5–§8.8, §9.1, §9.2, §13.3, D-207–D-212 |
 | `src/store.jl` | per-eltype cell stores, the `StoreBundle`, gather/scatter, `_cell_key`, the `Clock` | §9.7, D-162 |
@@ -47,12 +47,17 @@ against the indexed grid time because that is the claim.
 
 The long form, with reasons, is in `MAP.md`. In brief:
 
-- **§13.2's build-side diagnostic carrier**: build and service errors are one
-  `BuildError` whose message leads with the Appendix C kind name; the runtime
-  warning stream *is* typed. Retirement: increment 22.
+- **The Appendix C kinds whose mechanism is absent** — an absence gets no
+  struct, so no `ThreadBudget`, `DeadStage`, `BundleFieldError`,
+  `UserCodeFraming`, `UnboundedRun` or replay kind is defined here, and
+  `TapResolution` is raised by the read register alone, never by §14.10's
+  absent tap register. Absent with them: did-you-mean **ranking** (the
+  candidate list a site holds is carried and rendered; nothing orders it by
+  edit distance, and a mistyped *path* gets no list at all) and §11.8's
+  maxlog renderer.
 - **§9.5's always-on conformance check** (the return laws are checked once,
-  at the probe); **§8.3 visibility**; did-you-mean lists; auto-published
-  ports; §13.3's load-bearing generic-holding check.
+  at the probe); **§8.3 visibility**; auto-published ports; §13.3's
+  load-bearing generic-holding check.
 - **§8.8 beyond the helper pair** (the feed-list idiom, generic-holding sugar,
   required-faces declarations); **D-187's grid diagnostics** (the bound
   schedule is plain data; refusals name the anchor and the pool's GCD).
@@ -78,7 +83,6 @@ rosters); the diff review is the enforcement.
 
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
-| diagnostics as kind values under the carrier (§13.2) | `BuildError(::String)` wrapping a `LegacyMessage` kind, and `e.msg` rendering the collection, while the sites convert | increment 22, stage 4 |
 | the per-writer status rides inline in the snapshot's one per-boundary allocation — zero additional heap allocation on a quiet frame (§11.8) | a `Vector` of per-writer records built at each publication, the small extra allocation the simple shape costs | an allocation-tightening pass (an `NTuple` status type fixed per run) |
 
 ## Authoring caveats

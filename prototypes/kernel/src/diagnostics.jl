@@ -57,11 +57,6 @@ The one carrier: a fail-fast site throws it holding a single diagnostic, a
 stratum barrier holding the whole collection its passes returned (§13.1). Its
 `showerror` renders compiler-style — grouped by kind, sorted by path within a
 group, the kind name leading each line.
-
-The `BuildError(::AbstractString)` constructor is a **transitional stand-in**
-(README): it wraps the string in a `LegacyMessage` kind so the unconverted
-sites keep working while increment 22 converts them, and `e.msg` renders the
-collection so the unconverted tests keep reading it. Both go in stage 4.
 """
 struct BuildError <: Exception
     diagnostics::Vector{Diagnostic}
@@ -71,7 +66,7 @@ BuildError(d::Diagnostic) = BuildError(Diagnostic[d])
 BuildError(ds::AbstractVector{<:Diagnostic}) = BuildError(Vector{Diagnostic}(ds))
 
 "The kinds present in a carrier, in first-appearance order — what a test asks first."
-kinds(e::BuildError) = unique(typeof.(getfield(e, :diagnostics)))
+kinds(e::BuildError) = unique(typeof.(e.diagnostics))
 
 # Groups in first-appearance order, each sorted by path; the sort is stable, so
 # two diagnostics at one path keep the order the pass produced them in.
@@ -85,7 +80,7 @@ function _groups(ds::Vector{Diagnostic})
 end
 
 function Base.showerror(io::IO, e::BuildError)
-    ds = getfield(e, :diagnostics)
+    ds = e.diagnostics
     if length(ds) == 1
         d = only(ds)
         print(io, "BuildError: ", nameof(typeof(d)), ": ", message(d))
@@ -98,12 +93,12 @@ function Base.showerror(io::IO, e::BuildError)
     nothing
 end
 
-# The stand-in's other half: `e.msg` is the joined rendering, which for a lone
-# `LegacyMessage` is the string the site passed in, verbatim (README).
-function Base.getproperty(e::BuildError, s::Symbol)
-    s === :msg && return join((message(d) for d in getfield(e, :diagnostics)), "\n")
-    getfield(e, s)
-end
+"""
+A warning-severity kind's rendering for the log (§13.2, D-214's `logged`
+policy): the same kind-name-leading line the carrier prints, minus the carrier
+— a logged warning never throws, so it has no `showerror` to lead it.
+"""
+logged(d::Diagnostic) = string(nameof(typeof(d)), ": ", message(d))
 
 """
 An internal invariant firing (D-215): not a diagnostic and not a kind, because
@@ -1154,19 +1149,3 @@ end
 message(d::NotAttached) =
     "this $(d.device) instance is not rostered — `detach!` releases an existing " *
     "attachment (§11.3)"
-
-# ==============================================================================
-# The transitional stand-in (README; retired in stage 4 of increment 22)
-# ==============================================================================
-
-"""
-The string stand-in's kind: an unconverted site's message, carried as-is so the
-carrier is uniform while increment 22 converts the sites one file at a time.
-It is not an Appendix C kind and has no payload beyond the text.
-"""
-struct LegacyMessage <: Diagnostic
-    msg::String
-end
-message(d::LegacyMessage) = d.msg
-
-BuildError(msg::AbstractString) = BuildError(LegacyMessage(String(msg)))

@@ -697,6 +697,71 @@ as that exception with the simulation committed, because the doctrine is about
 non-convergence being an outcome rather than about catching broken user
 machinery, and the service does not catch it.
 
+**Increment 22 — the diagnostic carrier, in four stages.** §13.2's kind values
+replace the message strings the prototype had raised since increment 2. Stage 1
+adds `src/diagnostics.jl`: `Diagnostic` as the root of the closed set, each kind
+an immutable `@kwdef` struct whose fields are Appendix C's payload column, three
+methods apiece — `severity(d)`, a property of the *kind* under D-214 (`:error`
+by default, the warning kinds overriding, never stored per occurrence),
+`path(d)`, the renderer's sort key, and `message(d)`, which has no default so a
+kind added without one fails loudly at its first rendering rather than printing
+a stub — and the one `BuildError` carrier over a `Vector{Diagnostic}`, whose
+`showerror` renders compiler-style: a lone diagnostic on one line, a collection
+under a count line, grouped by kind in first-appearance order and stably sorted
+by `path` within a group. Where Appendix C's payload column reads "reason (a /
+b / c)" the kind carries a `Symbol` `reason` — one struct per kind, never one
+per reason, which is what lets `d.reason === :inverted_box` be a test's whole
+assertion. `dataplane.jl`'s eight runtime kinds are re-parented under
+`Diagnostic` so `severity` covers them too. A `BuildError(::String)` constructor
+wrapping a `LegacyMessage` kind rode through stages 2–3 so the suite never went
+red, with its own README stand-in row; stage 4 deleted both.
+
+Stages 2–4 convert the sites: the build side (`assembly.jl`, `build.jl`), the
+services and periphery (`sim.jl`, `roster.jl`, `bindings.jl`, `devices.jl`,
+`declare.jl`), and the three collecting registers — `conditions.jl`'s
+`_report_violations`, `readers.jl`'s `_compile_reads`, `trim.jl`'s
+`_report_trim!` — whose `Vector{String}` becomes the `Vector{Diagnostic}` the
+barrier hands to one `BuildError`. Trim's setup throw now carries two kinds at
+once, its own `TrimProblemInvalid`s beside the read set's `TapResolution`s,
+which is what a carrier over a heterogeneous vector buys and what the string
+splice was imitating. The `logged(d)` rendering — the kind name, then the
+message, the carrier's line without the carrier — is the `logged` policy's
+form, used by the two trim warnings and by `attach!`'s `EmptyGreedyClaim`.
+
+**What stage 2 could not make collect.** §13.1 asks for one barrier per
+stratum, and Stratum A's passes are interleaved with user code:
+`input_connections`, `output_connections`, `sample_times` and
+`transparent_container` all run mid-walk. The *checking* parts now collect; the
+*resolution* parts — `classify`, `resolve_source`/`resolve_dest`/
+`resolve_terminal`, the one-level and direction rules — still abort at the
+first violation and drop what the walk had gathered, because a resolver that
+kept going would need a sentinel return the whole wiring API does not have.
+That is its own increment. The split is worth naming because it is invisible in
+the diff: a model with two bad wire *ends* reports both, and one with a bad
+wire and an unresolvable path reports the path alone.
+
+**`InternalInvariant` is not a diagnostic** (D-215). The activation-identity
+refusals and the handful of `error(...)` assertions raise their own exception
+type, carrying a message and no payload, because they name no failure a user
+can fix: a `Reader` compiled at `Float64` meeting a `Dual` executor is a
+framework invariant broken, not a model that is wrong. Keeping them outside the
+kind set keeps the acceptance-test contract — match on kind and payload —
+honest, and the four tests that read their text do so on purpose.
+
+**One rendering testset, marked.** `message(d)` is presentation, and no test
+outside `test_diagnostics.jl`'s `@testset "rendering"` reads it; everywhere
+else the assertion is the kind plus the payload fields carrying the same fact
+(`"5 violations"` becomes `length(e.diagnostics) == 5`,
+`startswith(e.msg, "TrimProblemInvalid:")` becomes `d isa TrimProblemInvalid`,
+a provenance chain becomes the `provenance` field compared as a value). The
+directive prose the old assertions matched — "use `override(base, patch)`",
+"stopped → init! → run!" — is rendering and went with it; the fact each was
+pinning survives as payload. The exception exists because the didactic register
+is a claim of its own: state the fix, show the list in hand, lead with the kind
+name. That is what the rendering testset pins, and it is the only place in the
+suite that may.
+
+
 ## The properties the tests pin down
 
 Each of these is a spec claim rather than a programming convenience:
@@ -1327,9 +1392,10 @@ Each of these is a spec claim rather than a programming convenience:
   nominal activation's own refusals are unchanged.
 - **A compiled product belongs to one activation, by dispatch.** A `Float64`
   `Reader`, `ConditionPlan` and `SpecializedPlan` each refuse a `Dual` executor
-  naming both scalars, and the executor is untouched. The refusal carries no
-  kind name: §14.4 makes the pairing a framework invariant the services uphold,
-  so reaching it is an internal assertion firing.
+  naming both scalars, and the executor is untouched. The refusal is an
+  `InternalInvariant` and no diagnostic kind: §14.4 makes the pairing a
+  framework invariant the services uphold, so reaching it is an internal
+  assertion firing, outside the kind set on purpose (D-215).
   The scalar rides in the product's own type, so the pairing costs a method
   signature rather than a runtime test — the §7.5 gates measure zero unchanged.
 
@@ -1372,8 +1438,8 @@ Each of these is a spec claim rather than a programming convenience:
   is not, it answers no by the ordinary box test and leaves the sim `built`.
 - **The setup diagnostic collects, in three observable stages.** A bounds
   key-set mismatch, an `Int` guess field and an unresolvable selector come back
-  as one `TrimProblemInvalid` naming all three, the read set's own line kept
-  verbatim inside it, carrying no kind of its own; an inverted box (`lower` above
+  as one throw of three diagnostics — two `TrimProblemInvalid`s and the read
+  set's own `TapResolution`, spliced in as the value it is; an inverted box (`lower` above
   `upper` on one decision) is collected there too, with both values named,
   because no projection can honor it, and so is a non-positive tolerance —
   zero and negative in one problem come back as one throw naming both, the
@@ -1425,6 +1491,28 @@ Each of these is a spec claim rather than a programming convenience:
   is the §11.3 freeze, refused as `ServiceLifecycle` exactly as `init!` and
   `capture` are.
 
+- **A collecting register returns kind values, and the barrier throws once.**
+  The condition resolver's five violations over one tree come back as five
+  diagnostics in one `BuildError` — four `ConditionResolution`s discriminated
+  by `reason` and one `DuplicateConditionLeaf` — and the count is read off
+  `length(e.diagnostics)` rather than out of a rendered sentence. The read
+  register's four come back as four `TapResolution`s in the read set's own
+  declaration order, each carrying its label and the selector as authored.
+  Every payload the old message text carried is now a field: the candidate
+  list in hand, the tier that has no such store, the role that made a field
+  ineligible, the seeded activation on the frozen-leaf refusal.
+- **Provenance is payload, not prose.** A `combine` collision names both chains
+  as the two entries of `d.provenance`, and an `override` patch's chain records
+  the layer it overrode inside the one string the flattening built — asserted
+  as values, which is what makes them a property rather than a wording.
+- **Rendering is pinned in exactly one testset.** The carrier over two kinds ×
+  two paths renders the kind names leading, the groups in first-appearance
+  order, the paths sorted within a group and the count line above; a lone
+  diagnostic renders on one line with no count. Beside it, one did-you-mean
+  render showing the candidates the site held (carried, never ranked) and one
+  remedy render showing the list in hand, and `logged(d)` for a warning kind.
+  Nothing else in the suite may match rendered diagnostic text (§13.2).
+
 ## Stand-in retirement history
 
 Every stand-in introduced through increment 5 was retired on 2026-08-20;
@@ -1443,5 +1531,8 @@ root-input initial values now arrive through `init!`'s condition (stopped) or
 `stage!` (running), and the function is gone. What survives it is `poke!` in
 `test/utils.jl`, used at two sites where the *counterfactual to the drain* is
 the point — a mid-trajectory direct write, which neither framework path can
-express — and test equipment, not a stand-in. The status allocation is the
-only row left.
+express — and test equipment, not a stand-in. Increment 22's `LegacyMessage`
+row entered with its stage 1 and was retired by its stage 4 on 2026-08-29, the
+same increment, the string constructor having existed only so the suite stayed
+green while the sites converted file by file. The status allocation is the only
+row left.

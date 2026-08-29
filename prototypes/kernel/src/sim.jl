@@ -832,7 +832,7 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
                                     should_abort, diag, WriterAccount(), h))
     reclaim!(plane, sim.exec.act.layout)
     is_greedy(b) && isempty(claim) &&
-        @warn message(EmptyGreedyClaim(device = "device $id ($(typeof(dev)))", binding = string(typeof(b))))
+        @warn logged(EmptyGreedyClaim(device = "device $id ($(typeof(dev)))", binding = string(typeof(b))))
     h
 end
 

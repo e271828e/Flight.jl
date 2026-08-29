@@ -59,9 +59,8 @@ NamedTuples in the authoring level's own vocabulary; a condition speaks state
 """
 function fragment(; x = (;), s = (;), m = (;), inputs = (;))
     for (name, p) in ((:x, x), (:s, s), (:m, m), (:inputs, inputs))
-        p isa NamedTuple || throw(BuildError(
-            "ConditionNodeMisuse: `fragment`'s `$name` payload is $(typeof(p)) — every " *
-            "payload is a NamedTuple of the authoring level's own names (§14.2)"))
+        p isa NamedTuple || throw(BuildError(ConditionNodeMisuse(
+            observed = typeof(p), reason = :fragment_payload, payload = name)))
     end
     Fragment(x, s, m, inputs)
 end
@@ -114,11 +113,8 @@ override(layers...) = _misuse_in(layers)
 _misuse_in(args::Tuple) = _node_misuse(args[findfirst(n -> !(n isa ConditionNode), args)],
                                        Tuple(nameof(typeof(n)) for n in args if n isa ConditionNode))
 
-_node_misuse(v, kinds) = throw(BuildError(
-    "ConditionNodeMisuse: $(typeof(v)) is not a condition node" *
-    (isempty(kinds) ? "" : ", and the node kind(s) in hand are $(join(kinds, ", "))") *
-    " — wrap the NamedTuple in `fragment(…)`, or in `at(prefix, fragment(…))`, and " *
-    "combine nodes with nodes (§14.2)"))
+_node_misuse(v, in_hand) = throw(BuildError(ConditionNodeMisuse(
+    observed = typeof(v), in_hand = Symbol[in_hand...])))
 
 # --- flattening (§14.3) --------------------------------------------------------
 # The only place path strings are ever concatenated: a recursion with a path
@@ -149,13 +145,10 @@ struct CEntry
 end
 
 _key(e::CEntry) = e.face === nothing ? (e.path, e.store, e.field) : ("", :input, e.face)
-_leaf(e::CEntry) = e.face !== nothing ? "root input `$(e.face)`" :
-                   e.store === :input ? "input face `$(e.field)` of $(_at(e.path))" :
-                                       "`$(e.store).$(e.field)` at $(_at(e.path))"
 _step(prov::String, s::String) = isempty(prov) ? s : prov * " → " * s
 
 function _flat(n::Fragment, path::String, prov::String, pos::Tuple,
-               flat::Flat, viol::Vector{String})
+               flat::Flat, viol::Vector{Diagnostic})
     out = CEntry[]
     for (store, name, payload) in ((:x, :x, n.x), (:s, :s, n.s),
                                    (:m, :m, n.m), (:input, :inputs, n.inputs))
@@ -172,12 +165,12 @@ function _flat(n::Fragment, path::String, prov::String, pos::Tuple,
 end
 
 _flat(n::Scoped, path::String, prov::String, pos::Tuple,
-      flat::Flat, viol::Vector{String}) =
+      flat::Flat, viol::Vector{Diagnostic}) =
     _flat(n.node, _join(path, n.prefix), _step(prov, "at(\"$(n.prefix)\")"),
           (pos..., :node), flat, viol)
 
 _flat(n::Combined, path::String, prov::String, pos::Tuple,
-      flat::Flat, viol::Vector{String}) =
+      flat::Flat, viol::Vector{Diagnostic}) =
     reduce(vcat, (_flat(k, path, _step(prov, "combine[$i]"), (pos..., :nodes, i), flat, viol)
                   for (i, k) in enumerate(n.nodes)); init = CEntry[])
 
@@ -186,7 +179,7 @@ _flat(n::Combined, path::String, prov::String, pos::Tuple,
 # accumulator, the patch replacing the leaf it overrode and inheriting its
 # provenance beside its own.
 function _flat(n::Override, path::String, prov::String, pos::Tuple,
-               flat::Flat, viol::Vector{String})
+               flat::Flat, viol::Vector{Diagnostic})
     acc = CEntry[]
     for (i, layer) in enumerate(n.layers)
         label = i == 1 ? "override[base]" : "override[patch $(i - 1)]"
@@ -204,15 +197,14 @@ end
 
 # `combine`'s one collision rule, collected rather than thrown (§13.1): both
 # provenance chains and the directive naming the layering combinator.
-function _check_duplicates!(es::Vector{CEntry}, viol::Vector{String})
+function _check_duplicates!(es::Vector{CEntry}, viol::Vector{Diagnostic})
     seen = Dict{Tuple{String,Symbol,Symbol},CEntry}()
     for e in es
         k = _key(e)
         if haskey(seen, k)
-            push!(viol, "DuplicateConditionLeaf: $(_leaf(e)) is written twice — by " *
-                        "$(seen[k].prov), and by $(e.prov). `combine` is " *
-                        "collision-intolerant by design — use `override(base, patch)` " *
-                        "to layer (§14.2, §14.6)")
+            push!(viol, DuplicateConditionLeaf(path = e.path, store = e.store,
+                                               field = e.field, face = e.face,
+                                               provenance = [seen[k].prov, e.prov]))
         else
             seen[k] = e
         end
@@ -319,7 +311,7 @@ function _resolve_entries(node::ConditionNode, b::Build, ::Type{T}) where {T}
     flat, tiers = b.flat, b.tiers
     act = activation(b, T)
     decls, layout = act.decls, act.layout
-    viol = String[]
+    viol = Diagnostic[]
     entries = _flat(node, "", "", (), flat, viol)
     _check_duplicates!(entries, viol)
 
@@ -340,7 +332,7 @@ function _resolve_entries(node::ConditionNode, b::Build, ::Type{T}) where {T}
         c, tier, d = flat.comps[ci], tiers[ci], decls[ci]
         declared = e.store === :x ? d.x : e.store === :s ? d.s : init_m(c)
         if isempty(declared)
-            push!(viol, _no_store(e, c, tier))
+            push!(viol, _no_store(e, tier))
             continue
         end
         haskey(declared, e.field) ||
@@ -393,17 +385,20 @@ _convert(::Type{P}, v) where {P} =
         (false, nothing)
     end
 
+# One `ConditionResolution` off an entry: the leaf coordinates and the
+# provenance chain are the entry's own, and each arm adds what it observed.
+_cviol(e::CEntry, reason::Symbol; kw...) =
+    ConditionResolution(; path = e.path, store = e.store, field = e.field, face = e.face,
+                        reason = reason, provenance = e.prov, kw...)
+
 # The component a non-input entry addresses. Assemblies are virtual for
 # execution (§10.5) and own no state, so an `at` prefix stopping at one has
 # nothing to write — and saying so beats "no such path".
-function _component(flat::Flat, e::CEntry, viol::Vector{String})
+function _component(flat::Flat, e::CEntry, viol::Vector{Diagnostic})
     i = findfirst(==(e.path), flat.paths)
     i === nothing || return i
-    push!(viol, "ConditionResolution: the condition addresses $(_at(e.path)), which is " *
-                (any(startswith(p, e.path * "/") for p in flat.paths) ?
-                 "an assembly — assemblies own no state, and a condition addresses " *
-                 "components and root inputs (§14.1, §8.5)" :
-                 "no component of this build (§14.3)") * " [$(e.prov)]")
+    push!(viol, _cviol(e, any(startswith(p, e.path * "/") for p in flat.paths) ?
+                          :assembly_path : :unknown_path))
     nothing
 end
 
@@ -414,28 +409,23 @@ end
 # producer is either a root input or an internal port, and a component-fed face
 # reaches none — writing it would be meaningless, because the first sweep
 # overwrites it.
-function _root_input(flat::Flat, e::CEntry, viol::Vector{String})
+function _root_input(flat::Flat, e::CEntry, viol::Vector{Diagnostic})
     if isempty(e.path)
         e.field in flat.root_inputs && return e.field
-        push!(viol, "ConditionResolution: `$(e.field)` is no root input face — the root's " *
-                    "inputs are $(_names(flat.root_inputs)) (§14.2) [$(e.prov)]")
+        push!(viol, _cviol(e, :unexported_face; candidates = flat.root_inputs))
         return nothing
     end
     k = findfirst(p -> first(p) === (e.path, e.field), flat.in_faces)
     if k === nothing
         here = [f for ((p, f), _) in flat.in_faces if p == e.path]
         push!(viol, isempty(here) && !_addresses_level(flat, e.path) ?
-                    "ConditionResolution: the condition addresses $(_at(e.path)), which is " *
-                    "no component of this build (§14.3) [$(e.prov)]" :
-                    "ConditionResolution: $(_at(e.path)) declares no input face " *
-                    "`$(e.field)` — its input faces are $(_names(here)) (§14.2) [$(e.prov)]")
+                    _cviol(e, :unknown_path) :
+                    _cviol(e, :no_input_face; candidates = here))
         return nothing
     end
     (path, port) = last(flat.in_faces[k])
     isempty(path) && return port
-    push!(viol, "ConditionResolution: $(_at(e.path))'s input face `$(e.field)` reaches no " *
-                "root input — it is wired internally, to `$path`.$port, and the first sweep " *
-                "overwrites it; unexported stays unpokeable (§14.2) [$(e.prov)]")
+    push!(viol, _cviol(e, :internally_wired; producer = (path, port)))
     nothing
 end
 
@@ -446,32 +436,21 @@ end
 _addresses_level(flat::Flat, path::String) =
     any(p == path || startswith(p, path * "/") for p in flat.paths)
 
-_names(ns) = isempty(ns) ? "none" : join(("`$n`" for n in ns), ", ")
-
 # The store a condition names has to exist on the component at all: `x` is the
 # continuous tier's state and `s` the discrete one's, disjoint by construction
 # (D-195), and `m` is continuous-only (§3.2).
-_no_store(e::CEntry, c, tier::Tier) =
-    "ConditionResolution: $(_leaf(e)) — $(_at(e.path)) is a $(tier_word(tier)) component " *
-    "and declares no `init_$(e.store)`" *
-    (e.store === :x && tier === DISCRETE ? "; the discrete tier's state is `s` (D-195)" :
-     e.store === :s && tier === CONTINUOUS ? "; the continuous tier's state is `x` (D-195)" :
-     e.store === :m ? "; modes are declared by `init_m`, continuous-only (§3.2)" : "") *
-    " (§14.3) [$(e.prov)]"
+_no_store(e::CEntry, tier::Tier) =
+    _cviol(e, :no_store; tier = Symbol(tier_word(tier)))
 
 # An undeclared field, discriminated against the component's other name
 # families: a condition specifies state, modes and root inputs — never outputs,
 # which are derived data, and never workspace (§14.1).
 function _undeclared(e::CEntry, c, tier::Tier, declared::NamedTuple, ::Type{T}) where {T}
-    role = haskey(declared_at(output_types, c, tier), e.field) ? "an output port" :
-           haskey(declared_at(input_types, c, tier), e.field) ? "an input face" :
+    role = haskey(declared_at(output_types, c, tier), e.field) ? :output_port :
+           haskey(declared_at(input_types, c, tier), e.field) ? :input_face :
            (_declares_workspace(c, tier) &&
-            haskey(_declared_workspace(c, tier, T), e.field)) ? "a workspace entry" : nothing
-    "ConditionResolution: $(_leaf(e)) is not declared — `init_$(e.store)` at " *
-    "$(_at(e.path)) declares $(_names(keys(declared)))" *
-    (role === nothing ? "" :
-     "; `$(e.field)` is $role, and a condition specifies state, modes and root " *
-     "inputs — never outputs, never workspace (§14.1)") * " (§14.3) [$(e.prov)]"
+            haskey(_declared_workspace(c, tier, T), e.field)) ? :workspace : nothing
+    _cviol(e, :undeclared_field; candidates = collect(keys(declared)), role = role)
 end
 
 _declared_workspace(c, tier::Tier, ::Type{T}) where {T} =
@@ -483,24 +462,17 @@ _declared_workspace(c, tier::Tier, ::Type{T}) where {T} =
 # D-166) or a leaf pinned `Float64` by its own declaration is not one of them —
 # so the value cannot be carried and there is nowhere to put its partials.
 function _unconvertible(e::CEntry, v, ::Type{P}, ::Type{T}) where {P,T}
-    "ConditionResolution: $(_leaf(e)) takes $(P), and the authored value is " *
-    "$(repr(v))::$(typeof(v)), which does not convert" *
-    (_seeded_into_pinned(typeof(v), P, T) ?
-     "; this is the seeded activation's own refusal — a value at $(T) is a decision " *
-     "variable and this leaf is pinned, and a decision variable descends into neither " *
-     "a frozen discrete `s` nor a pinned leaf (§14.3, §9.4)" : "") *
-    " (§14.3) [$(e.prov)]"
+    _cviol(e, :unconvertible; declared = P, observed = typeof(v), value = v,
+           activation = _seeded_into_pinned(typeof(v), P, T) ? T : nothing)
 end
 
 _seeded_into_pinned(::Type{V}, ::Type{P}, ::Type{T}) where {V,P,T} =
     T !== Float64 && T in leaf_types(V) && !(T in leaf_types(P))
 
 # §13.1's collecting register: the full list, every violation, one throw.
-function _report_violations(viol::Vector{String})
+function _report_violations(viol::Vector{Diagnostic})
     isempty(viol) && return nothing
-    throw(BuildError("the condition does not resolve against this build — " *
-                     "$(length(viol)) violation$(length(viol) == 1 ? "" : "s") " *
-                     "(§14.3, §13.1):\n  " * join(viol, "\n  ")))
+    throw(BuildError(viol))
 end
 
 # --- root-input totality (§14.6) ------------------------------------------------
@@ -522,11 +494,7 @@ function assert_total(plan::ConditionPlan, flat::Flat, op::String)
     covered = Set(plan.faces)
     uncovered = [f for f in flat.root_inputs if !(f in covered)]
     isempty(uncovered) && return nothing
-    throw(BuildError("UninitializedInputs: the condition given to `$op` covers no value for " *
-                     "root input(s) $(_names(uncovered)) — root inputs are the one " *
-                     "initialized datum with no declared default (§11.3), so an application " *
-                     "establishing a complete world authors every one of them; nothing was " *
-                     "written (§14.6, D-068)"))
+    throw(BuildError(UninitializedInputs(op = op, faces = uncovered)))
 end
 
 # --- the dynamic-walk application register (§14.4) ------------------------------
@@ -805,21 +773,12 @@ end
     nothing
 end
 
-_position(P::Tuple) = "(" * join((s isa Symbol ? ".$s" : "[$s]" for s in P), "") * ")"
-
 @noinline _shape_drift(::Type{NT}, ::Type{O}) where {NT,O} = throw(BuildError(
-    "ConditionShapeDrift: this plan was compiled from a condition tree of type\n    $NT\n" *
-    "and the tree handed to `apply!` is\n    $O\nThe specialized register proves the shape " *
-    "by dispatch, so a condition function has to return one shape for every decision it is " *
-    "evaluated at — a branch that authors a different field set, a different nesting or a " *
-    "different leaf type is a different shape, and needs its own plan (§14.4, §9.5, D-066)"))
+    ConditionShapeDrift(reason = :tree_type, compiled = NT, observed = O)))
 
 @noinline _prefix_drift(P::Tuple, expected::String, observed::String) = throw(BuildError(
-    "ConditionShapeDrift: the `at` prefix at tree position $(_position(P)) was " *
-    "$(repr(expected)) when this plan was compiled and is $(repr(observed)) now — prefixes " *
-    "are runtime `String` fields the tree type cannot carry, so the register closes the " *
-    "shape with a `===` sweep over them, and a condition function has to return one shape " *
-    "for every decision it is evaluated at (§14.4, §9.5, D-066)"))
+    ConditionShapeDrift(reason = :prefix, compiled = expected, observed = observed,
+                        position = P)))
 
 # --- capture: the gather twin of the application register (§14.1, §14.10) -------
 
@@ -853,17 +812,8 @@ these values* rather than a resumption.
 """
 function capture(sim::Simulation{T}) where {T}
     lc = lifecycle(sim)
-    lc === :running && throw(BuildError(
-        "ServiceLifecycle: `capture` is a stopped-sim operation and the simulation " *
-        "is running — the loop owns the stores between drains (§11.3, §14)"))
-    lc === :errored && throw(BuildError(
-        "ServiceLifecycle: this simulation ended `errored` — terminally stopped; " *
-        "post-mortem inspection of its stores stays a diagnostic read, and may not " *
-        "become a condition value (§13.6, §14)"))
-    lc === :built && throw(BuildError(
-        "ServiceLifecycle: `capture` reads committed, boundary-consistent stores, and " *
-        "this simulation has never been initialized — `capture` is legal in " *
-        "`initialized` and `stopped` (§14, §12.6)"))
+    lc in (:initialized, :stopped) || throw(BuildError(ServiceLifecycle(
+        op = "capture", status = lc, legal = [:initialized, :stopped])))
     ex, flat, tiers = sim.exec, sim.build.flat, sim.build.tiers
     act = activation(sim.build, T)
     offs = _x_offsets(act.decls, tiers)

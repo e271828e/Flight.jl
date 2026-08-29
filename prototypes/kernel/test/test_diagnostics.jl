@@ -435,7 +435,6 @@ using InteractiveUtils: subtypes    # the coverage check below
         ReadSetMisuse(observed = Int, reason = :not_a_selector, label = :r),
         ReadSetMisuse(observed = NamedTuple, reason = :not_a_read_set),
         NotAttached(device = "Pad", roster = ["device 1 (Pad)"]),
-        LegacyMessage("an unconverted site's message"),
         # the runtime stream's eight, re-parented (§11.8)
         MalformedDatum(ArgumentError("bad")),
         OutOfClaimEntry(:a, 1.0, [:b], "device 1 (Pad)"),
@@ -465,9 +464,18 @@ using InteractiveUtils: subtypes    # the coverage check below
     # occurrence fails here rather than going unrendered.
     @test Set(typeof.(occurrences)) == Set(subtypes(Diagnostic))
 
-    # The carrier's rendering (§13.1, §13.2): grouped by kind in first-appearance
-    # order, sorted by path within a group, the kind name leading each line, and
-    # the count line above them all.
+end
+
+# --- rendering: the suite's one deliberate exception -----------------------------
+# Everywhere else a test matches a diagnostic's *kind and payload*, never its
+# text (§13.2). Here, and only here, the rendered string is the claim: the
+# carrier's compiler-style layout, and the didactic register `message` is for —
+# state the fix, show the list in hand. Nothing outside this testset may
+# `occursin` on a rendered diagnostic; a wording change is free everywhere else
+# and lands here.
+@testset "rendering: the carrier compiler-style, the register didactic (§13.1, §13.2)" begin
+    # Two kinds × two paths: groups in first-appearance order, paths sorted
+    # within a group, the kind name leading each line, the count line above.
     e = BuildError(Diagnostic[UnconnectedInput(path = "b", face = :u),
                               FaceNameIllegal(path = "b", face = "p/q"),
                               UnconnectedInput(path = "a", face = :v),
@@ -479,12 +487,26 @@ using InteractiveUtils: subtypes    # the coverage check below
     @test startswith(lines[3], "  UnconnectedInput: `b`.u")
     @test startswith(lines[4], "  FaceNameIllegal: ") && occursin("`r/s`", lines[4])
     @test startswith(lines[5], "  FaceNameIllegal: ") && occursin("`p/q`", lines[5])
+
     # A fail-fast site's single diagnostic renders on one line, no count.
     @test sprint(showerror, BuildError(UnconnectedInput(path = "a", face = :v))) ==
           "BuildError: UnconnectedInput: " * message(UnconnectedInput(path = "a", face = :v))
 
-    # The stand-in: the string constructor and `e.msg` (README, retired in stage 4).
-    s = BuildError("a message the sites still pass")
-    @test only(s.diagnostics) isa LegacyMessage
-    @test s.msg == "a message the sites still pass"
+    # The did-you-mean list is carried, not ranked (README): the candidates the
+    # site had in hand are printed, and no edit distance orders them.
+    m = message(UnknownPort(entry = "wires", end_ = :destination, path = "a/b",
+                            spelling = "a/b", port = :throtle,
+                            candidates = [:throttle, :brake]))
+    @test occursin("names no `throtle`", m) && occursin("throttle, brake", m)
+
+    # The remedy register: the shortfall, then the fix, with the list in hand.
+    m = message(UninitializedInputs(op = "init!", faces = [:u, :e]))
+    @test occursin("`init!`", m) && occursin("`u`, `e`", m)
+    @test occursin("nothing was written", m)
+
+    # A `logged` warning renders like a carrier line — the kind name, then the
+    # message — because it never gets a `showerror` to lead it (D-214).
+    d = TrimCommitResiduals(residuals = [(:torque, 1.0, 0.5)])
+    @test logged(d) == "TrimCommitResiduals: " * message(d)
+    @test startswith(logged(d), "TrimCommitResiduals: ") && severity(d) === :warning
 end
