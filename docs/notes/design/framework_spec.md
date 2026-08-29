@@ -6856,7 +6856,7 @@ name, [payload](#g-payload) fields, owning section, severity, where it is raised
 and under which policy. That table is the
 artifact the [§8.4][s8-4] acceptance tests and the error-message work are
 written against. Each kind carries its own structured payload: endpoint paths,
-[face](#g-face) names, expected/observed types, a severity, and the
+[face](#g-face) names, expected/observed types, and the
 *list-in-hand* a [did-you-mean](#g-did-you-mean) needs (the offending name plus
 the list it should have matched). A kind *is* a Julia type, and severity —
 `error` or `warning`, whether an occurrence ever throws — is a property of the
@@ -10069,16 +10069,17 @@ with the collection and never triggering its throw — is currently empty
 |---|---|---|---|---|---|
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | [§12.6][s12-6] | error | service | fail-fast |
 | `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | [§11.3][s11-3], [§14][s14] | error | service | fail-fast |
-| `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5][s13-5] | error | service | fail-fast |
-| `DeploymentInvalid` | the deployment parameter (`h`, `n`, `Δt_base`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, the harmonic-grid relation, a non-dividing anchor period or offset — the anchor named with its declaring scope and key), the value in hand, the violated constraint | [§9.1][s9-1] | error | service | collected |
-| `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§11.3][s11-3] | error | service | fail-fast |
+| `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5][s13-5] | error | service | collected, over the given faces |
+| `DeploymentInvalid` | the deployment parameter (`h`, `n`, `Δt_base`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, `join_timeout`, `log`, `log_every`, `log_max`, `t_end` ([§13.5][s13-5]), the harmonic-grid relation, a non-dividing anchor period or offset — the anchor named with its declaring scope and key), the value in hand, the violated constraint | [§9.1][s9-1] | error | service | collected |
+| `AttachUnknownFace` | the device (by type — its roster id is assigned only at admission), binding entry, face name, the root input-face list | [§11.3][s11-3] | error | service | fail-fast |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | [§11.3][s11-3] | error | service | fail-fast |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§11.1][s11-1], [§11.3][s11-3] | error | service | fail-fast |
-| `ClaimConflict` | face name, claiming device id, incumbent device id | [§11.3][s11-3] | error | service | fail-fast |
+| `ClaimConflict` | face name, claiming device id, incumbent device id | [§11.3][s11-3] | error | service | collected, over the device's claim set |
 | `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root-input face being claimed already | [§11.3][s11-3], [§11.6][s11-6] | warning | service | logged |
-| `BindingContractMismatch` | the binding type, the trait and the method at fault, and the direction: a declared side whose enumeration method is missing (`is_input`/`is_output` true, the root's error fallback reached), or a `claims`/`reads` method defined under a false trait (detected by `which` against the fallback); `is_greedy` without `is_input`, and `claims` defined on a greedy binding, report here too | [§11.6][s11-6] | error | service | fail-fast |
-| `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (the source rule, [§14.4][s14-4]) | [§11.2][s11-2], [§14.4][s14-4] | error | service | fail-fast |
-| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported root-input face | [§14.2][s14-2], [§14.3][s14-3] | error | service | collected |
+| `BindingContractMismatch` | the binding type, the trait and the method at fault, and the direction: a declared side whose enumeration method is missing (`is_input`/`is_output` true, the root's error fallback reached), or a `claims`/`reads` method defined under a false trait (detected by `which` against the fallback); `is_greedy` without `is_input`, `claims` defined on a greedy binding, and a binding declaring neither side, report here too | [§11.6][s11-6] | error | service | fail-fast |
+| `DeviceContractMismatch` | the device type, and what the contract lacks: the `loop` method, or the output side `gather` needs from a binding that declares none — the device twin of `BindingContractMismatch` | [§11.6][s11-6] | error | service | fail-fast |
+| `ReadBindingUnresolved` | the device (by type — its roster id is assigned only at admission), the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (the source rule, [§14.4][s14-4]) | [§11.2][s11-2], [§14.4][s14-4] | error | service | fail-fast |
+| `ConditionResolution` | entry path, store and field (or the root-input face the entry addresses), offending value type and declared leaf type, the leaf's tier and role where the refusal is tier-bound, the producer where a face is fed, candidates where a list is in hand, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported root-input face | [§14.2][s14-2], [§14.3][s14-3] | error | service | collected |
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2][s14-2] | error | service | collected |
 | `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | [§14.2][s14-2] | error | service | fail-fast |
 | `UninitializedInputs` | every uncovered root face, in declaration order | [§14.6][s14-6] | error | service, pre-write | collected |
@@ -10091,7 +10092,7 @@ with the collection and never triggering its throw — is currently empty
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
 | `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | error | service | collected |
-| `ArgumentInvalid` | the call (`step!`, `trim!`, `TableBinding`, a period constructor), the argument, the value in hand, the violated constraint — the twin of `DeploymentInvalid` for arguments that are not deployment parameters | [§8.7][s8-7], [§11.6][s11-6], [§12.6][s12-6], [§14.7][s14-7] | error | service; build, in a `sample_times` declaration | fail-fast |
+| `ArgumentInvalid` | the call (`step!`, `trim!`, `TableBinding`, a period constructor), the argument, the value in hand, the violated constraint — the twin of `DeploymentInvalid` for arguments that are not deployment parameters | [§8.7][s8-7], [§11.6][s11-6], [§12.6][s12-6], [§14.7][s14-7] | error | service; build, in a `sample_times` declaration | fail-fast; collected over a `TableBinding`'s entry table |
 | `ReadSetMisuse` | the offending argument's type, the selector kinds in hand — the read register's twin of `ConditionNodeMisuse` | [§14.4][s14-4] | error | service | fail-fast |
 | `NotAttached` | the device id or handle offered to `detach!`, the roster's device ids | [§11.3][s11-3] | error | service | fail-fast |
 
