@@ -1,212 +1,103 @@
 # Kernel prototype
 
 The walking skeleton for the framework in `docs/notes/design/framework_spec.md`,
-built to keepable standards and grown one increment at a time. Increment 1 (the
-cell-store representation bench) lives in `../cellstore_bench` and stays frozen
-there — D-162 cites its numbers.
+built to keepable standards and grown one increment at a time — increments 2–21
+so far (increment 1, the cell-store bench, is frozen in `../cellstore_bench`;
+D-162 cites its numbers). This file is the orientation; read it first and
+alone. On demand:
 
-Increments 2–21 are built: the two tiers, hierarchy and assemblies, the
-multi-rate grid, events with localization, the stepper seam (RK4/Heun), the
-data plane's core exchange, the roster and claims, the log, the device
-contract with its tasks and the run's end, the binding's runtime half, the
-diagnostic channel with its published framework status, the run
-lifecycle with its termination policy and record, the condition algebra
-behind the first stopped-sim service, `init!`, and D-206–D-208's conformance
-pass — root inputs by that name, one-level routing over a total two-sided face
-graph, and a root of any class — with D-210's tightening of the input boundary
-beside it: face uniqueness at the root reads the root's class, and no
-`input_connections` entry routes nowhere. Increment 20 opens with D-211's
-name-transparent container — one container field per type declared transparent,
-its elements addressed by bare key, `Group` declaring its `children` — and
-closes with the declaration surface's computed half: §13.3's path and face-list
-primitives, and §8.8's `input_passthrough`/`output_passthrough` over them.
-Increment 21 puts §14's first iterating service on the table, in four
-stages. The compile product has a name, `Executor{T}`, and a `Simulation` holds
-one — §9.2's "every buffer set has exactly one owner" made visible at the call
-sites, and what lets a service instantiate a world of its own. §14.4's read
-side stands beside the write side the condition algebra already had: the closed
-read-selector family, the compiled reader that is `apply!`'s gather twin over
-an executor, and `capture`, which reads the committed world back as a total
-condition. The write side gains the second of D-066's two application
-registers, the specialized `apply!` — one plan compiled from a condition's
-*shape*, its leaves reached through `Getter{P}` lenses and its shape check
-folded into dispatch, which is what makes an iterating service's per-evaluation
-write free. And over all of it `trim!`: `TrimProblem`'s closed surface, the
-`solve` seam with an in-house Levenberg–Marquardt behind it, D-213's two-half
-scratch world, the service's own convergence verdict, and a commit that is
-literally an `init!`.
-The per-increment narrative and the property-by-property record of what the
-tests pin down live in `NOTES.md` — optional reading, for when you are
-modifying an existing test or wondering why one asserts what it does; new
-increments add their paragraph and property bullets there.
+- `MAP.md` — what each source file implements, piece by piece, with spec
+  citations: the long form of the table below, the long absence list, and the
+  long form of the authoring trap.
+- `NOTES.md` — the per-increment narrative, the property-by-property record of
+  what the tests pin down, and the stand-in retirement history. Read it when
+  modifying an existing test or wondering why one asserts what it does; new
+  increments add their paragraph and property bullets there.
 
     julia --project=. test/runtests.jl
 
 ## What is real here
 
-| piece | spec | file |
+| file | implements | spec |
 | --- | --- | --- |
-| leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 | `src/leaves.jl` |
-| declaration layer, both tiers' disjoint name families and arities, the bundle law, `probe_value`, `AbstractComponent`, the three connection declarations beside `transparent_container` (D-211's one optional declaration: at most one container field name-transparent, its `Symbol` or the `nothing` default), the two rate registers (`Relative`/`Absolute` over `Period`/`Hz`, plain data carriers) with `sample_times`, and the event surface — `Event(guard, handler)` with no detection keyword, the ordered named `events` collection, positional `project`, the guard/handler name set and the §2.1 predicate | §5.2, §8.2, §8.5, §8.6, §8.7, §9.3, §2.1, D-179, D-185, D-195, D-211 | `src/declare.jl` |
-| class by declaration shape (with `events` and `project` in the leaf family), children and containers — the undeclared one path-naming its elements `"field/key"`, the name-transparent one contributing them under their bare keys (D-211), behind one declaration check — the declared symbol names a container field — and a collision family in three arms: no two children share a name, whatever fields produced them, and the two collisions only a bare key can reach, its own field's name (which the rate declaration's sugar already spells) and a sibling container field's name **where that field contributes children** (whose `"field/key"` segment grammar the key would shadow, leaving that container's children unreachable behind a diagnostic naming the wrong child — an empty container reaches nothing and so reserves nothing, the value being unable to tell it from empty inert data, and legality is per-instantiation as every wiring judgment already is); each arm names both parties by provenance; the rate declaration's field-name sugar keys on the *field*, so a transparent container keeps it — paths and §6.1's one-level reach rule (D-207: a wiring endpoint is one child segment — plus the key segment where the child is a container element — and one face name, anything deeper a build error naming the entry, so the generic-holding question never arises in this register and its diagnostic is gone), endpoint and face resolution, §8.6's two face-name invariants read at the root by the root's own class (D-210: a primitive root's face set is its `input_types` and `output_types` keys together, and a key declared in both is the same build error a duplicate assembly face name is — non-root leaves untouched, their input faces placing nothing) beside the non-empty routing rule (an `input_connections` entry routing to no internal endpoint is a declaration error at any level), and the flatten pass: the obligation model, §9.2's two-sided face graph (every level's output faces beside every level's input faces, each resolved to the one producer its consumers share — total under one-level routing), a root of either class (D-208: a primitive root flattens to the single leaf at the root path, its `input_types` keys the root inputs, each face its own consuming entry), and the sample-time fold to `(anchor, m, c)` triples | §8.5, §8.6, §8.7, §6.1, §9.1, §9.2, §13.3, D-207, D-208, D-210, D-211, D-212 | `src/assembly.jl` |
-| §13.3's build primitives and §8.8's passthrough pair: `resolve(asm, path)` — the declared-field walk along `/` segments, container children under their D-211 naming, in the *structural* register, so the one-level rule is the rule wiring resolution runs and a deeper path errors naming the child it reaches past — beside the public `resolve_terminal(asm, path) → (component, name)`, which splits the final segment (unambiguous: face names carry dots, never slashes) and resolves the prefix through it, and the two face-list accessors `input_faces`/`output_faces` returning declaration-ordered `Vector{String}`s — a leaf's contract keys read at the nominal activation, an assembly's declared face names; over them the helper pair `input_passthrough`/`output_passthrough` (D-171, D-209), one `prefix`/`sep`/`except`/`only` surface each, the two filters mutually exclusive and a filter naming an absent face refused with the child's list in hand, everything downstream left to the build's own checks (a `prefix = ""` collision to face uniqueness, a face both wired and passed through to the one-producer rule); the condition algebra's `resolve` is `resolve_condition` so §13.3 may have the name | §8.8, §13.3, §6.1, D-171, D-209, D-211 | `src/assembly.jl` |
-| per-eltype cell stores and the store bundle, its fields keyed by the eltype's fully-qualified spelling (`_cell_key`) so that a `@generated` gather and a plain `compile` name the same buffer whatever module a scalar's tag was declared in | §9.7, D-162 | `src/store.jl` |
-| entries, chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate on discrete boundary entries and boundary zero's wide gate beside it (the `ESTABLISH` marker the boundary walk takes in place of an index, admitting every discrete output stage due or not — one dispatch in `run_at!` over the one compiled tuple, so the frame loop's path gains no branch, D-205), and the event machinery — event/projection entries, the register vectors (§10.6's three plus §10.4's policy mask and σ samples, the guard walk feeding both) and the guard/fire/project walks with handler-store latching | §9.7, §10.5, §10.6, §10.4, §5.3, §14.5, D-205 | `src/executor.jl` |
-| tier classification, probe, feedthrough graph, layout — one cell per declared port and one per root input, the root's own faces whatever its class (D-208), the two placements never colliding there (D-210) — embed-accept, the `Build` artifact carrying the flat list's two-sided face table, the activation seam (nominal at build, `activation(b, T)` as a cached Stratum-C re-run, frozen products carried across, the eager `activations` keyword), deployment binding (three cross-validated `Δt_base` sources, the GCD constraint pool, per-anchor division pairs), per-deployment entry compilation, and the event probe — both-halves at declaration reading, policy off the guard's return type onto `Build.policies`, the handler return law key by key, `project` held complete | §8.2, §9.3, §5.3, §9.1, §9.2, §9.4, §10.4, D-166, D-179, D-208, D-210 | `src/build.jl` |
-| the compile product as a named type: `Executor{T}` — one activation's own buffer set (the signal table, `xbuf` and the derivative buffer beside it, the `s` and `m` stores, the clock) with the phase bodies and the compiled event set closed over it — and the three evaluation entry points on it (`evaluate!`, `_round!`, `apply!`), the `Simulation` forms delegating to the executor it owns; buffers are never cached, every buffer set having exactly one owner, so a service instantiates its own rather than writing through the loop's | §9.7, §9.2 | `src/build.jl` |
-| `Simulation` — one `Executor` in its `exec` field, the nominal activation's buffer set the loop runs on — with its deployment constructor, bound schedule and the `method`/`firing_budget`/`localization_tol`/`localization_budget` keywords, the seam's framework side (the never-entered-empty short-circuit), the boundary macro-sequence in its final form (project → iterated event phase → due updates) at ticks and off ticks, the §10.6 iteration with its three registers and the `FiringBudget` degradation, `phase_bodies`, the path- and face-addressed table accessors | §10.2, §10.3, §10.5, §10.6, §10.4, §9.7, §11.3 | `src/sim.jl` |
-| the stepper seam's backend side: the three-clause contract as dispatch — `step!` by arbitrary `h`, dense output via the retained `startpoint` pair and `dense!` (the shared cubic Hermite both backends inherit), one-step methods only — with fixed-step RK4 (the default) and Heun, each owning exactly its own scratch | §10.2, D-017 | `src/stepper.jl` |
-| the frame loop: arrival sweep and trigger, the θ = 0 validation with its epoch discriminator, the lazily-paid arrival derivative, bracketed trial evaluations over the seam's dense output under ITP, `t*` boundaries and the remainder step against the indexed grid, `localization_budget` counting `t*` boundaries per frame, and the `ChatteringBudget` degradation | §10.4, §10.2, D-018, D-133 | `src/localize.jl` |
-| the data plane's core exchange: the compiled writer — one schema/shim/merge/scatter unit over any write surface, with every check at staging and the out-of-schema warning discriminated by writer — staging cells, the frame-top drain via `atomicswap` behind stopped-sim-compiled thunks, `run!`'s frame anatomy (drain → integrate → boundary sequence → publication), and publication — the boundary-consistent whole-table snapshot with the state stores excluded and the framework status riding beside the table, `capture`'s buffer copy, the release/acquire `@atomic latest` pair, and `latest(sim)` as the inspection register | §11.1, §11.3, §11.4, §11.2, §12.6 | `src/dataplane.jl`, `src/sim.jl` |
-| the roster and claims: `AbstractDevice`/`AbstractBinding` with the declared sides and the false root defaults, the enumeration contract and the bidirectional conformance check (`which` against the fallback), `attach!`/`detach!` behind the §11.3 freeze with the three-part admission in spec order, both claim sources with `EmptyGreedyClaim` for the staked empty remainder, monotonic never-reused device ids, per-device cells over claim sets, the harness register as the derived remainder — recompiled at every roster change, its pending batch renormalized (`ClaimedFaceEntry` at the seam), emptied outright by a rostered greedy (D-192) — and the attachment-order drain, harness last | §11.3, §11.4, §11.6 | `src/roster.jl`, `src/sim.jl` |
-| the log: publication at every boundary (`t*` included, before integration resumes), retention as a vector of the published references themselves under `log`/`log_every`/`log_max`, progressive re-decimation (the stride doubling at each fill, one release per retained append, once-per-generation compaction, the middle at consecutive multiples of `log_every · 2^k`), the two endpoints outside the bound — the terminal one being §12.4's run-end snapshot, published before the sticky status — and `logged(sim)` as the stopped-sim reader behind the §11.3 gate | §11.2, §12.4, D-137, D-023, D-038 | `src/dataplane.jl`, `src/sim.jl` |
-| the device contract and its tasks: the four contract functions (no-op resource defaults, the error-throwing `loop` fallback), the handle as the capability carrier — `stage!`, `latest`, `wait_next_snapshot`, `running`, `stop!`, `binding`, `gather`, `report!`, never the `Simulation` — the wrapper (crash → `DeviceCrash`, `shutdown!` on every exit path, `should_abort` at departure), §11.1's topology (run-scoped spawn per live entry, the movable loop, the inline calling-task body, topology derived after initialization), the §12.4 init bracket and tail (1)–(5) under the shared `join_timeout` deadline, and the §12 slices beneath them — the §12.1 stop word, §12.3's wait (counter mirrored under the condition's lock, release-store before increment, monotonic across runs, the ordinal in the snapshot) and §12.2's per-frame yield | §11.6, §11.1, §12.4, §12.1, §12.2, §12.3, D-198 | `src/devices.jl`, `src/sim.jl` |
-| the binding's runtime half: `TableBinding` — the table in the type, the validating constructor, `claims` derived from the entries — with its generic `map_input` (sparse over the datum, an unknown channel a deliberate throw) and the conditioning helper (deadzone rescale, expo blend `(1−e)·a + e·a³`, endpoints fixed, pass-through where no parameter is declared), the loop-idiom conventions the framework never calls, §14.4's table selectors as this register's admitted set (`get_output`/`get_input`/`get_face`, declared with the whole family in `src/readers.jl` and read here as whole cells), the binding's own `reads(b)` enumeration as a labeled NamedTuple, resolved at attach (`ReadBindingUnresolved`, the two root registers discriminated, §14.4's source rule refusing a store selector — a snapshot carries no stores — and sub-cell index addressing named as the absence it is) and compiled to one gather — the compiled scatter's mirror — behind `gather(handle, snap)`, the conformance check completed over both (trait, method) pairs with the error-throwing `reads` fallback, and the output-only attach staking no claim | §11.6, §11.4, §11.2, §14.4 | `src/bindings.jl`, `src/roster.jl`, `src/devices.jl` |
-| the diagnostic channel and the framework status: the closed kind set as types — `MalformedDatum` (`report!`'s one author-facing kind, the payload the cause, attribution the cell's), the three staging kinds written at staging on the writer's task, the two budget degradations on the loop's own cell, `DeviceCrash` from the wrapper and the init bracket — over the fixed-shape isbits `KindCounts`; one cell per writer (each rostered device's, the harness register's, the loop's own) with the ring of `DIAG_RING` = 16 plus per-kind suppressed counts (earliest-in-frame retained), the CAS append mirroring the staging cell's, and the heartbeat field the handle primitives store (`stale` against the 2 s threshold, initial `0.0` = dead-from-boundary-zero); the frame-top fold into per-writer accounts, the published `FrameworkStatus` every snapshot carries — `recent` riding exactly one snapshot, `totals` monotone since the run began, `heartbeat` and `task_state` (D-193, off the run's task registry) fresh per publication — and the run's-end sweep behind the tail | §11.8, §13.2, §11.2, §12.2, §12.4, §11.6 | `src/dataplane.jl`, `src/roster.jl`, `src/devices.jl`, `src/sim.jl`, `src/localize.jl` |
-| the run lifecycle and termination: the five-state machine behind `lifecycle(sim)` — mandatory `init!` as the one door into `initialized`, opening the trajectory wholesale (log, stop word, termination record and every staged batch clear with it), the `:running` state as the §11.3 freeze spanning the tail, terminal `stopped`/`errored` — the §13.5 policy pair `t_end`/`stop_on` as constructor defaults with `run!`'s per-run overrides, validated identically at both sites (stop faces are root-exported Bool output faces, OR-combined, sampled at every publication — a `t*` hit makes that snapshot final and abandons the frame's remainder), partial advance (`step!` by `frames`/`t_plus` over the same frame loop `run!` drives, deviceless, returning the count actually advanced), the D-203 termination record behind `termination(sim)` — `TerminationRecord{T}`: the final boundary time (`nothing` when no boundary ever ran), a typed source in the §13.2 kind convention (`EndTimeReached`, `ModelRequestedStop` with the face, `ControlRequestedStop` with its issuer — `:code` or the requesting device's name, the stop word a first-CAS-wins issuer word per §12.1 — `LoopError` with the cause), and the tail residue the run's-end sweep folds in per writer, `DeviceJoinTimeout` a structured kind written to the loop's cell at tail step (5) and collected the same way — and §13.6's abnormal entry — the failed boundary discarded by publication-last construction, the previous snapshot promoted, stores retained for post-mortem, the ordinary tail, the synchronous rethrow | §12.6, §13.5, §13.6, §12.1, §12.4, §11.8, §13.4, D-203 | `src/sim.jl`, `src/devices.jl`, `src/localize.jl` |
-| the condition algebra and the first stopped-sim service: the four node kinds as an inert lazy tree — `fragment(; x, s, m, inputs)`, `at(prefix, node)` storing a prefix it never applies, `combine(nodes...)` symmetric and collision-intolerant (D-204's rename off `Base.merge`, with the node × NamedTuple blend an error method carrying `ConditionNodeMisuse` at composition time) and `override(base, patches...)` ordered and variadic, layering keyed on the *root input* a face resolves to so a root baseline and a component-local patch are one leaf — resolution against the `Build` as the one place paths concatenate, its §13.1 collecting pass (path, declared field, convertibility, an input face's export chain to a root input — looked up at the authoring level in the build's input-side face graph, so an `at` prefix stopping at an *assembly* resolves too and a component-fed face stays the unpokeable one (D-207); state payloads at an assembly prefix stay refused, assemblies owning no state, no leaf twice, provenance chains on both sides of a collision) compiling to a plan of baked `xbuf` offsets, cell addresses and `merge(defaults, overlay)` store values, §14.4's dynamic-walk application register over it, §14.6's pre-write root-input totality — plan coverage against the build's root faces, one declaration-ordered `UninitializedInputs`, all-or-nothing, and no `probe_value` anywhere on the services path — and `init!(sim, condition; t₀)` on top, with the declared world established in three registers and no fourth: the three *state* homes re-established from `init_x`/`init_s`/`init_m` (`establish_defaults!`, shared with construction — D-063's fresh run, so a warm restart overlays the defaults and never the last trajectory's endpoint), the overlay applied, and every *cell* then re-derived by boundary zero itself (D-205), root inputs being supplied by totality alone | §14.1, §14.2, §14.3, §14.4, §14.5, §14.6, §13.1, D-063, D-064, D-065, D-066, D-068, D-204, D-205, D-207 | `src/conditions.jl`, `src/sim.jl`, `src/build.jl` |
-| §14.4's second application register, the *specialized* `apply!` D-066 pairs with the dynamic walk: the tree position each flat entry now records — the `getfield`/`getindex` step tuple from the root node down to the authored value, an `override` leaf's being the winning layer's — lifted to the `Getter{P}` lens the spec names, and over it `compile_plan(node, build, T)`, which runs the *same* collecting pass `resolve_condition` runs (one implementation of §14.3's checks, the two registers differing only in what they bake — values there, lenses here) and compiles per leaf its lens, its destination (an `xbuf` offset, a store's component index, a cell address) and its converter, the destination leaf type at this activation: both arms of §14.3's table are that one `convert`, a leaf already at the activation's scalar keeping its partials and a plain `Float64` leaf against a seeded activation taking the zero-partial embedding, with the one case neither covers refused at resolution under the seeded clause — a decision variable descends into neither a frozen discrete `s` nor a pinned leaf; `apply!(ex, plan, tree)` then writes every leaf through its lens with no allocation, no string work and no dispatch left in it, the `s` and `m` stores as whole `merge(defaults, overlay)` values off the *composite* tree's own overlay, behind a shape check folded in two halves — the tree type proven by dispatch, a mismatch reaching the fallback that raises `ConditionShapeDrift` (Appendix C) naming both types, and the `Scoped` prefixes, runtime fields no type can carry, swept with `===` before any write | §14.3, §14.4, §9.5, D-066 | `src/conditions.jl` |
-| §14.4's read side: the closed read-selector family — `get_state`/`get_deriv` beside the table trio `get_output`/`get_input`/`get_face`, each path member carrying §14.10's optional component index — with `reads(…)` as the labeled set in one type (a bare NamedTuple refused with a directive, as `combine` refuses one) and `_compile_reads(rs, build, T)` over it: §13.1's collecting pass against paths, declared state fields, declared output ports and the two root face lists, its violations carrying no kind of their own — a read set is compiled only inside a client, so the standalone entry point is internal and its collecting half is factored apart from the throw for the services that own the diagnostic, `trim!`'s `TrimProblemInvalid` (§14.8) and a binding's `ReadBindingUnresolved` (§11.2); what survives compiles to a `Reader` — the labels in the type, one baked entry per selector (an `xbuf` offset, the `ẋbuf` offset beside it, a discrete store's index and field, or a cell address) — gathered against an `Executor`, the one live-store holder here, as `apply!`'s twin: type-stable, allocation-free and stack-only; and beside it the **activation identity** the three baked products carry — `Reader`, `ConditionPlan` and `SpecializedPlan` are each parameterized by the scalar they were compiled at, `gather` and both `apply!`s pair product with executor by dispatching on it, and the fallback refuses the mismatch naming both scalars and carrying no kind name — §14.4 makes the pairing a framework invariant the services uphold rather than a user-facing check, neither plans nor readers being user values, so the refusal is an internal assertion, the offsets, store types and cell addresses being one activation's and another's buffer set the wrong slot rather than an error (§9.4); and `capture(sim) → (condition, t)` on top, the committed stores and root inputs read back as one total condition beside the time it was read at, legal in `initialized` and `stopped` alone | §14.4, §14.7, §14.1, §14.10, §13.1 | `src/readers.jl`, `src/conditions.jl` |
-| the trim service: `TrimProblem`'s closed seven-field surface (§14.7's normative list, every field required, the value itself inert — a selector resolves only against a model and the residual key set is only observable at the setup guess evaluation, so validation belongs to the service), the `solve` seam as a pinned value-passed signature with `LevenbergMarquardt` behind it — a damping loop on `(JᵀJ + λ·diag JᵀJ)·δ = −Jᵀr` with Marquardt's own column scaling, accept/reject on the *normalized* residual norm `‖r ./ tol‖` — the descent test measured where the stopping rule is, the tolerances being the stopping criterion in this register (§14.8) — with λ scaled by 10 either way, every step projected onto the box, the per-residual box test as the stopping rule (LM testing exactly what the service re-tests) and `{:converged, :maxiter, :stalled}` as its open status set — and `trim!` over both: the setup's collected `TrimProblemInvalid` (bounds key sets and field types, the tolerances, and the read set's own resolution lines, which carry no kind of their own, folded in verbatim, the residual return then observed at the guess evaluation), §14.6's totality checked pre-evaluation against the build's root faces, D-213's **two-half scratch world** — a nominal set taking `override(baseline, condition(guess))` by the dynamic walk and running one establishment round (every discrete output stage, due or not, no projection, no guards, no `g`), the seeded set at `Dual{TrimTag,Float64,N}` written by the specialized register with its frozen cells copied over from the nominal one as zero-partial constants, both instantiated per invocation from the cached layouts and both dying with the call — the per-iteration cycle (`apply!` → sweep → `gather` → `residuals`, `r` off the values and `J` off the partials of one seeded pass), the **service's own** box-test verdict at the backend's returned point as the one gate on the commit, the commit as literally `init!(sim, override(baseline, condition(d*)); t₀)` with `TrimCommitEvents` and `TrimCommitResiduals` naming its two movers, the zero-decision problem as the nominal half alone (`:bypassed`, one evaluation, no backend call), and `TrimReport` carrying no committed flag — `committed_residuals === nothing` *is* the absence of a commit | §14.7, §14.8, §14.5, §14.6, §9.6, §13.1, D-213, D-070, D-158 | `src/trim.jl` |
-| the coverage set: `Plant`, `Gain`, `Sum`, `DiscreteIntegrator`, `TickCounter`, `Smoother`, `WorkGain`, `ModedSource`, `ZOH`, `Ramp`, the event set (`Trigger`, `Follower`, `Sawtooth`, `Rotor`, `Chatterer`, `TwoShot`, `Preempted`), the localization set (`Stamper`, `GatedStamper`, `Bouncer`, `Relaxer`), the termination set (`Overload`, the §13.5 touchdown archetype; `Exploder`, §13.6's specimen), plus `Group` — the anonymous assembly, its `children` field declared name-transparent (D-211), so its wiring, rate, condition-prefix and read spellings are a named assembly's exactly, and its keyword constructor normalizing a bare `Pair` — the named `SampledLoop`/`Vehicle`/`MultiRate` assemblies, and the periphery set — `Pad`/`Panel` devices (mutable, `===` being identity, immediate-return loop bodies), the `Enumerated`/`Greedy` bindings, one per claim source, and `Readout`, the output side's coverage binding with the identity `map_output`; plus the `condition(comp; kw)` fragment-function idiom on `Plant`/`DiscreteIntegrator` with `SampledLoop`/`Vehicle` composing them by pull — user material, which no framework code knows the name of | §5.2, §6.2, §7.3, §8.5, §10.4, §10.5, §10.6, §11.3, §11.6, §11.2, §14.2, D-211 | `src/library.jl` |
+| `src/leaves.jl` | the leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 |
+| `src/declare.jl` | the declaration layer: both tiers' name families and arities, the bundle law, `probe_value`, the connection declarations beside `transparent_container`, the rate registers with `sample_times`, the event surface | §5.2, §8.2, §8.5–§8.7, §9.3, D-211 |
+| `src/assembly.jl` | class by declaration shape; children and containers (bare-key transparency and its three-arm collision family); paths, §6.1's one-level rule, endpoint and face resolution, the root's face invariants; the flatten pass with its two-sided face graph and the sample-time fold; §13.3's `resolve`/`resolve_terminal`/face-list primitives and §8.8's `input_passthrough`/`output_passthrough` | §6.1, §8.5–§8.8, §9.1, §9.2, §13.3, D-207–D-212 |
+| `src/store.jl` | per-eltype cell stores, the `StoreBundle`, gather/scatter, `_cell_key`, the `Clock` | §9.7, D-162 |
+| `src/executor.jl` | entries, the chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate and boundary zero's `ESTABLISH` beside it, the event set with its registers and the guard/fire/project walks | §9.7, §10.4–§10.6, §14.5, D-205 |
+| `src/build.jl` | tier classification, the probe, the feedthrough graph, the layout, embed-accept, the `Build` and its activations, deployment binding, and `compile` → `Executor{T}` — one activation's buffer set with the bodies closed over it, one owner per set, `evaluate!`/`_round!`/`apply!` on it | §8.2, §9.1–§9.4, §9.7, §10.4, D-166, D-208, D-210 |
+| `src/readers.jl` | the closed read-selector family, `reads`, the internal `_compile_reads` → `Reader{T}`, `gather` as `apply!`'s twin over an executor; activation identity on readers and plans as an internal invariant | §14.4, §14.7, §14.10 |
+| `src/sim.jl` | `Simulation` (owning its `exec`), the deployment keywords, the boundary macro-sequence and event phase, `init!`, `run!`/`step!`, `attach!`/`detach!`, staging/drain/publication, the lifecycle and termination record, the accessors | §10.2–§10.6, §11.1–§11.4, §11.8, §12.1–§12.6, §13.5, §13.6, §14.5, §14.6, D-203 |
+| `src/stepper.jl` | the seam's backend side: RK4 and Heun, the retained `startpoint`, dense output | §10.2, D-017 |
+| `src/localize.jl` | the frame loop: arrival sweep, θ = 0 validation, ITP bracketing, `t*` boundaries, the localization budget | §10.4, D-018, D-133 |
+| `src/dataplane.jl` | the compiled writer and staging cells, the drain, snapshots and the log with re-decimation, the typed diagnostic kinds and cells, the framework status | §11.1–§11.4, §11.8, §12.6, D-137 |
+| `src/roster.jl` | device/binding traits and conformance, the roster, both claim sources, the harness register | §11.3, §11.4, §11.6 |
+| `src/bindings.jl` | `TableBinding`, `map_input` and the conditioning helper, binding reads resolved at attach (`ReadBindingUnresolved`, the source rule) | §11.2, §11.6, §14.4 |
+| `src/devices.jl` | the device contract, the handle, the task wrapper, the init bracket and the tail under `join_timeout` | §11.1, §11.6, §12.1–§12.4, D-198 |
+| `src/conditions.jl` | the condition algebra, one collecting pass behind both application registers — `resolve_condition` (values) and `compile_plan` (`Getter{P}` lenses, `SpecializedPlan`, `ConditionShapeDrift`) — root-input totality, `capture` | §14.1–§14.6, §13.1, D-063–D-068, D-204, D-205 |
+| `src/trim.jl` | `TrimProblem`, the `solve` seam with `LevenbergMarquardt`, `trim!` over D-213's two-half scratch world, `TrimReport`, the `Trim*` kinds | §14.7, §14.8, D-213 |
+| `src/library.jl` | the coverage component set, `Group` and the named assemblies, the devices and bindings, the `condition` fragment-function idiom, `Pendulum` — user material | — |
 
-Correctness is checked against analytically integrated references — the
-continuous loop by matrix exponential, the sampled loop by its exact ZOH
-discretization `q[k+1] = Ad q[k] + Bd s[k]`, localized event times against
-analytic crossing instants — with a tolerance, never `==` (D-163), except for
-the frame-top stamps, which are asserted bitwise against the indexed grid time
-because that is the claim. The sampled-data reference is the sharp one: it
-only matches if the hold is real *and* output stages run before updates within
-a boundary.
+Correctness is checked against analytically integrated references with a
+tolerance, never `==` (D-163) — except the frame-top stamps, asserted bitwise
+against the indexed grid time because that is the claim.
 
 ## What is deliberately absent
 
-**D-187's grid diagnostics:** the bound schedule here is plain data on the
-`Simulation` (path, `D`, `Φ`, `Δt`), not the named printable artifact — no
-hyperperiod-chart `show`-form, no anchor/provenance columns carried through, no
-leave-one-out refinement factors or prime attribution, no nearest-non-refining
-offset suggestions, no `GridUtilization` advisory. The refusal messages name
-the offending anchor and the pool's GCD, and stop there.
+The long form, with reasons, is in `MAP.md`. In brief:
 
-Beyond that: computed connections beyond §8.8's helper pair — the pair itself
-is built (see the table above); what stays absent is everything else the
-section describes, the "one authored list, two declarations" feed-list idiom
-(ordinary user code, and no framework name serves it here — the assemblies in
-`src/library.jl` still spell their per-level routes out entry by entry) and the
-generic-holding sugar, a formal required-faces declaration on domain abstract
-types, generic holding being an imposed derived contract with no vocabulary of
-its own — visibility enforcement (§8.3), did-you-mean suggestion
-lists (an error names the offender plainly), auto-published ports,
-§13.3's generic-holding check in the *load-bearing* register (the deep paths
-condition entries, trim `reads` and taps still write: a segment traversing
-*past* a generically-held field is a diagnostic there, and increment 19 deleted
-`generically_held` when one-level routing left the structural register nothing
-to police — nothing regrew it for this register, whose locality law rides as
-convention here, §14.2),
-§9.5's always-on conformance check (the return laws are checked once, at the
-probe), §13.2's build-side diagnostic framing (build errors here are a plain
-`BuildError` with a good message, not the structured carrier — and the
-service-path refusals of §14 share that framing exactly, each message leading
-with its Appendix C kind name and a collected pass enumerating every
-violation in one throw; the *runtime* warning stream does carry Appendix C's
-kinds as typed values, through the §11.8 cells), and the runtime periphery
-beyond increments 9–16's data plane, device tasks, diagnostic channel and
-lifecycle:
-
-- **§11.8's remainder:** the pacer diagnostics are absent with §10.7, and the
-  kinds whose sources are absent — `DebtReanchor`, `ThreadBudget`,
-  `ReplayDiscardedStaging`, `UnboundedRun` — are absent with them; the
-  presentation-side maxlog-25 renderer (count-only display past 25 cumulative
-  occurrences per writer × kind) is presentation policy nothing here renders,
-  the status being read raw by the tests. The snapshot still carries no
-  run-status value: the lifecycle is read off the simulation
-  (`lifecycle(sim)`), the framework status stays the diagnostic account. Two unguarded edges remain: staging through a handle
-  whose device was detached lands in an orphaned cell and is silently lost
-  (handles are run-scoped task equipment; a guard would put a roster scan
-  back into `stage!`), and an `InterruptException` in a device loop reports
-  as `DeviceCrash`, the discrimination belonging to the absent operator
-  interrupt;
-- **§14 beyond increments 18 and 21** (the condition algebra, resolution,
-  totality and `init!`; both application registers over one collecting pass;
-  the read side and `capture`; the trim service): `linearize` is absent
-  (§14.10), and with it the tap register and the pure query a seeded pass
-  answers; §14.9's **mounting** is absent — `at` over a problem or over a read
-  set, both being flat labeled values here that nothing relocates, so a problem
-  is posed at the paths its author wrote and a rig-mounted subtree has no
-  spelling; and trim's **derivative-free fallback** is absent with it — no
-  `NLoptBackend` package extension, hence neither the `∑(rᵢ/tolᵢ)²`
-  normalization at `stopval = 1` nor the nominal-activation evaluation loop a
-  Jacobian-free backend would run on. The `solve` seam itself is built and
-  takes any backend; the only one shipped is the seeded least-squares default;
-- **the read side's remaining depth (§14.4):** did-you-mean candidate lists at
-  resolution, per the general rule above; sub-*port field* addressing (the
-  index `i` is real, a named field inside a port value is not); and, in the
-  binding register alone, index addressing at all — a snapshot read is a whole
-  cell, as every reader of the published table takes it, and naming an index
-  there is `ReadBindingUnresolved` beside §14.4's source rule;
-- **the §11.5 input trace and the §11.7 GUI write path**;
-- **§12 beyond increments 12 and 16's slices** (the §12.1 stop word, §12.2's
-  yield, §12.3's wait, §12.4's bracket and tail, §12.6's lifecycle and
-  partial advance): pause and the rest of the control plane's surface,
-  real-time pacing (§10.7) with §12.2's thread-budget warning, the operator
-  interrupt and its sigint masking (the runs here are test-driven, and the
-  interrupt's termination-record tag is absent with it), and replay (§12.7)
-  with `replay!`'s alternative entry into boundary zero. §13.4's `StepError`
-  wrap and execution cursor are absent with the trace — the errored record
-  retains the raw cause — and so is the nonfinite sweep; the unbounded
-  register is absent with `UnboundedRun`, `run!` requiring a finite `t_end`
-  from one of its two binding sites. Every terminal or not-yet-run state
-  admits `attach!`/`detach!`, `errored` included: the freeze is exactly the
-  lifecycle's `:running`.
+- **§13.2's build-side diagnostic carrier**: build and service errors are one
+  `BuildError` whose message leads with the Appendix C kind name; the runtime
+  warning stream *is* typed. Retirement: increment 22.
+- **§9.5's always-on conformance check** (the return laws are checked once,
+  at the probe); **§8.3 visibility**; did-you-mean lists; auto-published
+  ports; §13.3's load-bearing generic-holding check.
+- **§8.8 beyond the helper pair** (the feed-list idiom, generic-holding sugar,
+  required-faces declarations); **D-187's grid diagnostics** (the bound
+  schedule is plain data; refusals name the anchor and the pool's GCD).
+- **§14**: `linearize` (§14.10), mounting (§14.9), the NLopt fallback and the
+  nominal-activation loop it would run on; sub-port-field addressing; index
+  addressing in the binding register.
+- **§11.5's input trace**, **§11.7's GUI write path**, §10.7 pacing and its
+  diagnostics, the §11.8 remainder (`DebtReanchor`, `ThreadBudget`,
+  `ReplayDiscardedStaging`, `UnboundedRun`, the maxlog renderer).
+- **§12 beyond its built slices**: pause and the control plane's surface, the
+  operator interrupt, replay (§12.7); §13.4's `StepError` wrap, cursor and
+  nonfinite sweep. `run!` requires a finite `t_end`; every non-running state
+  admits `attach!`/`detach!`.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 
 **Rule: nothing deviates silently.** Every construct a reader could mistake
-for the design's is accounted for in exactly one of three places: the "what is
-real" table, the absence list above, or a row here naming the spec shape it
-replaces. The table is transactional — an increment that introduces a stand-in
-adds its row in the same commit, and one that retires a stand-in deletes it. A
-deviation in none of the three places is a defect in this file, not a liberty
-the prototype has. `prototypes/` sits outside the design tools' checked
-rosters, so no battery enforces this section: the diff review is the
-enforcement.
+for the design's is in exactly one of three places: the table above, the
+absence list, or a row here naming the spec shape it replaces. Transactional:
+the commit introducing a stand-in adds its row, the one retiring it deletes
+it. No tooling enforces this (`prototypes/` is outside the design tools'
+rosters); the diff review is the enforcement.
 
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
 | the per-writer status rides inline in the snapshot's one per-boundary allocation — zero additional heap allocation on a quiet frame (§11.8) | a `Vector` of per-writer records built at each publication, the small extra allocation the simple shape costs | an allocation-tightening pass (an `NTuple` status type fixed per run) |
 
-(The retirement history of past stand-ins is in `NOTES.md`.)
+## Authoring caveats
 
-## Authoring caveat found while building this
+**Declarations in a local scope never reach the framework.** Inside a `let`,
+a function body or a `@testset`, `h_x(::MyComp, (; x)) = …` binds a *new local
+function*, not a method of the global `h_x`, so the build sees a component
+that declares nothing. Test fixtures — components, devices, bindings, traits —
+live at top level for this reason (long form, and its D-164 ratification, in
+`MAP.md`).
 
-Declarations written in a **local scope** never reach the framework. Inside a
-`let`, a function body or a `@testset`, `h_x(::MyComp, (; x)) = …` does not add
-a method to the global `h_x`: it binds a *new local function* of that name.
-Calls inside the block see it and look fine; the global generic function the
-build dispatches on is untouched, so `build` sees a component that declares
-nothing at all. Ordinary top-level definitions — the
-script, module and notebook-cell cases — are unaffected. The files under
-`test/` define their malformed test components at top level for exactly this
-reason.
+Traps hit more than once while building, for whoever builds next:
 
-This is the local-scope sibling of the `using Flight` trap §8.1 already
-documents, and §8.1's shadowing check does not reach it: there is no
-parent-module binding to compare against, because the shadow is a local binding
-that disappears with its block. Ratified as D-164: a component that declares
-nothing and defines no stage is a build error — an inert component cannot be
-intentional — spec'd as the inert-component check in §8.1's stage register,
-raised as `DeadStage` at the probe (§9.3). Increment 4 catches the case where
-the trap lands, one stratum earlier and under the other rule: a component that
-declares nothing has no *class* to read either (§8.5), so the build names both
-families rather than reaching the probe at all. `DeadStage` itself is not built.
-
-The periphery's trait and enumeration methods (`is_input`, `is_output`,
-`is_greedy`, `claims`, `reads`, `needs_calling_task`), the device contract's
-four functions (`init!`, `loop`, `shutdown!`, `unblock!`) and the mapping
-conventions (`map_input`, `map_output`) are the same class of declaration
-and hit the same trap — a trait "declared" inside a `@testset` is a local
-function the conformance check never sees, and a `loop` "declared" there
-leaves the global fallback in place, crashing the device by name. The
-malformed bindings in `test/test_roster.jl` and `test/test_bindings.jl` and
-the devices in `test/test_devices.jl`, `test/test_bindings.jl` and
-`test/test_diagnostics.jl` sit at top level for exactly this reason.
+- every `src/` and `test/` file is included into `Main`, so a test fixture
+  named like a framework type silently clobbers it — `rg "struct <Name>"
+  test/` before naming one;
+- `===` has no curried form (`all(===(x), v)` fails — use a lambda); a
+  `where`-clause method's `.sig` is a `UnionAll` (`Base.unwrap_unionall`
+  before `.parameters`);
+- a local named `events` inside `compile` shadows the `events(c)` accessor;
+- assert a store's type on the `Ref` — `(v[ci]::Base.RefValue{S})[]` — never
+  after `[]`, which boxes 16 bytes;
+- `Symbol(::Type)` printing depends on the printing module; key buffers with
+  `_cell_key`.
