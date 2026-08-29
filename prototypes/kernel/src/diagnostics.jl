@@ -629,7 +629,8 @@ message(d::ServiceLifecycle) =
      "frozen per run and the loop owns the stores between drains (§11.3, §12.5, §12.6)") :
     d.status === :errored ?
     "`$(d.op)` on a simulation that ended `errored` — terminally stopped, never resumable " *
-    "or re-initialized; reproduction is trace replay, absent here (§13.6)" :
+    "or re-initialized; reproduction is replaying its trace on a fresh `Simulation` " *
+    "(§13.6, §12.7)" :
     d.status === :stopped ?
     "`$(d.op)` on a stopped simulation: re-running is the `stopped → init! → run!` cycle " *
     "— `init!` re-runs boundary zero and opens a fresh trajectory (§12.6)" :

@@ -301,3 +301,243 @@ end
     grown = _compile_feed(replay_target(), trace(sim))
     @test [r.record.writer for r in grown.records] == [1, 3]     # both schema entries live
 end
+
+# --- replay as the ordinary loop (§12.7, increment 23 stage 3) -------------------
+# D-101's two substitutions, and the properties they exist to buy: bit-identity
+# against the identical build, partial replay and the reproduction it opens,
+# continuation, the discard of live staging, and the what-if register.
+
+# One model reaching all three state homes with a localized event in the middle:
+# the reference-fed plant of `feedback_model` (continuous state, a feedback
+# wire), a discrete integrator on a second root input (discrete state), and an
+# autonomous bouncer whose reset lands *between* frame tops — so a replay has to
+# reproduce `t*` boundaries (§10.4) and mode state, not just a grid of frames.
+# `k` is the parameter the what-if register moves.
+replay_model(k = 4.0) =
+    Group((plant = Plant(; ω = 2.0, ζ = 0.1), ctl = Gain(k), sum = Sum(),
+           acc = DiscreteIntegrator(1.0), b = Bouncer(1.0, 0.32));
+          wires = ("ctl/out" => "plant/u", "sum/e" => "ctl/e", "plant/y" => "sum/b"),
+          inputs = ("ref" => "sum/a", "rate" => "acc/e"),
+          outputs = ("b/q" => "bq", "acc/u" => "u"))
+
+# A device that stages once from its own task and departs (§12.4(6)'s voluntary
+# exit): deterministic in *what* it stages — which is what a replay test can
+# assert — never in when, the frame a wall-clock task reaches being exactly the
+# scheduler-determined timing §11.1 indicts.
+mutable struct Nudge <: AbstractDevice
+    face::String
+    v::Float64
+end
+loop(d::Nudge, h) = (stage!(h, d.face => d.v); nothing)
+
+# Every cell of a published table, in a build-independent order: two sessions
+# are two `Simulation`s, so their layouts are equal *values* rather than one
+# object, and the sorted address list is what makes "the same table" mean the
+# same thing on both sides. Bit-identity is asserted with `==` — that is the
+# claim (§12.7), D-163's tolerance rule being about numerical agreement.
+snap_cells(s::Snapshot) =
+    Any[gather(s.store, s.layout.addr[k]) for k in sort!(collect(keys(s.layout.addr)))]
+
+# Two sessions' logs, boundary for boundary: the `t` stamps and every cell.
+same_trajectory(a, b) =
+    length(a) == length(b) && all(x.t == y.t && x.frame == y.frame &&
+                                  snap_cells(x) == snap_cells(y) for (x, y) in zip(a, b))
+
+# The frame-top publication of frame `k`: a frame with a `t*` boundary publishes
+# more than once under the same ordinal, and the frame's own boundary is last.
+at_frame(snaps, k::Int) = last(s for s in snaps if s.frame == k)
+
+# A recorded session over `replay_model()`, staged from the harness across
+# frames: eight frames, batches at 1 and 4, two localized resets inside.
+function recorded_run()
+    sim = Simulation(replay_model(); h = 1//10)
+    init!(sim, fragment(inputs = (ref = 1.0, rate = 0.0)))
+    stage!(sim, "ref" => 2.0)
+    step!(sim; frames = 3)
+    stage!(sim, "rate" => 1.0)
+    step!(sim; frames = 5)
+    (sim, trace(sim))
+end
+
+# A fresh target of that build, initialized from a *different* condition — so
+# nothing but the header can put it on the recorded trajectory.
+function replay_twin(k = 4.0; kw...)
+    sim = Simulation(replay_model(k); h = 1//10, kw...)
+    init!(sim, fragment(inputs = (ref = 0.0, rate = 0.0)))
+    sim
+end
+
+@testset "a replay reproduces the recorded trajectory bitwise (§12.7, D-101)" begin
+    (sim, trc) = recorded_run()
+    sim2 = replay_twin()
+    replay!(sim2, trc)
+
+    # §12.7: the replay ends `initialized`, never `stopped` — boundary-consistent
+    # and ready to advance, which is what makes inspect/step/continue real.
+    @test lifecycle(sim2) === :initialized && termination(sim2) === nothing
+    @test sim2.exec.clock.step == trc.frames
+    @test same_trajectory(logged(sim2), logged(sim))
+    # …including the localized boundaries the recording never stored: `t*` is
+    # derived from state (§10.4), so reproducing the state reproduces the timing.
+    @test length(logged(sim)) == trc.frames + 3     # boundary zero + two resets
+    # the live stores agree too, the snapshots deliberately not carrying them
+    @test state(sim2, "plant").q === state(sim, "plant").q
+    @test state(sim2, "acc") === state(sim, "acc") && modes(sim2, "b") === modes(sim, "b")
+    # and the replay re-records: the header inherited, the batches re-drained
+    @test trace(sim2).frames == trc.frames
+    @test trace(sim2).batches == trc.batches
+
+    # §12.7's own register — `Simulation(world)` then `replay!`, no `init!` at
+    # all: `replay!` *is* a door into `initialized`, so it owes one to nothing.
+    raw = Simulation(replay_model(); h = 1//10)
+    @test lifecycle(raw) === :built
+    replay!(raw, trc)
+    @test lifecycle(raw) === :initialized
+    @test same_trajectory(logged(raw), logged(sim))
+end
+
+@testset "a device's recorded batches replay on a deviceless twin (§12.7)" begin
+    sim = Simulation(replay_model(); h = 1//10, t_end = 2.0)
+    attach!(sim, Nudge("rate", 3.0), Enumerated("rate"))
+    init!(sim, fragment(inputs = (ref = 1.0, rate = 0.0)))
+    stage!(sim, "ref" => 2.0)      # the harness surface is {ref}: the device holds {rate}
+    run!(sim)
+    trc = trace(sim)
+    @test lifecycle(sim) === :stopped
+
+    # "No devices or mappings present" (§12.7): the recorded batches carry the
+    # device's writes, and the schemas resolve them against this build's faces.
+    sim2 = replay_twin()
+    replay!(sim2, trc)
+    @test lifecycle(sim2) === :initialized
+    @test same_trajectory(logged(sim2), logged(sim))
+    @test state(sim2, "acc") === state(sim, "acc")
+    @test trace(sim2).batches == trc.batches
+end
+
+@testset "partial replay halts at a frame top, and the next frame reproduces (§12.7, §13.4)" begin
+    (sim, trc) = recorded_run()
+    sim2 = replay_twin()
+    replay!(sim2, trc; to_boundary = 5)
+    @test lifecycle(sim2) === :initialized      # the pointer's register: ready to advance
+    @test sim2.exec.clock.step == 5 * sim2.n
+    @test trace(sim2).frames == 5
+    @test same_trajectory(logged(sim2), [s for s in logged(sim) if s.frame ≤ 5])
+
+    # §13.4's workflow minus the error: step the next frame under whatever
+    # instrumentation is wanted, and it is the recording's frame 6 bitwise.
+    @test step!(sim2) == 1
+    @test snap_cells(latest(sim2)) == snap_cells(at_frame(logged(sim), 6))
+    @test latest(sim2).t == at_frame(logged(sim), 6).t
+end
+
+@testset "a continuation is a live session from the replayed boundary (§12.7)" begin
+    (sim, trc) = recorded_run()
+    sim2 = replay_twin()
+    replay!(sim2, trc)
+    run!(sim2; t_end = 1.4)                     # `run!` after `replay!`
+    @test lifecycle(sim2) === :stopped && termination(sim2).source === EndTimeReached()
+    @test sim2.exec.clock.step == 14            # it proceeded from frame 8, not from zero
+    # The session leaves behind a complete, valid trace of *itself*, with the
+    # recording as a bit-identical prefix and no special stitching (§12.7).
+    cont = trace(sim2)
+    @test cont.frames == 14 > trc.frames
+    @test cont.batches[1:length(trc.batches)] == trc.batches
+    @test cont.header.root_inputs == trc.header.root_inputs   # the header inherited
+    # the recording's schema entries stand, this session's appended behind them
+    @test cont.header.schemas[1:length(trc.header.schemas)] == trc.header.schemas
+    @test sim2.trace.live_writers == (length(trc.header.schemas) + 1):length(cont.header.schemas)
+end
+
+# Every discard this writer's account carried, rendered: off a published
+# status's `recent` where the frame-top fold caught it (§11.8), and off the
+# run's-end sweep's warning where the device's stage landed past the final frame
+# top (§12.4) — a replay ends `initialized`, so the sweep has no termination
+# record to file its residue in and the log is where it surfaces.
+discard_reports(sim, logs, who::String) =
+    vcat(String[string(d) for s in logged(sim) for w in s.status.writers if w.who == who
+                for d in w.recent if d isa ReplayDiscardedStaging],
+         String[string(l.message) for l in logs
+                if occursin("ReplayDiscardedStaging from $who, past the final",
+                            string(l.message))])
+
+@testset "live staging met by a replay is discarded, and reported (§12.7, §11.8)" begin
+    (sim, trc) = recorded_run()
+    sim2 = replay_twin()
+    dev = Nudge("rate", 99.0)                   # a value that would move the trajectory
+    attach!(sim2, dev, Enumerated("rate"))
+    logs, _ = Test.collect_test_logs() do
+        replay!(sim2, trc)                      # devices are readers: they init and spawn
+    end
+    @test lifecycle(sim2) === :initialized
+
+    # The property the discard exists to protect: the trajectory is still the
+    # recording's, bit for bit, with a live writer staging into the run.
+    @test same_trajectory(logged(sim2), logged(sim))
+    @test state(sim2, "acc") === state(sim, "acc")
+    @test trace(sim2).batches == trc.batches    # and nothing of the device's is recorded
+
+    # …and the drop is loud: one report, on the device's own cell (§11.8's
+    # attribution), naming the faces it cost. Wherever the device's timing put
+    # it — the account's totals, or the run's-end sweep — it is accounted once.
+    who = "device 1 (Nudge)"
+    @test accounted(sim2, logs, who, :replay_discarded, "ReplayDiscardedStaging")
+    r = only(discard_reports(sim2, logs, who))
+    @test occursin("[:rate]", r)
+    seen = [d for s in logged(sim2) for w in s.status.writers if w.who == who
+              for d in w.recent if d isa ReplayDiscardedStaging]
+    @test all(d -> d.faces == [:rate] && 1 ≤ d.frame ≤ trc.frames, seen)
+end
+
+@testset "a changed parameter replays deterministically: the what-if register (§12.7)" begin
+    (sim, trc) = recorded_run()
+    # Same structure, a different gain — *parametric* difference, on the
+    # non-error side of §12.7's line: the recorded inputs re-driven through a
+    # modified model. Determinism is promised; reproduction is not.
+    whatif = replay_twin(9.0)
+    replay!(whatif, trc)
+    @test lifecycle(whatif) === :initialized
+    @test whatif.exec.clock.step == trc.frames
+    @test state(whatif, "plant").q != state(sim, "plant").q
+
+    # Deterministic: the same what-if twice is the same trajectory.
+    twin = replay_twin(9.0)
+    replay!(twin, trc)
+    @test same_trajectory(logged(twin), logged(whatif))
+end
+
+@testset "the lifecycle and range refusals of `replay!` (§12.7, §12.6)" begin
+    (_, trc) = recorded_run()
+    # `to_boundary` is a pointer into the recording: past its end there is
+    # nothing to replay, and the refusal names the argument and its value.
+    for bad in (9, -1, 2.5)
+        d = only(failure(() -> replay!(replay_twin(), trc; to_boundary = bad)).diagnostics)
+        @test d isa ArgumentInvalid && d.call === :replay! && d.reason === :range
+        @test d.argument === :to_boundary && d.value == bad
+    end
+    @test lifecycle(replay_twin()) === :initialized      # a rejected replay wrote nothing
+
+    # `errored` is terminal (§13.6): never resumable, never re-initialized, and
+    # `replay!` is refused there exactly as `init!` is — reproduction is
+    # replaying the trace on a *fresh* simulation, which is the arm above.
+    crashed = Simulation(fed(Exploder(), "arm"); h = 1//10, t_end = 5.0)
+    init!(crashed, fragment(inputs = (in = 0.0,)))
+    own = trace(crashed)
+    stage!(crashed, "in" => true)
+    @test_throws Exploded run!(crashed)
+    d = only(failure(() -> replay!(crashed, own)).diagnostics)
+    @test d isa ServiceLifecycle && d.op === :replay! && d.status === :errored
+    # (`replay!` from `:running` is the same gate one line above it, and reaching
+    # it needs the spawned-run register `test_lifecycle.jl` exercises for `init!`
+    # and `run!`; it is asserted there, for those two entries, and not here.)
+end
+
+@testset "a replay runs under the kill switch, and records nothing (§11.5, §12.7)" begin
+    (sim, trc) = recorded_run()
+    off = replay_twin(; trace = false)
+    replay!(off, trc)                      # the feed is compiled from the `Trace` in hand,
+    @test lifecycle(off) === :initialized   # never from the target's own register
+    @test same_trajectory(logged(off), logged(sim))
+    @test off.trace.header === nothing && isempty(off.trace.batches) && off.trace.frames == 0
+    @test only(failure(() -> trace(off)).diagnostics).reason === :disabled
+end

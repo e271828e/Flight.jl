@@ -1,7 +1,7 @@
 # Kernel prototype
 
 The walking skeleton for the framework in `docs/notes/design/framework_spec.md`,
-built to keepable standards and grown one increment at a time — increments 2–21
+built to keepable standards and grown one increment at a time — increments 2–23
 so far (increment 1, the cell-store bench, is frozen in `../cellstore_bench`;
 D-162 cites its numbers). This file is the orientation; read it first and
 alone. On demand:
@@ -28,11 +28,11 @@ alone. On demand:
 | `src/executor.jl` | entries, the chunked unrolled walk, the interior/boundary split, the `(idx − Φ) % D` gate and boundary zero's `ESTABLISH` beside it, the event set with its registers and the guard/fire/project walks | §9.7, §10.4–§10.6, §14.5, D-205 |
 | `src/build.jl` | tier classification, the probe, the feedthrough graph, the layout, embed-accept, the `Build` and its activations, deployment binding, and `compile` → `Executor{T}` — one activation's buffer set with the bodies closed over it, one owner per set, `evaluate!`/`_round!`/`apply!` on it | §8.2, §9.1–§9.4, §9.7, §10.4, D-166, D-208, D-210 |
 | `src/readers.jl` | the closed read-selector family, `reads`, the internal `_compile_reads` → `Reader{T}`, `gather` as `apply!`'s twin over an executor; activation identity on readers and plans as an internal invariant | §14.4, §14.7, §14.10 |
-| `src/sim.jl` | `Simulation` (owning its `exec`), the deployment keywords, the boundary macro-sequence and event phase, `init!`, `run!`/`step!`, `attach!`/`detach!`, staging/drain/publication, the lifecycle and termination record, the accessors | §10.2–§10.6, §11.1–§11.4, §11.8, §12.1–§12.6, §13.5, §13.6, §14.5, §14.6, D-203 |
+| `src/sim.jl` | `Simulation` (owning its `exec`), the deployment keywords, the boundary macro-sequence and event phase, `init!`, `run!`/`step!`, `replay!` over the one shared run body, `attach!`/`detach!`, staging/drain/publication and the drain's replay substitution, the lifecycle and termination record, the accessors | §10.2–§10.6, §11.1–§11.4, §11.8, §12.1–§12.7, §13.5, §13.6, §14.5, §14.6, D-101, D-203 |
 | `src/stepper.jl` | the seam's backend side: RK4 and Heun, the retained `startpoint`, dense output | §10.2, D-017 |
 | `src/localize.jl` | the frame loop: arrival sweep, θ = 0 validation, ITP bracketing, `t*` boundaries, the localization budget | §10.4, D-018, D-133 |
 | `src/dataplane.jl` | the compiled writer and staging cells, the drain, snapshots and the log with re-decimation, the typed diagnostic kinds and cells, the framework status | §11.1–§11.4, §11.8, §12.6, D-137 |
-| `src/trace.jl` | the input trace: the header captured at `init!` — resolved stores, root inputs, the writers' schemas and the deployment block — one sparse record per drained batch behind it, the only-growing schema list, `trace(sim)`, and replay's up-front entry pass (`_compile_feed`): the header validated against the target build and its deployment binding, each schema against the target's root faces, and every record normalized to a compiled scatter | §11.5, §12.7, D-029, D-038, D-101, D-176 |
+| `src/trace.jl` | the input trace: the header captured at `init!` — resolved stores, root inputs, the writers' schemas and the deployment block — one sparse record per drained batch behind it, the only-growing schema list, `trace(sim)`, and replay's up-front entry pass (`_compile_feed`): the header validated against the target build and its deployment binding, each schema against the target's root faces, and every record normalized to a compiled scatter into the `ReplayFeed` the loop's drain reads | §11.5, §12.7, D-029, D-038, D-101, D-176 |
 | `src/roster.jl` | device/binding traits and conformance, the roster, both claim sources, the harness register | §11.3, §11.4, §11.6 |
 | `src/bindings.jl` | `TableBinding`, `map_input` and the conditioning helper, binding reads resolved at attach (`ReadBindingUnresolved`, the source rule) | §11.2, §11.6, §14.4 |
 | `src/devices.jl` | the device contract, the handle, the task wrapper, the init bracket and the tail under `join_timeout` | §11.1, §11.6, §12.1–§12.4, D-198 |
@@ -93,9 +93,9 @@ The long form, with reasons, is in `MAP.md`. In brief:
   diagnostics, the §11.8 remainder (`DebtReanchor`, `ThreadBudget`,
   `UnboundedRun`, the maxlog renderer).
 - **§12 beyond its built slices**: pause and the control plane's surface, the
-  operator interrupt, replay (§12.7); §13.4's `StepError` wrap, cursor and
-  nonfinite sweep. `run!` requires a finite `t_end`; every non-running state
-  admits `attach!`/`detach!`.
+  operator interrupt; §13.4's `StepError` wrap, cursor and nonfinite sweep.
+  `run!` requires a finite `t_end`; every non-running state admits
+  `attach!`/`detach!`.
 
 ## Stand-ins: where the prototype's shape is not the spec's
 

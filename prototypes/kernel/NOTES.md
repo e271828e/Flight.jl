@@ -790,7 +790,7 @@ and `UninitializedInputs` included — is a `Symbol` now, matching
 
 **Increment 23, stage 1 — the input trace's recording half (§11.5).** The
 header at `init!` and one sparse record per drained batch; replay (§12.7) and
-its kinds are stages 2 and 3, and the absence list keeps them until they land.
+its kinds are stages 2 and 3 below.
 Three things carried the design.
 
 *The recording site is the drain, and it rides inside the thunk.* §11.5 puts
@@ -847,8 +847,8 @@ it is `MissingInit(op = :trace)`, which fits better than a second
 out is exactly the mandatory `init!` an advance entry names (§12.6).
 
 **Increment 23, stage 2 — replay's entry pass (§12.7).** The four kinds and
-`_compile_feed`: everything a trace has to survive before `replay!` (stage 3)
-touches a single cell. Three things shaped it.
+`_compile_feed`: everything a trace has to survive before `replay!` (stage 3,
+below) touches a single cell. Three things shaped it.
 
 *The fingerprint has two sides, so it is one function.* `_capture_header`
 writes the structural fingerprint — the layout's cell sizes, the root-input
@@ -885,10 +885,66 @@ the spec pass.
 `_compile_feed`'s scalar gate is dispatch rather than a comparison — the typed
 `(Simulation{T}, Trace{T})` method beside the fallback a `Trace{Float64}`
 offered to a `Simulation{Dual}` reaches — which is why the two methods live in
-sim.jl beside where `replay!` will carry the identical pair, while the pass
-itself stays in trace.jl beside the capture it mirrors. `ReplayDiscardedStaging`
-is defined with the other three but has no emission site until stage 3, and
-MAP.md's §12 bullet says so.
+sim.jl beside where `replay!` carries the identical pair, while the pass itself
+stays in trace.jl beside the capture it mirrors.
+
+**Increment 23, stage 3 — replay's loop (§12.7).** `replay!` closes the
+increment, and D-101's claim is that there is almost nothing here to write:
+replay is *the ordinary loop with exactly two substitutions*. The stage's real
+work was making the code say that structurally, so the claim is checkable by
+reading rather than by trusting a comment.
+
+*Two factorings carry it.* `_run_body!` is `run!`'s body from the `:running`
+store through the terminal disposition, lifted whole and shared, with `upto` —
+the frame budget already threaded through `_advance!` for `step!`'s sake —
+passed in: `typemax(Int)` from `run!`, `trc.frames` or `to_boundary · n` from
+`replay!`. `_open_trajectory!` is `init!`'s tail — the clock anchored at `t₀`,
+the event priors, the log, the §11.8 accounts, every staged cell, the stop word
+and the termination record — shared for the same reason. What is left of
+`replay!` is exactly the two substitutions and its own refusals: the header
+applied where `init!` puts `establish_defaults!` + `apply!`, and one branch at
+the top of `drain!`. Neither factoring changed a byte of live behavior, which
+is the property the lifecycle tests already pinned.
+
+*The terminal mapping gained an arm, and it is `step!`'s.* `run!` could never
+observe `term === nothing`, its budget being unbounded; a replay's budget is
+finite, so the arm §12.7 requires — the budget ran out at a frame top, so the
+simulation is `initialized`, never `stopped` — is exactly the one `step!`
+already had. That is what makes replay-to-inspect, replay-to-`k−1`-then-`step!`
+and `run!`-continuation fall out rather than being built. One consequence worth
+recording: a replay that ends `initialized` still runs the §12.4 tail and the
+run's-end sweep, but there is no §13.5 termination record for the residue to be
+filed in, so a device's late report surfaces through the logging backend alone.
+The discard tests read it from both places for that reason.
+
+*The feed cursor advances on `≤`, not `==`.* Every trace this register
+produces is keyed exactly — the loop visits frame `k` once and the records are
+in drain order — but a hand-built trace can carry a record whose frame the loop
+has already passed, and under `==` that record would strand the cursor, and
+with it every record behind it, on a frame that never comes round again. `≤`
+applies it at the first frame that reaches it instead. The frame ordinals a
+trace carries are not validated by the entry pass (they are the register's own
+output), so this is where the robustness belongs.
+
+*The prototype's shortfall here is a test, not the mechanism.*
+`ReplayDiscardedStaging` is emitted on the discarded cell's own writer, the
+harness register included — but the harness arm has no synchronous route to
+exercise: `replay!` blocks its calling task, and the trajectory-opening tail
+clears every cell, so the only way to stage into the harness during a replay is
+the spawned-run race `test_lifecycle.jl` uses for the freeze. The device arm is
+asserted (a rostered device staging from its own task, the discard accounted
+wherever its timing put it, the replayed trajectory still bitwise the
+recording); the harness arm is the same two lines beside it, untested.
+
+Four places the prototype runs ahead of §11.5/§12.7's letter, collected here
+for the spec pass: the `frames` field on the trace, which the spec's "header
+plus batches" does not name and which replay needs as its budget; the
+**only-growing** schema list, where §11.5 says "the run's frozen surface
+partition" and a trajectory spanning roster changes cannot have one;
+`ReplayUnknownFace`'s `face::Union{Symbol,Int}`, the bare position where no
+schema resolves it against Appendix C's "face name"; and the header's
+`t_end`/`stop_on` pair being the *constructor's*, since `init!` predates
+`run!`'s per-run overrides and §11.5 says only "the effective pair".
 
 
 ## The properties the tests pin down
@@ -1693,7 +1749,7 @@ Each of these is a spec claim rather than a programming convenience:
 - **The scalar is dispatch, not a comparison.** A `Trace{Float64}` offered to
   a `Simulation{Dual}` reaches `_compile_feed`'s fallback and reports
   `what = :scalar`; the matching pair compiles. The refusal is therefore one
-  nobody can forget to write, and `replay!` will carry the same pair.
+  nobody can forget to write, and `replay!` carries the same pair.
 - **The header is compared against the build and the deployment binding, and
   nothing else.** An extra component moves both the path list and the cell-size
   list, and both report `:store`; a changed `h` reports `:deployment` with
@@ -1722,6 +1778,54 @@ Each of these is a spec claim rather than a programming convenience:
   lets a replay re-record the recording's own values. A recording that outlived
   a roster change replays whole: the superseded schema entry is compiled
   against the target's layout like any other.
+- **A replay reproduces the recorded trajectory bitwise.** On a model reaching
+  all three state homes with a bouncer resetting *between* frame tops, a fresh
+  simulation initialized from a different condition replays to the same log
+  boundary for boundary: the same `t` stamps, the same cells (`==`, which is
+  the claim — D-163's tolerance rule is about numerical agreement, not about
+  reproduction), the same live stores, and the same two localized boundaries
+  the recording never stored — `t*` derives from state, so reproducing the
+  state reproduces the timing. It ends `initialized`, with no termination
+  record, and it re-records: the header inherited and the batches identical.
+  §12.7's own register runs too — `Simulation(world)` then `replay!`, no
+  `init!` anywhere: `replay!` *is* a door into `initialized`, so it owes one to
+  nothing, and a `built` target replays to the same trajectory.
+- **A device's recorded batches replay on a deviceless twin.** A rostered
+  device staging into a `run!` leaves its writes in the trace under its own
+  schema entry, and the replay target needs no roster to apply them — "no
+  devices or mappings present" (§12.7). Claims are a live-roster fact of the
+  recorded session, and the replay drain re-derives none of it.
+- **Partial replay halts at a frame top, and the next frame reproduces.**
+  `to_boundary = k` leaves the clock at `k · n` and the lifecycle
+  `initialized`, with the log a prefix of the recording's; `step!` then
+  advances the frame the recording's own frame `k · n + 1` advanced, bitwise —
+  §13.4's error-reproduction workflow minus the error.
+- **A continuation is a live session from the replayed boundary.** `run!`
+  after a full `replay!` proceeds from frame 8 rather than from zero, and the
+  session leaves behind a complete, valid trace of *itself*: the recording's
+  batches as a bit-identical prefix (`==` on `TraceBatch`es, across two
+  registers), its own behind them, the header inherited and this session's
+  writer set appended under the growth rule.
+- **Live staging met by a replay is discarded, and reported.** A device
+  staging a value that would move the trajectory changes nothing: the replayed
+  log is still the recording's, bit for bit, and nothing of the device's is
+  recorded. The drop is loud — one `ReplayDiscardedStaging` on the device's own
+  cell, naming the faces it cost, accounted in the run's totals or presented by
+  the run's-end sweep, exactly one of the two.
+- **A changed parameter replays deterministically, and only that.** Same
+  structure, a different gain: the entry pass admits it (parametric difference
+  is the what-if register, not a structural mismatch), the replay ends
+  `initialized`, and the trajectory differs from the recording's — while two
+  what-ifs of the same modified model agree with each other boundary for
+  boundary. Determinism is promised; reproduction is not.
+- **`replay!`'s refusals precede its first write.** `to_boundary` past the
+  recording, negative, or non-integral is `ArgumentInvalid` naming the argument
+  and the value, and the target is still `initialized` afterwards; an `errored`
+  simulation refuses `replay!` exactly as it refuses `init!`, terminal meaning
+  terminal — reproduction is replaying the trace on a *fresh* simulation, which
+  is what the bit-identity tests do. Under `trace = false` a replay still runs
+  — the feed is compiled from the `Trace` in hand, never from the target's own
+  register — and records nothing.
 
 ## Stand-in retirement history
 

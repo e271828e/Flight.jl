@@ -3,14 +3,15 @@
 # deployment block — and behind it one sparse record per drained batch, in the
 # one record format D-176 unified on. The trace is *primary* data (D-029,
 # D-038): the log is recomputable from it, and what recomputes it is replay
-# (§12.7), whose loop is absent here (README) but whose entry pass is not —
-# the validation and normalization a trace is admitted through live at the
-# tail of this file, beside the capture they mirror.
+# (§12.7), whose entry pass — the validation and normalization a trace is
+# admitted through — lives at the tail of this file, beside the capture it
+# mirrors.
 #
 # This file holds the register and the pure mechanics; the `Simulation`-facing
 # surface — the capture's placement in `init!`, the drain's frame stamp,
-# `trace(sim)`, `_compile_feed`'s scalar gate — lives in sim.jl, beside the
-# loop that runs it. The drain thunks are compiled here too
+# `trace(sim)`, `_compile_feed`'s scalar gate, `replay!` and the drain
+# substitution — lives in sim.jl, beside the loop that runs it. The drain
+# thunks are compiled here too
 # (`_install_writers!`), because the writer's schema index rides in them and
 # nothing else may fix it.
 
@@ -59,6 +60,16 @@ struct TraceBatch
     writer::Int                       # index into header.schemas
     entries::Vector{Pair{Int,Any}}
 end
+
+# A record is a *value*, and the claim replay makes about a continuation — the
+# recording is a bit-identical prefix of what the continued session records
+# (§12.7) — is an equality between records built by two different registers.
+# The default `==` on a mutable-free struct with a `Vector` field is egal, which
+# would make that claim untestable, so the field-wise one is defined here, and
+# `hash` with it as Julia's convention requires.
+Base.:(==)(a::TraceBatch, b::TraceBatch) =
+    a.frame == b.frame && a.writer == b.writer && a.entries == b.entries
+Base.hash(b::TraceBatch, h::UInt) = hash(b.entries, hash(b.writer, hash(b.frame, h)))
 
 """
 What `trace(sim)` hands back (§11.5): header plus batches, the *primary*
