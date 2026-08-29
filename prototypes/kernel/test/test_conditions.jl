@@ -231,7 +231,7 @@ end
                                             fragment(x = (q = SVector(5.0, 5.0),))),
                                          fragment(inputs = (u = 3.0,)))))
     d = only(e.diagnostics)
-    @test e isa BuildError && d isa UninitializedInputs && d.op == "init!"
+    @test e isa BuildError && d isa UninitializedInputs && d.op === :init!
     @test d.faces == [:e]                                     # only the uncovered face
     # All-or-nothing: the plan's x write and its root-input write both stayed home.
     @test state(sim, "plant").q === q

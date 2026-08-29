@@ -103,6 +103,8 @@ end
 
 # A device with no loop method at all: the error-throwing fallback's customer.
 mutable struct Loopless <: AbstractDevice end
+mutable struct NarrowLoop <: AbstractDevice end   # `loop` on the handle type itself
+loop(::NarrowLoop, ::DeviceHandle) = nothing
 
 @testset "a device stages through its handle from its own task, and departure consults should_abort (§11.6, §12.4)" begin
     sim = Simulation(two_root_inputs(); h = 1//10)
@@ -291,15 +293,25 @@ end
     @test port(sim, "s", :e) === port(ref, "s", :e)
 end
 
-@testset "a device with no loop method crashes loudly, never idles (§11.6)" begin
+@testset "a device with no loop method is refused at attach!, by kind (§11.6)" begin
     sim = Simulation(two_root_inputs(); h = 1//10)
-    attach!(sim, Loopless(), Enumerated())
+    err = failure(() -> attach!(sim, Loopless(), Enumerated()))
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa DeviceContractMismatch &&
+          diag.reason === :no_loop && diag.device == string(Loopless)
+    @test isempty(sim.plane.roster)               # the rejection consumed no id
+    # a `loop` declared on `DeviceHandle` itself is the method the wrapper calls
+    @test attach!(sim, NarrowLoop(), Enumerated()) isa DeviceHandle
+end
+
+@testset "gather without an output side is a contract misuse, by kind (§11.6)" begin
+    sim = Simulation(two_root_inputs(); h = 1//10)
+    h = attach!(sim, Pad("p"), Enumerated("a"))
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
-    logs, _ = Test.collect_test_logs() do
-        run!(sim; t_end = 0.2)
-    end
-    @test sim.exec.clock.step == 2                # the crash is the device's alone
-    @test crash_accounted(sim, logs, "device 1 (Loopless)")
+    err = failure(() -> gather(h, latest(sim)))
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa DeviceContractMismatch &&
+          diag.reason === :no_output_side && diag.device == "device 1 (Pad)"
 end
 
 @testset "join_timeout is validated and never trajectory-determining (§12.4, D-198)" begin

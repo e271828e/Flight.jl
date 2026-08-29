@@ -90,6 +90,23 @@ function check_binding(b::AbstractBinding)
 end
 
 """
+§11.6's device twin of `check_binding`, run at the same attach point: a
+device with no `loop` method of its own is a build-time configuration
+mistake — `loop`'s fallback exists only as the comparison target this `which`
+check needs, and refusing here (before the device is ever rostered, let alone
+spawned) is what makes `DeviceContractMismatch` `service, fail-fast` rather
+than a task-side `DeviceCrash` (Appendix C).
+"""
+function check_device(dev::AbstractDevice)
+    T = typeof(dev)
+    # against the handle type the wrapper calls with: a `loop(::T, ::DeviceHandle)`
+    # is a method, and `Tuple{T,Any}` would not see it
+    which(loop, Tuple{T,DeviceHandle}) === which(loop, Tuple{AbstractDevice,DeviceHandle}) &&
+        throw(BuildError(DeviceContractMismatch(device = string(T), reason = :no_loop)))
+    nothing
+end
+
+"""
 One roster entry (§11.3): the device instance, its binding, the stable id
 assigned at `attach!` — monotonic per `Simulation`, never reused, living
 exactly as long as the entry — the compiled writer over its claim set, the

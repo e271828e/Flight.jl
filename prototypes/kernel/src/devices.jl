@@ -126,7 +126,7 @@ simulation `:running` — which spans the tail, so a roster change cannot race
 the joins. Every other state admits them, `:errored` included: post-mortem
 inspection of a terminally stopped simulation is legitimate (§13.6).
 """
-assert_stopped(ctl::Control, op::String) =
+assert_stopped(ctl::Control, op::Symbol) =
     (@atomic ctl.lifecycle) === :running ?
     throw(BuildError(ServiceLifecycle(op = op, status = :running))) : nothing
 
@@ -170,17 +170,19 @@ on every exit path, the failed-`init!` bracket included. `unblock!` is
 §12.4(3)'s optional hook, default no-op: an override makes the device's own
 blocking call return. `loop` is the one mandatory function — the
 author-owned task body, looping on `running(handle)` with interruptible
-blocking — and its fallback throws rather than idling: a device whose loop
-was never written would otherwise present as "attached, nothing happens",
-the hidden-bug class §11.6 tolerates nowhere. The throw lands in the wrapper
-and is reported as the `DeviceCrash` it is.
+blocking. A device whose loop was never written would otherwise present as
+"attached, nothing happens", the hidden-bug class §11.6 tolerates nowhere, so
+`attach!` refuses it by name (`check_device`, roster.jl) before it is ever
+rostered — `DeviceContractMismatch`, service, fail-fast (Appendix C). This
+fallback exists only as the comparison target `which` needs to detect a
+device with no method of its own; it is unreachable, `attach!` having already
+refused, and its own throw says so.
 """
 init!(::AbstractDevice) = nothing
 shutdown!(::AbstractDevice) = nothing
 unblock!(::AbstractDevice) = nothing
-loop(dev::AbstractDevice, handle) = error(
-    "$(typeof(dev)) defines no `loop` method — the task body is the authoring " *
-    "contract's one mandatory function (§11.6)")
+loop(dev::AbstractDevice, handle) =
+    throw(InternalInvariant("unreachable: attach! refuses a device with no loop method"))
 
 # --- the handle primitives (§11.6) ---------------------------------------------
 
@@ -262,9 +264,8 @@ side the call is a contract misuse, and throws by name.
 """
 function gather(h::DeviceHandle, s::Snapshot)
     _beat!(h.diag)
-    h.gatherer === nothing && error(
-        "$(h.who)'s binding declares no output side — `gather` serves the compiled " *
-        "`reads` enumeration (§11.6)")
+    h.gatherer === nothing && throw(BuildError(
+        DeviceContractMismatch(device = h.who, reason = :no_output_side)))
     _gather(h.gatherer, s)
 end
 

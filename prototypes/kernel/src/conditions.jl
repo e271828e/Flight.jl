@@ -490,7 +490,7 @@ The services path contains no call to `probe_value`: a root input gets a
 condition value or the application errors, and there is no third branch. A
 fabricated zero is a fine probe input and a terrible flight condition.
 """
-function assert_total(plan::ConditionPlan, flat::Flat, op::String)
+function assert_total(plan::ConditionPlan, flat::Flat, op::Symbol)
     covered = Set(plan.faces)
     uncovered = [f for f in flat.root_inputs if !(f in covered)]
     isempty(uncovered) && return nothing
@@ -813,7 +813,7 @@ these values* rather than a resumption.
 function capture(sim::Simulation{T}) where {T}
     lc = lifecycle(sim)
     lc in (:initialized, :stopped) || throw(BuildError(ServiceLifecycle(
-        op = "capture", status = lc, legal = [:initialized, :stopped])))
+        op = :capture, status = lc, legal = [:initialized, :stopped])))
     ex, flat, tiers = sim.exec, sim.build.flat, sim.build.tiers
     act = activation(sim.build, T)
     offs = _x_offsets(act.decls, tiers)

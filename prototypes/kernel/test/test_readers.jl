@@ -182,7 +182,7 @@ end
     sim = Simulation(readable(); h = 1//10)
     e = failure(() -> capture(sim))
     d = only(e.diagnostics)
-    @test e isa BuildError && d isa ServiceLifecycle && d.op == "capture"
+    @test e isa BuildError && d isa ServiceLifecycle && d.op === :capture
     @test d.status === :built && d.legal == [:initialized, :stopped]  # no committed stores yet
     init!(sim, readable_condition())
     @test capture(sim) isa Tuple                         # `initialized`
@@ -201,6 +201,6 @@ end
     stage!(live, "in" => 1.0)
     wait(task)
     d = only(err.diagnostics)
-    @test err isa BuildError && d isa ServiceLifecycle && d.op == "capture"
+    @test err isa BuildError && d isa ServiceLifecycle && d.op === :capture
     @test d.status === :running
 end

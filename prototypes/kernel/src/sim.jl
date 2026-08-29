@@ -262,7 +262,7 @@ end
 
 # The shared entry gate of the two advance entries (§12.6): only `:initialized`
 # admits an advance, and each refusal names its own way out.
-function _assert_advanceable(sim::Simulation, op::String)
+function _assert_advanceable(sim::Simulation, op::Symbol)
     lc = @atomic sim.control.lifecycle
     lc === :initialized && return nothing
     lc === :built && throw(BuildError(MissingInit(op = op, status = lc)))
@@ -493,10 +493,10 @@ stopped (§13.6) — reproduction is trace replay, not resurrection.
 function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) where {T}
     ctl = sim.control
     lc = @atomic ctl.lifecycle
-    lc === :running && throw(BuildError(ServiceLifecycle(op = "init!", status = :running)))
-    lc === :errored && throw(BuildError(ServiceLifecycle(op = "init!", status = :errored)))
+    lc === :running && throw(BuildError(ServiceLifecycle(op = :init!, status = :running)))
+    lc === :errored && throw(BuildError(ServiceLifecycle(op = :init!, status = :errored)))
     plan = resolve_condition(condition, sim.build, T)      # both refusals precede every write
-    assert_total(plan, sim.build.flat, "init!")  # (§14.6): all-or-nothing
+    assert_total(plan, sim.build.flat, :init!)   # (§14.6): all-or-nothing
     establish_defaults!(sim.exec.xbuf, sim.exec.sstores, sim.exec.mstores, sim.build.flat.comps,
                         activation(sim.build, T).decls, sim.build.tiers)   # D-063's reset
     apply!(sim, plan)
@@ -563,7 +563,7 @@ so `t_end` is taken to the nearest frame top.
 """
 function run!(sim::Simulation; t_end = nothing, stop_on = nothing)
     plane, ctl = sim.plane, sim.control
-    _assert_advanceable(sim, "run!")
+    _assert_advanceable(sim, :run!)
     te = t_end === nothing ? sim.t_end : _t_bound(t_end)
     te === nothing && throw(BuildError(ArgumentInvalid(call = :run!, reason = :no_clock_bound)))
     (faces, addrs) = stop_on === nothing ? (sim.stop_on, sim.stop_addrs) :
@@ -716,7 +716,7 @@ loop-side failure ends it `errored` exactly as under `run!` (§13.6).
 """
 function step!(sim::Simulation; frames = nothing, t_plus = nothing)
     ctl = sim.control
-    _assert_advanceable(sim, "step!")
+    _assert_advanceable(sim, :step!)
     frames === nothing || t_plus === nothing ||
         throw(BuildError(ArgumentInvalid(call = :step!, reason = :both_given)))
     if t_plus === nothing
@@ -807,8 +807,9 @@ same object the wrapper passes to `loop(dev, handle)` on the device's task.
 function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
                  should_abort::Bool = false)
     plane = sim.plane
-    assert_stopped(sim.control, "attach!")
+    assert_stopped(sim.control, :attach!)
     check_binding(b)
+    check_device(dev)
     for e in plane.roster                          # identity, before claims (§11.3)
         e.dev === dev && throw(BuildError(AlreadyAttached(
             device = string(typeof(dev)), incumbent = _who(e), binding = string(typeof(e.binding)))))
@@ -852,7 +853,7 @@ last-drained values. The device id retires with the entry, never reused.
 """
 function detach!(sim::Simulation, dev::AbstractDevice)
     plane = sim.plane
-    assert_stopped(sim.control, "detach!")
+    assert_stopped(sim.control, :detach!)
     i = findfirst(e -> e.dev === dev, plane.roster)
     i === nothing && throw(BuildError(NotAttached(
         device = string(typeof(dev)), roster = [_who(e) for e in plane.roster])))
@@ -997,7 +998,7 @@ the first `init!`, and empty under `log = false` — the switch gates
 retention wholesale.
 """
 function logged(sim::Simulation)
-    assert_stopped(sim.control, "logged")
+    assert_stopped(sim.control, :logged)
     L = sim.log
     out = Snapshot[]
     L.first === nothing && return out

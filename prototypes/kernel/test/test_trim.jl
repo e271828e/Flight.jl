@@ -360,7 +360,7 @@ end
         baseline = fragment()))
     d = only(e.diagnostics)
     @test e isa BuildError && d isa UninitializedInputs
-    @test d.faces == [:in] && d.op == "trim!"
+    @test d.faces == [:in] && d.op === :trim!
     @test world(sim) == before && lifecycle(sim) === :built
 end
 
@@ -512,7 +512,9 @@ end
     plain = Simulation(fed(Pendulum(), :u); h = 1//10)
     e2 = failure(() -> trim!(plain, (guess = (u = 0.0,),); baseline = pend_base()))
     d2 = only(e2.diagnostics)
-    @test e2 isa BuildError && d2 isa TrimProblemInvalid && d2.reason === :not_a_problem
+    @test e2 isa BuildError && d2 isa ArgumentInvalid && d2.call === :trim! &&
+          d2.reason === :not_a_problem && d2.argument === :problem &&
+          occursin("NamedTuple", d2.value)
 
     # `running` is the §11.3 freeze, as for every other §14 service. Both ends
     # of the run are test-controlled, exactly as in test_readers.
@@ -526,6 +528,6 @@ end
     stage!(live, "in" => 1.0)
     wait(task)
     d3 = only(err.diagnostics)
-    @test err isa BuildError && d3 isa ServiceLifecycle && d3.op == "trim!"
+    @test err isa BuildError && d3 isa ServiceLifecycle && d3.op === :trim!
     @test d3.status === :running
 end

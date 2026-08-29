@@ -382,8 +382,8 @@ operating point an equilibrium?" probe, useful in its own right and free.
 function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
                t₀::Real = 0.0, backend = LevenbergMarquardt())
     lc = lifecycle(sim)
-    lc === :running && throw(BuildError(ServiceLifecycle(op = "trim!", status = :running)))
-    lc === :errored && throw(BuildError(ServiceLifecycle(op = "trim!", status = :errored)))
+    lc === :running && throw(BuildError(ServiceLifecycle(op = :trim!, status = :running)))
+    lc === :errored && throw(BuildError(ServiceLifecycle(op = :trim!, status = :errored)))
 
     b = sim.build
     viol = Diagnostic[]
@@ -400,7 +400,7 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
     # --- the nominal half (D-213) ------------------------------------------------
     ex_nom = _scratch(sim, Float64)
     plan = resolve_condition(override(baseline, problem.condition(guess)), b, Float64)
-    assert_total(plan, b.flat, "trim!")       # (§14.6): pre-evaluation, all-or-nothing
+    assert_total(plan, b.flat, :trim!)        # (§14.6): pre-evaluation, all-or-nothing
     apply!(ex_nom, plan)
     _round!(ex_nom, ESTABLISH)                # every discrete output stage, due or not
     ex_nom.bodies.rhs()
@@ -487,7 +487,8 @@ trim!(sim::Simulation, ::TrimProblem; kw...) = throw(BuildError(
     ArgumentInvalid(call = :trim!, reason = :non_nominal, value = string(typeof(sim)))))
 
 trim!(::Simulation, other; kw...) = throw(BuildError(
-    TrimProblemInvalid(field = :problem, reason = :not_a_problem, observed = typeof(other))))
+    ArgumentInvalid(call = :trim!, argument = :problem, reason = :not_a_problem,
+                    value = string(typeof(other)))))
 
 # --- the pieces the service is built out of --------------------------------------
 

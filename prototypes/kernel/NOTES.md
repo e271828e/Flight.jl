@@ -779,6 +779,15 @@ is a claim of its own: state the fix, show the list in hand, lead with the kind
 name. That is what the rendering testset pins, and it is the only place in the
 suite that may.
 
+D-216's own conformance pass follows the docs-first split: `DeviceContractMismatch`
+joins the set for the two `devices.jl` refusals Appendix C's table now names
+(`loop`'s missing method, `gather` against an output-less binding), `trim!`'s
+non-`TrimProblem` argument reports through `ArgumentInvalid`'s own
+`:not_a_problem` rather than `TrimProblemInvalid`'s retired `:problem`
+pseudo-field, and every `op`/`call` payload — `MissingInit`, `ServiceLifecycle`
+and `UninitializedInputs` included — is a `Symbol` now, matching
+`ArgumentInvalid`'s own.
+
 
 ## The properties the tests pin down
 
@@ -1538,6 +1547,13 @@ Each of these is a spec claim rather than a programming convenience:
   render showing the candidates the site held (carried, never ranked) and one
   remedy render showing the list in hand, and `logline(d)` for a warning kind.
   Nothing else in the suite may match rendered diagnostic text (§13.2).
+- **The device contract's refusal reaches its kind wherever it surfaces.** A
+  device with no `loop` method crashes on its own task the instant the wrapper
+  calls it, so `DeviceContractMismatch(reason = :no_loop)` rides as a
+  `DeviceCrash`'s `cause` — reachable only at `run!`, never at `attach!` or
+  `init!`, neither of which ever calls `loop`. `gather` against a handle whose
+  binding declares no output side throws the same kind directly, `reason =
+  :no_output_side`, on whichever task calls it.
 
 ## Stand-in retirement history
 

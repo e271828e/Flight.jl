@@ -44,9 +44,9 @@ claims(::NoClaim) = ()
     @test termination(sim) === nothing
     e = failure(() -> run!(sim))
     diag = only(e.diagnostics)
-    @test e isa BuildError && diag isa MissingInit && diag.op == "run!" && diag.status === :built
+    @test e isa BuildError && diag isa MissingInit && diag.op === :run! && diag.status === :built
     diag2 = only(failure(() -> step!(sim)).diagnostics)
-    @test diag2 isa MissingInit && diag2.op == "step!"
+    @test diag2 isa MissingInit && diag2.op === :step!
 
     init!(sim, fragment(inputs = (ref = 0.0,)))
     @test lifecycle(sim) === :initialized
@@ -55,9 +55,9 @@ claims(::NoClaim) = ()
     @test lifecycle(sim) === :stopped
     e = failure(() -> run!(sim))
     diag = only(e.diagnostics)
-    @test e isa BuildError && diag isa ServiceLifecycle && diag.op == "run!" && diag.status === :stopped
+    @test e isa BuildError && diag isa ServiceLifecycle && diag.op === :run! && diag.status === :stopped
     diag2 = only(failure(() -> step!(sim)).diagnostics)
-    @test diag2 isa ServiceLifecycle && diag2.op == "step!" && diag2.status === :stopped
+    @test diag2 isa ServiceLifecycle && diag2.op === :step! && diag2.status === :stopped
     init!(sim, fragment(inputs = (ref = 0.0,)))  # the supported cycle reopens it
     @test lifecycle(sim) === :initialized
     @test termination(sim) === nothing               # the record cleared with the trajectory
@@ -82,9 +82,9 @@ end
     stage!(sim, "in" => 1.0)                         # now, and only now, may the run end:
     wait(t)                                          # the next drain arms the trigger (§12.6)
     diag_i, diag_r = only(err_i.diagnostics), only(err_r.diagnostics)
-    @test err_i isa BuildError && diag_i isa ServiceLifecycle && diag_i.op == "init!" &&
+    @test err_i isa BuildError && diag_i isa ServiceLifecycle && diag_i.op === :init! &&
           diag_i.status === :running
-    @test err_r isa BuildError && diag_r isa ServiceLifecycle && diag_r.op == "run!" &&
+    @test err_r isa BuildError && diag_r isa ServiceLifecycle && diag_r.op === :run! &&
           diag_r.status === :running
     @test lifecycle(sim) === :stopped
     @test termination(sim).source === ModelRequestedStop(:stop)

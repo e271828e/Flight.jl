@@ -72,13 +72,45 @@ vocabulary and `probe_value`'s totality are not policed, an unusable state or
 port leaf surfacing as `IllegalPortType` or as the leaf walk's own refusal —
 `AbstractAtRoot` and `TierSignatureMismatch`, which need the abstract-declaration
 and signature-form analyses of §8.2, and `WalkingFaceAtFrozenEntry`, which needs
-§9.4's walking/frozen face classification; and, in the periphery, three
-refusals still raised as plain `error(...)` calls with no kind at all — a datum
-naming no channel of a `TableBinding` (`bindings.jl` ~93), a device defining no
-`loop` method (`devices.jl` ~181) and `gather` on a handle whose binding
-declares no output side (`devices.jl` ~265)) and §11.8's maxlog renderer, and the runtime periphery
-beyond increments 9–16's data plane, device tasks, diagnostic channel and
-lifecycle:
+§9.4's walking/frozen face classification; and, in the periphery, one refusal
+still raised as a plain `error(...)` call with no kind at all — a datum naming
+no channel of a `TableBinding` (`bindings.jl` ~93) — because D-216 leaves it
+there: the throw runs on the device task inside the author's own mapping, so
+it reaches the framework as the wrapper's `DeviceCrash` `cause` rather than as
+a refusal of its own, `MalformedDatum`/`DeviceCrash` territory, not a kind.
+Its two former neighbors — a device defining no `loop` method (`devices.jl`
+~181) and `gather` on a handle whose binding declares no output side
+(`devices.jl` ~265) — are `DeviceContractMismatch` now, the device twin of
+`BindingContractMismatch`) and §11.8's maxlog renderer.
+
+D-216 also found two gaps between Appendix C's table and this prototype's
+sites, left as this increment's own record rather than closed. First, some
+resolution steps still refuse on the first violation though their kinds'
+policy reads `collected`: `resolve_source`/`resolve_dest`/`resolve_terminal`/
+`_one_level`/`_wrong_direction` in `assembly.jl`, and `classify_tier` per
+component in `build.jl` — so `UnknownPort`, `PathResolution`,
+`FaceDirectionConflict`, `ClassUnreadable`, `StoreWithoutUpdate` and
+`TierUnreadable` report the first violation a run hits, one at a time, where
+the column's `collected` policy promises the whole pass (`NOTES.md` names the
+same gap for interleaved Stratum A resolution, §13.1); retiring it needs a
+resolution pass built with a sentinel return, which the wiring API does not
+have today — its own increment. Second, several kinds
+carry less than their Appendix C payload column: `AlgebraicCycle` no wires and
+no §5.6 real/artificial classification, `FaceNameCollision` no per-entry
+provenance, `ContainerMixed` no element keys/indices, `UnconnectedInput` no
+declared entry type and no obligation-chain level, `ClassUnreadable`/
+`StoreWithoutUpdate` no §8.1 shadowing note, `ClassUnreadable`/
+`TierUnreadable` no type and no declarations-found list, `DeclaredNotProduced`
+no state-field list, `ProducedByTwoStages` no stage names,
+`TransparentContainerUnknown` no container-field list, `StopFaceInvalid` no
+binding site (constructor vs. `run!`), `ConformanceFailure` no simulation time
+on its runtime occurrences, and `TapResolution` no candidates on the
+path-selector arms and none of §14.10's tap-set half. The column is the
+design and the prototype's own gaps stay visible as such rather than
+shrinking the table to match (D-216).
+
+Beyond that, the runtime periphery beyond increments 9–16's data plane, device
+tasks, diagnostic channel and lifecycle:
 
 - **§11.8's remainder:** the pacer diagnostics are absent with §10.7, and the
   kinds whose sources are absent — `DebtReanchor`, `ThreadBudget`,

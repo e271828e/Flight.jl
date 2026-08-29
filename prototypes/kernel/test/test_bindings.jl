@@ -244,7 +244,9 @@ end
     h = attach!(sim, Pad("p"), Enumerated("a"))
     init!(sim, fragment(inputs = (a = 0.0, b = 0.0)))
     err = failure(() -> gather(h, latest(sim)))
-    @test err isa ErrorException && occursin("declares no output side", err.msg)
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa DeviceContractMismatch &&
+          diag.reason === :no_output_side
 end
 
 @testset "a bidirectional binding composes both halves (§11.6)" begin

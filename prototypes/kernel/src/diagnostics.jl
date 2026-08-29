@@ -601,7 +601,7 @@ message(d::HandlerReturnKey) =
 
 "§12.6: an advance entry called before `init!` has run boundary zero."
 Base.@kwdef struct MissingInit <: Diagnostic
-    op::String                               # the entry point called
+    op::Symbol                               # the entry point called
     status::Symbol                           # the simulation's status
 end
 message(d::MissingInit) =
@@ -610,7 +610,7 @@ message(d::MissingInit) =
 
 "§11.3, §14: a service call against a lifecycle status that does not admit it."
 Base.@kwdef struct ServiceLifecycle <: Diagnostic
-    op::String
+    op::Symbol
     status::Symbol
     legal::Vector{Symbol} = Symbol[]         # the statuses that admit the operation
 end
@@ -618,7 +618,7 @@ end
 # `:running` refuses two different operations, and the sentence differs: an
 # advance entry is refused *because the loop is already advancing*, while every
 # other refusal at this status is a stopped-sim operation meeting a running loop.
-_advance_entry(op::AbstractString) = op == "run!" || op == "step!"
+_advance_entry(op::Symbol) = op === :run! || op === :step!
 
 message(d::ServiceLifecycle) =
     d.status === :running ?
@@ -812,6 +812,18 @@ function message(d::BindingContractMismatch)
     "get_face (§14.4) — got $(d.observed)"
 end
 
+"§11.6: the device twin of `BindingContractMismatch` — no `loop` method, or `gather` against a binding with no output side."
+Base.@kwdef struct DeviceContractMismatch <: Diagnostic
+    device::String                           # the device type, or the roster id where that is what the site holds
+    reason::Symbol                           # :no_loop | :no_output_side
+end
+message(d::DeviceContractMismatch) =
+    d.reason === :no_loop ?
+    "$(d.device) defines no `loop` method — the task body is the authoring " *
+    "contract's one mandatory function (§11.6)" :
+    "$(d.device)'s binding declares no output side — `gather` serves the compiled " *
+    "`reads` enumeration (§11.6)"
+
 "§11.2, §14.4: a binding read that does not resolve against the published snapshot."
 Base.@kwdef struct ReadBindingUnresolved <: Diagnostic
     binding::String                          # the binding type, as a string
@@ -947,7 +959,7 @@ message(d::ConditionNodeMisuse) =
 
 "§14.6: an application whose condition leaves a root input with no value — nothing is written."
 Base.@kwdef struct UninitializedInputs <: Diagnostic
-    op::String
+    op::Symbol
     faces::Vector{Symbol}                    # every uncovered root face, in declaration order
 end
 message(d::UninitializedInputs) =
@@ -1016,7 +1028,7 @@ end
 Base.@kwdef struct TrimProblemInvalid <: Diagnostic
     field::Symbol
     reason::Symbol   # :not_a_namedtuple|:key_set|:field_types|:inverted_box|
-                     # :nonpositive_tolerance|:not_a_read_set|:not_a_problem
+                     # :nonpositive_tolerance|:not_a_read_set
     observed::Any = nothing
     names::Vector{Symbol} = Symbol[]         # the names in hand
     expected::Vector{Symbol} = Symbol[]      # the names it has to match
@@ -1039,10 +1051,6 @@ _trim_verb(f::Symbol) = f === :residuals ? "returned" : "is"
 _trim_bad(d) = join(("`$k`::$v" for (k, v) in d.bad), ", ")
 
 function message(d::TrimProblemInvalid)
-    d.reason === :not_a_problem &&
-        return "`trim!` takes a `TrimProblem` and was given $(d.observed) — the problem is " *
-               "one value with a closed field set: TrimProblem(; guess, lower, upper, " *
-               "condition, reads, residuals, tolerances) (§14.7)"
     d.reason === :not_a_read_set &&
         return "`reads` is $(d.observed) — the declared read set is a `reads(…)` value: " *
                "reads(name = get_deriv(\"path\", :field), …) (§14.4)"
@@ -1150,6 +1158,10 @@ function message(d::ArgumentInvalid)
                "trim commits through the nominal world, and the seeded activation it " *
                "iterates on is the service's own scratch, instantiated per invocation " *
                "(§14.8, §9.4)"
+    d.reason === :not_a_problem &&
+        return "`trim!` takes a `TrimProblem` and was given $(d.value) — the problem is " *
+               "one value with a closed field set: TrimProblem(; guess, lower, upper, " *
+               "condition, reads, residuals, tolerances) (§14.7)"
     d.reason === :index_not_integer &&
         return "a selector's index must be an integer — the component index of §14.10, " *
                "applied to the read value — got $(repr(d.value)) (§14.4)"

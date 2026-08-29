@@ -53,14 +53,31 @@ The long form, with reasons, is in `MAP.md`. In brief:
   `TapResolution` is raised by the read register alone, never by §14.10's
   absent tap register. Undefined for the same reason, their *check* being
   absent rather than their reporting: `IllegalStateLeaf`, `MissingProbeValue`,
-  `AbstractAtRoot`, `TierSignatureMismatch` and `WalkingFaceAtFrozenEntry`.
-  Three periphery refusals are still plain `error(...)` calls with no kind: a
-  datum naming no channel of a `TableBinding` (`bindings.jl` ~93), a device
-  with no `loop` method (`devices.jl` ~181), and `gather` on a handle whose
-  binding declares no output side (`devices.jl` ~265). Absent with them:
-  did-you-mean **ranking** (the candidate list a site holds is carried and
-  rendered; nothing orders it by edit distance, and a mistyped *path* gets no
-  list at all) and §11.8's maxlog renderer.
+  `AbstractAtRoot`, `TierSignatureMismatch` and `WalkingFaceAtFrozenEntry`. One
+  periphery refusal is still a plain `error(...)` call with no kind — a datum
+  naming no channel of a `TableBinding` (`bindings.jl` ~93) — because it runs
+  inside the author's own mapping and reaches the framework as a `DeviceCrash`
+  `cause`, `MalformedDatum`/`DeviceCrash` territory rather than a kind of its
+  own (D-216); its two former neighbors are `DeviceContractMismatch` now.
+  Absent with them: did-you-mean **ranking** (the candidate list a site holds
+  is carried and rendered; nothing orders it by edit distance, and a mistyped
+  *path* gets no list at all) and §11.8's maxlog renderer. Some resolution
+  steps still refuse on the first violation though their kinds' policy reads
+  `collected`: `resolve_source`/`resolve_dest`/`resolve_terminal`/
+  `_one_level`/`_wrong_direction` in `assembly.jl`, and `classify_tier` per
+  component in `build.jl` — reaching `UnknownPort`, `PathResolution`,
+  `FaceDirectionConflict`, `ClassUnreadable`, `StoreWithoutUpdate` and
+  `TierUnreadable`; retiring it needs a sentinel-returning resolution pass, its
+  own increment. Appendix C's payload column also runs ahead of several kinds'
+  fields (D-216): `AlgebraicCycle`'s wires and §5.6 classification,
+  `FaceNameCollision`'s per-entry provenance, `ContainerMixed`'s element keys,
+  `UnconnectedInput`'s declared type and chain level, the §8.1 shadowing notes
+  on `ClassUnreadable`/`StoreWithoutUpdate`, `ClassUnreadable`/
+  `TierUnreadable`'s type and declarations found, `DeclaredNotProduced`'s
+  state-field list, `ProducedByTwoStages`' stage names,
+  `TransparentContainerUnknown`'s container-field list, `StopFaceInvalid`'s
+  binding site, `ConformanceFailure`'s simulation time (runtime only), and
+  `TapResolution`'s candidates on path arms and its §14.10 half.
 - **§9.5's always-on conformance check** (the return laws are checked once,
   at the probe); **§8.3 visibility**; auto-published ports; §13.3's
   load-bearing generic-holding check.

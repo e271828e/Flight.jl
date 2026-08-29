@@ -309,11 +309,11 @@ using InteractiveUtils: subtypes    # the coverage check below
         GuardForm(path = "a/b", event = :snap, observed = Int),
         HandlerReturnKey(path = "a/b", event = :snap, key = :s, stores = [:x, :m]),
         # Deployment, periphery and services
-        MissingInit(op = "run!", status = :built),
-        ServiceLifecycle(op = "attach!", status = :running, legal = [:built, :initialized]),
-        ServiceLifecycle(op = "capture", status = :errored),
-        ServiceLifecycle(op = "run!", status = :stopped),
-        ServiceLifecycle(op = "capture", status = :built, legal = [:initialized, :stopped]),
+        MissingInit(op = :run!, status = :built),
+        ServiceLifecycle(op = :attach!, status = :running, legal = [:built, :initialized]),
+        ServiceLifecycle(op = :capture, status = :errored),
+        ServiceLifecycle(op = :run!, status = :stopped),
+        ServiceLifecycle(op = :capture, status = :built, legal = [:initialized, :stopped]),
         StopFaceInvalid(face = :done, reason = :unknown, candidates = [:hit]),
         StopFaceInvalid(face = :done, reason = :root_input),
         StopFaceInvalid(face = :done, reason = :not_bool, declared = Float64),
@@ -349,6 +349,8 @@ using InteractiveUtils: subtypes    # the coverage check below
                                 observed = Int),
         BindingContractMismatch(binding = "NoEnum", reason = :reads_not_selectors,
                                 observed = "1"),
+        DeviceContractMismatch(device = "Loopless", reason = :no_loop),
+        DeviceContractMismatch(device = "device 1 (Pad)", reason = :no_output_side),
         ReadBindingUnresolved(binding = "T", selector = "get_state(\"a\", :x)",
                               reason = :store_selector, path = "a", field = :x),
         ReadBindingUnresolved(binding = "T", selector = "get_output(\"a\", :y[1])",
@@ -379,7 +381,7 @@ using InteractiveUtils: subtypes    # the coverage check below
                                provenance = ["fragment", "at(\"a\") → fragment"]),
         ConditionNodeMisuse(observed = NamedTuple, in_hand = [:Fragment]),
         ConditionNodeMisuse(observed = Int, reason = :fragment_payload, payload = :x),
-        UninitializedInputs(op = "init!", faces = [:a, :b]),
+        UninitializedInputs(op = :init!, faces = [:a, :b]),
         TapResolution(label = :r, selector = "get_state(\"a\", :x)", reason = :assembly_path,
                       path = "a"),
         TapResolution(label = :r, selector = "get_state(\"z\", :x)", reason = :unknown_path,
@@ -410,7 +412,6 @@ using InteractiveUtils: subtypes    # the coverage check below
         TrimProblemInvalid(field = :tolerances, reason = :nonpositive_tolerance, key = :r,
                            value = 0.0),
         TrimProblemInvalid(field = :reads, reason = :not_a_read_set, observed = NamedTuple),
-        TrimProblemInvalid(field = :problem, reason = :not_a_problem, observed = Int),
         TrimCommitEvents(events = [("a/b", :snap)]),
         TrimCommitResiduals(residuals = [(:r, 1.0, 0.5)]),
         ConditionShapeDrift(reason = :tree_type, compiled = Int, observed = Float64),
@@ -425,6 +426,8 @@ using InteractiveUtils: subtypes    # the coverage check below
         ArgumentInvalid(call = :step!, reason = :range, argument = :t_plus, value = -1.0),
         ArgumentInvalid(call = :run!, reason = :no_clock_bound),
         ArgumentInvalid(call = :trim!, reason = :non_nominal, value = "Simulation{Dual}"),
+        ArgumentInvalid(call = :trim!, argument = :problem, reason = :not_a_problem,
+                        value = "NamedTuple"),
         ArgumentInvalid(call = :selector, reason = :index_not_integer, value = 1.5),
         ArgumentInvalid(call = :TableBinding, reason = :entry_shape, entry = :a),
         ArgumentInvalid(call = :TableBinding, reason = :no_face, entry = :a),
@@ -502,7 +505,7 @@ end
     @test occursin("names no `throtle`", m) && occursin("throttle, brake", m)
 
     # The remedy register: the shortfall, then the fix, with the list in hand.
-    m = message(UninitializedInputs(op = "init!", faces = [:u, :e]))
+    m = message(UninitializedInputs(op = :init!, faces = [:u, :e]))
     @test occursin("`init!`", m) && occursin("`u`, `e`", m)
     @test occursin("nothing was written", m)
 
