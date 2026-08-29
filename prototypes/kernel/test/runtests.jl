@@ -1,6 +1,7 @@
 using Test, StaticArrays, LinearAlgebra, BenchmarkTools, ForwardDiff
 
 include("../src/leaves.jl")
+include("../src/diagnostics.jl")
 include("../src/declare.jl")
 include("../src/assembly.jl")
 include("../src/store.jl")

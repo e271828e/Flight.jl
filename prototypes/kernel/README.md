@@ -21,6 +21,7 @@ alone. On demand:
 | file | implements | spec |
 | --- | --- | --- |
 | `src/leaves.jl` | the leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 |
+| `src/diagnostics.jl` | the closed diagnostic kind set, the one `BuildError` carrier with its compiler-style rendering, `severity`/`path`/`message`, and the `InternalInvariant` assertions raise | §13.1, §13.2, Appendix C, D-214, D-215 |
 | `src/declare.jl` | the declaration layer: both tiers' name families and arities, the bundle law, `probe_value`, the connection declarations beside `transparent_container`, the rate registers with `sample_times`, the event surface | §5.2, §8.2, §8.5–§8.7, §9.3, D-211 |
 | `src/assembly.jl` | class by declaration shape; children and containers (bare-key transparency and its three-arm collision family); paths, §6.1's one-level rule, endpoint and face resolution, the root's face invariants; the flatten pass with its two-sided face graph and the sample-time fold; §13.3's `resolve`/`resolve_terminal`/face-list primitives and §8.8's `input_passthrough`/`output_passthrough` | §6.1, §8.5–§8.8, §9.1, §9.2, §13.3, D-207–D-212 |
 | `src/store.jl` | per-eltype cell stores, the `StoreBundle`, gather/scatter, `_cell_key`, the `Clock` | §9.7, D-162 |
@@ -77,6 +78,7 @@ rosters); the diff review is the enforcement.
 
 | spec shape | stand-in here | retirement |
 | --- | --- | --- |
+| diagnostics as kind values under the carrier (§13.2) | `BuildError(::String)` wrapping a `LegacyMessage` kind, and `e.msg` rendering the collection, while the sites convert | increment 22, stage 4 |
 | the per-writer status rides inline in the snapshot's one per-boundary allocation — zero additional heap allocation on a quiet frame (§11.8) | a `Vector` of per-writer records built at each publication, the small extra allocation the simple shape costs | an allocation-tightening pass (an `NTuple` status type fixed per run) |
 
 ## Authoring caveats

@@ -11,15 +11,6 @@
 
 abstract type AbstractComponent end
 
-"""
-The build's own failure: a plain message naming the path or the entry at fault.
-§13.2's structured carrier is deliberately absent.
-"""
-struct BuildError <: Exception
-    msg::String
-end
-Base.showerror(io::IO, e::BuildError) = print(io, "BuildError: ", e.msg)
-
 # --- what an author declares --------------------------------------------------
 
 """

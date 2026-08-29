@@ -53,12 +53,12 @@ violations, every check at staging), the two budget degradations (§10.4,
 §10.6, on the loop's own cell), and the device crash (§12.4, from the
 wrapper on the device's task, or from the calling task at the init bracket).
 """
-struct MalformedDatum
+struct MalformedDatum <: Diagnostic
     cause::Any
 end
 
 "§11.4's out-of-schema entry: no position in the writer's compiled surface."
-struct OutOfClaimEntry
+struct OutOfClaimEntry <: Diagnostic
     face::Symbol
     value::Any                      # the discarded value
     surface::Vector{Symbol}         # the writer's claim set, the list-in-hand
@@ -66,7 +66,7 @@ struct OutOfClaimEntry
 end
 
 "§11.3's harness write to a claimed face, naming the incumbent; `site` is `:staging` or `:renormalization`."
-struct ClaimedFaceEntry
+struct ClaimedFaceEntry <: Diagnostic
     face::Symbol
     incumbent::String
     value::Any
@@ -74,14 +74,14 @@ struct ClaimedFaceEntry
 end
 
 "§11.4's unconvertible value, rejected at staging for every writer."
-struct EntryTypeMismatch
+struct EntryTypeMismatch <: Diagnostic
     face::Symbol
     value::Any
     declared::Any                   # the root input's declared type
 end
 
 "§10.4's localization-budget exhaustion: further crossings this frame fire at boundary resolution."
-struct ChatteringBudget
+struct ChatteringBudget <: Diagnostic
     path::String
     event::Symbol
     t::Float64
@@ -90,7 +90,7 @@ struct ChatteringBudget
 end
 
 "§10.6's firing-budget exhaustion: the event's further edges at this boundary are lost."
-struct FiringBudget
+struct FiringBudget <: Diagnostic
     path::String
     event::Symbol
     t::Float64
@@ -99,7 +99,7 @@ struct FiringBudget
 end
 
 "§12.4's device failure — the wrapper's catch, or the init bracket's; `abort` is the attachment's `should_abort`."
-struct DeviceCrash
+struct DeviceCrash <: Diagnostic
     cause::Any
     abort::Bool
 end
@@ -110,7 +110,7 @@ tail and collected by the run's-end sweep into the termination record
 (D-203). `who` names the abandoned device — Appendix C's payload, beside the
 cap and the final snapshot's boundary time and index at shutdown.
 """
-struct DeviceJoinTimeout
+struct DeviceJoinTimeout <: Diagnostic
     who::String
     timeout::Float64
     t::Float64
@@ -121,6 +121,50 @@ end
 const DiagValue = Union{MalformedDatum,OutOfClaimEntry,ClaimedFaceEntry,
                         EntryTypeMismatch,ChatteringBudget,FiringBudget,
                         DeviceCrash,DeviceJoinTimeout}
+
+# The eight ride `src/diagnostics.jl`'s root so `severity` covers them (§13.2,
+# D-214): the channel *is* the warning stream, so every one of them is a
+# warning by construction. `message(d)` renders what the emitting site
+# interpolates today; the sites still print the value itself (§11.8), so
+# nothing here changes what the stream shows.
+severity(::MalformedDatum) = :warning
+severity(::OutOfClaimEntry) = :warning
+severity(::ClaimedFaceEntry) = :warning
+severity(::EntryTypeMismatch) = :warning
+severity(::ChatteringBudget) = :warning
+severity(::FiringBudget) = :warning
+severity(::DeviceCrash) = :warning
+severity(::DeviceJoinTimeout) = :warning
+
+path(d::ChatteringBudget) = d.path
+path(d::FiringBudget) = d.path
+
+message(d::MalformedDatum) =
+    "a datum could not be mapped: $(d.cause) (§11.6)"
+message(d::OutOfClaimEntry) =
+    "`$(d.face)` has no position in the writer's compiled surface " *
+    "$(_faceset(d.surface)) — $(repr(d.value)) discarded" *
+    (d.incumbent === nothing ? "" : "; the face is claimed by $(d.incumbent)") * " (§11.4)"
+message(d::ClaimedFaceEntry) =
+    "`$(d.face)` is claimed by $(d.incumbent) — the harness write $(repr(d.value)) is " *
+    "discarded at $(d.site) (§11.3, §11.4)"
+message(d::EntryTypeMismatch) =
+    "`$(d.face)` is declared $(d.declared), and $(repr(d.value)) does not convert — the " *
+    "entry is discarded at staging (§11.4)"
+message(d::ChatteringBudget) =
+    "`$(d.path)`.$(d.event) exhausted its localization budget $(d.budget) at t = $(d.t) " *
+    "after $(d.count) localizations — further crossings this frame fire at boundary " *
+    "resolution (§10.4)"
+message(d::FiringBudget) =
+    "`$(d.path)`.$(d.event) exhausted its firing budget $(d.budget) at t = $(d.t) after " *
+    "$(d.count) firings — its further edges at this boundary are lost (§10.6)"
+message(d::DeviceCrash) =
+    "the device task failed with $(d.cause)" *
+    (d.abort ? " and `should_abort` was set" : ", and the simulation continues without it") *
+    " (§12.4)"
+message(d::DeviceJoinTimeout) =
+    "$(d.who) did not join within $(d.timeout)s at t = $(d.t) (boundary $(d.boundary)) — " *
+    "abandoned by name rather than hanging the shutdown tail (§12.4)"
 
 """
 The per-kind counter record (§11.8): a **fixed-shape isbits record, never a
