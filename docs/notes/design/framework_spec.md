@@ -7609,9 +7609,12 @@ struct Scoped{N}  prefix::String; node::N  end             #at(prefix, node): st
 struct Combined{T<:Tuple}  nodes::T  end                   #combine(ns...): collects; order = diagnostics only
 ```
 
-Every node is isbits except the interned literal prefixes, so **rebuilding
-the tree per trim iteration is stack-only construction** — the zero-alloc
-property of today's `assign!` loop, preserved structurally.
+Every node is isbits except the prefix strings, so **rebuilding the tree per
+trim iteration costs a few small boxes, one per `at` node, and nothing else**
+— no path arithmetic, no validation, no copy of the payloads. That is under a
+kilobyte per evaluation, invisible against the sweep it feeds. The zero-alloc
+property of today's `assign!` loop lives in the [register](#g-register) that *applies* the
+tree ([§14.4][s14-4]), not in its construction.
 
 `fragment`'s payloads speak only about the component at the authoring point;
 addressing children is exclusively `at`'s job (one way to say everything). An
@@ -7744,12 +7747,15 @@ one plan:
   no strings, no dispatch. The per-iteration shape check is the mechanism
   ([§9.5][s9-5]) transferred. The tree type is proven by dispatch, and it
   carries the full nesting, every field name and leaf type. A `===`
-  sweep over the interned path literals closes the remainder. Those
-  pointer compares fold to nothing in the all-literal case, and shape drift is a
-  structured error, not silent corruption. Cost: Julia codegen of ~10–50 ms
-  *once per condition shape*. That cost is noise against the model's own
-  first-sweep warmup (seconds), and against the 10³–10⁴ optimizer evaluations
-  the codegen amortizes over.
+  sweep over the prefix strings closes the remainder: `===` on strings
+  compares content, so a prefix computed at run time pairs with the compiled
+  one exactly as a literal does, at the cost of one short comparison per `at`
+  node. Shape drift — a tree of another type, or a prefix that differs at a
+  position — is `ConditionShapeDrift` ([Appendix C][sC]), a structured error rather
+  than silent corruption. Cost: Julia codegen of ~10–50 ms *once per condition
+  shape*. That cost is noise against the model's own first-sweep warmup
+  (seconds), and against the 10³–10⁴ optimizer evaluations the codegen
+  amortizes over.
 - **Dynamic walk** — for one-shot init. It executes the same validated entry
   list by runtime dispatch per write: microseconds total, allocation permitted,
   since the stopped-sim path was never under the zero-alloc regime
@@ -7757,6 +7763,11 @@ one plan:
   scripted conditions cost fifty walks, not fifty compiles.
 
 **Rule.** Which register a service uses is internal, never user-facing API.
+
+A compiled plan or reader carries the [activation](#g-activation) it was
+compiled at and applies only to a store set of that activation. That pairing
+is a framework invariant the services uphold, not a user-facing check:
+neither plans nor readers are user values.
 
 #### The read-selector family
 
@@ -7839,12 +7850,12 @@ tables. Trim's cost read (`ẋ` and output fields), linearization's Jacobian
 gather, and `capture`'s full-store readback are one primitive run in reverse:
 one machinery, both directions, in the `Build`'s client kit.
 
-The per-iteration ledger for trim is user fragment math (stack-only, the domain
-computations unchanged from today) + leaf stores + folded shape check + sweep.
-The sweep dominates, exactly as `f_ode!` does today. `apply!` ends at
-established stores. Making the model *coherent* is [boundary
-zero](#g-boundary-zero) (the initialization boundary: the ordinary
-macro-sequence with an empty integrate), [§14.5][s14-5].
+The per-iteration ledger for trim is user fragment math (the domain
+computations unchanged from today, plus the tree's few boxes, [§14.2][s14-2]) + leaf
+stores + folded shape check + sweep. The sweep dominates, exactly as `f_ode!`
+does today. `apply!` ends at established stores. Making the model *coherent*
+is [boundary zero](#g-boundary-zero) (the initialization boundary: the ordinary macro-sequence
+with an empty integrate), [§14.5][s14-5].
 
 ### 14.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
@@ -8282,8 +8293,10 @@ the trim path, and it stands as the shared `init!`-[boundary](#g-boundary)
 defense. A converged solve is always committable, so `TrimReport` carries no
 committed flag and the no-throw doctrine needs no exception.
 
-Iterations rewrite only the problem's write-set via the compiled plan; an LM
-evaluation is one Dual-seeded sweep yielding `r` (value parts) and `J`
+Iterations rewrite the composite's write-set —
+`override(baseline, condition(d))`, the same tree setup resolved — via the
+compiled plan, so a store both layers touch merges exactly as it did at setup;
+an LM evaluation is one Dual-seeded sweep yielding `r` (value parts) and `J`
 (partials) together. No convergence — the service's box test failing at the
 returned point, whatever status the backend attached to it — means no commit.
 No commit means the sim is bit-for-bit untouched, including "never
@@ -10041,6 +10054,7 @@ Severities, in the vocabulary [§13][s13] fixes:
 | `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7][s14-7], [§14.8][s14-8] | service (collected) |
 | `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.8][s14-8] | warning (service) |
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.8][s14-8] | warning (service) |
+| `ConditionShapeDrift` | the compiled tree type and the observed one; for a prefix mismatch, the node position and both strings; the remedy — a condition function returns one shape for every decision | [§14.4][s14-4] | service |
 | `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§9.1][s9-1], [§9.2][s9-2] | warning (service), at deployment binding (derivation path only) |
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | service |
 | `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | service |
@@ -10850,8 +10864,9 @@ inputs)` payloads speaking only about the component at the authoring point
 (**self-vocabulary**), with addressing left entirely to `at` ([§14.2][s14-2]).
 
 <a id="g-fragment-tree"></a>**fragment tree** — the inert, lazy composition of `Fragment`/`Scoped`/
-`Combined`/override nodes; isbits but for the interned prefixes, so rebuilding
-it per trim iteration is stack-only construction ([§14.2][s14-2]).
+`Combined`/override nodes; isbits but for the prefix strings, so rebuilding
+it per trim iteration costs a few small boxes and no path work
+([§14.2][s14-2]).
 
 <a id="g-mounting"></a>**mounting** — relocating a whole problem or tap set with `at(prefix, …)`:
 every field is either condition-producing (path-relative, post-composed) or
