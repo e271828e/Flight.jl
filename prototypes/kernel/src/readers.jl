@@ -127,7 +127,8 @@ reads(; sels...) = _reads(NamedTuple(sels))
 function _reads(nt::NamedTuple)
     for (label, s) in pairs(nt)
         s isa ReadSelector || throw(BuildError(ReadSetMisuse(
-            observed = typeof(s), reason = :not_a_selector, label = label)))
+            observed = typeof(s), reason = :not_a_selector, label = label,
+            in_hand = Symbol[nameof(typeof(v)) for v in values(nt) if v isa ReadSelector])))
     end
     Reads(nt)
 end

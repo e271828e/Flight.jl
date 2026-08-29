@@ -560,7 +560,7 @@ function _verdict!(sim::Simulation, p::TrimProblem, baseline, solution::NamedTup
     # (§10.6, §14.5).
     es = sim.exec.events
     fired = Tuple{String,Symbol}[es.names[i] for i in eachindex(es.count) if es.count[i] > 0]
-    isempty(fired) || @warn logged(TrimCommitEvents(events = fired))
+    isempty(fired) || @warn logline(TrimCommitEvents(events = fired))
 
     # The committed-state residuals, nearly free: that boundary's sweep has just
     # run, so the declared reads need only gather from it — with one `rhs` for
@@ -571,7 +571,7 @@ function _verdict!(sim::Simulation, p::TrimProblem, baseline, solution::NamedTup
     off = Tuple{Symbol,Float64,Float64}[(k, Float64(committed[k]), tol[i])
                                         for (i, k) in enumerate(RK)
                                         if !(abs(committed[k]) ≤ tol[i])]
-    isempty(off) || @warn logged(TrimCommitResiduals(residuals = off))
+    isempty(off) || @warn logline(TrimCommitResiduals(residuals = off))
 
     TrimReport(true, solution, residuals, p.tolerances, committed, status, nevals, niters,
                saturated, fired)

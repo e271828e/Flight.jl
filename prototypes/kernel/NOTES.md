@@ -724,9 +724,18 @@ services and periphery (`sim.jl`, `roster.jl`, `bindings.jl`, `devices.jl`,
 barrier hands to one `BuildError`. Trim's setup throw now carries two kinds at
 once, its own `TrimProblemInvalid`s beside the read set's `TapResolution`s,
 which is what a carrier over a heterogeneous vector buys and what the string
-splice was imitating. The `logged(d)` rendering — the kind name, then the
+splice was imitating. The `logline(d)` rendering — the kind name, then the
 message, the carrier's line without the carrier — is the `logged` policy's
-form, used by the two trim warnings and by `attach!`'s `EmptyGreedyClaim`.
+form, used by the two trim warnings and by `attach!`'s `EmptyGreedyClaim`; it
+is named `logline` rather than after the policy because `logged(sim)`, the
+retained-snapshot accessor, already holds that name and the two meanings are
+unrelated. The review over the arc added one kind the conversion had been
+folding into another — `RootInputTypeConflict`, two consumers of one root input
+declaring different concrete entries, caught where `_root_input_type` folds them
+and previously surfacing as the second consumer's `WireTypeMismatch` — and
+rendered the lists-in-hand the kinds were already carrying unshown
+(`output_types`' keys, the stage products, the roster, the root output faces,
+the tier declarations, the selector kinds).
 
 **What stage 2 could not make collect.** §13.1 asks for one barrier per
 stratum, and Stratum A's passes are interleaved with user code:
@@ -736,9 +745,16 @@ stratum, and Stratum A's passes are interleaved with user code:
 `resolve_terminal`, the one-level and direction rules — still abort at the
 first violation and drop what the walk had gathered, because a resolver that
 kept going would need a sentinel return the whole wiring API does not have.
-That is its own increment. The split is worth naming because it is invisible in
-the diff: a model with two bad wire *ends* reports both, and one with a bad
-wire and an unresolvable path reports the path alone.
+That is its own increment. Endpoint resolution belongs to that list:
+`resolve_source`/`resolve_dest` and `_wrong_direction` throw where they stand,
+so of the wire-end kinds only `input_connections`' empty route — the
+`end_ = :connection` arm of `UnknownPort` — reaches the barrier as one of many.
+So does `classify_tier`, which collects `DeclarationOnWrongTier` *within* a
+component but is called component by component, making `ClassUnreadable`,
+`StoreWithoutUpdate` and `TierUnreadable` first-component-only. The split is
+worth naming because it is invisible in the diff: a model with two bad wire
+*ends* reports the first alone, and one with a bad wire and an unresolvable
+path reports whichever the walk reached first.
 
 **`InternalInvariant` is not a diagnostic** (D-215). The activation-identity
 refusals and the handful of `error(...)` assertions raise their own exception
@@ -746,7 +762,9 @@ type, carrying a message and no payload, because they name no failure a user
 can fix: a `Reader` compiled at `Float64` meeting a `Dual` executor is a
 framework invariant broken, not a model that is wrong. Keeping them outside the
 kind set keeps the acceptance-test contract — match on kind and payload —
-honest, and the four tests that read their text do so on purpose.
+honest. Four tests assert `isa InternalInvariant`; exactly one of them
+(`test_readers.jl:139`) also reads the message text, and does so on purpose —
+an `InternalInvariant` carries no payload to match instead.
 
 **One rendering testset, marked.** `message(d)` is presentation, and no test
 outside `test_diagnostics.jl`'s `@testset "rendering"` reads it; everywhere
@@ -1255,6 +1273,14 @@ Each of these is a spec claim rather than a programming convenience:
   and place two cells at one address, the root input's over the port's. The
   identical leaf one level down still builds, which is the rule's other half:
   below the root an input face places nothing, so there is nothing to forbid.
+- **A root input's concrete declaration is unique across its fan-out (§8.2,
+  D-168).** Two consumers of one root input face, one declaring `T` and one
+  `Bool`, are refused at the layout barrier as `RootInputTypeConflict` naming
+  the face, both consuming paths and both declarations — not, as before, as the
+  second consumer's `WireTypeMismatch` against the cell the first one typed. The
+  test asserts that kind's absence too. Its companion is the negative: `T`
+  beside a pinned `Float64` builds, because the two agree at nominal and differ
+  only about partials, which is the fan-out meet rather than a mistake.
 - **A face feeding nothing declares nothing (D-210).** An `input_connections`
   entry routing to the empty tuple is refused at the level that declares it,
   root or not, with the offending entry named. The condition misdiagnosis it
@@ -1510,7 +1536,7 @@ Each of these is a spec claim rather than a programming convenience:
   order, the paths sorted within a group and the count line above; a lone
   diagnostic renders on one line with no count. Beside it, one did-you-mean
   render showing the candidates the site held (carried, never ranked) and one
-  remedy render showing the list in hand, and `logged(d)` for a warning kind.
+  remedy render showing the list in hand, and `logline(d)` for a warning kind.
   Nothing else in the suite may match rendered diagnostic text (§13.2).
 
 ## Stand-in retirement history

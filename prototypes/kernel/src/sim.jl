@@ -185,11 +185,16 @@ end
 function _stop_faces(layout::Layout, stop_on)
     faces, addrs = Symbol[], Any[]
     root_input_names = Symbol[f for (f, _) in layout.root_inputs]
+    # The root output-face list Appendix C asks a refusal to carry: every cell
+    # the root addresses, less the root inputs — `addr` is a dictionary, so the
+    # order is fixed here rather than left to hashing.
+    out_faces = sort!(Symbol[f for ((p, f), _) in layout.addr
+                             if isempty(p) && !(f in root_input_names)])
     diags = Diagnostic[]
     for f in stop_on
         s = Symbol(f)
         if !haskey(layout.addr, ("", s))
-            push!(diags, StopFaceInvalid(face = s, reason = :unknown))
+            push!(diags, StopFaceInvalid(face = s, reason = :unknown, candidates = out_faces))
             continue
         end
         if s in root_input_names
@@ -832,7 +837,7 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
                                     should_abort, diag, WriterAccount(), h))
     reclaim!(plane, sim.exec.act.layout)
     is_greedy(b) && isempty(claim) &&
-        @warn logged(EmptyGreedyClaim(device = "device $id ($(typeof(dev)))", binding = string(typeof(b))))
+        @warn logline(EmptyGreedyClaim(device = "device $id ($(typeof(dev)))", binding = string(typeof(b))))
     h
 end
 

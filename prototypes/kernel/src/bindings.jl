@@ -142,7 +142,7 @@ function _compile_reads(layout::Layout, nt, T::Type)
     addrs = map(values(nt)) do s
         s isa ReadSelector || throw(BuildError(
             BindingContractMismatch(binding = string(T), reason = :reads_not_selectors,
-                                     observed = s)))
+                                     observed = typeof(s))))
         _resolve_read(layout, s, T)
     end
     ReadGather{keys(nt)}(addrs)
@@ -155,30 +155,34 @@ _root_input_names(layout::Layout) = Symbol[f for (f, _) in layout.root_inputs]
 # snapshot-bound reader naming a store selector is a resolution error at
 # attach — in the didactic register, with the remedy named.
 _resolve_read(::Layout, s::StoreSelector, T::Type) = throw(BuildError(
-    ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :store_selector)))
+    ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :store_selector,
+                           path = _selpath(s), field = _field(s))))
 
 function _resolve_read(layout::Layout, s::GetOutput, T::Type)
     s.i === nothing || throw(BuildError(
-        ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :indexed)))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :indexed,
+                               path = s.path, field = s.name)))
     haskey(layout.addr, (s.path, s.name)) || throw(BuildError(
-        ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :unknown_cell)))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :unknown_cell,
+                               path = s.path, field = s.name)))
     layout.addr[(s.path, s.name)]
 end
 
 function _resolve_read(layout::Layout, s::GetInput, T::Type)
     s.face in _root_input_names(layout) || throw(BuildError(
         ReadBindingUnresolved(binding = string(T), selector = _spell(s),
-                               reason = :unknown_root_input, candidates = _root_input_names(layout))))
+                               reason = :unknown_root_input, field = s.face,
+                               candidates = _root_input_names(layout))))
     layout.addr[("", s.face)]
 end
 
 function _resolve_read(layout::Layout, s::GetFace, T::Type)
     s.name in _root_input_names(layout) && throw(BuildError(
         ReadBindingUnresolved(binding = string(T), selector = _spell(s),
-                               reason = :root_input_not_output)))
+                               reason = :root_input_not_output, field = s.name)))
     haskey(layout.addr, ("", s.name)) || throw(BuildError(
         ReadBindingUnresolved(binding = string(T), selector = _spell(s),
-                               reason = :unknown_output_face)))
+                               reason = :unknown_output_face, field = s.name)))
     layout.addr[("", s.name)]
 end
 

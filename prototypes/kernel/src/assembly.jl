@@ -717,7 +717,8 @@ function _check_face_names(path::String, comp, viol::Vector{Diagnostic})
     names = vcat(String[String(face) for (face, _) in input_connections(comp)],
                  String[String(face) for (_, face) in output_connections(comp)])
     for n in names
-        occursin('/', n) && push!(viol, FaceNameIllegal(path = path, face = n))
+        occursin('/', n) &&
+            push!(viol, FaceNameIllegal(path = path, face = n, invariant = :contains_slash))
     end
     allunique(names) ||
         push!(viol, FaceNameCollision(path = path, site = :assembly,

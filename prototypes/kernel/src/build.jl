@@ -294,7 +294,7 @@ function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
         end
     end
     for face in flat.root_inputs
-        P = _root_input_type(flat, decls, face)
+        P = _root_input_type(flat, decls, face, viol, T === Float64)
         place!("", :root_input, face, P) || continue
         push!(root_inputs, (face, probe_value(P)))
     end
@@ -307,13 +307,31 @@ function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
 end
 
 # A root input's cell follows the same derivation an assembly face does: it is the
-# internal endpoint's. With fan-out there are several, and the first one decides —
-# a divergent sibling then meets the ordinary entry check at its own probe.
-function _root_input_type(flat::Flat, decls::Vector{Decls}, face::Symbol)
+# internal endpoint's — and under fan-out there are several. §8.2 makes the
+# concrete declaration unique across them, so the fold below compares the
+# consumers' entries and collects `RootInputTypeConflict` when two disagree; the
+# first consumer's declaration is still what the cell takes, so the layout can
+# finish and the barrier report every violation at once.
+#
+# `check` is set at the nominal activation alone, because that is where the rule
+# lives: a `T` entry and a pinned `Float64` entry are one type there, and their
+# tolerance difference — a conflict at no activation — is the D-168 meet. At a
+# seeded activation the same two entries evaluate to `Dual` and `Float64`, and
+# comparing them would refuse a lawful model.
+function _root_input_type(flat::Flat, decls::Vector{Decls}, face::Symbol,
+                          viol::Vector{Diagnostic}, check::Bool)
+    paths, declared = String[], Any[]
     for (ci, conns) in enumerate(flat.conns), (f, producer) in conns
-        producer === ("", face) && return decls[ci].ins[f]
+        if producer === ("", face)
+            push!(paths, flat.paths[ci])
+            push!(declared, decls[ci].ins[f])
+        end
     end
-    throw(InternalInvariant("root input face `$face` routes to no input"))
+    isempty(paths) && throw(InternalInvariant("root input face `$face` routes to no input"))
+    P = first(declared)
+    check && any(Q -> Q !== P, declared) &&
+        push!(viol, RootInputTypeConflict(face = face, paths = paths, declared = declared))
+    P
 end
 
 """Address of the cell feeding `face`: its resolved producer's port, or a root input."""

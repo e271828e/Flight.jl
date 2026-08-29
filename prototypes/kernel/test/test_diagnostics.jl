@@ -243,6 +243,7 @@ using InteractiveUtils: subtypes    # the coverage check below
                      entry = "an interface connection"),
         WireTypeMismatch(path = "a/b", face = :u, declared = Float64, producer_path = "a/c",
                          producer_port = :y, observed = Bool, activation = Float64),
+        RootInputTypeConflict(face = :in, paths = ["a", "b"], declared = Any[Float64, Bool]),
         PathResolution(entry = "`resolve` on `Group`", spelling = "a/b/c",
                        reason = :not_a_terminal),
         PathResolution(entry = "`resolve` on `Group`", spelling = "z/y", reason = :unknown_child,
@@ -261,7 +262,7 @@ using InteractiveUtils: subtypes    # the coverage check below
         DeclarationOnWrongTier(path = "a/b", declaration = :project, reason = :continuous_only,
                                found = :discrete),
         DeclarationOnWrongTier(path = "a/b", declaration = :project, reason = :no_manifold),
-        FaceNameIllegal(path = "a", face = "u/v"),
+        FaceNameIllegal(path = "a", face = "u/v", invariant = :contains_slash),
         FaceNameCollision(path = "a", faces = ["u"], site = :assembly),
         FaceNameCollision(path = "", faces = ["u"], site = :root),
         FaceDirectionConflict(entry = "child_connections at `a`", path = "a/b",
@@ -477,9 +478,10 @@ end
     # Two kinds × two paths: groups in first-appearance order, paths sorted
     # within a group, the kind name leading each line, the count line above.
     e = BuildError(Diagnostic[UnconnectedInput(path = "b", face = :u),
-                              FaceNameIllegal(path = "b", face = "p/q"),
+                              FaceNameIllegal(path = "b", face = "p/q", invariant = :contains_slash),
                               UnconnectedInput(path = "a", face = :v),
-                              FaceNameIllegal(path = "a", face = "r/s")])
+                              FaceNameIllegal(path = "a", face = "r/s",
+                                              invariant = :contains_slash)])
     @test kinds(e) == [UnconnectedInput, FaceNameIllegal]
     lines = split(sprint(showerror, e), '\n')
     @test lines[1] == "BuildError: 4 diagnostics"
@@ -504,9 +506,10 @@ end
     @test occursin("`init!`", m) && occursin("`u`, `e`", m)
     @test occursin("nothing was written", m)
 
-    # A `logged` warning renders like a carrier line — the kind name, then the
-    # message — because it never gets a `showerror` to lead it (D-214).
+    # A `logged`-policy warning renders like a carrier line — the kind name, then
+    # the message — because it never gets a `showerror` to lead it (D-214). The
+    # rendering is `logline`; `logged` is the snapshot accessor (§11.4).
     d = TrimCommitResiduals(residuals = [(:torque, 1.0, 0.5)])
-    @test logged(d) == "TrimCommitResiduals: " * message(d)
-    @test startswith(logged(d), "TrimCommitResiduals: ") && severity(d) === :warning
+    @test logline(d) == "TrimCommitResiduals: " * message(d)
+    @test startswith(logline(d), "TrimCommitResiduals: ") && severity(d) === :warning
 end

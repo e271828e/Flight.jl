@@ -125,13 +125,13 @@ rational period at construction (§10.5).
 struct Period
     T::Rational{Int}
     Period(T::Union{Integer,Rational{<:Integer}}) = new(Rational{Int}(T))
-    Period(::AbstractFloat) =
-        throw(BuildError(ArgumentInvalid(call = :Period, reason = :inexact)))
+    Period(T::AbstractFloat) =
+        throw(BuildError(ArgumentInvalid(call = :Period, reason = :inexact, value = T)))
 end
 
 Hz(f::Union{Integer,Rational{<:Integer}}) = Period(1 // f)
-Hz(::AbstractFloat) =
-    throw(BuildError(ArgumentInvalid(call = :Hz, reason = :inexact)))
+Hz(f::AbstractFloat) =
+    throw(BuildError(ArgumentInvalid(call = :Hz, reason = :inexact, value = f)))
 
 period(q::Period) = q.T
 
@@ -155,10 +155,10 @@ struct Absolute
     T::Rational{Int}
     τ::Rational{Int}
     Absolute(q::Period, τ::Union{Integer,Rational{<:Integer}} = 0) = new(q.T, Rational{Int}(τ))
-    Absolute(::Period, ::AbstractFloat) =
-        throw(BuildError(ArgumentInvalid(call = :Absolute, reason = :inexact)))
-    Absolute(::Real, τ...) =
-        throw(BuildError(ArgumentInvalid(call = :Absolute, reason = :not_a_quantity)))
+    Absolute(::Period, τ::AbstractFloat) =
+        throw(BuildError(ArgumentInvalid(call = :Absolute, reason = :inexact, value = τ)))
+    Absolute(q::Real, τ...) =
+        throw(BuildError(ArgumentInvalid(call = :Absolute, reason = :not_a_quantity, value = q)))
 end
 
 """

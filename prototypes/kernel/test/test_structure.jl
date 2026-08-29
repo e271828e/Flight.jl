@@ -511,6 +511,50 @@ child_connections(::DoubleFedSibling) = ("src/out" => "loop/in",)
     @test port(sim, "c", :out) == 6.0
 end
 
+# --- the root input's type, under fan-out (§8.2, D-168) -----------------------
+# A root input is produced by no component, so its type comes from the consumer
+# declarations alone; with several consumers the concrete declaration has to be
+# unique among them.
+
+struct RealEntry <: AbstractComponent            # a `T` entry: follows the activation
+end
+input_types(::RealEntry, ::Type{T}) where {T<:Real} = (u = T,)
+output_types(::RealEntry, ::Type{T}) where {T<:Real} = (y = T,)
+h_xu(::RealEntry, (; u)) = (y = u.u,)
+
+struct BoolEntry <: AbstractComponent            # ...against a `Bool` at the same face
+end
+input_types(::BoolEntry, ::Type{T}) where {T<:Real} = (u = Bool,)
+output_types(::BoolEntry, ::Type{T}) where {T<:Real} = (y = T,)
+h_xu(::BoolEntry, (; u)) = (y = u.u ? 1.0 : 0.0,)
+
+struct PinnedEntry <: AbstractComponent          # ...against a pinned `Float64`
+end
+input_types(::PinnedEntry, ::Type{T}) where {T<:Real} = (u = Float64,)
+output_types(::PinnedEntry, ::Type{T}) where {T<:Real} = (y = T,)
+h_xu(::PinnedEntry, (; u)) = (y = u.u,)
+
+_fanned_root(a, b) = Group((a = a, b = b);
+                           inputs = ("in" => ("a/u", "b/u"),), outputs = ("a/y" => "y",))
+
+@testset "two consumers of one root input declare one concrete type (§8.2, D-168)" begin
+    err = failure(() -> build(_fanned_root(RealEntry(), BoolEntry())))
+    @test err isa BuildError
+    d = only(err.diagnostics)
+    @test d isa RootInputTypeConflict && d.face === :in
+    @test d.paths == ["a", "b"] && d.declared == [Float64, Bool]
+    @test path(d) == ""                        # the face's own path is the root's
+
+    # It is the layout barrier that catches it, ahead of stage-2 probing — so
+    # the surfacing this replaces, the second consumer's probe reading the
+    # first's cell, is gone: no `WireTypeMismatch` for this model.
+    @test !any(x -> x isa WireTypeMismatch, err.diagnostics)
+
+    # A tolerance difference is no conflict (D-168's meet): `T` and a pinned
+    # `Float64` are one type at nominal, and they disagree about partials alone.
+    @test build(_fanned_root(RealEntry(), PinnedEntry())) isa Build
+end
+
 # --- tier classification (§8.2) -----------------------------------------------
 # Tier is read off the declaration shape. These components are the shapes the
 # classifier has to separate, plus the four ways a declaration set can disagree.

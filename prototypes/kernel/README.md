@@ -21,7 +21,7 @@ alone. On demand:
 | file | implements | spec |
 | --- | --- | --- |
 | `src/leaves.jl` | the leaf walk: flatten / reconstruct / the activation retype | §7.1, §7.2 |
-| `src/diagnostics.jl` | the diagnostic kinds, `severity`/`path`/`message`, the `BuildError` carrier and its compiler-style rendering, `logged`, `InternalInvariant` | §13.1, §13.2, Appendix C, D-214, D-215 |
+| `src/diagnostics.jl` | the diagnostic kinds, `severity`/`path`/`message`, the `BuildError` carrier and its compiler-style rendering, `logline`, `InternalInvariant` | §13.1, §13.2, Appendix C, D-214, D-215 |
 | `src/declare.jl` | the declaration layer: both tiers' name families and arities, the bundle law, `probe_value`, the connection declarations beside `transparent_container`, the rate registers with `sample_times`, the event surface | §5.2, §8.2, §8.5–§8.7, §9.3, D-211 |
 | `src/assembly.jl` | class by declaration shape; children and containers (bare-key transparency and its three-arm collision family); paths, §6.1's one-level rule, endpoint and face resolution, the root's face invariants; the flatten pass with its two-sided face graph and the sample-time fold; §13.3's `resolve`/`resolve_terminal`/face-list primitives and §8.8's `input_passthrough`/`output_passthrough` | §6.1, §8.5–§8.8, §9.1, §9.2, §13.3, D-207–D-212 |
 | `src/store.jl` | per-eltype cell stores, the `StoreBundle`, gather/scatter, `_cell_key`, the `Clock` | §9.7, D-162 |
@@ -51,10 +51,16 @@ The long form, with reasons, is in `MAP.md`. In brief:
   struct, so no `ThreadBudget`, `DeadStage`, `BundleFieldError`,
   `UserCodeFraming`, `UnboundedRun` or replay kind is defined here, and
   `TapResolution` is raised by the read register alone, never by §14.10's
-  absent tap register. Absent with them: did-you-mean **ranking** (the
-  candidate list a site holds is carried and rendered; nothing orders it by
-  edit distance, and a mistyped *path* gets no list at all) and §11.8's
-  maxlog renderer.
+  absent tap register. Undefined for the same reason, their *check* being
+  absent rather than their reporting: `IllegalStateLeaf`, `MissingProbeValue`,
+  `AbstractAtRoot`, `TierSignatureMismatch` and `WalkingFaceAtFrozenEntry`.
+  Three periphery refusals are still plain `error(...)` calls with no kind: a
+  datum naming no channel of a `TableBinding` (`bindings.jl` ~93), a device
+  with no `loop` method (`devices.jl` ~181), and `gather` on a handle whose
+  binding declares no output side (`devices.jl` ~265). Absent with them:
+  did-you-mean **ranking** (the candidate list a site holds is carried and
+  rendered; nothing orders it by edit distance, and a mistyped *path* gets no
+  list at all) and §11.8's maxlog renderer.
 - **§9.5's always-on conformance check** (the return laws are checked once,
   at the probe); **§8.3 visibility**; auto-published ports; §13.3's
   load-bearing generic-holding check.

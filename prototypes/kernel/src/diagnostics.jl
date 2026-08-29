@@ -96,9 +96,12 @@ end
 """
 A warning-severity kind's rendering for the log (§13.2, D-214's `logged`
 policy): the same kind-name-leading line the carrier prints, minus the carrier
-— a logged warning never throws, so it has no `showerror` to lead it.
+— a logged warning never throws, so it has no `showerror` to lead it. Named
+`logline` rather than `logged` because the policy's name is taken here by
+`logged(sim)`, the retained-snapshot accessor (§11.4), and one generic function
+over both would be two unrelated meanings sharing a name.
 """
-logged(d::Diagnostic) = string(nameof(typeof(d)), ": ", message(d))
+logline(d::Diagnostic) = string(nameof(typeof(d)), ": ", message(d))
 
 """
 An internal invariant firing (D-215): not a diagnostic and not a kind, because
@@ -176,6 +179,26 @@ message(d::WireTypeMismatch) =
 # types and the activation scalar, so it is computed here rather than carried.
 _pin(d) = (d.declared isa Type && d.observed isa Type && d.activation isa Type) ?
           _pin_hint(d.declared, d.observed, d.activation) : ""
+
+"""
+§8.2: two consumers of one root input face declaring different entry types.
+A root input takes its type from the consumer declaration alone, so under
+fan-out the concrete declaration has to be unique. The comparison is *at
+nominal*, which is what makes a tolerance difference no conflict: `SVector{3,T}`
+and `SVector{3,Float64}` both evaluate to `SVector{3,Float64}` there, and their
+disagreement about partials is the fan-out meet (D-168), a legitimate model.
+"""
+Base.@kwdef struct RootInputTypeConflict <: Diagnostic
+    face::Symbol                             # the root input face
+    paths::Vector{String}                    # the consuming components
+    declared::Vector{Any}                    # their entry declarations at nominal
+end
+message(d::RootInputTypeConflict) =
+    "root input `$(d.face)` is declared " *
+    join(("$(_at_path(p))::$(P)" for (p, P) in zip(d.paths, d.declared)), ", ") *
+    " — a root input is typed by its consumers alone, so its concrete declaration " *
+    "has to be unique across the fan-out; agree the entries, or give the face a " *
+    "producer (§8.2, D-168)"
 
 "§6.1, §13.3: a path that resolves to nothing, or reaches past the one level a register admits."
 Base.@kwdef struct PathResolution <: Diagnostic
@@ -293,12 +316,14 @@ message(d::DeclarationOnWrongTier) =
 Base.@kwdef struct FaceNameIllegal <: Diagnostic
     path::String
     face::String
-    invariant::Symbol = :contains_slash
+    invariant::Symbol                        # the invariant broken; :contains_slash is §8.6's
 end
 path(d::FaceNameIllegal) = d.path
 message(d::FaceNameIllegal) =
+    d.invariant === :contains_slash ?
     "$(_at_path(d.path)): face name `$(d.face)` contains `/`, which is reserved for " *
-    "structural paths (§8.6)"
+    "structural paths (§8.6)" :
+    "$(_at_path(d.path)): face name `$(d.face)` breaks the `$(d.invariant)` invariant (§8.6)"
 
 "§8.6: one face name declared twice — across an assembly's two methods, or at a primitive root."
 Base.@kwdef struct FaceNameCollision <: Diagnostic
@@ -423,7 +448,9 @@ end
 path(d::TierUnreadable) = d.path
 message(d::TierUnreadable) =
     "`$(d.path)` declares no `output_types` and owns no state — there is nothing for the " *
-    "tier to be read off (§8.2)"
+    "tier to be read off: declare `output_types`, or give the component an `init_x`/`init_s` " *
+    "store with the update law that drives it. Its tier-announcing declarations are " *
+    "$(_namelist(d.declarations)) (§8.2)"
 
 "§7.1, §8.2, D-215: the port twin of `IllegalStateLeaf` — a declared type with no numeric leaves."
 Base.@kwdef struct IllegalPortType <: Diagnostic
@@ -467,7 +494,9 @@ Base.@kwdef struct DeclaredNotProduced <: Diagnostic
 end
 path(d::DeclaredNotProduced) = d.path
 message(d::DeclaredNotProduced) =
-    "`$(d.path)`: declared port(s) $(_plainlist(d.ports)) produced by no stage"
+    "`$(d.path)`: declared port(s) $(_plainlist(d.ports)) produced by no stage — either a " *
+    "stage returns them or `output_types` drops them; the stages return " *
+    "$(_namelist(d.products))"
 
 "§8.3, §8.4 w5: a stage returning a field `output_types` does not declare."
 Base.@kwdef struct UndeclaredReturnField <: Diagnostic
@@ -478,7 +507,8 @@ Base.@kwdef struct UndeclaredReturnField <: Diagnostic
 end
 path(d::UndeclaredReturnField) = d.path
 message(d::UndeclaredReturnField) =
-    "`$(d.path)`: $(d.stage) returns `$(d.name)`, which `output_types` does not declare"
+    "`$(d.path)`: $(d.stage) returns `$(d.name)`, which `output_types` does not declare — " *
+    "declare it, or drop it from the return; the declared ports are $(_namelist(d.candidates))"
 
 """
 §9.5: the return laws, probed. `shape` names what the return had to be shaped
@@ -575,7 +605,8 @@ Base.@kwdef struct MissingInit <: Diagnostic
     status::Symbol                           # the simulation's status
 end
 message(d::MissingInit) =
-    "`$(d.op)` before `init!`: boundary zero has not run — `init!` is mandatory (§12.6)"
+    "`$(d.op)` before `init!`: boundary zero has not run and this simulation is " *
+    "`$(d.status)` — `init!` is mandatory (§12.6)"
 
 "§11.3, §14: a service call against a lifecycle status that does not admit it."
 Base.@kwdef struct ServiceLifecycle <: Diagnostic
@@ -583,10 +614,19 @@ Base.@kwdef struct ServiceLifecycle <: Diagnostic
     status::Symbol
     legal::Vector{Symbol} = Symbol[]         # the statuses that admit the operation
 end
+
+# `:running` refuses two different operations, and the sentence differs: an
+# advance entry is refused *because the loop is already advancing*, while every
+# other refusal at this status is a stopped-sim operation meeting a running loop.
+_advance_entry(op::AbstractString) = op == "run!" || op == "step!"
+
 message(d::ServiceLifecycle) =
     d.status === :running ?
-    "`$(d.op)` is a stopped-sim operation and the simulation is running — the roster is " *
-    "frozen per run and the loop owns the stores between drains (§11.3, §12.5, §12.6)" :
+    (_advance_entry(d.op) ?
+     "`$(d.op)`: the simulation is already running — one advance owns the stores between " *
+     "drains, and a second one from another thread would race it (§12.6)" :
+     "`$(d.op)` is a stopped-sim operation and the simulation is running — the roster is " *
+     "frozen per run and the loop owns the stores between drains (§11.3, §12.5, §12.6)") :
     d.status === :errored ?
     "`$(d.op)` on a simulation that ended `errored` — terminally stopped, never resumable " *
     "or re-initialized; reproduction is trace replay, absent here (§13.6)" :
@@ -606,7 +646,7 @@ end
 message(d::StopFaceInvalid) =
     d.reason === :unknown ?
     "stop_on names `$(d.face)`, which is no root face — a stop face is a root-exported " *
-    "Bool output face (§13.5)" :
+    "Bool output face, and this model exports $(_namelist(d.candidates)) (§13.5)" :
     d.reason === :root_input ?
     "stop_on names `$(d.face)`, a root input — a stop face is a root-exported *output*: " *
     "the model detects and exports the condition, and the deployment names it (§13.5)" :
@@ -802,7 +842,7 @@ function message(d::ReadBindingUnresolved)
         return "$(d.binding) reads $(d.selector), which names a root *input* face — the " *
                "integration register is the exported output faces, and a root input is " *
                "read back with get_input (§14.4, §11.2)"
-    "$(d.binding) reads $(d.selector), which names no root-exported output face " *
+    "$(d.binding) reads $(d.selector): `$(d.field)` is no root-exported output face " *
     "(§14.4, §11.2)"
 end
 
@@ -933,7 +973,15 @@ end
 path(d::TapResolution) = d.path
 
 _tap_noun(s) = s === :output_port ? "output port" : "state field"
-_tapviol(d, what) = "the read labeled `$(d.label)` is $(d.selector), and $what (§14.4)"
+
+# The tap set and the index come off the selector's own kind, so every arm has
+# them and the shared prefix shows them: which of `x`/`u`/`y` the read addresses
+# is §14.10's payload, and the index is the coordinate the author wrote.
+_tapviol(d, what) =
+    "the read labeled `$(d.label)` is $(d.selector)" *
+    (d.tap === nothing ? "" :
+     " (tap `$(d.tap)`" * (d.index === nothing ? "" : ", index $(d.index)") * ")") *
+    ", and $what (§14.4)"
 
 function message(d::TapResolution)
     d.reason === :assembly_path &&
@@ -1080,15 +1128,16 @@ end
 function message(d::ArgumentInvalid)
     d.reason === :inexact &&
         return d.call === :Period ?
-               "a period is an exact Rational — write `Period(1//50)`, not a float: grid " *
-               "derivation is GCD arithmetic (§10.5)" :
+               "a period is an exact Rational — write `Period(1//50)`, not $(repr(d.value)): " *
+               "grid derivation is GCD arithmetic (§10.5)" :
                d.call === :Hz ?
-               "a frequency is an exact Rational — write `Hz(1//2)` for 0.5 Hz, not a " *
-               "float: grid derivation is GCD arithmetic (§10.5)" :
-               "an offset is an exact Rational — write `Absolute(Hz(50), 1//500)`, not a " *
-               "float: grid derivation is GCD arithmetic (§10.5)"
+               "a frequency is an exact Rational — write `Hz(1//2)` for 0.5 Hz, not " *
+               "$(repr(d.value)): grid derivation is GCD arithmetic (§10.5)" :
+               "an offset is an exact Rational — write `Absolute(Hz(50), 1//500)`, not " *
+               "$(repr(d.value)): grid derivation is GCD arithmetic (§10.5)"
     d.reason === :not_a_quantity &&
-        return "`Absolute` takes a quantity value: `Period(1//50)` or `Hz(50)` (§10.5)"
+        return "`Absolute` takes a quantity value: `Period(1//50)` or `Hz(50)` — got " *
+               "$(repr(d.value)) (§10.5)"
     d.reason === :both_given &&
         return "step! takes `frames` or `t_plus`, not both — the count and the duration are " *
                "two spellings of one advance (§12.6)"
@@ -1136,7 +1185,10 @@ Base.@kwdef struct ReadSetMisuse <: Diagnostic
 end
 message(d::ReadSetMisuse) =
     d.reason === :not_a_selector ?
-    "the read labeled `$(d.label)` is $(d.observed) — a read set is labeled *selectors*, " *
+    "the read labeled `$(d.label)` is $(d.observed)" *
+    (isempty(d.in_hand) ? "" :
+     ", and the selector kind(s) in hand are $(_plainlist(d.in_hand))") *
+    " — a read set is labeled *selectors*, " *
     "get_state / get_deriv / get_output / get_input / get_face (§14.4)" :
     "$(d.observed) is not a read set — wrap the labeled selectors in `reads(…)`: " *
     "reads(name = get_deriv(\"path\", :field), …) (§14.4, §14.7)"
@@ -1148,4 +1200,5 @@ Base.@kwdef struct NotAttached <: Diagnostic
 end
 message(d::NotAttached) =
     "this $(d.device) instance is not rostered — `detach!` releases an existing " *
-    "attachment (§11.3)"
+    "attachment, and the roster holds " *
+    (isempty(d.roster) ? "no device" : join(("`$(r)`" for r in d.roster), ", ")) * " (§11.3)"
