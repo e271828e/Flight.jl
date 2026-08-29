@@ -129,4 +129,7 @@ Traps hit more than once while building, for whoever builds next:
 - assert a store's type on the `Ref` — `(v[ci]::Base.RefValue{S})[]` — never
   after `[]`, which boxes 16 bytes;
 - `Symbol(::Type)` printing depends on the printing module; key buffers with
-  `_cell_key`.
+  `_cell_key`;
+- the init-service keyword is `t0` (the spec's signatures, D-110) while the
+  *concept* and `Clock`'s field stay `t₀` — `clock.t₀ = t0` inside `init!`
+  is that split, not a typo; don't unify them.
