@@ -135,7 +135,7 @@ selectors, `(; label = get_output(...), ...)`, and the labels are the
 NamedTuple `map_output` receives. Every failure names the selector at fault;
 the did-you-mean candidate lists are absent (README).
 """
-function _compile_reads(layout::Layout, nt, T::Type)
+function _compile_gather(layout::Layout, nt, T::Type)
     nt isa NamedTuple || throw(BuildError(
         BindingContractMismatch(binding = string(T), reason = :reads_not_namedtuple,
                                  observed = typeof(nt))))

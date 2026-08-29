@@ -827,7 +827,7 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
     end
     isempty(claim_diags) || throw(BuildError(claim_diags))
     # The output side: reads → one gather, resolved before admission commits.
-    rg = is_output(b) ? _compile_reads(sim.exec.act.layout, reads(b), typeof(b)) : nothing
+    rg = is_output(b) ? _compile_gather(sim.exec.act.layout, reads(b), typeof(b)) : nothing
     id = plane.next_id                             # assigned on admission alone: a
     plane.next_id += 1                             # rejected attach consumes no id
     w = Writer(sim.exec.act.layout, claim)
