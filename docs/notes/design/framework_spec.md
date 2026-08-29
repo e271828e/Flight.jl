@@ -5406,24 +5406,34 @@ without the root inputs; the init/trim services
 own root-input initialization ([§14.6][s14-6]), and the header capture extends
 naturally. The header carries two further things:
 
-- **each writer's face-name → position schema** — the run's frozen surface
-  partition — since positional records are meaningless without it and replay
-  does not reconstruct claims ([§12.7][s12-7]);
+- **each writer's face-name → position schema**, since positional records
+  are meaningless without it and replay does not reconstruct claims
+  ([§12.7][s12-7]). The schema list only grows ([D-217][d-217]): the header
+  outlives a run, and a roster change between advances ([§12.6][s12-6])
+  recompiles the harness writer, so the same face moves position. Every
+  capture and every roster change appends the current writer set, earlier
+  records keep their index, and a record resolves only through its own schema
+  entry;
 - **the run's deployment block**: `t₀`, `Δt_base`, `h`, `n`, the algorithm
   identifier, `localization_tol`, `localization_budget` ([§10.4][s10-4]),
-  `firing_budget` ([§10.6][s10-6]) and the effective `t_end`/`stop_on` pair,
-  captured at the same instant as the stores.
+  `firing_budget` ([§10.6][s10-6]) and the `t_end`/`stop_on` pair bound at
+  construction, captured at the same instant as the stores. A `run!` override
+  post-dates the capture ([§13.5][s13-5]); the header records what `init!`
+  knows ([D-217][d-217]).
 
 The trajectory depends on the deployment block exactly as it depends on the
 stores. The deployment binding ([§9.1][s9-1]) sits outside the `Build`, and
 `t₀` post-dates even deployment ([§14.5][s14-5]). A header without them could
 therefore not back the bit-identity claim ([§12.7][s12-7]). This block is also
-what the artifact's **run metadata** names ([§13.5][s13-5], [Appendix B][sB]) —
-the recorded home of the effective termination pair. The header capture is the
+what the artifact's **run metadata** names ([§13.5][s13-5], [Appendix B][sB]).
+The header capture is the
 one full-state capture in a normal run, and the other half of what "given the
 initial state and the trace, the log is recomputable" requires. Header plus
 batches are the *primary* record; everything else, the state trajectory
-included, is derived ([§11.2][s11-2]).
+included, is derived ([§11.2][s11-2]). The trace also carries its length, the
+number of drains since the capture ([D-217][d-217]). A recording whose last
+frames drained nothing still ran them, and replay ends at that count
+([§12.7][s12-7]).
 
 **Trace recording is on by default.** The trace is cleared at `init!` and
 retrievable after the run, and a plain kill switch covers memory-constrained
@@ -6719,7 +6729,8 @@ Everything else is the loop as already specified:
   replay.
 - **Validation is loud and up front.** Before the first frame, the header is
   validated against the `Build` (store layout, root input [faces](#g-face)), and the
-  trace's batch entries against the root input-face list. Each writer's
+  trace's batch entries against the root input-face list and each batch's
+  frame ordinal against the recording's length ([D-217][d-217]). Each writer's
   face-name → position schema ([§11.5][s11-5]) is **validated** in the same pass:
   a recorded schema that disagrees with the target model's own root-input faces
   is a replay error. The checks are attach-style, and a failure reports
@@ -7199,8 +7210,10 @@ default.** `Simulation(world; t_end, stop_on)` sets the defaults for the
 simulation; `run!(sim; t_end = …, stop_on = …)` binds them for **that run
 only**. The `run!` argument wins where given, and the constructor's value
 stands where it is not. Nothing about the `Simulation` is mutated, so the next
-`run!` without arguments gets the constructor's policy again. The effective
-values are what the run metadata records. `stop_on` face validation against
+`run!` without arguments gets the constructor's policy again. The run
+metadata records the constructor's pair; a run's effective bound is reported
+by its termination record when it fires ([D-217][d-217]). `stop_on` face
+validation against
 the `Build` runs at **both** binding sites, identically: an unknown or
 non-`Bool` face fails at `run!` exactly as it fails at construction.
 
@@ -9913,8 +9926,9 @@ updates it** (the return law, [§5.2][s5-2] — no padding, `x` complete, `m` pa
 
   `margin` defaults to 2 ms, the sleep primitive's granularity plus its
   measured overshoot, with `0` / 2 ms / `∞` spanning the design space
-  ([§10.7][s10-7]). The effective `t_end`/`stop_on` pair is recorded in the run
-  metadata ([§13.5][s13-5]).
+  ([§10.7][s10-7]). The constructor's `t_end`/`stop_on` pair is recorded in
+  the run metadata; the override is reported by the termination record when
+  it fires ([§13.5][s13-5]).
 - `step!(sim; frames = 1) → frames_advanced` — synchronous partial advance
   through the ordinary frame sequence, bit-identical to the same frames under
   `run!`; `t_plus = <duration>` is the mutually-exclusive duration spelling
@@ -10089,9 +10103,9 @@ with the collection and never triggering its throw — is currently empty
 | `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.8][s14-8] | warning | service | logged |
 | `ConditionShapeDrift` | the compiled tree type and the observed one; for a prefix mismatch, the node position and both strings; the remedy — a condition function returns one shape for every decision | [§14.4][s14-4] | error | service | fail-fast |
 | `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§9.1][s9-1], [§9.2][s9-2] | warning | service, at deployment binding (derivation path only) | logged |
-| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
-| `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
-| `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | error | service | collected |
+| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value) or a frame ordinal outside the recording's length (the writer, the ordinal, the legal range); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | error | service | collected |
+| `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | error | service | collected |
+| `ReplayUnknownFace` | face name, or the bare position where the writer's schema has no name for it; frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | error | service | collected |
 | `ArgumentInvalid` | the call (`step!`, `trim!`, `TableBinding`, a period constructor), the argument, the value in hand, the violated constraint — the twin of `DeploymentInvalid` for arguments that are not deployment parameters | [§8.7][s8-7], [§11.6][s11-6], [§12.6][s12-6], [§14.7][s14-7] | error | service; build, in a `sample_times` declaration | fail-fast; collected over a `TableBinding`'s entry table |
 | `ReadSetMisuse` | the offending argument's type, the selector kinds in hand — the read register's twin of `ConditionNodeMisuse` | [§14.4][s14-4] | error | service | fail-fast |
 | `NotAttached` | the device id or handle offered to `detach!`, the roster's device ids | [§11.3][s11-3] | error | service | fail-fast |
@@ -10831,8 +10845,8 @@ faces and deployment block — up front, applying the header's `t₀`
 <a id="g-run-metadata"></a>**run metadata** — the trace header's deployment block: `t₀`, `Δt_base`,
 `h`, `n`, the algorithm identifier, `localization_tol`, `localization_budget`,
 `firing_budget` and the
-effective `t_end`/`stop_on`
-pair ([§11.5][s11-5], [§13.5][s13-5]).
+`t_end`/`stop_on` pair bound at
+construction ([§11.5][s11-5], [§13.5][s13-5]).
 
 <a id="g-trace"></a>**trace** — the primary record of a session: the sequence of drained,
 device-tagged batches per frame, plus its header. On by default, because the
@@ -11186,6 +11200,7 @@ carried in the spec rather than left to the reader: the worked assembly of
 [d-211]: framework_decisions.md#d-211--let-a-component-declare-one-container-name-transparent
 [d-212]: framework_decisions.md#d-212--refuse-the-transparent-bare-key-that-shadows-a-sibling-container-field
 [d-213]: framework_decisions.md#d-213--establish-a-services-frozen-cells-from-the-authored-discrete-state
+[d-217]: framework_decisions.md#d-217--conform-the-trace-and-replay-sections-to-the-prototypes-record
 [s1]: #1-purpose-and-method
 [s10]: #10-time-and-execution
 [s10-1]: #101-loop-ownership-the-framework-owns-the-simulation-loop
