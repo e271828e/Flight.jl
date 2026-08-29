@@ -10021,7 +10021,7 @@ with the collection and never triggering its throw — is currently empty
 
 | kind | payload | owner | severity | raised | policy |
 |---|---|---|---|---|---|
-| `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1][s6-1], [§8.4][s8-4] w1 | error | build | collected |
+| `UnknownPort` | the wire end (`source`/`destination`, or `connection` for an interface-connection entry's internal side, [D-210][d-210]), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1][s6-1], [§8.4][s8-4] w1 | error | build | collected |
 | `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1][s6-1], [§8.4][s8-4] w2 | error | build | collected |
 | `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / interface connection entry) | [§6.1][s6-1], [§8.8][s8-8] | error | build | collected |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1][s6-1], [§8.2][s8-2], [§8.4][s8-4] w4 | error | build | collected |
@@ -10031,7 +10031,7 @@ with the collection and never triggering its throw — is currently empty
 | `RootInputTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — the meet, [§8.2][s8-2]) | [§8.2][s8-2] | error | build | collected |
 | `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | [§7.1][s7-1], [§8.2][s8-2] | error | build | collected |
 | `StoreWithoutUpdate` | component path, the `init_x` or `init_s` store, the missing update (no `f` for the one, no `g` for the other); shadowing note when the parent module defines its own `f`/`g` ([§8.1][s8-1]) | [§8.2][s8-2] | error | build | collected |
-| `EventHalfMissing` | component path, event name, which half, the function that has no method | [§8.2][s8-2] | error | build | collected |
+| `EventHalfMissing` | component path, event name, reason (guard half missing / handler half missing / the entry is not an `Event`), the function that has no method or the entry's type | [§8.2][s8-2] | error | build | collected |
 | `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions ([§8.1][s8-1]) | [§8.5][s8-5] | error | build | collected |
 | `ClassMixed` | component path, the `child_connections` declaration and the offending leaf declarations | [§8.5][s8-5] | error | build | collected |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | [§8.5][s8-5] | error | build | collected |
@@ -10043,6 +10043,10 @@ with the collection and never triggering its throw — is currently empty
 | `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | [§8.8][s8-8] | error | build | collected |
 | `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | [§10.5][s10-5], [§8.7][s8-7] | error | build | collected |
 | `MissingProbeValue` | face name, type | [§9.3][s9-3] | error | build | collected |
+| `ChildNameCollision` | assembly path, the colliding child name, reason (a bare container key against the `sample_times` sugar, [D-211][d-211] / against a sibling field, [D-212][d-212] / two children with one name), both provenances | [§8.5][s8-5] | error | build | collected |
+| `TransparentContainerUnknown` | assembly path, the field `transparent_container` names, the type's container fields (the list-in-hand) | [§8.5][s8-5], [D-211][d-211] | error | build | collected |
+| `TierUnreadable` | component path, type, the declarations found — no `output_types`, no state — and the tier-announcing family list; the tier twin of `ClassUnreadable` | [§5.2][s5-2], [§8.2][s8-2], [§8.5][s8-5] | error | build | collected |
+| `IllegalPortType` | component path, the declaration at fault (`input_types`/`output_types`, or a root input), port name, the offending type — one with no numeric leaves; the leaf vocabulary ([§7.1][s7-1]) | [§7.1][s7-1], [§8.2][s8-2] | error | build | collected |
 
 **Schedule and contract conformance** (Strata B and C):
 
@@ -10087,6 +10091,9 @@ with the collection and never triggering its throw — is currently empty
 | `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
 | `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | error | service | collected |
+| `ArgumentInvalid` | the call (`step!`, `trim!`, `TableBinding`, a period constructor), the argument, the value in hand, the violated constraint — the twin of `DeploymentInvalid` for arguments that are not deployment parameters | [§8.7][s8-7], [§11.6][s11-6], [§12.6][s12-6], [§14.7][s14-7] | error | service; build, in a `sample_times` declaration | fail-fast |
+| `ReadSetMisuse` | the offending argument's type, the selector kinds in hand — the read register's twin of `ConditionNodeMisuse` | [§14.4][s14-4] | error | service | fail-fast |
+| `NotAttached` | the device id or handle offered to `detach!`, the roster's device ids | [§11.3][s11-3] | error | service | fail-fast |
 
 **Runtime:**
 
