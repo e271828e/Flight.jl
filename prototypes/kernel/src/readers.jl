@@ -82,7 +82,7 @@ const StoreSelector = Union{GetState,GetDeriv}
 _index_arg(::Nothing) = nothing
 _index_arg(i::Integer) = Int(i)
 _index_arg(i) = throw(BuildError(
-    "ReadResolution: a selector's index must be an integer — the component index of " *
+    "a selector's index must be an integer — the component index of " *
     "§14.10, applied to the read value — got $(repr(i)) (§14.4)"))
 
 get_state(path::AbstractString, field::Union{Symbol,AbstractString}, i = nothing) =
@@ -128,7 +128,7 @@ reads(; sels...) = _reads(NamedTuple(sels))
 function _reads(nt::NamedTuple)
     for (label, s) in pairs(nt)
         s isa ReadSelector || throw(BuildError(
-            "ReadResolution: the read labeled `$label` is $(typeof(s)) — a read set is " *
+            "the read labeled `$label` is $(typeof(s)) — a read set is " *
             "labeled *selectors*, get_state / get_deriv / get_output / get_input / " *
             "get_face (§14.4)"))
     end
@@ -188,9 +188,9 @@ A reader is compiled at one activation and resolves against an executor at that
 activation: store selectors reach live stores (§14.4's source rule), and the
 executor is the only live-store holder here. That activation is `T`, the first
 type parameter — the entries bake offsets, store types and cell addresses that
-are one activation's, so the pairing is dispatch and a mismatch is
-`ActivationMismatch` (build.jl) rather than a silent read of another cell's
-slot.
+are one activation's, so the pairing is dispatch and a mismatch is the
+internal-invariant refusal build.jl raises (§14.4) rather than a silent read of
+another cell's slot.
 """
 struct Reader{T,L,E<:Tuple}
     entries::E
@@ -206,7 +206,7 @@ gather(::Reader{T}, ::Executor{S}) where {T,S} = _activation_mismatch("reader", 
 # --- resolution (§14.4, §13.1) --------------------------------------------------
 
 """
-    compile_reads(rs::Reads, b::Build, T = Float64) → Reader
+    _compile_reads(rs::Reads, b::Build, T = Float64) → Reader
 
 Resolve a declared read set against a build and compile it, validating every
 selector in §13.1's collecting register — full list, violations collected, one
@@ -216,12 +216,13 @@ state field, the `ẋbuf` offset beside it for its derivative, a component index
 for a discrete `s`, a cell address for a port, a root input or a root-exported
 face.
 
-Violations lead with `ReadResolution`, the standalone spelling; a service that
-owns the setup folds the same list into its own kind — `trim!` into
-`TrimProblemInvalid` (§14.8) — which is why the collecting pass is factored
-apart from the throw.
+The standalone entry point is internal, because a read set is only ever
+compiled inside a client, and the client owns the diagnostic: `trim!` folds the
+collected list into `TrimProblemInvalid` (§14.8), a device binding into
+`ReadBindingUnresolved` (§11.2). That is why the collecting pass is factored
+apart from the throw, and why the violations carry no kind of their own.
 """
-function compile_reads(rs::Reads, b::Build, ::Type{T} = Float64) where {T}
+function _compile_reads(rs::Reads, b::Build, ::Type{T} = Float64) where {T}
     reader, viol = _resolve_reads(rs, b, T)
     isempty(viol) || throw(BuildError(
         "the read set does not resolve against this build — $(length(viol)) " *
@@ -231,12 +232,12 @@ end
 
 # A bare NamedTuple of selectors is the §14.2 misuse in the read register: the
 # same slip, the same directive, and not a `MethodError`.
-compile_reads(other, ::Build, ::Type = Float64) = throw(BuildError(
-    "ReadResolution: $(typeof(other)) is not a read set — wrap the labeled selectors " *
+_compile_reads(other, ::Build, ::Type = Float64) = throw(BuildError(
+    "$(typeof(other)) is not a read set — wrap the labeled selectors " *
     "in `reads(…)`: reads(name = get_deriv(\"path\", :field), …) (§14.4, §14.7)"))
 
 """
-The collecting half of `compile_reads`, shared with the services that own their
+The collecting half of `_compile_reads`, shared with the services that own their
 own setup diagnostic (§14.8): returns the compiled reader and the violation
 list, the reader being `nothing` when anything failed.
 """
@@ -269,7 +270,7 @@ function _read_component(s, label::Symbol, flat::Flat, viol::Vector{String})
 end
 
 _rviol(label::Symbol, s, what::String) =
-    "ReadResolution: the read labeled `$label` is $(_spell(s)), and $what (§14.4)"
+    "the read labeled `$label` is $(_spell(s)), and $what (§14.4)"
 
 # `i` is checked against the resolved leaf's declared type in exactly one
 # respect: `getindex` has to mean something there. A scalar leaf is refused;

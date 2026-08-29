@@ -538,12 +538,13 @@ Two names had to move. `Reader` was taken by a coverage binding in
 `test_roster.jl` (`struct Reader <: AbstractBinding`), and since every file
 here is included into `Main`, the test's definition silently replaced the
 framework type before `test_readers.jl` ran; the binding is now `Unwritten`,
-which is what it was for. And the collected refusals lead with
-`ReadResolution`, a kind name Appendix C does not carry — the section's own
-spelling for an unresolved read is `TrimProblemInvalid` where trim owns the
-setup and `TapResolution` where linearization does, so the standalone
-`compile_reads` needed a name of its own, and its collecting half is factored
-apart from the throw exactly so trim can fold the same list into its kind.
+which is what it was for. And the collected refusals carry no kind of
+their own: Appendix C names none for an unresolved read as such — its spellings
+are `TrimProblemInvalid` where trim owns the setup and `TapResolution` where
+linearization does — and a read set is only ever compiled inside a client, so
+the standalone entry point is internal (`_compile_reads`) and its collecting
+half is factored apart from the throw exactly so trim can fold the same list
+into its kind.
 
 **Increment 21, part 3 — the specialized register.** §14.4's two application
 registers finally both exist, and the second one is what an iterating service
@@ -1326,7 +1327,9 @@ Each of these is a spec claim rather than a programming convenience:
   nominal activation's own refusals are unchanged.
 - **A compiled product belongs to one activation, by dispatch.** A `Float64`
   `Reader`, `ConditionPlan` and `SpecializedPlan` each refuse a `Dual` executor
-  with `ActivationMismatch` naming both scalars, and the executor is untouched.
+  naming both scalars, and the executor is untouched. The refusal carries no
+  kind name: §14.4 makes the pairing a framework invariant the services uphold,
+  so reaching it is an internal assertion firing.
   The scalar rides in the product's own type, so the pairing costs a method
   signature rather than a runtime test — the §7.5 gates measure zero unchanged.
 
@@ -1369,8 +1372,8 @@ Each of these is a spec claim rather than a programming convenience:
   is not, it answers no by the ordinary box test and leaves the sim `built`.
 - **The setup diagnostic collects, in three observable stages.** A bounds
   key-set mismatch, an `Int` guess field and an unresolvable selector come back
-  as one `TrimProblemInvalid` naming all three, the read set's own
-  `ReadResolution` line kept verbatim inside it; an inverted box (`lower` above
+  as one `TrimProblemInvalid` naming all three, the read set's own line kept
+  verbatim inside it, carrying no kind of its own; an inverted box (`lower` above
   `upper` on one decision) is collected there too, with both values named,
   because no projection can honor it, and so is a non-positive tolerance —
   zero and negative in one problem come back as one throw naming both, the

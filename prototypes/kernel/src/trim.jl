@@ -224,8 +224,8 @@ end
 # One collecting pass over what a build can answer, then the guess evaluation,
 # which is where the residual return is observed. Both throws lead with
 # `TrimProblemInvalid` and enumerate; §13.1's register, with the read set's own
-# violations spliced in verbatim — the service owns the setup, so the standalone
-# `ReadResolution` throw is exactly what `_resolve_reads` was factored apart for.
+# violations spliced in verbatim — they carry no kind of their own, the service
+# owning the setup, which is what `_resolve_reads` was factored apart for.
 
 function _report_trim!(viol::Vector{String})
     isempty(viol) && return nothing
@@ -304,8 +304,9 @@ end
 
 # The read set: a `reads(…)` value whose selectors resolve against this build.
 # Its violations are §14.4's own, kept verbatim — the read is named as authored,
-# with the list in hand — and folded into this kind rather than thrown as
-# `ReadResolution`, because here the *problem* is what is malformed (§14.8).
+# with the list in hand — and folded into this kind, because here the *problem*
+# is what is malformed (§14.8); a read set is compiled only inside a client, so
+# its violations name no kind of their own.
 function _check_reads!(viol::Vector{String}, p::TrimProblem, b::Build)
     if !(p.reads isa Reads)
         push!(viol, _tviol(:reads, "is $(typeof(p.reads)) — the declared read set is a " *
@@ -435,7 +436,7 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
     _establish_frozen!(ex, act, ex_nom, sim.build)
     d_dual = _seeded(K, guess, TD)
     plan_d = compile_plan(override(baseline, problem.condition(d_dual)), b, TD)
-    reader_d = compile_reads(problem.reads, b, TD)
+    reader_d = _compile_reads(problem.reads, b, TD)
 
     # One evaluation: write the decisions through the shape-compiled plan, sweep,
     # gather, and take `r` off the values and `J` off the partials of one and the

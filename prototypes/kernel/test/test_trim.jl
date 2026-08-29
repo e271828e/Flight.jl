@@ -229,8 +229,8 @@ end
     before = world(sim)
 
     # A bounds key-set mismatch, an `Int` guess field and an unresolvable
-    # selector, in one throw — the read set's own violation kept verbatim, kind
-    # name and all, because the *problem* is what is malformed here (§14.8).
+    # selector, in one throw — the read set's own violation kept verbatim, and
+    # carrying no kind of its own: the *problem* is what is malformed (§14.8).
     e = failure(() -> trim!(sim, TrimProblem(
         guess = (u = 0,), lower = (v = -Inf,), upper = (u = Inf,),
         condition = decide_u, reads = reads(ω̇ = get_deriv("c", :ω),
@@ -240,7 +240,7 @@ end
     @test occursin("3 violations", e.msg)
     @test occursin("`lower` names `v` and `guess` names `u`", e.msg)
     @test occursin("`u`::Int64", e.msg)
-    @test occursin("ReadResolution: the read labeled `nope`", e.msg)
+    @test occursin("the read labeled `nope` is get_state(\"nope\", :q)", e.msg)
     @test world(sim) == before
 
     # The residual key set is the one thing only the setup guess evaluation can
@@ -474,7 +474,7 @@ end
     ex = compile(b, activation(b, TD), sim.D, sim.Φ, sim.Δt; chunk_size = sim.chunk_size)
     seeded(v) = (θ = ForwardDiff.Dual{TrimTag}(v, 1.0),)
     plan = compile_plan(override(pend_base(), decide_θ(seeded(0.1))), b, TD)
-    reader = compile_reads(torque_reads(), b, TD)
+    reader = _compile_reads(torque_reads(), b, TD)
     tree = override(pend_base(), decide_θ(seeded(0.2)))
 
     apply!(ex, plan, tree)

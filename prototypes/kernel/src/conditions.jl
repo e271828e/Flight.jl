@@ -235,7 +235,8 @@ operand of §14.6's totality check.
 
 `T` is the activation the plan was resolved at: the offsets, addresses and
 converters baked here are that activation's, so `apply!` pairs plan and
-executor by dispatch and a mismatch is `ActivationMismatch` (build.jl).
+executor by dispatch and a mismatch is the internal-invariant refusal build.jl
+raises (§14.4).
 """
 struct ConditionPlan{T}
     xs::Vector{Tuple{Int,Any}}             # (xbuf offset, value)
@@ -674,7 +675,8 @@ writes.
 `T`, the leading parameter, is the activation the plan was compiled at — the
 same identity `Reader` carries, for the same reason: the lenses' converters and
 the writes' destinations are one activation's, and pairing them with another's
-executor is `ActivationMismatch` (build.jl) rather than a wrong slot.
+executor is refused as an internal-invariant violation (build.jl, §14.4) rather
+than a wrong slot.
 """
 struct SpecializedPlan{T,NT,XS<:Tuple,ST<:Tuple,IN<:Tuple,PF<:Tuple}
     xs::XS

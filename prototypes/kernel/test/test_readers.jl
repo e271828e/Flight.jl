@@ -41,7 +41,7 @@ world(sim) = (copy(sim.exec.xbuf),
         sim = Simulation(readable(), T; h = 1//10)
         init!(sim, readable_condition())
         evaluate!(sim.exec)                     # `ẋ` is integrator scratch: fill it first
-        r = compile_reads(readable_reads(), sim.build, T)
+        r = _compile_reads(readable_reads(), sim.build, T)
         v = gather(r, sim.exec)
 
         @test keys(v) === (:q, :v, :acc, :q̇, :a, :y, :u, :face)
@@ -65,19 +65,19 @@ end
     sim = Simulation(readable(); h = 1//10)
     init!(sim, readable_condition())
     evaluate!(sim.exec)
-    r, ex = compile_reads(readable_reads(), sim.build), sim.exec
+    r, ex = _compile_reads(readable_reads(), sim.build), sim.exec
     gather(r, ex)
     @test @ballocated(gather($r, $ex)) == 0
     @test @inferred(gather(r, ex)) isa NamedTuple
-    @test gather(compile_reads(reads(), sim.build), ex) === (;)   # the empty set reads nothing
+    @test gather(_compile_reads(reads(), sim.build), ex) === (;)   # the empty set reads nothing
 end
 
 @testset "resolution collects every violation into one refusal (§14.4, §13.1)" begin
     b = build(readable())
-    e = failure(() -> compile_reads(reads(a = get_state("plnt", :q),
-                                          b = get_output("plant", :thrust),
-                                          c = get_deriv("ctl", :acc),
-                                          d = get_face(:nope)), b))
+    e = failure(() -> _compile_reads(reads(a = get_state("plnt", :q),
+                                           b = get_output("plant", :thrust),
+                                           c = get_deriv("ctl", :acc),
+                                           d = get_face(:nope)), b))
     @test e isa BuildError && occursin("4 violations", e.msg)
     @test occursin("`plnt` is no component of this build", e.msg)         # the offender, plainly
     @test occursin("declares no output port `thrust`", e.msg) &&
@@ -91,9 +91,9 @@ end
 
     # An assembly path, a root input read as a face, an index on a scalar leaf,
     # and a state field the component does not declare.
-    e = failure(() -> compile_reads(reads(a = get_output("", :y), b = get_face(:u),
-                                          c = get_output("plant", :y, 1),
-                                          d = get_state("plant", :ω)), b))
+    e = failure(() -> _compile_reads(reads(a = get_output("", :y), b = get_face(:u),
+                                           c = get_output("plant", :y, 1),
+                                           d = get_state("plant", :ω)), b))
     @test occursin("the root component is an assembly", e.msg) &&
           occursin("read with `get_face`", e.msg)
     @test occursin("`u` is a root *input* face", e.msg) && occursin("get_input", e.msg)
@@ -102,7 +102,7 @@ end
 
     # The read set is a type, not a NamedTuple: the bare spelling is refused
     # with a directive, not a `MethodError` (§14.2's rule, one register over).
-    e = failure(() -> compile_reads((q = get_state("plant", :q),), b))
+    e = failure(() -> _compile_reads((q = get_state("plant", :q),), b))
     @test e isa BuildError && occursin("is not a read set", e.msg) && occursin("reads(", e.msg)
     @test failure(() -> reads(q = 2.0)) isa BuildError                     # nor is 2.0 a selector
 end
@@ -122,21 +122,23 @@ end
     # one activation's, so a `Float64` product against a `Dual` executor would
     # read and write another cell's slot in silence. The scalar rides in each
     # product's type, the pairing is dispatch, and the mismatch is refused with
-    # both scalars named — before anything is touched.
+    # both scalars named — before anything is touched. §14.4 makes that pairing
+    # an invariant the services uphold, so the refusal is an internal assertion
+    # and carries no kind name.
     nominal = Simulation(readable(); h = 1//10)
     seeded = Simulation(readable(), D8; h = 1//10)
     init!(seeded, readable_condition())
     before = world(seeded)
 
-    e = failure(() -> gather(compile_reads(readable_reads(), nominal.build), seeded.exec))
-    @test e isa BuildError && startswith(e.msg, "ActivationMismatch:")
+    e = failure(() -> gather(_compile_reads(readable_reads(), nominal.build), seeded.exec))
+    @test e isa BuildError && occursin("internal invariant violated", e.msg)
     @test occursin("compiled at Float64", e.msg) && occursin("Dual{Nothing, Float64, 8}", e.msg)
 
     c = readable_condition()
     e2 = failure(() -> apply!(seeded.exec, resolve_condition(c, nominal.build)))
-    @test e2 isa BuildError && startswith(e2.msg, "ActivationMismatch:")
+    @test e2 isa BuildError && occursin("internal invariant violated", e2.msg)
     e3 = failure(() -> apply!(seeded.exec, compile_plan(c, nominal.build), c))
-    @test e3 isa BuildError && startswith(e3.msg, "ActivationMismatch:")
+    @test e3 isa BuildError && occursin("internal invariant violated", e3.msg)
 
     @test world(seeded) == before                # every refusal left the executor alone
 end
