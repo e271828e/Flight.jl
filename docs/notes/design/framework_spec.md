@@ -6852,13 +6852,21 @@ that value decides what an acceptance test can assert and what a user reads.
 
 **Rule.** A diagnostic is a plain value from a small closed set of
 [kinds](#g-kind) ([D-058][d-058]). **[Appendix C][sC]** enumerates that set normatively: kind
-name, [payload](#g-payload) fields, owning section, severity. That table is the
+name, [payload](#g-payload) fields, owning section, severity, where it is raised
+and under which policy. That table is the
 artifact the [§8.4][s8-4] acceptance tests and the error-message work are
 written against. Each kind carries its own structured payload: endpoint paths,
 [face](#g-face) names, expected/observed types, a severity, and the
 *list-in-hand* a [did-you-mean](#g-did-you-mean) needs (the offending name plus
-the list it should have matched). A kind *is* a Julia type, and severity is one
-of its payload fields, with the severity column of [Appendix C][sC] derived from it.
+the list it should have matched). A kind *is* a Julia type, and severity —
+`error` or `warning`, whether an occurrence ever throws — is a property of the
+kind, read as `severity(d)` and never stored per occurrence, with the severity
+column of [Appendix C][sC] derived from it. Where an
+occurrence surfaces (build, service or runtime) and how it is reported
+(collected, fail-fast, logged or rate-limited) are the *raised* and *policy*
+columns of [Appendix C][sC]. Those describe the occurrence, not the kind:
+`BundleFieldError` is raised at the probe and as a `StepError` species
+thereafter.
 
 Checking passes return diagnostics; the [stratum](#g-stratum) barrier (a stratum
 is one of the build's three phases: structure, schedule, activation) throws a
@@ -9962,122 +9970,142 @@ instances; the list-in-hand wherever a did-you-mean renders; the didactic
 register (state the fix). Owning sections stay the normative home of each rule;
 this appendix is an index of the values, in the manner of Appendices A and B.
 
-Severities, in the vocabulary [§13][s13] fixes:
+Three columns place each kind. **Severity** is a property of the kind, read
+as `severity(d)` ([§13.2][s13-2]), and takes one of two values:
 
-- **build (collected)** — a diagnostic from a declarative pass, collected with its
-  siblings and thrown as one `BuildError` at the stratum barrier ([§13.1][s13-1]);
-- **build (fail-fast)** — raised while *user code* runs (an interface-connection body, a
-  probe); the first one aborts the phase ([§13.1][s13-1]);
-- **service** — raised by a stopped-sim service, or by
-  `attach!`/`Simulation`/`run!` validating against the `Build`; collected into one
-  carrier wherever the owning section says so (the register, [§14.1][s14-1]; the
-  pre-write check, [§14.6][s14-6]), a single throw at the call otherwise;
-- **runtime** — fail-fast during a boundary, reaching the single catch site ([§13.4][s13-4])
-  as a species of `StepError`;
-- **warning (runtime)** — the per-occurrence runtime stream of [§13.2][s13-2],
-  carried by the per-writer diagnostic cells ([§11.8][s11-8]) and rate-limited by them:
-  every kind in this severity is bounded per writer per boundary (a ring of
+- **error** — an occurrence throws, alone or within a collection; a stratum
+  that produced one throws before the next begins ([§13.1][s13-1]);
+- **warning** — an occurrence never throws and joins no throw; it renders
+  with a collection, is logged beside a returned value, or rides the runtime
+  stream, according to where and how it is raised.
+
+**Raised** and **policy** describe the occurrence, not the kind — where it
+surfaces, and how it is reported. A kind raised at two stages lists both
+(`BundleFieldError`: at the probe, and as a `StepError` species thereafter);
+the placement notes stay in the raised column beside the stage they qualify.
+The stages are the ones [§13][s13] fixes:
+
+- **build** — during one of the three strata ([§9.1][s9-1]), whether in a declarative
+  pass or while *user code* runs (an interface-connection body, a probe);
+- **service** — in a stopped-sim service, or in `attach!`/`Simulation`/`run!`
+  validating against the `Build`;
+- **runtime** — during a boundary.
+
+The policies:
+
+- **collected** — gathered with its siblings and thrown as one carrier: a
+  declarative pass's violations as the `BuildError` of the stratum barrier
+  ([§13.1][s13-1]); a service's wherever the owning section says so (the register,
+  [§14.1][s14-1]; the pre-write check, [§14.6][s14-6]);
+- **fail-fast** — the first occurrence throws on its own, nothing else being
+  gathered: at build the first user-code failure aborts the phase ([§13.1][s13-1]); at
+  a service call the first violation is the throw; at runtime it reaches the
+  single catch site ([§13.4][s13-4]) as a species of `StepError`;
+- **logged** — a warning from a stopped-sim service call that *completed*:
+  emitted at the call site through the standard logging backend, beside the
+  returned value, part of no collection; no rate limit — each kind fires at
+  most once per call, and its payload is drawn from the report the call
+  returns ([§14.5][s14-5], [§14.8][s14-8]);
+- **rate-limited** — the per-occurrence runtime warning stream of [§13.2][s13-2],
+  carried by the per-writer diagnostic cells ([§11.8][s11-8]) and bounded by them:
+  every kind reported this way is bounded per writer per boundary (a ring of
   sixteen retained values, the excess becoming per-kind suppressed counts).
-  The per-row qualifiers below record where that bound is load-bearing — a
-  source that can repeat within a frame — and where the source itself fires
-  once.
-- **warning (service)** — raised by a stopped-sim service call that
-  *completed*: emitted at the call site through the standard logging backend,
-  beside the returned value, never thrown, part of no collection; no rate
-  limit — each kind fires at most once per call, and its payload is drawn from
-  the report the call returns ([§14.5][s14-5], [§14.8][s14-8]).
-- **warning (build)** — this severity exists and its set is currently empty
-  ([D-084][d-084]).
+  The per-row qualifiers record where that bound is load-bearing — a source
+  that can repeat within a frame — and where the source itself fires once.
+
+The build warning set — warning-severity kinds raised at build, rendering
+with the collection and never triggering its throw — is currently empty
+([D-084][d-084]).
 
 **Declaration and wiring** (Stratum A):
 
-| kind | payload | owner | severity |
-|---|---|---|---|
-| `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1][s6-1], [§8.4][s8-4] w1 | build (collected) |
-| `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1][s6-1], [§8.4][s8-4] w2 | build (collected) |
-| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / interface connection entry) | [§6.1][s6-1], [§8.8][s8-8] | build (collected) |
-| `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1][s6-1], [§8.2][s8-2], [§8.4][s8-4] w4 | build (collected) |
-| `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1][s6-1], [§8.2][s8-2] | build (collected) |
-| `PathResolution` | path, offending segment, sibling field list; for a wiring endpoint reaching past the immediate child, the level it stopped at; for a read-side traversal past a generically-held field, that field's declared type | [§6.1][s6-1], [§13.3][s13-3] | build (collected) |
-| `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, [§13.7][s13-7]) | [§8.2][s8-2] | build (collected) |
-| `RootInputTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — the meet, [§8.2][s8-2]) | [§8.2][s8-2] | build (collected) |
-| `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | [§7.1][s7-1], [§8.2][s8-2] | build (collected) |
-| `StoreWithoutUpdate` | component path, the `init_x` or `init_s` store, the missing update (no `f` for the one, no `g` for the other); shadowing note when the parent module defines its own `f`/`g` ([§8.1][s8-1]) | [§8.2][s8-2] | build (collected) |
-| `EventHalfMissing` | component path, event name, which half, the function that has no method | [§8.2][s8-2] | build (collected) |
-| `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions ([§8.1][s8-1]) | [§8.5][s8-5] | build (collected) |
-| `ClassMixed` | component path, the `child_connections` declaration and the offending leaf declarations | [§8.5][s8-5] | build (collected) |
-| `ContainerMixed` | container field path, offending element keys/indices, their types | [§8.5][s8-5] | build (collected) |
-| `DeclarationOnWrongTier` | component path, the offending declaration (`f`/`g`, a state or stage name from the wrong family — `init_x`/`h_x`/`h_xu` against `init_s`/`h_s`/`h_su`, [D-195][d-195] — `events`, `init_m`, `project`, or a `workspace`/`output_types` arity), the tier the leaf's other declarations announce | [§5.2][s5-2], [§8.2][s8-2], [§8.5][s8-5] | build (collected) |
-| `TierSignatureMismatch` | component path, the declaration at fault (`input_types` or `output_types`), the leaf's tier, the signature form found versus the form mandated (two-argument `(::C, ::Type{T})` on the continuous tier, plain `(::C)` on the discrete); stateful leaves only — on a stateless leaf `output_types`' arity *is* the tier ([§8.2][s8-2]), so there is nothing to mismatch | [§8.2][s8-2], [§8.5][s8-5] | build (collected) |
-| `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | [§8.6][s8-6] | build (collected) |
-| `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | [§8.6][s8-6] | build (collected) |
-| `FaceDirectionConflict` | assembly path, the declaring method, the offending entry, the resolved port's actual direction | [§8.6][s8-6] | build (collected) |
-| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | [§8.8][s8-8] | build (collected) |
-| `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | [§10.5][s10-5], [§8.7][s8-7] | build (collected) |
-| `MissingProbeValue` | face name, type | [§9.3][s9-3] | build (collected) |
+| kind | payload | owner | severity | raised | policy |
+|---|---|---|---|---|---|
+| `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | [§6.1][s6-1], [§8.4][s8-4] w1 | error | build | collected |
+| `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | [§6.1][s6-1], [§8.4][s8-4] w2 | error | build | collected |
+| `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / interface connection entry) | [§6.1][s6-1], [§8.8][s8-8] | error | build | collected |
+| `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | [§6.1][s6-1], [§8.2][s8-2], [§8.4][s8-4] w4 | error | build | collected |
+| `WalkingFaceAtFrozenEntry` | consumer path and entry name, producer path and face name, the offending leaf, both declared leaf types; both remedies in the message ("declare the entry `T` if the consumer promotes; feed it from a non-walking source if the freeze is genuine") | [§6.1][s6-1], [§8.2][s8-2] | error | build | collected |
+| `PathResolution` | path, offending segment, sibling field list; for a wiring endpoint reaching past the immediate child, the level it stopped at; for a read-side traversal past a generically-held field, that field's declared type | [§6.1][s6-1], [§13.3][s13-3] | error | build | collected |
+| `AbstractAtRoot` | face name, consuming leaf path, the abstract entry; remedy hint (wire a concrete producer — in a rig, a stub child, [§13.7][s13-7]) | [§8.2][s8-2] | error | build | collected |
+| `RootInputTypeConflict` | face name, the consuming paths, their conflicting concrete declarations at nominal (a tolerance difference is not a conflict — the meet, [§8.2][s8-2]) | [§8.2][s8-2] | error | build | collected |
+| `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | [§7.1][s7-1], [§8.2][s8-2] | error | build | collected |
+| `StoreWithoutUpdate` | component path, the `init_x` or `init_s` store, the missing update (no `f` for the one, no `g` for the other); shadowing note when the parent module defines its own `f`/`g` ([§8.1][s8-1]) | [§8.2][s8-2] | error | build | collected |
+| `EventHalfMissing` | component path, event name, which half, the function that has no method | [§8.2][s8-2] | error | build | collected |
+| `ClassUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields; shadowing note when the parent module defines same-named declaration functions ([§8.1][s8-1]) | [§8.5][s8-5] | error | build | collected |
+| `ClassMixed` | component path, the `child_connections` declaration and the offending leaf declarations | [§8.5][s8-5] | error | build | collected |
+| `ContainerMixed` | container field path, offending element keys/indices, their types | [§8.5][s8-5] | error | build | collected |
+| `DeclarationOnWrongTier` | component path, the offending declaration (`f`/`g`, a state or stage name from the wrong family — `init_x`/`h_x`/`h_xu` against `init_s`/`h_s`/`h_su`, [D-195][d-195] — `events`, `init_m`, `project`, or a `workspace`/`output_types` arity), the tier the leaf's other declarations announce | [§5.2][s5-2], [§8.2][s8-2], [§8.5][s8-5] | error | build | collected |
+| `TierSignatureMismatch` | component path, the declaration at fault (`input_types` or `output_types`), the leaf's tier, the signature form found versus the form mandated (two-argument `(::C, ::Type{T})` on the continuous tier, plain `(::C)` on the discrete); stateful leaves only — on a stateless leaf `output_types`' arity *is* the tier ([§8.2][s8-2]), so there is nothing to mismatch | [§8.2][s8-2], [§8.5][s8-5] | error | build | collected |
+| `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | [§8.6][s8-6] | error | build | collected |
+| `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | [§8.6][s8-6] | error | build | collected |
+| `FaceDirectionConflict` | assembly path, the declaring method, the offending entry, the resolved port's actual direction | [§8.6][s8-6] | error | build | collected |
+| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | [§8.8][s8-8] | error | build | collected |
+| `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | [§10.5][s10-5], [§8.7][s8-7] | error | build | collected |
+| `MissingProbeValue` | face name, type | [§9.3][s9-3] | error | build | collected |
 
 **Schedule and contract conformance** (Strata B and C):
 
-| kind | payload | owner | severity |
-|---|---|---|---|
-| `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | [§5.5][s5-5], [§5.6][s5-6] | build (collected) |
-| `ProducedByTwoStages` | component path, port name, both stage names | [§4.3][s4-3], [§8.3][s8-3] | build (collected) |
-| `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | [§8.3][s8-3] | build (collected) |
-| `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types`) | [§8.3][s8-3], [§8.4][s8-4] w5 | build (fail-fast) |
-| `DeadStage` | component path, stage — a stage method returning bare `(;)`, producing no ports | [§5.2][s5-2], [§9.3][s9-3] | build (fail-fast) at probe |
-| `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed — order-insensitive, the return having been canonicalized first), simulation time | [§9.5][s9-5] | build (fail-fast) at probe; **runtime** as a `StepError` species |
-| `GuardForm` | component path, event name, observed probe return type, both admissible forms | [§9.5][s9-5] | build (fail-fast) |
-| `BundleFieldError` | component path, function family, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function family) | [§5.2][s5-2], [§13.2][s13-2] | build (fail-fast) at probe; **runtime** thereafter |
-| `HandlerReturnKey` | component path, event name, offending key, the legal set `{x, m}` narrowed to the stores that exist | [§5.2][s5-2], [§9.5][s9-5] | build (fail-fast) |
-| `UserCodeFraming` | component path, which function, the probe context including synthesized inputs; the original exception as `cause` | [§13.2][s13-2] | build (fail-fast) |
+| kind | payload | owner | severity | raised | policy |
+|---|---|---|---|---|---|
+| `AlgebraicCycle` | the SCC's member terminals in slash form, the wires among them, optional classification (`real`/`artificial`) with the member whose hop died | [§5.5][s5-5], [§5.6][s5-6] | error | build | collected |
+| `ProducedByTwoStages` | component path, port name, both stage names | [§4.3][s4-3], [§8.3][s8-3] | error | build | collected |
+| `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | [§8.3][s8-3] | error | build | collected |
+| `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types`) | [§8.3][s8-3], [§8.4][s8-4] w5 | error | build | fail-fast |
+| `DeadStage` | component path, stage — a stage method returning bare `(;)`, producing no ports | [§5.2][s5-2], [§9.3][s9-3] | error | build, at probe | fail-fast |
+| `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed — order-insensitive, the return having been canonicalized first), simulation time | [§9.5][s9-5] | error | build, at probe; runtime thereafter | fail-fast — a `StepError` species at runtime |
+| `GuardForm` | component path, event name, observed probe return type, both admissible forms | [§9.5][s9-5] | error | build | fail-fast |
+| `BundleFieldError` | component path, function family, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function family) | [§5.2][s5-2], [§13.2][s13-2] | error | build, at probe; runtime thereafter | fail-fast — a `StepError` species at runtime |
+| `HandlerReturnKey` | component path, event name, offending key, the legal set `{x, m}` narrowed to the stores that exist | [§5.2][s5-2], [§9.5][s9-5] | error | build | fail-fast |
+| `UserCodeFraming` | component path, which function, the probe context including synthesized inputs; the original exception as `cause` | [§13.2][s13-2] | error | build | fail-fast |
 
 **Deployment, periphery and services:**
 
-| kind | payload | owner | severity |
-|---|---|---|---|
-| `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | [§12.6][s12-6] | service |
-| `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | [§11.3][s11-3], [§14][s14] | service |
-| `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5][s13-5] | service |
-| `DeploymentInvalid` | the deployment parameter (`h`, `n`, `Δt_base`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, the harmonic-grid relation, a non-dividing anchor period or offset — the anchor named with its declaring scope and key), the value in hand, the violated constraint | [§9.1][s9-1] | service (collected) |
-| `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§11.3][s11-3] | service |
-| `AlreadyAttached` | the device id of the existing roster entry, its binding | [§11.3][s11-3] | service |
-| `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§11.1][s11-1], [§11.3][s11-3] | service |
-| `ClaimConflict` | face name, claiming device id, incumbent device id | [§11.3][s11-3] | service |
-| `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root-input face being claimed already | [§11.3][s11-3], [§11.6][s11-6] | warning (service) |
-| `BindingContractMismatch` | the binding type, the trait and the method at fault, and the direction: a declared side whose enumeration method is missing (`is_input`/`is_output` true, the root's error fallback reached), or a `claims`/`reads` method defined under a false trait (detected by `which` against the fallback); `is_greedy` without `is_input`, and `claims` defined on a greedy binding, report here too | [§11.6][s11-6] | service |
-| `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (the source rule, [§14.4][s14-4]) | [§11.2][s11-2], [§14.4][s14-4] | service |
-| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported root-input face | [§14.2][s14-2], [§14.3][s14-3] | service (collected) |
-| `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2][s14-2] | service (collected) |
-| `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | [§14.2][s14-2] | service |
-| `UninitializedInputs` | every uncovered root face, in declaration order | [§14.6][s14-6] | service (collected), pre-write |
-| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates; for a declaredly-unseedable root input, the pinning consumer's path and its `input_types` entry | [§14.10][s14-10] | service (collected) |
-| `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7][s14-7], [§14.8][s14-8] | service (collected) |
-| `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.8][s14-8] | warning (service) |
-| `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.8][s14-8] | warning (service) |
-| `ConditionShapeDrift` | the compiled tree type and the observed one; for a prefix mismatch, the node position and both strings; the remedy — a condition function returns one shape for every decision | [§14.4][s14-4] | service |
-| `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§9.1][s9-1], [§9.2][s9-2] | warning (service), at deployment binding (derivation path only) |
-| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | service |
-| `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | service |
-| `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | service (collected) |
+| kind | payload | owner | severity | raised | policy |
+|---|---|---|---|---|---|
+| `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | [§12.6][s12-6] | error | service | fail-fast |
+| `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | [§11.3][s11-3], [§14][s14] | error | service | fail-fast |
+| `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | [§13.5][s13-5] | error | service | fail-fast |
+| `DeploymentInvalid` | the deployment parameter (`h`, `n`, `Δt_base`, algorithm, `localization_tol`, `localization_budget`, `firing_budget`, the harmonic-grid relation, a non-dividing anchor period or offset — the anchor named with its declaring scope and key), the value in hand, the violated constraint | [§9.1][s9-1] | error | service | collected |
+| `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | [§11.3][s11-3] | error | service | fail-fast |
+| `AlreadyAttached` | the device id of the existing roster entry, its binding | [§11.3][s11-3] | error | service | fail-fast |
+| `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | [§11.1][s11-1], [§11.3][s11-3] | error | service | fail-fast |
+| `ClaimConflict` | face name, claiming device id, incumbent device id | [§11.3][s11-3] | error | service | fail-fast |
+| `EmptyGreedyClaim` | the greedy device's id and its binding — the computed complement was empty, every root-input face being claimed already | [§11.3][s11-3], [§11.6][s11-6] | warning | service | logged |
+| `BindingContractMismatch` | the binding type, the trait and the method at fault, and the direction: a declared side whose enumeration method is missing (`is_input`/`is_output` true, the root's error fallback reached), or a `claims`/`reads` method defined under a false trait (detected by `which` against the fallback); `is_greedy` without `is_input`, and `claims` defined on a greedy binding, report here too | [§11.6][s11-6] | error | service | fail-fast |
+| `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (the source rule, [§14.4][s14-4]) | [§11.2][s11-2], [§14.4][s14-4] | error | service | fail-fast |
+| `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported root-input face | [§14.2][s14-2], [§14.3][s14-3] | error | service | collected |
+| `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | [§14.2][s14-2] | error | service | collected |
+| `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | [§14.2][s14-2] | error | service | fail-fast |
+| `UninitializedInputs` | every uncovered root face, in declaration order | [§14.6][s14-6] | error | service, pre-write | collected |
+| `TapResolution` | tap set (`x`/`u`/`y`), selector kind, path, field, optional index, candidates; for a declaredly-unseedable root input, the pinning consumer's path and its `input_types` entry | [§14.10][s14-10] | error | service | collected |
+| `TrimProblemInvalid` | the offending `TrimProblem` field, the names or types in hand (a key-set or field-type mismatch; never a field-order difference) | [§14.7][s14-7], [§14.8][s14-8] | error | service | collected |
+| `TrimCommitEvents` | the events fired at boundary zero: component paths and event names; the same list rides the `TrimReport` | [§14.8][s14-8] | warning | service | logged |
+| `TrimCommitResiduals` | the offending residual names with committed-state values and tolerances — a converged solve whose committed-state residuals violate the box test | [§14.8][s14-8] | warning | service | logged |
+| `ConditionShapeDrift` | the compiled tree type and the observed one; for a prefix mismatch, the node position and both strings; the remedy — a condition function returns one shape for every decision | [§14.4][s14-4] | error | service | fail-fast |
+| `GridUtilization` | the derived `Δt_base`, its driver entries with provenance and refinement factors, and `min_i Dᵢ` — the grid rendered as "N× finer than the fastest declared work" | [§9.1][s9-1], [§9.2][s9-2] | warning | service, at deployment binding (derivation path only) | logged |
+| `ReplayHeaderMismatch` | the mismatch, discriminated: a store or root input (component path, store, expected vs. found layout/type) or a deployment parameter (`Δt_base`/`h`/`n`/algorithm/`localization_tol`/`localization_budget`/`firing_budget`, recorded vs. bound value); the build's and the trace's provenance | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
+| `ReplaySchemaMismatch` | the trace's device tag, its recorded face-name → position schema, the disagreeing face names, the target's root input-face list | [§11.5][s11-5], [§12.7][s12-7] | error | service | fail-fast |
+| `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | [§12.7][s12-7] | error | service | collected |
 
 **Runtime:**
 
-| kind | payload | owner | severity |
-|---|---|---|---|
-| `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization trial evaluation, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4][s13-4] | runtime |
-| `NonfiniteState` | component path, the offending state block, boundary time and index | [§13.4][s13-4] | runtime |
-| `ChatteringBudget` | component path, event name, boundary time, the exhausted `localization_budget` and the frame's localization count | [§10.4][s10-4] | warning (runtime) |
-| `FiringBudget` | component path, event name, boundary time, the exhausted `firing_budget` and the boundary's firing count | [§10.6][s10-6] | warning (runtime) |
-| `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | [§10.7][s10-7] | warning (runtime) |
-| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value; the site (staging, or a stopped-sim attach's renormalization). Harness-register only — a device's out-of-surface entry is `OutOfClaimEntry` | [§11.3][s11-3], [§11.4][s11-4] | warning (runtime) |
-| `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§11.3][s11-3] | warning (runtime) |
-| `ThreadBudget` | thread count, device-task count | [§12.2][s12-2] | warning (runtime), at `run!` |
-| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§12.4][s12-4] | warning (runtime), at the shutdown tail — written to the loop's cell, collected by the run's-end sweep into the termination record and presented through the logging backend, past the terminal snapshot ([D-201][d-201], [D-203][d-203]) |
-| `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§12.4][s12-4], [§11.6][s11-6], [§13.4][s13-4] | warning (runtime) |
-| `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§12.7][s12-7] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
-| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§11.6][s11-6], [§13.4][s13-4] | warning (runtime), repeating source — rate-limited per writer ([§11.8][s11-8]) |
-| `EntryTypeMismatch` | writer id, face name, the offending value's type, the root input's declared type, the discarded value | [§11.4][s11-4] | warning (runtime) |
-| `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§12.4][s12-4]) | [Appendix B][sB], [§13.5][s13-5] | warning (runtime), at run start |
+| kind | payload | owner | severity | raised | policy |
+|---|---|---|---|---|---|
+| `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization trial evaluation, tick), boundary time, frame-entry boundary index (replay pointer), original exception as `cause` | [§13.4][s13-4] | error | runtime | fail-fast |
+| `NonfiniteState` | component path, the offending state block, boundary time and index | [§13.4][s13-4] | error | runtime | fail-fast |
+| `ChatteringBudget` | component path, event name, boundary time, the exhausted `localization_budget` and the frame's localization count | [§10.4][s10-4] | warning | runtime | rate-limited |
+| `FiringBudget` | component path, event name, boundary time, the exhausted `firing_budget` and the boundary's firing count | [§10.6][s10-6] | warning | runtime | rate-limited |
+| `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | [§10.7][s10-7] | warning | runtime | rate-limited |
+| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value; the site (staging, or a stopped-sim attach's renormalization). Harness-register only — a device's out-of-surface entry is `OutOfClaimEntry` | [§11.3][s11-3], [§11.4][s11-4] | warning | runtime | rate-limited |
+| `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | [§11.3][s11-3] | warning | runtime | rate-limited |
+| `ThreadBudget` | thread count, device-task count | [§12.2][s12-2] | warning | runtime, at `run!` | rate-limited |
+| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | [§12.4][s12-4] | warning | runtime, at the shutdown tail — written to the loop's cell, collected by the run's-end sweep into the termination record and presented through the logging backend, past the terminal snapshot ([D-201][d-201], [D-203][d-203]) | rate-limited |
+| `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set; also the init-time failure, reported pre-spawn from the initialization bracket after its `shutdown!` | [§12.4][s12-4], [§11.6][s11-6], [§13.4][s13-4] | warning | runtime | rate-limited |
+| `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | [§12.7][s12-7] | warning | runtime | rate-limited; repeating source ([§11.8][s11-8]) |
+| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report!(handle, …)` | [§11.6][s11-6], [§13.4][s13-4] | warning | runtime | rate-limited; repeating source ([§11.8][s11-8]) |
+| `EntryTypeMismatch` | writer id, face name, the offending value's type, the root input's declared type, the discarded value | [§11.4][s11-4] | warning | runtime | rate-limited |
+| `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace`; the remedy names both, and — interactively — the operator interrupt as the sanctioned escape from the configuration warned about ([§12.4][s12-4]) | [Appendix B][sB], [§13.5][s13-5] | warning | runtime, at run start | rate-limited |
 
 ---
 
@@ -10929,13 +10957,15 @@ or local primal-carrying at sampled states) used to classify a rejected cycle
 as real or artificial; diagnostic only, never an input to scheduling ([§5.6][s5-6]).
 
 <a id="g-kind"></a>**kind** — a diagnostic's identity in the closed set enumerated normatively in
-[Appendix C][sC], with payload fields, owning section and severity; tests match on
-kind plus payload, never on message text ([§13.2][s13-2]). Not a component *class*
+[Appendix C][sC], with payload fields, owning section, severity, where it is raised
+and under which policy; tests match on kind plus payload, never on message text
+([§13.2][s13-2]). Not a component *class*
 ([§D.1][sD-1]) or a *function family* ([§D.1][sD-1]).
 
 <a id="g-payload"></a>**payload** — the structured data a diagnostic carries beside its kind: paths
 and names as strings (never instances or model types), expected/observed port
-types, the list-in-hand, the severity ([§13.2][s13-2], [Appendix C][sC]).
+types, the list-in-hand ([§13.2][s13-2], [Appendix C][sC]); severity is the kind's,
+not the payload's.
 
 <a id="g-stop_on"></a>**`stop_on` / termination is a state** — graceful termination is model state,
 never an exception: detection is ordinary event machinery, publication an
