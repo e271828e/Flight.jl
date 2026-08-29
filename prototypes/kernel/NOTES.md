@@ -1384,7 +1384,7 @@ Each of these is a spec claim rather than a programming convenience:
   at boundary zero and again after a trajectory; its coverage is the build's
   root inputs exactly, so nothing lies under it and §14.6's check passes by
   construction. The condition is time-free and `t` rides beside it, which is
-  what `t₀ = t` spends. Legality is the §14 table's: `initialized` and
+  what `t0 = t` spends. Legality is the §14 table's: `initialized` and
   `stopped`, with `built` refused for want of committed stores and `running`
   refused by the §11.3 freeze, all as one `ServiceLifecycle`.
 
@@ -1510,7 +1510,7 @@ Each of these is a spec claim rather than a programming convenience:
   solved one. The verdict is not re-litigated: it gated the commit at the
   solved point, and both sets of numbers stand as reported.
 - **A warm restart is `capture` handed back.** `run!`, then `(c, t) =
-  capture(sim)`, then `trim!(sim, problem; baseline = c, t₀ = t)` commits with
+  capture(sim)`, then `trim!(sim, problem; baseline = c, t0 = t)` commits with
   the clock at `t` — the resumed spelling §14.8 names, with continuity explicit
   rather than implied.
 - **The per-iteration write and read are free.** At the service's own seeded

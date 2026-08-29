@@ -332,7 +332,7 @@ end
 # --- the service (§14.8) ---------------------------------------------------------
 
 """
-    trim!(sim, problem; baseline, t₀ = 0.0, backend = LevenbergMarquardt()) → TrimReport
+    trim!(sim, problem; baseline, t0 = 0.0, backend = LevenbergMarquardt()) → TrimReport
 
 Solve `problem` over `baseline` and, on convergence, commit the solution through
 boundary zero. Returns a [`TrimReport`](@ref); non-convergence never throws.
@@ -362,7 +362,7 @@ commit means the simulation is bit-for-bit untouched, lifecycle included: a
 `built` simulation stays `built`.
 
 **The commit is literally an `init!`** — `init!(sim, override(baseline,
-condition(solution)); t₀)`, the same composite over the same baseline, so its
+condition(solution)); t0)`, the same composite over the same baseline, so its
 totality is setup's and the check is structurally unfailable through this path.
 Boundary zero's `project` and any guard already holding then move the committed
 stores off the solved point; both movers are surfaced rather than left silent,
@@ -377,10 +377,10 @@ operating point an equilibrium?" probe, useful in its own right and free.
 
 `trim!` is a stopped-sim service: legal in `built`, `initialized` and
 `stopped`, refused while `running` and on an `errored` simulation, exactly as
-`init!` is. The prototype spells the anchor `t₀` where the spec writes `t0`.
+`init!` is.
 """
 function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
-               t₀::Real = 0.0, backend = LevenbergMarquardt())
+               t0::Real = 0.0, backend = LevenbergMarquardt())
     lc = lifecycle(sim)
     lc === :running && throw(BuildError(ServiceLifecycle(op = :trim!, status = :running)))
     lc === :errored && throw(BuildError(ServiceLifecycle(op = :trim!, status = :errored)))
@@ -412,7 +412,7 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
         # one evaluation, and the ordinary box test decides (§14.8).
         r = Float64[NamedTuple{RK}(r0)[k] for k in RK]
         return _verdict!(sim, problem, baseline, guess, r, tol, :bypassed, 1, 0,
-                         Tuple{Symbol,Symbol}[], reader, t₀)
+                         Tuple{Symbol,Symbol}[], reader, t0)
     end
 
     # --- the seeded half ---------------------------------------------------------
@@ -476,7 +476,7 @@ function trim!(sim::Simulation{Float64}, problem::TrimProblem; baseline,
     eval!(r, nothing, out.d)
     _verdict!(sim, problem, baseline, NamedTuple{K}(Tuple(out.d)), r, tol,
               out.status, out.nevals, out.niters, _saturated(K, out.d, lower, upper),
-              reader, t₀)
+              reader, t0)
 end
 
 # A non-nominal deployment is refused rather than served: the commit runs
@@ -546,7 +546,7 @@ end
 function _verdict!(sim::Simulation, p::TrimProblem, baseline, solution::NamedTuple,
                   r::Vector{Float64}, tol::Vector{Float64}, status::Symbol,
                   nevals::Int, niters::Int, saturated::Vector{Tuple{Symbol,Symbol}},
-                  reader, t₀)
+                  reader, t0)
     RK = keys(p.tolerances)
     residuals = NamedTuple{RK}(Tuple(r))
     converged = _within(r, tol)
@@ -554,7 +554,7 @@ function _verdict!(sim::Simulation, p::TrimProblem, baseline, solution::NamedTup
                                    status, nevals, niters, saturated,
                                    Tuple{String,Symbol}[])
 
-    init!(sim, override(baseline, p.condition(solution)); t₀ = Float64(t₀))
+    init!(sim, override(baseline, p.condition(solution)); t0 = Float64(t0))
 
     # The commit's fired events, read off the per-boundary counts right after
     # `init!` returns — they are reset at the next boundary, and there is none

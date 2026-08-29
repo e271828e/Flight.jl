@@ -444,7 +444,7 @@ would do at N = 0.
 end
 
 """
-    init!(sim, condition = fragment(); t₀ = zero(T))
+    init!(sim, condition = fragment(); t0 = zero(T))
 
 Initialize: state at the declared defaults with the condition's overrides
 applied, table consistent, clock at `t₀`.
@@ -460,7 +460,7 @@ default at all, and the condition's totality is what supplies them (§14.6). It
 resolves first (§14.3), then checks root-input totality against the build's
 root input faces (§14.6), and only then writes: a rejected `init!` leaves the
 simulation exactly as it was, and a root input gets a condition value or the
-call errors — the services path contains no call to `probe_value`. `t₀` is a
+call errors — the services path contains no call to `probe_value`. `t0` is a
 service argument, never a condition entry: time is not a store of any
 component (§14.5).
 
@@ -490,7 +490,7 @@ status (§11.8). `init!` is itself a stopped-sim operation: refused while
 `running`, and refused on an `errored` simulation, which is terminally
 stopped (§13.6) — reproduction is trace replay, not resurrection.
 """
-function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) where {T}
+function init!(sim::Simulation{T}, condition = fragment(); t0::T = zero(T)) where {T}
     ctl = sim.control
     lc = @atomic ctl.lifecycle
     lc === :running && throw(BuildError(ServiceLifecycle(op = :init!, status = :running)))
@@ -500,8 +500,8 @@ function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) wh
     establish_defaults!(sim.exec.xbuf, sim.exec.sstores, sim.exec.mstores, sim.build.flat.comps,
                         activation(sim.build, T).decls, sim.build.tiers)   # D-063's reset
     apply!(sim, plan)
-    sim.exec.clock.t = t₀
-    sim.exec.clock.t₀ = t₀
+    sim.exec.clock.t = t0
+    sim.exec.clock.t₀ = t0
     sim.exec.clock.step = 0
     fill!(sim.exec.events.prior, false)
     _reset!(sim.log)

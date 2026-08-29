@@ -89,7 +89,7 @@ eltype_split(r, d) = r.ω̇ isa Float64 ? (torque = r.ω̇,) : (wrong = r.ω̇,)
 
 @testset "a one-step linear problem solves, commits and reads back (§14.7, §14.8)" begin
     sim = Simulation(fed(Pendulum(), :u); h = 1//10)
-    report = trim!(sim, u_problem(); baseline = pend_base(), t₀ = 0.25)
+    report = trim!(sim, u_problem(); baseline = pend_base(), t0 = 0.25)
 
     # The equilibrium torque at θ = 0.5 with ω = 0, which is the whole problem.
     @test report.converged
@@ -442,12 +442,12 @@ end
 @testset "the commit is literally an `init!` over the same composite (§14.8, §14.9)" begin
     sim = Simulation(fed(Pendulum(), :u); h = 1//10)
     twin = Simulation(fed(Pendulum(), :u); h = 1//10)
-    report = trim!(sim, u_problem(); baseline = pend_base(), t₀ = 0.75)
+    report = trim!(sim, u_problem(); baseline = pend_base(), t0 = 0.75)
 
     # The hand-written spelling of what `trim!` ran: the same composite over the
     # same baseline at the same anchor, which is why the commit's totality is
     # setup's and the check is structurally unfailable through this path.
-    init!(twin, override(pend_base(), decide_u(report.solution)); t₀ = 0.75)
+    init!(twin, override(pend_base(), decide_u(report.solution)); t0 = 0.75)
     @test world(twin) == world(sim)
     @test lifecycle(twin) === lifecycle(sim)
 end
@@ -460,9 +460,9 @@ end
     (c, t) = capture(sim)
     @test lifecycle(sim) === :stopped && t === 0.4
 
-    # `trim!(sim, problem; baseline = c, t₀ = t)` is §14.8's resumed spelling:
+    # `trim!(sim, problem; baseline = c, t0 = t)` is §14.8's resumed spelling:
     # continuity is explicit, and the anchor comes back from the capture.
-    report = trim!(sim, u_problem(); baseline = c, t₀ = t)
+    report = trim!(sim, u_problem(); baseline = c, t0 = t)
     @test report.converged && report.committed_residuals !== nothing
     @test lifecycle(sim) === :initialized
     @test sim.exec.clock.t === 0.4 && sim.exec.clock.t₀ === 0.4

@@ -157,7 +157,7 @@ end
     (c, t) = capture(sim)
     @test t === 0.0                              # the condition is time-free; `t` rides beside
     @test c isa ConditionNode
-    init!(twin, c; t₀ = t)
+    init!(twin, c; t0 = t)
     @test world(twin) == world(sim)              # x, every `s` and `m`, root inputs, clock
 
     # It is total by construction (§14.6): no baseline underneath, and the
@@ -168,12 +168,12 @@ end
     @test state(twin, "ctl").acc === 4.0
 
     # And after a trajectory: the same pair, taken at the run's end, is the
-    # warm restart's baseline — clock included, which is what `t₀ = t` is for.
+    # warm restart's baseline — clock included, which is what `t0 = t` is for.
     run!(sim; t_end = 0.5)
     @test lifecycle(sim) === :stopped && state(sim, "plant").q != SVector(0.3, -0.2)
     (c2, t2) = capture(sim)
     @test t2 === 0.5
-    init!(twin, c2; t₀ = t2)
+    init!(twin, c2; t0 = t2)
     @test world(twin) == world(sim)
     @test twin.exec.clock.t === 0.5 && twin.exec.clock.t₀ === 0.5
 end

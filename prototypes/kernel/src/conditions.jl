@@ -789,15 +789,15 @@ Read the current committed stores **and root inputs** back as a condition value
 (§14.1, glossary): every component's `x` field by field, every discrete `s`,
 every mode store and every root input, as one `combine` of per-component
 fragments plus the root-input fragment. The pair is capture → tweak → apply:
-`init!(sim, c; t₀ = t)` re-establishes exactly the world that was read, and a
-`trim!` resumes from it as `trim!(sim, problem; baseline = c, t₀ = t)`
+`init!(sim, c; t0 = t)` re-establishes exactly the world that was read, and a
+`trim!` resumes from it as `trim!(sim, problem; baseline = c, t0 = t)`
 (§14.8).
 
 Root-input coverage is what makes the captured condition **total**, hence
 re-applicable under §14.6 — a capture is by construction the one condition that
 never needs a baseline under it. The condition is time-free: `t` rides beside
 it, because time is not a store of any component (§14.5), and it is passed back
-as the `t₀` argument.
+as the `t0` argument.
 
 Legal in `initialized` and `stopped`, the states whose stores are committed and
 boundary-consistent. A `built` simulation has no such stores yet — boundary
