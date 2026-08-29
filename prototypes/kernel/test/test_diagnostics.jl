@@ -440,7 +440,19 @@ using InteractiveUtils: subtypes    # the coverage check below
         ReadSetMisuse(observed = Int, reason = :not_a_selector, label = :r),
         ReadSetMisuse(observed = NamedTuple, reason = :not_a_read_set),
         NotAttached(device = "Pad", roster = ["device 1 (Pad)"]),
-        # the runtime stream's eight, re-parented (§11.8)
+        ReplayHeaderMismatch(what = :scalar, expected = Float64, found = D8),
+        ReplayHeaderMismatch(what = :store, name = :paths, expected = ["a"],
+                             found = ["a", "b"]),
+        ReplayHeaderMismatch(what = :store, path = "a", name = :s, expected = NamedTuple,
+                             found = nothing),
+        ReplayHeaderMismatch(what = :root_input, expected = [:a], found = [:a, :b]),
+        ReplayHeaderMismatch(what = :root_input, name = :a, expected = Float64, found = "x"),
+        ReplayHeaderMismatch(what = :deployment, name = :h, expected = 0.1, found = 0.05),
+        ReplaySchemaMismatch(writer = "harness", schema = [:a, :z], unknown = [:z],
+                             faces = [:a, :b]),
+        ReplayUnknownFace(face = 7, frame = 1, writer = "harness", faces = [:a, :b]),
+        ReplayUnknownFace(face = :z, frame = 1, writer = "device 1 (Pad)", faces = [:a, :b]),
+        # the runtime stream's nine, re-parented (§11.8)
         MalformedDatum(ArgumentError("bad")),
         OutOfClaimEntry(:a, 1.0, [:b], "device 1 (Pad)"),
         ClaimedFaceEntry(:a, "device 1 (Pad)", 1.0, :staging),
@@ -449,6 +461,7 @@ using InteractiveUtils: subtypes    # the coverage check below
         FiringBudget("a/b", :snap, 1.0, 4, 5),
         DeviceCrash(ArgumentError("bad"), false),
         DeviceJoinTimeout("device 1 (Pad)", 5.0, 1.0, 10),
+        ReplayDiscardedStaging([:a, :b], 3),
     ]
 
     # Appendix C's severity column, as the list it is: every other kind is an
@@ -456,7 +469,7 @@ using InteractiveUtils: subtypes    # the coverage check below
     warning_kinds = Set{DataType}([EmptyGreedyClaim, TrimCommitEvents, TrimCommitResiduals,
                                   MalformedDatum, OutOfClaimEntry, ClaimedFaceEntry,
                                   EntryTypeMismatch, ChatteringBudget, FiringBudget,
-                                  DeviceCrash, DeviceJoinTimeout])
+                                  DeviceCrash, DeviceJoinTimeout, ReplayDiscardedStaging])
     for d in occurrences
         @test severity(d) === (typeof(d) in warning_kinds ? :warning : :error)
         @test path(d) isa String

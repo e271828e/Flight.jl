@@ -33,8 +33,8 @@ Appendix C): each kind is a Julia type, its identity, and its payload is
 plain data — paths and names as strings and symbols, never component
 instances; the declared/observed *port* types are the payload exception, and
 they are small. These are the kinds whose sources the prototype has built;
-the four whose features are absent — `DebtReanchor`, `ThreadBudget`,
-`ReplayDiscardedStaging`, `UnboundedRun` — are absent with them (README).
+the three whose features are absent — `DebtReanchor`, `ThreadBudget`,
+`UnboundedRun` — are absent with them (README).
 Writer attribution is never a payload field: the channel is per-writer, so
 the cell supplies it (§11.8, §12.4: no call passes a device id).
 `DeviceJoinTimeout`'s `who` is not that attribution — it is the payload's
@@ -117,12 +117,26 @@ struct DeviceJoinTimeout <: Diagnostic
     boundary::Int
 end
 
+"""
+§12.7's live staging met by a replay: the trace feeds the drain, so a batch
+found in a cell is taken and dropped rather than applied. The attribution is
+the cell's, as everywhere in this channel — the emitting site knows whose cell
+it writes — and the payload is what the drop cost: the faces the batch touched,
+and the frame it was drained at. Rate-limited by construction: the drain takes
+each cell once per frame and coalescing makes a batch at most one per writer
+per frame, which is exactly §11.8's per-source limit.
+"""
+struct ReplayDiscardedStaging <: Diagnostic
+    faces::Vector{Symbol}
+    frame::Int
+end
+
 "The closed set as a union: what a ring holds, and what `_report!` admits."
 const DiagValue = Union{MalformedDatum,OutOfClaimEntry,ClaimedFaceEntry,
                         EntryTypeMismatch,ChatteringBudget,FiringBudget,
-                        DeviceCrash,DeviceJoinTimeout}
+                        DeviceCrash,DeviceJoinTimeout,ReplayDiscardedStaging}
 
-# The eight ride `src/diagnostics.jl`'s root so `severity` covers them (§13.2,
+# The nine ride `src/diagnostics.jl`'s root so `severity` covers them (§13.2,
 # D-214): the channel *is* the warning stream, so every one of them is a
 # warning by construction. `message(d)` renders what the emitting site
 # interpolates today; the sites still print the value itself (§11.8), so
@@ -135,6 +149,7 @@ severity(::ChatteringBudget) = :warning
 severity(::FiringBudget) = :warning
 severity(::DeviceCrash) = :warning
 severity(::DeviceJoinTimeout) = :warning
+severity(::ReplayDiscardedStaging) = :warning
 
 path(d::ChatteringBudget) = d.path
 path(d::FiringBudget) = d.path
@@ -165,6 +180,11 @@ message(d::DeviceCrash) =
 message(d::DeviceJoinTimeout) =
     "$(d.who) did not join within $(d.timeout)s at t = $(d.t) (boundary $(d.boundary)) — " *
     "abandoned by name rather than hanging the shutdown tail (§12.4)"
+message(d::ReplayDiscardedStaging) =
+    "$(_facelist(d.faces)) was staged for frame $(d.frame) and discarded — the trace feeds " *
+    "the drain under replay, and mixing live writes into one would destroy the property " *
+    "replay exists to provide; a session that wants live input is a continuation, `run!` " *
+    "after `replay!` (§12.7)"
 
 """
 The per-kind counter record (§11.8): a **fixed-shape isbits record, never a
@@ -182,8 +202,9 @@ struct KindCounts
     firing::Int
     crash::Int
     join_timeout::Int
+    replay_discarded::Int
 end
-KindCounts() = KindCounts(0, 0, 0, 0, 0, 0, 0, 0)
+KindCounts() = KindCounts(0, 0, 0, 0, 0, 0, 0, 0, 0)
 
 _kind(::MalformedDatum)   = :malformed
 _kind(::OutOfClaimEntry)  = :out_of_claim
@@ -193,6 +214,7 @@ _kind(::ChatteringBudget) = :chattering
 _kind(::FiringBudget)     = :firing
 _kind(::DeviceCrash)      = :crash
 _kind(::DeviceJoinTimeout) = :join_timeout
+_kind(::ReplayDiscardedStaging) = :replay_discarded
 
 _bump(c::KindCounts, k::Symbol) =
     KindCounts((getfield(c, f) + (f === k) for f in fieldnames(KindCounts))...)

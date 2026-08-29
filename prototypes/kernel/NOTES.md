@@ -846,6 +846,50 @@ it is `MissingInit(op = :trace)`, which fits better than a second
 `ArgumentInvalid` reason — with no header there is no recording, and the way
 out is exactly the mandatory `init!` an advance entry names (§12.6).
 
+**Increment 23, stage 2 — replay's entry pass (§12.7).** The four kinds and
+`_compile_feed`: everything a trace has to survive before `replay!` (stage 3)
+touches a single cell. Three things shaped it.
+
+*The fingerprint has two sides, so it is one function.* `_capture_header`
+writes the structural fingerprint — the layout's cell sizes, the root-input
+face list, the flat's component paths, each store's value type — into the
+header, and the validation compares the header's against the target's. Two
+spellings of that computation would be a silent way for a replay to pass: a
+field the capture records and the comparison forgets is checked by nobody. So
+`_fingerprint(sim)` is the one computation, and `_capture_header` calls it for
+the field it stores.
+
+*The pass is two-staged, and the split is Appendix C's policy column.*
+`ReplayHeaderMismatch` and `ReplaySchemaMismatch` are `fail-fast`,
+`ReplayUnknownFace` is `collected` — which reads as a contradiction until the
+order is fixed. The header's disagreements are collected among *themselves*
+and thrown before a single record is read, because a record resolved through a
+schema this model has already contradicted reports noise rather than a fault;
+the records are then collected in turn, so a trace with three bad entries
+reports three. §12.7's "validation is loud and up front" is that shape.
+
+*Two payload questions the spec leaves open, decided here.* A recorded value
+the target's declared type will not take is **not** a `ReplayUnknownFace` — the
+face is known, and it is the value the compiled scatter cannot accept — so it
+reports `ReplayHeaderMismatch(what = :root_input, name = face, expected =
+type, found = value)`, the same arm the root-input face-list comparison uses,
+discriminated by whether `name` is set. And a batch whose `writer` index is
+outside the header's schema list is `ReplayUnknownFace` per entry, `face` the
+bare position and `writer` rendered `"writer #i"`: the failure is exactly "this
+position resolves to no face", which is the kind's whole subject, and
+`ReplaySchemaMismatch` would have to carry an empty schema and an empty
+`unknown` list to say it. The `Union{Symbol,Int}` `face` field is the prototype
+running ahead of Appendix C's "face name" payload, flagged with `frames` for
+the spec pass.
+
+`_compile_feed`'s scalar gate is dispatch rather than a comparison — the typed
+`(Simulation{T}, Trace{T})` method beside the fallback a `Trace{Float64}`
+offered to a `Simulation{Dual}` reaches — which is why the two methods live in
+sim.jl beside where `replay!` will carry the identical pair, while the pass
+itself stays in trace.jl beside the capture it mirrors. `ReplayDiscardedStaging`
+is defined with the other three but has no emission site until stage 3, and
+MAP.md's §12 bullet says so.
+
 
 ## The properties the tests pin down
 
@@ -1646,6 +1690,38 @@ Each of these is a spec claim rather than a programming convenience:
   resolve to the same face because the appended set is a new entry rather than
   a rewrite, and `live_writers` names the current one. A `detach!` appends
   again and the batches recorded under the wider set stand unchanged.
+- **The scalar is dispatch, not a comparison.** A `Trace{Float64}` offered to
+  a `Simulation{Dual}` reaches `_compile_feed`'s fallback and reports
+  `what = :scalar`; the matching pair compiles. The refusal is therefore one
+  nobody can forget to write, and `replay!` will carry the same pair.
+- **The header is compared against the build and the deployment binding, and
+  nothing else.** An extra component moves both the path list and the cell-size
+  list, and both report `:store`; a changed `h` reports `:deployment` with
+  `name === :h` and drags `Δt_base` into the same collection, because the two
+  are one grid; `localization_budget` and `firing_budget` each report alone.
+  A target differing only in `t_end`/`stop_on` compiles: the recorded pair is a
+  fact of the recorded session, never a constraint on this one, and `t₀` is
+  applied rather than compared (§12.7's disposition table).
+- **A recorded schema is validated, and the header goes first.** A schema
+  naming a face this model does not export is one `ReplaySchemaMismatch` per
+  writer, carrying the whole recorded schema and the target's face list beside
+  the disagreeing names. A trace that is both schema-bent *and* entry-bent
+  reports only the schema — the two-stage order, which is what keeps the
+  entry-side report from being noise.
+- **Every position resolves through its schema, and the misses collect.** A
+  position past the schema's end, one below its start, and a batch naming a
+  writer index the schema list does not have are three `ReplayUnknownFace`es in
+  one carrier, each with its frame ordinal and its writer tag — the third
+  spelled `"writer #9"`, the tag §11.8 cannot supply. An unconvertible recorded
+  value is not among them: the face is known, so it is a
+  `ReplayHeaderMismatch(what = :root_input)`.
+- **A valid trace becomes compiled scatters, in the drain's own order.** The
+  feed's thunks applied in order reproduce the recording's writes into the
+  target's cells — sparse, so an untouched face keeps what the target's own
+  header left there — and each carries its original `TraceBatch`, which is what
+  lets a replay re-record the recording's own values. A recording that outlived
+  a roster change replays whole: the superseded schema entry is compiled
+  against the target's layout like any other.
 
 ## Stand-in retirement history
 

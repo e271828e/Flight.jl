@@ -150,3 +150,154 @@ end
     @test b4.frame == 3 && b4.writer == 4 && recorded_faces(trc, b4) == [:a]
     @test trc.batches[1:3] == [b1, b2, b3]        # the earlier records, untouched
 end
+
+# --- replay's entry pass (§12.7, increment 23 stage 2) ---------------------------
+# Validation and normalization, tested through `_compile_feed` alone: `replay!`
+# and its loop are stage 3, and the pass is what a trace has to survive before a
+# single write happens.
+
+# The same three root inputs under one extra component: same faces, a different
+# `Build` — §12.7's structural line, on the error side of it.
+extra_component() = Group((; s = Sum(sa = 1.0, sb = 1.0), g = Gain(2.0), k = TickCounter());
+                          inputs = ("a" => "s/a", "b" => "s/b", "c" => "g/e"))
+
+# A short recorded session over `three_root_inputs()`: two frames, one batch each.
+function recorded_session()
+    sim = Simulation(three_root_inputs(); h = 1//10)
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0, c = 0.0)))
+    stage!(sim, "b" => 1.0)
+    step!(sim)
+    stage!(sim, "a" => 2.0, "c" => 3.0)
+    step!(sim)
+    trace(sim)
+end
+
+# A fresh, initialized target of the recording's own build.
+function replay_target()
+    sim = Simulation(three_root_inputs(); h = 1//10)
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0, c = 0.0)))
+    sim
+end
+
+@testset "the scalar is dispatch, not a comparison (§12.7)" begin
+    trc = recorded_session()
+    err = failure(() -> _compile_feed(Simulation(three_root_inputs(), D8; h = 1//10), trc))
+    d = only(err.diagnostics)
+    @test err isa BuildError && d isa ReplayHeaderMismatch
+    @test d.what === :scalar && d.expected === Float64 && d.found === D8
+    # …and the matching pair compiles, which is what makes the refusal dispatch
+    # rather than a comparison anyone could forget to write.
+    @test _compile_feed(replay_target(), trc) isa ReplayFeed
+end
+
+@testset "the header is compared against the build and the deployment binding (§12.7)" begin
+    trc = recorded_session()
+
+    # An extra component is a different store layout: the path list and the
+    # cell-size list both move, and both are `:store`.
+    err = failure(() -> _compile_feed(Simulation(extra_component(); h = 1//10), trc))
+    @test err isa BuildError && all(d isa ReplayHeaderMismatch for d in err.diagnostics)
+    paths = only(d for d in err.diagnostics if d.name === :paths)
+    @test paths.what === :store && paths.expected == ["s", "g"] && paths.found == ["s", "g", "k"]
+    @test any(d -> d.what === :store && d.name === :sizes, err.diagnostics)
+
+    # The seven trajectory-determining parameters, one assertion each where the
+    # keyword is independently settable. `h` moves `Δt_base` with it — the two
+    # are one grid — so the collection carries both.
+    err = failure(() -> _compile_feed(Simulation(three_root_inputs(); h = 1//20), trc))
+    d = only(x for x in err.diagnostics if x.name === :h)
+    @test d.what === :deployment && d.expected === 0.1 && d.found === 0.05
+    @test any(x -> x.what === :deployment && x.name === :Δt_base, err.diagnostics)
+
+    err = failure(() -> _compile_feed(
+        Simulation(three_root_inputs(); h = 1//10, localization_budget = 4), trc))
+    d = only(err.diagnostics)
+    @test d.what === :deployment && d.name === :localization_budget
+    @test d.expected == 8 && d.found == 4
+
+    err = failure(() -> _compile_feed(
+        Simulation(three_root_inputs(); h = 1//10, firing_budget = 2), trc))
+    d = only(err.diagnostics)
+    @test d.what === :deployment && d.name === :firing_budget
+    @test d.expected == 4 && d.found == 2
+
+    # `t_end` and `stop_on` are a recorded fact of the recorded session, never a
+    # constraint on this one, and `t₀` is applied rather than compared (§12.7).
+    @test _compile_feed(Simulation(three_root_inputs(); h = 1//10, t_end = 3.0,
+                                   stop_on = ()), trc) isa ReplayFeed
+end
+
+@testset "a recorded schema is validated against the target's own faces (§11.5, §12.7)" begin
+    trc = recorded_session()
+    # The header rebuilt with one foreign name in the harness schema: the
+    # positional records are meaningless without the schema, so the schema is
+    # what has to agree with this model.
+    bent = _reschema(trc.header, [("harness" => [:a, :zzz, :c])])
+    err = failure(() -> _compile_feed(replay_target(), Trace(bent, trc.batches, trc.frames)))
+    d = only(err.diagnostics)
+    @test err isa BuildError && d isa ReplaySchemaMismatch
+    @test d.writer == "harness" && d.unknown == [:zzz]
+    @test d.schema == [:a, :zzz, :c] && d.faces == [:a, :b, :c]
+
+    # The header's own disagreements come first and alone: a trace that is both
+    # schema-bent and entry-bent reports the schema, because a record resolved
+    # through a contradicted schema would report noise (§12.7's two stages).
+    bad = Trace(bent, [TraceBatch(1, 1, Pair{Int,Any}[9 => 1.0])], 1)
+    @test kinds(failure(() -> _compile_feed(replay_target(), bad))) == [ReplaySchemaMismatch]
+end
+
+@testset "every position resolves through its schema, and the misses collect (§12.7)" begin
+    trc = recorded_session()
+    h = trc.header
+    # Three bad records in one trace: a position past the schema's end, a
+    # position below its start, and a batch naming a writer the schema list does
+    # not have — which is the same failure with the tag spelled positionally.
+    bad = Trace(h, [TraceBatch(1, 1, Pair{Int,Any}[7 => 1.0]),
+                    TraceBatch(2, 1, Pair{Int,Any}[0 => 1.0, 2 => 5.0]),
+                    TraceBatch(2, 9, Pair{Int,Any}[1 => 1.0])], 2)
+    err = failure(() -> _compile_feed(replay_target(), bad))
+    @test err isa BuildError && all(d isa ReplayUnknownFace for d in err.diagnostics)
+    @test [(d.face, d.frame, d.writer) for d in err.diagnostics] ==
+          [(7, 1, "harness"), (0, 2, "harness"), (1, 2, "writer #9")]
+    @test all(d -> d.faces == [:a, :b, :c], err.diagnostics)
+
+    # An unconvertible recorded value is not a face problem: the face is known
+    # and the *value* is what the target's compiled scatter cannot take.
+    err = failure(() -> _compile_feed(replay_target(),
+                                      Trace(h, [TraceBatch(1, 1, Pair{Int,Any}[1 => "x"])], 1)))
+    d = only(err.diagnostics)
+    @test d isa ReplayHeaderMismatch && d.what === :root_input
+    @test d.name === :a && d.expected === Float64 && d.found == "x"
+end
+
+@testset "a valid trace normalizes to compiled scatters, in drain order (§12.7, D-101)" begin
+    trc = recorded_session()
+    tgt = replay_target()
+    feed = _compile_feed(tgt, trc)
+    @test [r.frame for r in feed.records] == [1, 2]
+    @test feed.next == 1 && feed.last_frame == trc.frames == 2
+    # The recorded batch rides beside its thunk: a replay re-records, and what it
+    # re-records is the recording's own value (§12.7).
+    @test [r.record for r in feed.records] == trc.batches
+
+    # The thunks *are* the recording, applied to this build's cells: sparse, so
+    # an untouched face keeps whatever the target's own header put there.
+    cells() = (port(tgt, "", :a), port(tgt, "", :b), port(tgt, "", :c))
+    @test cells() == (0.0, 0.0, 0.0)
+    feed.records[1].thunk()
+    @test cells() == (0.0, 1.0, 0.0)
+    feed.records[2].thunk()
+    @test cells() == (2.0, 1.0, 3.0)
+
+    # A superseded schema entry is compiled against the target's layout like any
+    # other, so a recording that outlived a roster change replays whole.
+    sim = Simulation(three_root_inputs(); h = 1//10)
+    init!(sim, fragment(inputs = (a = 0.0, b = 0.0, c = 0.0)))
+    stage!(sim, "b" => 1.0)
+    step!(sim)
+    attach!(sim, Pad("d"), Enumerated("a"))
+    stage!(sim, "b" => 2.0)
+    step!(sim)
+    grown = _compile_feed(replay_target(), trace(sim))
+    @test [r.record.writer for r in grown.records] == [1, 3]     # both schema entries live
+end

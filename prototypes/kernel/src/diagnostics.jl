@@ -13,7 +13,7 @@
 # the carrier's `showerror` leads each line with it. Tests match on kind plus
 # payload, never on message text (§13.2).
 #
-# The runtime warning stream's eight kinds live in `src/dataplane.jl` beside the
+# The runtime warning stream's nine kinds live in `src/dataplane.jl` beside the
 # cells that carry them; they are parented here so `severity` covers them too.
 
 """
@@ -1220,3 +1220,77 @@ message(d::NotAttached) =
     "this $(d.device) instance is not rostered — `detach!` releases an existing " *
     "attachment, and the roster holds " *
     (isempty(d.roster) ? "no device" : join(("`$(r)`" for r in d.roster), ", ")) * " (§11.3)"
+
+# --- replay's entry validation (§12.7) -----------------------------------------
+# The up-front pass a trace is admitted through, before any state is touched:
+# the header against the target `Build` and its deployment binding, each
+# writer's schema against the target's root-input faces, and every record's
+# positions against the schema they were written under. The line the three
+# kinds draw is §12.7's: *structural* mismatch is an error, *parametric*
+# difference is the what-if register and no error at all.
+
+"§11.5, §12.7: the trace's header disagrees with the target build, its scalar or its deployment binding."
+Base.@kwdef struct ReplayHeaderMismatch <: Diagnostic
+    what::Symbol                             # :store | :root_input | :deployment | :scalar
+    path::String = ""                        # the component path, for the per-component :store arms
+    name::Symbol = Symbol("")                # :sizes|:paths|:s|:m, the root-input face, or the parameter
+    expected::Any = nothing                  # the trace's value
+    found::Any = nothing                     # the target's
+end
+path(d::ReplayHeaderMismatch) = d.path
+
+_replay_subject(d::ReplayHeaderMismatch) =
+    d.name === :paths ? "component-path list" :
+    d.name === :sizes ? "cell-size list" :
+    "$(_at_path(d.path))'s $(d.name) store type"
+
+message(d::ReplayHeaderMismatch) =
+    d.what === :scalar ?
+    "replay: the trace was recorded on a `Simulation{$(d.expected)}` and this one is a " *
+    "`Simulation{$(d.found)}` — the scalar is a structural fact of the deployment, and a " *
+    "trace re-drives the build it was recorded on (§12.7)" :
+    d.what === :deployment ?
+    "replay: the recording ran at `$(d.name)` = $(d.expected) and this simulation is bound " *
+    "at $(d.found) — the seven trajectory-determining deployment parameters are compared, " *
+    "never taken as a what-if: a deployment change moves the times the frame-ordinal " *
+    "batches apply at, which is different inputs rather than a modified model (§12.7)" :
+    d.what === :root_input ?
+    (d.name === Symbol("") ?
+     "replay: the trace records the root input-face list $(_faceset(d.expected)) and this " *
+     "build's is $(_faceset(d.found)) — the header's root-input values are applied face by " *
+     "face at boundary zero, so the two lists have to agree (§11.5, §12.7)" :
+     "replay: the value $(repr(d.found)) recorded for the root input `$(d.name)` does not " *
+     "convert to its declared type $(d.expected) — a record is replayed through the " *
+     "target's own compiled scatter (§11.4, §12.7)") :
+    "replay: the $(_replay_subject(d)) was $(repr(d.expected)) at the recording and is " *
+    "$(repr(d.found)) here — the store layout is compared against the `Build`, structural " *
+    "mismatch being a replay error and only *parametric* difference the what-if register (§12.7)"
+
+"§11.5, §12.7: a recorded writer schema naming faces the target model does not export as root inputs."
+Base.@kwdef struct ReplaySchemaMismatch <: Diagnostic
+    writer::String                           # the trace's writer tag (§11.8's own name)
+    schema::Vector{Symbol}                   # the recorded face-name → position schema
+    unknown::Vector{Symbol}                  # the disagreeing names
+    faces::Vector{Symbol}                    # the target's root input-face list
+end
+message(d::ReplaySchemaMismatch) =
+    "replay: $(d.writer)'s recorded schema $(_faceset(d.schema)) names " *
+    "$(_namelist(d.unknown)), which this model does not export as a root input — its root " *
+    "inputs are $(_faceset(d.faces)). A recorded schema is validated against the target's " *
+    "own faces before the first frame, because the positional records mean nothing without " *
+    "it (§11.5, §12.7)"
+
+"§12.7: a record position that resolves to no face — no such position in the writer's schema, or no such face here."
+Base.@kwdef struct ReplayUnknownFace <: Diagnostic
+    face::Union{Symbol,Int}                  # the name when the schema has one, else the bare position
+    frame::Int                               # the frame ordinal the record replays at
+    writer::String                           # the trace's writer tag
+    faces::Vector{Symbol} = Symbol[]         # the target's root input-face list
+end
+message(d::ReplayUnknownFace) =
+    d.face isa Int ?
+    "replay: the frame-$(d.frame) record for $(d.writer) touches position $(d.face), which " *
+    "its recorded schema does not reach — a sparse record is a position against that " *
+    "schema, and nothing else resolves it (§11.5, §12.7)" :
+    "replay: the frame-$(d.frame) record for $(d.writer) names `$(d.face)`, which is no " *
+    "root input face of this model — its root inputs are $(_faceset(d.faces)) (§12.7)"

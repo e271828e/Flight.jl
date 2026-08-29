@@ -3,13 +3,16 @@
 # deployment block — and behind it one sparse record per drained batch, in the
 # one record format D-176 unified on. The trace is *primary* data (D-029,
 # D-038): the log is recomputable from it, and what recomputes it is replay
-# (§12.7), absent here (README).
+# (§12.7), whose loop is absent here (README) but whose entry pass is not —
+# the validation and normalization a trace is admitted through live at the
+# tail of this file, beside the capture they mirror.
 #
 # This file holds the register and the pure mechanics; the `Simulation`-facing
 # surface — the capture's placement in `init!`, the drain's frame stamp,
-# `trace(sim)` — lives in sim.jl, beside the loop that runs it. The drain
-# thunks are compiled here too (`_install_writers!`), because the writer's
-# schema index rides in them and nothing else may fix it.
+# `trace(sim)`, `_compile_feed`'s scalar gate — lives in sim.jl, beside the
+# loop that runs it. The drain thunks are compiled here too
+# (`_install_writers!`), because the writer's schema index rides in them and
+# nothing else may fix it.
 
 """
 The trace header (§11.5): the full initial state as **resolved values**, never
@@ -70,6 +73,34 @@ struct Trace{T}
 end
 
 """
+One normalized record (§12.7): the frame ordinal it applies at, the compiled
+scatter as a zero-argument thunk, and the `TraceBatch` it came from — carried
+beside the thunk so a replayed frame re-records exactly what the recording
+held, under the recording's own writer index (§12.7: "the new trace inherits
+the old header").
+"""
+const ReplayRecord = @NamedTuple{frame::Int, thunk::Function, record::TraceBatch}
+
+"""
+What `_compile_feed` hands the loop (§12.7): the whole recording normalized to
+compiled scatters against the *target* layout, in drain order — by frame, then
+by the recording's writer index — with a cursor into it and the recording's
+length as the replay's frame budget.
+
+The conversion is paid here, once, off the loop: the replay drain applies
+compiled scatters exactly as the live drain does, and no face name is resolved
+per frame under replay either (D-101). `next` is the first record not yet
+applied; `last_frame` is `trc.frames`, the recording's length rather than its
+last batch's frame — a recording whose final frames staged nothing still
+replays them.
+"""
+mutable struct ReplayFeed
+    records::Vector{ReplayRecord}
+    next::Int
+    last_frame::Int
+end
+
+"""
 The `Simulation`'s trace holder: the kill switch fixed at construction
 (§11.5's plain switch for memory-constrained marathon sessions, D-029), the
 captured header, the records behind it, and the two counters the drain
@@ -92,12 +123,13 @@ mutable struct TraceRegister
     frames::Int
     frame::Int                        # the ordinal this frame's records take
     live_writers::UnitRange{Int}      # the current set's entries in header.schemas
+    feed::Union{Nothing,ReplayFeed}   # non-`nothing` while a replay drives the loop (§12.7)
 end
 
 # The empty roster leaves the harness register sole writer, so the fresh
 # register's provisional set is `1:1`; `_install_writers!` re-fixes it at every
 # capture and every roster change.
-TraceRegister(enabled::Bool) = TraceRegister(enabled, nothing, TraceBatch[], 0, 0, 1:1)
+TraceRegister(enabled::Bool) = TraceRegister(enabled, nothing, TraceBatch[], 0, 0, 1:1, nothing)
 
 # §11.5's clearing at `init!`: the header and every record it stood in front of
 # go together, the recording's length with them. `live_writers` is left where it
@@ -176,6 +208,24 @@ function _install_writers!(reg::TraceRegister, plane)
     nothing
 end
 
+"""
+The structural fingerprint (§11.5, §12.7): the layout's cell sizes, the root
+input-face list, the flat's component paths and each component store's value
+type. One function because it has two sides — the capture writes it into the
+header, and replay compares the header's against the target's — and two
+spellings of one fingerprint would be a silent way for a replay to pass.
+`sim` is untyped for include order alone, as `_capture_header` below is.
+"""
+function _fingerprint(sim)
+    ex = sim.exec
+    layout = ex.act.layout
+    (sizes = copy(layout.sizes),
+     root_faces = Symbol[f for (f, _) in layout.root_inputs],
+     paths = copy(sim.build.flat.paths),
+     stypes = Any[st === nothing ? nothing : typeof(st[]) for st in ex.sstores],
+     mtypes = Any[st === nothing ? nothing : typeof(st[]) for st in ex.mstores])
+end
+
 # §11.5's header, read off the simulation at §14.5's placement. `sim` is
 # untyped for include order alone — this file precedes sim.jl, the drain
 # thunks it compiles being what the data plane is built with.
@@ -195,16 +245,11 @@ function _capture_header(sim)
                   localization_budget = sim.localization_budget,
                   firing_budget = sim.firing_budget, t_end = sim.t_end,
                   stop_on = copy(sim.stop_on))
-    structure = (sizes = copy(layout.sizes),
-                 root_faces = Symbol[f for (f, _) in layout.root_inputs],
-                 paths = copy(sim.build.flat.paths),
-                 stypes = Any[st === nothing ? nothing : typeof(st[]) for st in ex.sstores],
-                 mtypes = Any[st === nothing ? nothing : typeof(st[]) for st in ex.mstores])
     # parameterized explicitly: the `t_end = nothing` run has a `Nothing` in hand
     # where the field is `Union{Nothing,Float64}`, and only the inner
     # constructor's `convert` bridges a NamedTuple's field types
     TraceHeader{T}(copy(ex.xbuf), s, m, roots, Pair{String,Vector{Symbol}}[],
-                   deployment, structure)
+                   deployment, _fingerprint(sim))
 end
 
 # The capture, at `init!`'s §14.5 placement: the header first, then the growth
@@ -216,4 +261,155 @@ function _capture!(sim)
     reg.header = _capture_header(sim)
     _install_writers!(reg, sim.plane)
     nothing
+end
+
+# ==============================================================================
+# Replay's entry pass (§12.7): validation, then normalization
+# ==============================================================================
+# "Validation is loud and up front" — the whole trace is checked and converted
+# before the first frame, so every refusal precedes every write and the replay
+# drain resolves no name. The pass is two-staged: the header's own disagreements
+# with the target build fail fast as a collection, and only then are the records
+# resolved through the schemas the first stage just validated. `sim` is untyped
+# throughout for include order alone; the scalar gate that dispatches into this
+# is `_compile_feed` in sim.jl, beside the loop it feeds.
+
+# The header against the target `Build` and its deployment binding (§12.7's
+# disposition table): the structural fingerprint compared field for field, then
+# the seven trajectory-determining deployment parameters. `t₀` is applied rather
+# than compared, and the recorded `t_end`/`stop_on` pair is a fact of the
+# recorded session, never a constraint on this one — so neither is looked at.
+function _check_header!(diags::Vector{Diagnostic}, sim, h::TraceHeader)
+    f = _fingerprint(sim)
+    l = h.layout
+    l.sizes == f.sizes ||
+        push!(diags, ReplayHeaderMismatch(what = :store, name = :sizes,
+                                          expected = l.sizes, found = f.sizes))
+    l.paths == f.paths ||
+        push!(diags, ReplayHeaderMismatch(what = :store, name = :paths,
+                                          expected = l.paths, found = f.paths))
+    l.root_faces == f.root_faces ||
+        push!(diags, ReplayHeaderMismatch(what = :root_input,
+                                          expected = l.root_faces, found = f.root_faces))
+    # the per-component store types, only where the path lists agree on what a
+    # component *index* means — otherwise the comparison would be by position
+    # between two different models, and the path mismatch above is the honest fact
+    if l.paths == f.paths
+        for (i, p) in enumerate(f.paths)
+            l.stypes[i] === f.stypes[i] ||
+                push!(diags, ReplayHeaderMismatch(what = :store, path = p, name = :s,
+                                                  expected = l.stypes[i], found = f.stypes[i]))
+            l.mtypes[i] === f.mtypes[i] ||
+                push!(diags, ReplayHeaderMismatch(what = :store, path = p, name = :m,
+                                                  expected = l.mtypes[i], found = f.mtypes[i]))
+        end
+    end
+    d = h.deployment
+    for (name, found) in ((:Δt_base, sim.Δt_base), (:h, sim.h), (:n, sim.n),
+                          (:method, nameof(typeof(sim.stepper))),
+                          (:localization_tol, sim.localization_tol),
+                          (:localization_budget, sim.localization_budget),
+                          (:firing_budget, sim.firing_budget))
+        getfield(d, name) == found ||
+            push!(diags, ReplayHeaderMismatch(what = :deployment, name = name,
+                                              expected = getfield(d, name), found = found))
+    end
+    nothing
+end
+
+# Each recorded writer's schema against the target's root-input faces (§12.7):
+# a recorded name this model does not export is a replay error, reported per
+# writer with the whole schema and the list-in-hand beside it. Superseded schema
+# entries are checked with the live ones — a batch may still reference them, and
+# the compiled scatters below are built from whatever a batch names.
+function _check_schemas!(diags::Vector{Diagnostic}, faces::Vector{Symbol}, h::TraceHeader)
+    for (tag, schema) in h.schemas
+        unknown = Symbol[s for s in schema if !(s in faces)]
+        isempty(unknown) ||
+            push!(diags, ReplaySchemaMismatch(writer = tag, schema = schema,
+                                              unknown = unknown, faces = faces))
+    end
+    nothing
+end
+
+# The compiled scatter as a zero-argument thunk, the `_drain_thunk` idiom: the
+# store, the address tuple and the batch are captured *concretely*, so the
+# `@generated` `_apply!` specializes once per writer at this stopped-sim compile
+# and the replayed frame calls through a barrier with nothing left to infer.
+_apply_thunk(store, addrs::Tuple, batch::Batch) = () -> _apply!(store, addrs, batch)
+
+# One recorded writer's compiled scatter against the *target* layout. The
+# schema check above already proved every face addressable, so the guard here
+# never fires; it is kept because `Writer` would answer an absent face with a
+# `KeyError` rather than with the kind that names it.
+function _replay_writer(layout::Layout, diags::Vector{Diagnostic}, tag::String,
+                        schema::Vector{Symbol}, frame::Int, faces::Vector{Symbol})
+    absent = Symbol[f for f in schema if !haskey(layout.addr, ("", f))]
+    isempty(absent) && return Writer(layout, schema)
+    for f in absent
+        push!(diags, ReplayUnknownFace(face = f, frame = frame, writer = tag, faces = faces))
+    end
+    nothing
+end
+
+"""
+The trace-record conversion in reverse (§12.7, D-176), paid once and off the
+loop: every sparse record's positions are resolved through the writer's schema,
+the values converted to the target's declared types, and the whole batch
+rebuilt as the positional `Batch` the compiled scatter takes. The recorded
+`TraceBatch` rides beside its thunk, because a replay re-records.
+
+Everything here is *collected* — Appendix C gives `ReplayUnknownFace` the
+`collected` policy — so a trace with three bad entries reports three. A batch
+that produced a diagnostic contributes no record: a partially applied frame is
+not a replay of anything.
+"""
+function _compile_records!(diags::Vector{Diagnostic}, sim, trc::Trace, faces::Vector{Symbol})
+    layout, store, schemas = sim.exec.act.layout, sim.exec.store, trc.header.schemas
+    writers = Dict{Int,Writer}()
+    recs = ReplayRecord[]
+    for b in trc.batches
+        if !(1 ≤ b.writer ≤ length(schemas))
+            # no schema to resolve the positions through, and the writer index is
+            # what is missing — the tag §11.8 cannot supply is spelled positionally
+            for (pos, _) in b.entries
+                push!(diags, ReplayUnknownFace(face = pos, frame = b.frame,
+                                               writer = "writer #$(b.writer)", faces = faces))
+            end
+            continue
+        end
+        (tag, schema) = schemas[b.writer]
+        if !haskey(writers, b.writer)
+            w = _replay_writer(layout, diags, tag, schema, b.frame, faces)
+            w === nothing && continue
+            writers[b.writer] = w
+        end
+        w = writers[b.writer]
+        vals, mask, ok = Any[w.blank.vals...], fill(false, length(schema)), true
+        for (pos, v) in b.entries
+            if !(1 ≤ pos ≤ length(schema))
+                push!(diags, ReplayUnknownFace(face = pos, frame = b.frame, writer = tag,
+                                               faces = faces))
+                ok = false
+                continue
+            end
+            vals[pos] = try
+                convert(w.types[pos], v)
+            catch
+                push!(diags, ReplayHeaderMismatch(what = :root_input, name = schema[pos],
+                                                  expected = w.types[pos], found = v))
+                ok = false
+                continue
+            end
+            mask[pos] = true
+        end
+        ok || continue
+        batch = Batch(convert(typeof(w.blank.vals), (vals...,)), (mask...,))
+        push!(recs, (frame = b.frame, thunk = _apply_thunk(store, w.addrs, batch), record = b))
+    end
+    # the drain's own order (§11.5): by frame, then by the recording's writer
+    # index. Stable, so a trace already in drain order — every trace this
+    # register produces — keeps exactly the order it was recorded in.
+    sort!(recs; by = r -> (r.frame, r.record.writer), alg = MergeSort)
+    recs
 end

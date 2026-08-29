@@ -538,6 +538,36 @@ function init!(sim::Simulation{T}, condition = fragment(); t0::T = zero(T)) wher
 end
 
 """
+Replay's entry pass (§12.7), sitting where `replay!` will call it — before any
+state is touched, so every refusal precedes every write. The pass runs in two
+stages, and the split is Appendix C's policy column: the header's own
+disagreements with this build are `fail-fast`, collected among themselves and
+thrown before a single record is looked at, because a record resolved through a
+schema this model has already contradicted would report noise; the records are
+then `collected` in turn, so a trace with three bad entries reports three. What
+comes back is the whole recording normalized to compiled scatters against *this*
+layout — the conversion paid once, off the loop (D-101).
+
+The scalar is the outermost structural fact, and it is dispatch rather than a
+comparison: the method below takes a `Trace{T}` against a `Simulation{T}`, and
+the fallback beside it is what a `Trace{Float64}` offered to a
+`Simulation{Dual}` reaches. `replay!` will carry exactly the same pair.
+"""
+function _compile_feed(sim::Simulation{T}, trc::Trace{T}) where {T}
+    faces = Symbol[f for (f, _) in sim.exec.act.layout.root_inputs]
+    diags = Diagnostic[]
+    _check_header!(diags, sim, trc.header)
+    _check_schemas!(diags, faces, trc.header)
+    isempty(diags) || throw(BuildError(diags))     # the header before the entries
+    records = _compile_records!(diags, sim, trc, faces)
+    isempty(diags) || throw(BuildError(diags))
+    ReplayFeed(records, 1, trc.frames)
+end
+
+_compile_feed(sim::Simulation{Ts}, trc::Trace{Tt}) where {Ts,Tt} =
+    throw(BuildError(ReplayHeaderMismatch(what = :scalar, expected = Tt, found = Ts)))
+
+"""
     run!(sim; t_end = nothing, stop_on = nothing)
 
 Advance one frame at a time, each frame §11.1's anatomy — drain, integrate,
