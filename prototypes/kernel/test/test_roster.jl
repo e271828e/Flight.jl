@@ -29,20 +29,22 @@ is_output(::Unwritten) = true
 @testset "the binding conformance check names every drift at the attach point (§11.6)" begin
     sim = Simulation(two_root_inputs(); h = 1//10)
     d = Pad("d")
-    for (b, frag) in ((NoSides(), "neither side"),
-                      (NoEnum(), "no `claims` enumeration"),
-                      (GreedyPlus(), "alternatives, not layers"),
-                      (Sourceless(), "without `is_input`"),
-                      (Drifted(), "while `is_input` reads false"))
+    for (b, reason) in ((NoSides(), :neither_side),
+                        (NoEnum(), :claims_missing),
+                        (GreedyPlus(), :greedy_with_claims),
+                        (Sourceless(), :greedy_without_input),
+                        (Drifted(), :claims_without_input))
         err = failure(() -> attach!(sim, d, b))
-        @test err isa BuildError && occursin("BindingContractMismatch", err.msg)
-        @test occursin(frag, err.msg)
+        @test err isa BuildError
+        diag = only(err.diagnostics)
+        @test diag isa BindingContractMismatch && diag.reason === reason
     end
     # The output side is an absence, not a conformance drift, and it is named
     # *after* the conformance clauses — which is why Drifted above reported its
     # drift rather than falling through to this.
     err = failure(() -> attach!(sim, d, Unwritten()))
-    @test err isa BuildError && occursin("output side", err.msg)
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa BindingContractMismatch && diag.reason === :reads_missing
     @test isempty(sim.plane.roster)                  # none of the six was rostered
 end
 
@@ -53,21 +55,22 @@ end
     # Identity before claims: the same instance re-attached — even under an
     # overlapping claim — is AlreadyAttached, never a self-ClaimConflict.
     err = failure(() -> attach!(sim, d1, Enumerated("a")))
-    @test err isa BuildError && occursin("AlreadyAttached", err.msg)
+    @test err isa BuildError && only(err.diagnostics) isa AlreadyAttached
     # Claims: face exclusivity, always two *distinct* devices named.
     err = failure(() -> attach!(sim, Pad("d2"), Enumerated("b", "a")))
-    @test err isa BuildError && occursin("ClaimConflict", err.msg)
-    @test occursin("device 1", err.msg)
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa ClaimConflict
+    @test occursin("device 1", diag.incumbent)
     # Affinity: the calling task is a single-slot resource.
     @test attach!(sim, Panel("p1"), Enumerated("b")).id == 2
     err = failure(() -> attach!(sim, Panel("p2"), Enumerated()))
-    @test err isa BuildError && occursin("CallerTaskConflict", err.msg)
+    @test err isa BuildError && only(err.diagnostics) isa CallerTaskConflict
     # An enumeration drifted onto a nonexistent face is a diagnosable anomaly.
     err = failure(() -> attach!(sim, Pad("d3"), Enumerated("flaps")))
-    @test err isa BuildError && occursin("AttachUnknownFace", err.msg)
+    @test err isa BuildError && only(err.diagnostics) isa AttachUnknownFace
     # Detaching what was never rostered is an error, not a silent no-op.
     err = failure(() -> detach!(sim, Pad("ghost")))
-    @test err isa BuildError && occursin("not rostered", err.msg)
+    @test err isa BuildError && only(err.diagnostics) isa NotAttached
 end
 
 @testset "a device writes inside its claim, every check at its own staging (§11.3, §11.4)" begin
@@ -131,7 +134,7 @@ end
 
     # A second greedy stakes the empty remainder: legal, useless, said out loud.
     g2 = Pad("gui2")
-    @test_logs (:warn, r"EmptyGreedyClaim") attach!(sim, g2, Greedy())
+    @test_logs (:warn, r"staked the empty remainder") attach!(sim, g2, Greedy())
     @test isempty(sim.plane.roster[3].writer.faces)
 end
 
@@ -209,8 +212,8 @@ end
     err_a = try attach!(sim, d, Enumerated("u")) catch e; e end
     err_d = try detach!(sim, d) catch e; e end
     wait(t)
-    @test err_a isa BuildError && occursin("ServiceLifecycle", err_a.msg)
-    @test err_d isa BuildError && occursin("ServiceLifecycle", err_d.msg)
+    @test err_a isa BuildError && only(err_a.diagnostics) isa ServiceLifecycle
+    @test err_d isa BuildError && only(err_d.diagnostics) isa ServiceLifecycle
     # The freeze lifts with the run: the same operations are legal again.
     @test attach!(sim, d, Enumerated("u")).id == 2
     detach!(sim, d)

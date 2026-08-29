@@ -174,12 +174,12 @@ end
 
 @testset "the two deployment keywords are validated with their siblings (§10.4)" begin
     m = single(Bouncer(1.0, 0.315))
-    @test occursin("localization_tol",
-                   failure(() -> Simulation(m; h = 1//10, localization_tol = 0.0)).msg)
-    @test occursin("localization_tol",
-                   failure(() -> Simulation(m; h = 1//10, localization_tol = -1e-3)).msg)
-    @test occursin("localization_budget",
-                   failure(() -> Simulation(m; h = 1//10, localization_budget = 0)).msg)
+    d1 = only(failure(() -> Simulation(m; h = 1//10, localization_tol = 0.0)).diagnostics)
+    @test d1 isa DeploymentInvalid && d1.parameter === :localization_tol
+    d2 = only(failure(() -> Simulation(m; h = 1//10, localization_tol = -1e-3)).diagnostics)
+    @test d2 isa DeploymentInvalid && d2.parameter === :localization_tol
+    d3 = only(failure(() -> Simulation(m; h = 1//10, localization_budget = 0)).diagnostics)
+    @test d3 isa DeploymentInvalid && d3.parameter === :localization_budget
 end
 
 @testset "localization compiles out at a non-nominal activation (§9.4, D-052)" begin

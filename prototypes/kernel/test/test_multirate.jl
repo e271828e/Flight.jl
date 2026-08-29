@@ -6,10 +6,14 @@
     @test period(Hz(50)) === 1//50
     @test period(Period(1//50)) === 1//50
     @test period(Hz(1//2)) === 2//1
-    @test occursin("Period(1//50)", failure(() -> Period(0.02)).msg)          # stage 3
-    @test occursin("Hz(1//2)", failure(() -> Hz(0.5)).msg)
-    @test occursin("Rational", failure(() -> Absolute(Hz(50), 0.001)).msg)
-    @test occursin("quantity", failure(() -> Absolute(1//50)).msg)           # stage 3
+    d1 = only(failure(() -> Period(0.02)).diagnostics)
+    @test d1 isa ArgumentInvalid && d1.call === :Period && d1.reason === :inexact
+    d2 = only(failure(() -> Hz(0.5)).diagnostics)
+    @test d2 isa ArgumentInvalid && d2.call === :Hz && d2.reason === :inexact
+    d3 = only(failure(() -> Absolute(Hz(50), 0.001)).diagnostics)
+    @test d3 isa ArgumentInvalid && d3.call === :Absolute && d3.reason === :inexact
+    d4 = only(failure(() -> Absolute(1//50)).diagnostics)
+    @test d4 isa ArgumentInvalid && d4.call === :Absolute && d4.reason === :not_a_quantity
 
     # Plain data carriers: no range checks of their own — those are Stratum A's,
     # with path attribution, at the fold.

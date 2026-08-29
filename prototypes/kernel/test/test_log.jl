@@ -129,16 +129,20 @@ end
     end
     err = try logged(sim) catch e; e end
     wait(t)
-    @test err isa BuildError && occursin("ServiceLifecycle", err.msg)
+    @test err isa BuildError && only(err.diagnostics) isa ServiceLifecycle
     @test length(logged(sim)) ≥ 2                        # the gate lifts with the run
 end
 
 @testset "the retention keywords are validated with their siblings (§11.2)" begin
     m = fed(Plant(), "u")
-    @test occursin("log must", failure(() -> Simulation(m; h = 1//10, log = 1)).msg)
-    @test occursin("log_every", failure(() -> Simulation(m; h = 1//10, log_every = 0)).msg)
-    @test occursin("log_max", failure(() -> Simulation(m; h = 1//10, log_max = 0)).msg)
-    @test occursin("log_max", failure(() -> Simulation(m; h = 1//10, log_max = 1.5)).msg)
+    d1 = only(failure(() -> Simulation(m; h = 1//10, log = 1)).diagnostics)
+    @test d1 isa DeploymentInvalid && d1.parameter === :log
+    d2 = only(failure(() -> Simulation(m; h = 1//10, log_every = 0)).diagnostics)
+    @test d2 isa DeploymentInvalid && d2.parameter === :log_every
+    d3 = only(failure(() -> Simulation(m; h = 1//10, log_max = 0)).diagnostics)
+    @test d3 isa DeploymentInvalid && d3.parameter === :log_max
+    d4 = only(failure(() -> Simulation(m; h = 1//10, log_max = 1.5)).diagnostics)
+    @test d4 isa DeploymentInvalid && d4.parameter === :log_max
     sim = Simulation(m; h = 1//10, log_max = Inf)        # the explicit opt-out
     init!(sim, fragment(inputs = (in = 0.0,)))
     run!(sim; t_end = 1.0)

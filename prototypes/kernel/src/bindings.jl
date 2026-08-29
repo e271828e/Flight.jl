@@ -36,30 +36,35 @@ struct TableBinding{T<:NamedTuple} <: AbstractBinding
     table::T
 end
 
+const _TABLE_ENTRY_VOCABULARY = Symbol[:face, :deadzone, :expo]
+
 function TableBinding(; entries...)
     table = NamedTuple(entries)
+    diags = Diagnostic[]
     for (k, e) in pairs(table)
-        e isa NamedTuple || throw(BuildError(
-            "TableBinding: entry `$k` must be a NamedTuple — " *
-            "(face = ..., deadzone = ..., expo = ...) (§11.6)"))
-        haskey(e, :face) || throw(BuildError(
-            "TableBinding: entry `$k` names no `face` — the face is what the " *
-            "channel writes (§11.6)"))
-        e.face isa Union{AbstractString,Symbol} || throw(BuildError(
-            "TableBinding: entry `$k`'s face must be a face name, got " *
-            "$(repr(e.face)) (§11.6)"))
+        if !(e isa NamedTuple)
+            push!(diags, ArgumentInvalid(call = :TableBinding, reason = :entry_shape, entry = k))
+            continue
+        end
+        if !haskey(e, :face)
+            push!(diags, ArgumentInvalid(call = :TableBinding, reason = :no_face, entry = k))
+        elseif !(e.face isa Union{AbstractString,Symbol})
+            push!(diags, ArgumentInvalid(call = :TableBinding, reason = :face_name,
+                                          entry = k, value = e.face))
+        end
         for key in keys(e)
-            key in (:face, :deadzone, :expo) || throw(BuildError(
-                "TableBinding: entry `$k` carries `$key` — the entry vocabulary " *
-                "is `face`, `deadzone`, `expo` (§11.6)"))
+            key in _TABLE_ENTRY_VOCABULARY || push!(diags, ArgumentInvalid(
+                call = :TableBinding, reason = :vocabulary, entry = k, argument = key,
+                vocabulary = _TABLE_ENTRY_VOCABULARY))
         end
         dz = get(e, :deadzone, nothing)
-        dz === nothing || 0 <= dz < 1 || throw(BuildError(
-            "TableBinding: entry `$k`'s deadzone must lie in [0, 1), got $dz (§11.6)"))
+        dz === nothing || 0 <= dz < 1 || push!(diags, ArgumentInvalid(
+            call = :TableBinding, reason = :deadzone, entry = k, value = dz))
         ex = get(e, :expo, nothing)
-        ex === nothing || 0 <= ex <= 1 || throw(BuildError(
-            "TableBinding: entry `$k`'s expo must lie in [0, 1], got $ex (§11.6)"))
+        ex === nothing || 0 <= ex <= 1 || push!(diags, ArgumentInvalid(
+            call = :TableBinding, reason = :expo, entry = k, value = ex))
     end
+    isempty(diags) || throw(BuildError(diags))
     TableBinding(table)
 end
 
@@ -132,12 +137,12 @@ the did-you-mean candidate lists are absent (README).
 """
 function _compile_reads(layout::Layout, nt, T::Type)
     nt isa NamedTuple || throw(BuildError(
-        "BindingContractMismatch: $T's `reads` must return a NamedTuple of labeled " *
-        "selectors — (; label = get_output(...), ...) — got $(typeof(nt)) (§11.6, §14.4)"))
+        BindingContractMismatch(binding = string(T), reason = :reads_not_namedtuple,
+                                 observed = typeof(nt))))
     addrs = map(values(nt)) do s
         s isa ReadSelector || throw(BuildError(
-            "BindingContractMismatch: $T's `reads` entries must be read selectors — " *
-            "get_output, get_input or get_face (§14.4) — got $(repr(s))"))
+            BindingContractMismatch(binding = string(T), reason = :reads_not_selectors,
+                                     observed = s)))
         _resolve_read(layout, s, T)
     end
     ReadGather{keys(nt)}(addrs)
@@ -150,37 +155,30 @@ _root_input_names(layout::Layout) = Symbol[f for (f, _) in layout.root_inputs]
 # snapshot-bound reader naming a store selector is a resolution error at
 # attach — in the didactic register, with the remedy named.
 _resolve_read(::Layout, s::StoreSelector, T::Type) = throw(BuildError(
-    "ReadBindingUnresolved: $T reads $(_spell(s)), a *store* selector — the store " *
-    "selectors resolve only against live stores, and a binding reads a published " *
-    "snapshot, which deliberately carries none (§14.4, §11.2). The remedy is to " *
-    "declare the field public and read the port published from it"))
+    ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :store_selector)))
 
 function _resolve_read(layout::Layout, s::GetOutput, T::Type)
     s.i === nothing || throw(BuildError(
-        "ReadBindingUnresolved: $T reads $(_spell(s)) — a binding read is a whole cell, " *
-        "and sub-cell index addressing is absent in this register (§14.4, README)"))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :indexed)))
     haskey(layout.addr, (s.path, s.name)) || throw(BuildError(
-        "ReadBindingUnresolved: $T reads get_output(\"$(s.path)\", :$(s.name)), which " *
-        "names no cell — only declared outputs, assembly faces and root inputs are " *
-        "addressable (§14.4)"))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s), reason = :unknown_cell)))
     layout.addr[(s.path, s.name)]
 end
 
 function _resolve_read(layout::Layout, s::GetInput, T::Type)
     s.face in _root_input_names(layout) || throw(BuildError(
-        "ReadBindingUnresolved: $T reads get_input(:$(s.face)), which names no root " *
-        "input face — the root inputs are $(_facelist(_root_input_names(layout))) (§14.4)"))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s),
+                               reason = :unknown_root_input, candidates = _root_input_names(layout))))
     layout.addr[("", s.face)]
 end
 
 function _resolve_read(layout::Layout, s::GetFace, T::Type)
     s.name in _root_input_names(layout) && throw(BuildError(
-        "ReadBindingUnresolved: $T reads get_face(:$(s.name)), which names a root " *
-        "*input* face — the integration register is the exported output faces, and " *
-        "a root input is read back with get_input (§14.4, §11.2)"))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s),
+                               reason = :root_input_not_output)))
     haskey(layout.addr, ("", s.name)) || throw(BuildError(
-        "ReadBindingUnresolved: $T reads get_face(:$(s.name)), which names no " *
-        "root-exported output face (§14.4, §11.2)"))
+        ReadBindingUnresolved(binding = string(T), selector = _spell(s),
+                               reason = :unknown_output_face)))
     layout.addr[("", s.name)]
 end
 

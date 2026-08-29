@@ -239,8 +239,8 @@ end
     run!(sim2; t_end = 0.1)
     fb2 = only(writer_status(latest(sim2), "loop").recent)
     @test fb2 isa FiringBudget && fb2.budget == 2 && fb2.count == 2
-    @test occursin("firing_budget",
-                   failure(() -> Simulation(chatty(); h = 1//10, firing_budget = 0)).msg)
+    d = only(failure(() -> Simulation(chatty(); h = 1//10, firing_budget = 0)).diagnostics)
+    @test d isa DeploymentInvalid && d.parameter === :firing_budget
 end
 
 @testset "projection runs at every boundary, between write and decode (§5.3)" begin

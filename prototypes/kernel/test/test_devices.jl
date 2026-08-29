@@ -304,9 +304,11 @@ end
 
 @testset "join_timeout is validated and never trajectory-determining (§12.4, D-198)" begin
     err = failure(() -> Simulation(two_root_inputs(); h = 1//10, join_timeout = 0))
-    @test err isa BuildError && occursin("join_timeout", err.msg)
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa DeploymentInvalid && diag.parameter === :join_timeout
     err = failure(() -> Simulation(two_root_inputs(); h = 1//10, join_timeout = "5"))
-    @test err isa BuildError && occursin("join_timeout", err.msg)
+    diag = only(err.diagnostics)
+    @test err isa BuildError && diag isa DeploymentInvalid && diag.parameter === :join_timeout
     trajectories = map((5.0, 0.01)) do cap
         sim = Simulation(two_root_inputs(); h = 1//10, join_timeout = cap)
         attach!(sim, Pad("p"), Enumerated("a"))

@@ -127,9 +127,8 @@ the joins. Every other state admits them, `:errored` included: post-mortem
 inspection of a terminally stopped simulation is legitimate (§13.6).
 """
 assert_stopped(ctl::Control, op::String) =
-    (@atomic ctl.lifecycle) === :running ? throw(BuildError(
-        "ServiceLifecycle: `$op` is a stopped-sim operation and the simulation is " *
-        "running — the roster is frozen per run (§11.3, §12.5)")) : nothing
+    (@atomic ctl.lifecycle) === :running ?
+    throw(BuildError(ServiceLifecycle(op = op, status = :running))) : nothing
 
 """
 The handle (§11.6): the one object every attached device receives, carrying

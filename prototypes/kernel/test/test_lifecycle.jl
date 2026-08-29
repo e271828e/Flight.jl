@@ -43,8 +43,10 @@ claims(::NoClaim) = ()
     @test lifecycle(sim) === :built
     @test termination(sim) === nothing
     e = failure(() -> run!(sim))
-    @test e isa BuildError && occursin("`init!` is mandatory", e.msg)
-    @test occursin("mandatory", failure(() -> step!(sim)).msg)
+    diag = only(e.diagnostics)
+    @test e isa BuildError && diag isa MissingInit && diag.op == "run!" && diag.status === :built
+    diag2 = only(failure(() -> step!(sim)).diagnostics)
+    @test diag2 isa MissingInit && diag2.op == "step!"
 
     init!(sim, fragment(inputs = (ref = 0.0,)))
     @test lifecycle(sim) === :initialized
@@ -52,8 +54,10 @@ claims(::NoClaim) = ()
     run!(sim)
     @test lifecycle(sim) === :stopped
     e = failure(() -> run!(sim))
-    @test e isa BuildError && occursin("stopped → init! → run!", e.msg)
-    @test occursin("stopped → init! → run!", failure(() -> step!(sim)).msg)
+    diag = only(e.diagnostics)
+    @test e isa BuildError && diag isa ServiceLifecycle && diag.op == "run!" && diag.status === :stopped
+    diag2 = only(failure(() -> step!(sim)).diagnostics)
+    @test diag2 isa ServiceLifecycle && diag2.op == "step!" && diag2.status === :stopped
     init!(sim, fragment(inputs = (ref = 0.0,)))  # the supported cycle reopens it
     @test lifecycle(sim) === :initialized
     @test termination(sim) === nothing               # the record cleared with the trajectory
@@ -77,8 +81,11 @@ end
     err_r = failure(() -> run!(sim; t_end = 2.0))
     stage!(sim, "in" => 1.0)                         # now, and only now, may the run end:
     wait(t)                                          # the next drain arms the trigger (§12.6)
-    @test err_i isa BuildError && occursin("ServiceLifecycle", err_i.msg)
-    @test err_r isa BuildError && occursin("already running", err_r.msg)
+    diag_i, diag_r = only(err_i.diagnostics), only(err_r.diagnostics)
+    @test err_i isa BuildError && diag_i isa ServiceLifecycle && diag_i.op == "init!" &&
+          diag_i.status === :running
+    @test err_r isa BuildError && diag_r isa ServiceLifecycle && diag_r.op == "run!" &&
+          diag_r.status === :running
     @test lifecycle(sim) === :stopped
     @test termination(sim).source === ModelRequestedStop(:stop)
 end
@@ -103,21 +110,29 @@ end
     unbound = Simulation(feedback_model(); h = 1//50)
     init!(unbound, fragment(inputs = (ref = 0.0,)))
     e = failure(() -> run!(unbound))
-    @test e isa BuildError && occursin("neither at the constructor nor here", e.msg)
-    # The override is validated exactly as the constructor validates the default.
-    @test failure(() -> Simulation(feedback_model(); h = 1//50, t_end = -1.0)).msg ==
-          failure(() -> run!(unbound; t_end = -1.0)).msg
+    diag = only(e.diagnostics)
+    @test e isa BuildError && diag isa ArgumentInvalid && diag.call === :run! &&
+          diag.reason === :no_clock_bound
+    # The override is validated exactly as the constructor validates the default:
+    # the same payload — parameter, reason and offending value — at both sites.
+    dc = only(failure(() -> Simulation(feedback_model(); h = 1//50, t_end = -1.0)).diagnostics)
+    dr = only(failure(() -> run!(unbound; t_end = -1.0)).diagnostics)
+    @test dc isa DeploymentInvalid && dr isa DeploymentInvalid
+    @test dc.parameter == dr.parameter == :t_end && dc.reason == dr.reason == :range
+    @test dc.value == dr.value == -1.0
 end
 
 @testset "stop_on names root-exported Bool output faces, validated at both sites (§13.5)" begin
     m = feedback_model()                        # "ref" a root input, "y" a Float64 export
     sim = Simulation(m; h = 1//50, t_end = 1.0)
     init!(sim, fragment(inputs = (ref = 0.0,)))
-    for (bad, frag) in (("nope", "no root face"), ("ref", "a root input"), ("y", "Bool"))
+    for (bad, reason) in (("nope", :unknown), ("ref", :root_input), ("y", :not_bool))
         ec = failure(() -> Simulation(m; h = 1//50, stop_on = (bad,)))
         er = failure(() -> run!(sim; stop_on = (bad,)))
-        @test ec isa BuildError && occursin(frag, ec.msg)
-        @test ec.msg == er.msg                       # identical at both binding sites
+        dc, dr = only(ec.diagnostics), only(er.diagnostics)
+        @test ec isa BuildError && dc isa StopFaceInvalid && dc.reason === reason
+        @test dc.face == dr.face && dc.reason == dr.reason &&
+              dc.declared == dr.declared            # identical at both binding sites
     end
     @test lifecycle(sim) === :initialized            # a rejected run! bound nothing
 end
@@ -185,9 +200,12 @@ end
 
     sim2 = Simulation(feedback_model(); h = 1//50)
     init!(sim2, fragment(inputs = (ref = 0.0,)))
-    @test occursin("not both", failure(() -> step!(sim2; frames = 1, t_plus = 0.1)).msg)
-    @test occursin("integer ≥ 1", failure(() -> step!(sim2; frames = 0)).msg)
-    @test occursin("t_plus", failure(() -> step!(sim2; t_plus = 0.0)).msg)
+    d1 = only(failure(() -> step!(sim2; frames = 1, t_plus = 0.1)).diagnostics)
+    @test d1 isa ArgumentInvalid && d1.call === :step! && d1.reason === :both_given
+    d2 = only(failure(() -> step!(sim2; frames = 0)).diagnostics)
+    @test d2 isa ArgumentInvalid && d2.call === :step! && d2.argument === :frames && d2.value == 0
+    d3 = only(failure(() -> step!(sim2; t_plus = 0.0)).diagnostics)
+    @test d3 isa ArgumentInvalid && d3.call === :step! && d3.argument === :t_plus && d3.value == 0.0
 end
 
 @testset "a stop face inside step! truncates it through the deviceless tail (§12.6, §13.5)" begin
@@ -221,7 +239,7 @@ end
     @test state(sim, "c").q isa Float64
 
     # Errored is terminal: never advanced, never re-initialized.
-    @test occursin("errored", failure(() -> run!(sim)).msg)
-    @test occursin("errored", failure(() -> step!(sim)).msg)
-    @test occursin("errored", failure(() -> init!(sim)).msg)
+    @test only(failure(() -> run!(sim)).diagnostics).status === :errored
+    @test only(failure(() -> step!(sim)).diagnostics).status === :errored
+    @test only(failure(() -> init!(sim)).diagnostics).status === :errored
 end

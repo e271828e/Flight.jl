@@ -27,7 +27,7 @@ fed(c, face) = Group((; c = c); inputs = ("in" => "c/$face",))
 poke!(sim, face, v) =
     (scatter!(sim.exec.store, sim.exec.act.layout.addr[("", Symbol(face))], v); nothing)
 
-# The error a build raises, for the tests that read the message.
+# The error a build raises, for the tests that read the diagnostics.
 failure(f) =
     try
         f()

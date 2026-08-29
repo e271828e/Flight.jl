@@ -124,25 +124,28 @@ function Simulation(b::Build, ::Type{T} = Float64; h = nothing, n = nothing,
                     join_timeout = 5.0, t_end = nothing, stop_on = (),
                     log = true, log_every = 1,
                     log_max = 65536, chunk_size::Int = 16) where {T}
+    diags = Diagnostic[]
     method isa Type && method <: AbstractStepper ||
-        throw(BuildError("method must be a stepper type — RK4 or Heun — got $method (§10.2)"))
+        push!(diags, DeploymentInvalid(parameter = :method, reason = :range, value = method))
     firing_budget isa Integer && firing_budget ≥ 1 ||
-        throw(BuildError("firing_budget must be an integer ≥ 1, got $firing_budget (§10.6)"))
+        push!(diags, DeploymentInvalid(parameter = :firing_budget, reason = :range, value = firing_budget))
     localization_tol isa Real && localization_tol > 0 ||
-        throw(BuildError("localization_tol must be a positive real, got $localization_tol (§10.4)"))
+        push!(diags, DeploymentInvalid(parameter = :localization_tol, reason = :range, value = localization_tol))
     localization_budget isa Integer && localization_budget ≥ 1 ||
-        throw(BuildError("localization_budget must be an integer ≥ 1, got $localization_budget (§10.4)"))
+        push!(diags, DeploymentInvalid(parameter = :localization_budget, reason = :range, value = localization_budget))
     join_timeout isa Real && join_timeout > 0 ||
-        throw(BuildError("join_timeout must be a positive real — the shutdown tail's " *
-                         "join cap in seconds of wall clock — got $join_timeout (§12.4)"))
+        push!(diags, DeploymentInvalid(parameter = :join_timeout, reason = :range, value = join_timeout))
     log isa Bool ||
-        throw(BuildError("log must be true or false — the retention switch — got $log (§11.2)"))
+        push!(diags, DeploymentInvalid(parameter = :log, reason = :range, value = log))
     log_every isa Integer && log_every ≥ 1 ||
-        throw(BuildError("log_every must be an integer ≥ 1, got $log_every (§11.2)"))
+        push!(diags, DeploymentInvalid(parameter = :log_every, reason = :range, value = log_every))
     (log_max isa Integer && log_max ≥ 1) || log_max === Inf ||
-        throw(BuildError("log_max must be an integer ≥ 1, or Inf as the explicit " *
-                         "opt-out, got $log_max (§11.2)"))
-    t_end === nothing || _t_bound(t_end)
+        push!(diags, DeploymentInvalid(parameter = :log_max, reason = :range, value = log_max))
+    if t_end !== nothing
+        d = _t_bound_diag(t_end)
+        d === nothing || push!(diags, d)
+    end
+    isempty(diags) || throw(BuildError(diags))
     act = activation(b, T)
     (stop_faces, stop_addrs) = _stop_faces(act.layout, stop_on)
     bound = bind_schedule(b, h, n, Δt_base)
@@ -164,10 +167,16 @@ end
 Simulation(root::AbstractComponent, ::Type{T} = Float64; kw...) where {T} =
     Simulation(build(root), T; kw...)
 
-# §13.5's clock bound, validated identically at both binding sites.
-_t_bound(t) = (t isa Real && isfinite(t) && t ≥ 0) ? Float64(t) : throw(BuildError(
-    "t_end must be a finite real ≥ 0 — the run's clock bound, taken to the " *
-    "nearest frame top — got $t (§13.5)"))
+# §13.5's clock bound, validated identically at both binding sites. The
+# `_diag` half never throws, so the constructor's collecting block can push
+# it beside the other keyword violations; `_t_bound` is the fail-fast form
+# `run!`'s override site calls directly.
+_t_bound_diag(t) = (t isa Real && isfinite(t) && t ≥ 0) ? nothing :
+    DeploymentInvalid(parameter = :t_end, reason = :range, value = t)
+function _t_bound(t)
+    d = _t_bound_diag(t)
+    d === nothing ? Float64(t) : throw(BuildError(d))
+end
 
 # §13.5's stop-face validation and compilation, run identically at both binding
 # sites — the constructor's default and `run!`'s override: each name must be a
@@ -176,21 +185,25 @@ _t_bound(t) = (t isa Real && isfinite(t) && t ≥ 0) ? Float64(t) : throw(BuildE
 function _stop_faces(layout::Layout, stop_on)
     faces, addrs = Symbol[], Any[]
     root_input_names = Symbol[f for (f, _) in layout.root_inputs]
+    diags = Diagnostic[]
     for f in stop_on
         s = Symbol(f)
-        haskey(layout.addr, ("", s)) || throw(BuildError(
-            "stop_on names `$s`, which is no root face — a stop face is a " *
-            "root-exported Bool output face (§13.5)"))
-        s in root_input_names && throw(BuildError(
-            "stop_on names `$s`, a root input — a stop face is a root-exported " *
-            "*output*: the model detects and exports the condition, and the " *
-            "deployment names it (§13.5)"))
+        if !haskey(layout.addr, ("", s))
+            push!(diags, StopFaceInvalid(face = s, reason = :unknown))
+            continue
+        end
+        if s in root_input_names
+            push!(diags, StopFaceInvalid(face = s, reason = :root_input))
+            continue
+        end
         a = layout.addr[("", s)]
-        _port_type(a) === Bool || throw(BuildError(
-            "stop_on names `$s`, whose declared type is $(_port_type(a)) — stop " *
-            "faces are Bool, OR-combined (§13.5)"))
+        if _port_type(a) !== Bool
+            push!(diags, StopFaceInvalid(face = s, reason = :not_bool, declared = _port_type(a)))
+            continue
+        end
         s in faces || (push!(faces, s); push!(addrs, a))
     end
+    isempty(diags) || throw(BuildError(diags))
     (faces, addrs)
 end
 
@@ -247,16 +260,10 @@ end
 function _assert_advanceable(sim::Simulation, op::String)
     lc = @atomic sim.control.lifecycle
     lc === :initialized && return nothing
-    lc === :built && throw(BuildError(
-        "`$op` before `init!`: boundary zero has not run — `init!` is mandatory (§12.6)"))
-    lc === :running && throw(BuildError(
-        "ServiceLifecycle: the simulation is already running (§12.6)"))
-    lc === :stopped && throw(BuildError(
-        "`$op` on a stopped simulation: re-running is the `stopped → init! → run!` " *
-        "cycle — `init!` re-runs boundary zero and opens a fresh trajectory (§12.6)"))
-    throw(BuildError(
-        "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
-        "never resumable; reproduction is trace replay, absent here (§13.6)"))
+    lc === :built && throw(BuildError(MissingInit(op = op, status = lc)))
+    lc === :running && throw(BuildError(ServiceLifecycle(op = op, status = :running)))
+    lc === :stopped && throw(BuildError(ServiceLifecycle(op = op, status = :stopped)))
+    throw(BuildError(ServiceLifecycle(op = op, status = :errored)))
 end
 
 """
@@ -481,12 +488,8 @@ stopped (§13.6) — reproduction is trace replay, not resurrection.
 function init!(sim::Simulation{T}, condition = fragment(); t₀::T = zero(T)) where {T}
     ctl = sim.control
     lc = @atomic ctl.lifecycle
-    lc === :running && throw(BuildError(
-        "ServiceLifecycle: `init!` is a stopped-sim operation and the simulation " *
-        "is running (§11.3, §12.6)"))
-    lc === :errored && throw(BuildError(
-        "ServiceLifecycle: this simulation ended `errored` — terminally stopped, " *
-        "never re-initialized; reproduction is trace replay, absent here (§13.6)"))
+    lc === :running && throw(BuildError(ServiceLifecycle(op = "init!", status = :running)))
+    lc === :errored && throw(BuildError(ServiceLifecycle(op = "init!", status = :errored)))
     plan = resolve_condition(condition, sim.build, T)      # both refusals precede every write
     assert_total(plan, sim.build.flat, "init!")  # (§14.6): all-or-nothing
     establish_defaults!(sim.exec.xbuf, sim.exec.sstores, sim.exec.mstores, sim.build.flat.comps,
@@ -557,10 +560,7 @@ function run!(sim::Simulation; t_end = nothing, stop_on = nothing)
     plane, ctl = sim.plane, sim.control
     _assert_advanceable(sim, "run!")
     te = t_end === nothing ? sim.t_end : _t_bound(t_end)
-    te === nothing && throw(BuildError(
-        "run! has no clock bound: `t_end` was given neither at the constructor " *
-        "nor here — the constructor value is the default and the run! keyword " *
-        "the per-run override (§13.5)"))
+    te === nothing && throw(BuildError(ArgumentInvalid(call = :run!, reason = :no_clock_bound)))
     (faces, addrs) = stop_on === nothing ? (sim.stop_on, sim.stop_addrs) :
                                            _stop_faces(sim.exec.act.layout, stop_on)
     target = round(Int, te / sim.h)
@@ -712,18 +712,16 @@ loop-side failure ends it `errored` exactly as under `run!` (§13.6).
 function step!(sim::Simulation; frames = nothing, t_plus = nothing)
     ctl = sim.control
     _assert_advanceable(sim, "step!")
-    frames === nothing || t_plus === nothing || throw(BuildError(
-        "step! takes `frames` or `t_plus`, not both — the count and the duration " *
-        "are two spellings of one advance (§12.6)"))
+    frames === nothing || t_plus === nothing ||
+        throw(BuildError(ArgumentInvalid(call = :step!, reason = :both_given)))
     if t_plus === nothing
         nf = frames === nothing ? 1 : frames
         nf isa Integer && nf ≥ 1 || throw(BuildError(
-            "frames must be an integer ≥ 1, got $nf (§12.6)"))
+            ArgumentInvalid(call = :step!, reason = :range, argument = :frames, value = nf)))
         nf = Int(nf)
     else
         t_plus isa Real && isfinite(t_plus) && t_plus > 0 || throw(BuildError(
-            "t_plus must be a finite real > 0 — the duration spelling — got " *
-            "$t_plus (§12.6)"))
+            ArgumentInvalid(call = :step!, reason = :range, argument = :t_plus, value = t_plus)))
         nf = max(1, ceil(Int, Float64(t_plus) / sim.h - 1e-9))
     end
     pol = sim.policy
@@ -807,23 +805,21 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
     assert_stopped(sim.control, "attach!")
     check_binding(b)
     for e in plane.roster                          # identity, before claims (§11.3)
-        e.dev === dev && throw(BuildError(
-            "AlreadyAttached: this $(typeof(dev)) instance is already rostered as " *
-            "$(_who(e)) under $(typeof(e.binding)) — rebinding is spelled `detach!` " *
-            "then `attach!` (§11.3)"))
+        e.dev === dev && throw(BuildError(AlreadyAttached(
+            device = string(typeof(dev)), incumbent = _who(e), binding = string(typeof(e.binding)))))
     end
     if needs_calling_task(dev)                     # affinity: a single-slot resource
         i = findfirst(e -> needs_calling_task(e.dev), plane.roster)
-        i === nothing || throw(BuildError(
-            "CallerTaskConflict: $(typeof(dev)) declares `needs_calling_task`, and " *
-            "$(_who(plane.roster[i])) already holds the calling task (§11.1, §11.3)"))
+        i === nothing || throw(BuildError(CallerTaskConflict(
+            device = string(typeof(dev)), incumbent = _who(plane.roster[i]))))
     end
     claim = is_input(b) ? _claim(plane, sim.exec.act.layout, b) : Symbol[]
+    claim_diags = Diagnostic[]
     for f in claim                                 # claims: face exclusivity
-        haskey(plane.claimedby, f) && throw(BuildError(
-            "ClaimConflict: `$f` is claimed by both $(typeof(dev)) and " *
-            "$(plane.claimedby[f]) — one writer per root input at any time (§11.3)"))
+        haskey(plane.claimedby, f) && push!(claim_diags, ClaimConflict(
+            face = f, device = string(typeof(dev)), incumbent = plane.claimedby[f]))
     end
+    isempty(claim_diags) || throw(BuildError(claim_diags))
     # The output side: reads → one gather, resolved before admission commits.
     rg = is_output(b) ? _compile_reads(sim.exec.act.layout, reads(b), typeof(b)) : nothing
     id = plane.next_id                             # assigned on admission alone: a
@@ -836,8 +832,7 @@ function attach!(sim::Simulation, dev::AbstractDevice, b::AbstractBinding;
                                     should_abort, diag, WriterAccount(), h))
     reclaim!(plane, sim.exec.act.layout)
     is_greedy(b) && isempty(claim) &&
-        @warn "EmptyGreedyClaim: device $id ($(typeof(dev))) under $(typeof(b)) staked " *
-              "the empty remainder — every root input face is already claimed (§11.6)"
+        @warn message(EmptyGreedyClaim(device = "device $id ($(typeof(dev)))", binding = string(typeof(b))))
     h
 end
 
@@ -854,9 +849,8 @@ function detach!(sim::Simulation, dev::AbstractDevice)
     plane = sim.plane
     assert_stopped(sim.control, "detach!")
     i = findfirst(e -> e.dev === dev, plane.roster)
-    i === nothing && throw(BuildError(
-        "this $(typeof(dev)) instance is not rostered — `detach!` releases an " *
-        "existing attachment (§11.3)"))
+    i === nothing && throw(BuildError(NotAttached(
+        device = string(typeof(dev)), roster = [_who(e) for e in plane.roster])))
     deleteat!(plane.roster, i)
     reclaim!(plane, sim.exec.act.layout)
     nothing

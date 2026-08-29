@@ -110,10 +110,12 @@ end
 @testset "the source rule: a snapshot-bound reader may not name a store selector (§14.4)" begin
     sim = Simulation(readable(); h = 1//10)
     e = failure(() -> attach!(sim, Pad("t"), Readout(q = get_state("plant", :q))))
-    @test e isa BuildError && occursin("ReadBindingUnresolved", e.msg)
-    @test occursin("a *store* selector", e.msg) && occursin("get_state(\"plant\", :q)", e.msg)
+    diag = only(e.diagnostics)
+    @test e isa BuildError && diag isa ReadBindingUnresolved && diag.reason === :store_selector &&
+          diag.selector == "get_state(\"plant\", :q)"
     e = failure(() -> attach!(sim, Pad("t"), Readout(y = get_output("plant", :y, 1))))
-    @test e isa BuildError && occursin("a binding read is a whole cell", e.msg)
+    diag = only(e.diagnostics)
+    @test e isa BuildError && diag isa ReadBindingUnresolved && diag.reason === :indexed
     @test isempty(sim.plane.roster)              # every rejection left the roster untouched
 end
 

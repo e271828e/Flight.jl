@@ -48,8 +48,7 @@ one meaning and the `is_greedy` trait carries the other, so the maximal
 surface stays reachable only through an explicit declaration.
 """
 claims(b::AbstractBinding) = throw(BuildError(
-    "BindingContractMismatch: $(typeof(b)) declares an input side and defines no " *
-    "`claims` enumeration — the enumeration is the interface (§11.6)"))
+    BindingContractMismatch(binding = string(typeof(b)), reason = :claims_missing)))
 
 """
 The output side's enumeration (§11.6, §14.4): an output-side binding's
@@ -60,8 +59,7 @@ whose method was never written fails loudly at the attach point rather than
 degrading into silence.
 """
 reads(b::AbstractBinding) = throw(BuildError(
-    "BindingContractMismatch: $(typeof(b)) declares an output side and defines no " *
-    "`reads` enumeration — the enumeration is the interface (§11.6)"))
+    BindingContractMismatch(binding = string(typeof(b)), reason = :reads_missing)))
 
 """
 §11.6's bidirectional conformance check over each (trait, method) pair, run
@@ -79,21 +77,15 @@ function check_binding(b::AbstractBinding)
     drifted = which(claims, Tuple{T}) !== which(claims, Tuple{AbstractBinding})
     rdrifted = which(reads, Tuple{T}) !== which(reads, Tuple{AbstractBinding})
     greedy && !isin && throw(BuildError(
-        "BindingContractMismatch: $T declares `is_greedy` without `is_input` — " *
-        "greediness is a claim source within the input side, and a source without " *
-        "its side is meaningless (§11.6)"))
+        BindingContractMismatch(binding = string(T), reason = :greedy_without_input)))
     isin || isout || throw(BuildError(
-        "BindingContractMismatch: $T declares neither side — a binding that touches " *
-        "nothing is a configuration mistake, not a degenerate (§11.6)"))
+        BindingContractMismatch(binding = string(T), reason = :neither_side)))
     isin && greedy && drifted && throw(BuildError(
-        "BindingContractMismatch: $T declares `is_greedy` and defines its own `claims` — " *
-        "the two claim sources are alternatives, not layers (§11.6)"))
+        BindingContractMismatch(binding = string(T), reason = :greedy_with_claims)))
     isin || !drifted || throw(BuildError(
-        "BindingContractMismatch: $T defines `claims` while `is_input` reads false — a " *
-        "method written and never reached is exactly the drift this check catches (§11.6)"))
+        BindingContractMismatch(binding = string(T), reason = :claims_without_input)))
     isout || !rdrifted || throw(BuildError(
-        "BindingContractMismatch: $T defines `reads` while `is_output` reads false — a " *
-        "method written and never reached is exactly the drift this check catches (§11.6)"))
+        BindingContractMismatch(binding = string(T), reason = :reads_without_output)))
     nothing
 end
 
@@ -187,8 +179,7 @@ function _claim(plane::DataPlane, layout::Layout, b::AbstractBinding)
     for f in claims(b)
         s = Symbol(f)
         s in faceset || throw(BuildError(
-            "AttachUnknownFace: $(typeof(b)) claims `$s`, which names no root input " *
-            "face — the root faces are $(_facelist(faceset)) (§11.3)"))
+            AttachUnknownFace(binding = string(typeof(b)), face = s, candidates = faceset)))
         s in claim || push!(claim, s)
     end
     claim

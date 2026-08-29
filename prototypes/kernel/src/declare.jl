@@ -126,14 +126,12 @@ struct Period
     T::Rational{Int}
     Period(T::Union{Integer,Rational{<:Integer}}) = new(Rational{Int}(T))
     Period(::AbstractFloat) =
-        throw(BuildError("a period is an exact Rational — write `Period(1//50)`, not a " *
-                         "float: grid derivation is GCD arithmetic (§10.5)"))
+        throw(BuildError(ArgumentInvalid(call = :Period, reason = :inexact)))
 end
 
 Hz(f::Union{Integer,Rational{<:Integer}}) = Period(1 // f)
 Hz(::AbstractFloat) =
-    throw(BuildError("a frequency is an exact Rational — write `Hz(1//2)` for 0.5 Hz, not " *
-                     "a float: grid derivation is GCD arithmetic (§10.5)"))
+    throw(BuildError(ArgumentInvalid(call = :Hz, reason = :inexact)))
 
 period(q::Period) = q.T
 
@@ -158,10 +156,9 @@ struct Absolute
     τ::Rational{Int}
     Absolute(q::Period, τ::Union{Integer,Rational{<:Integer}} = 0) = new(q.T, Rational{Int}(τ))
     Absolute(::Period, ::AbstractFloat) =
-        throw(BuildError("an offset is an exact Rational — write `Absolute(Hz(50), 1//500)`, " *
-                         "not a float: grid derivation is GCD arithmetic (§10.5)"))
+        throw(BuildError(ArgumentInvalid(call = :Absolute, reason = :inexact)))
     Absolute(::Real, τ...) =
-        throw(BuildError("`Absolute` takes a quantity value: `Period(1//50)` or `Hz(50)` (§10.5)"))
+        throw(BuildError(ArgumentInvalid(call = :Absolute, reason = :not_a_quantity)))
 end
 
 """
