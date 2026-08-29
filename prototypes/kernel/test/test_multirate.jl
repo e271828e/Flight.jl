@@ -6,10 +6,10 @@
     @test period(Hz(50)) === 1//50
     @test period(Period(1//50)) === 1//50
     @test period(Hz(1//2)) === 2//1
-    @test occursin("Period(1//50)", failure(() -> Period(0.02)).msg)
+    @test occursin("Period(1//50)", failure(() -> Period(0.02)).msg)          # stage 3
     @test occursin("Hz(1//2)", failure(() -> Hz(0.5)).msg)
     @test occursin("Rational", failure(() -> Absolute(Hz(50), 0.001)).msg)
-    @test occursin("quantity", failure(() -> Absolute(1//50)).msg)
+    @test occursin("quantity", failure(() -> Absolute(1//50)).msg)           # stage 3
 
     # Plain data carriers: no range checks of their own — those are Stratum A's,
     # with path attribution, at the fold.
@@ -23,28 +23,37 @@ end
 
     err = failure(() -> build(rated((; c = 2))))
     @test err isa BuildError
-    @test occursin("whole value vocabulary", err.msg) && occursin("key `c`", err.msg)
+    d = only(err.diagnostics)
+    @test d isa RatesViolation && d.reason === :value_vocabulary && d.key === :c &&
+          d.value == 2
 
-    for (rates, fragment) in (((; c = Relative(0)),      "K ≥ 1"),
-                              ((; c = Relative(2, 2)),   "0 ≤ φ < K"),
-                              ((; c = Absolute(Period(0))),        "T > 0"),
-                              ((; c = Absolute(Hz(50), 1//40)),    "0 ≤ τ < T"))
+    for (rates, reason) in (((; c = Relative(0)),               :multiplier),
+                            ((; c = Relative(2, 2)),            :phase),
+                            ((; c = Absolute(Period(0))),       :period),
+                            ((; c = Absolute(Hz(50), 1//40)),   :offset))
         err = failure(() -> build(rated(rates)))
-        @test err isa BuildError && occursin(fragment, err.msg)
+        @test err isa BuildError
+        d = only(err.diagnostics)
+        @test d isa RatesViolation && d.reason === reason && d.key === :c
     end
 
     # A key names an immediate child, and nothing else: a stray name and a deep
     # key meet the same rule.
-    err = failure(() -> build(rated((; nav = Relative(2)))))
-    @test err isa BuildError && occursin("immediate child", err.msg)
-    err = failure(() -> build(rated((; var"c/x" = Relative(2)))))
-    @test err isa BuildError && occursin("immediate child", err.msg)
+    for key in (:nav, Symbol("c/x"))
+        err = failure(() -> build(rated(NamedTuple{(key,)}((Relative(2),)))))
+        @test err isa BuildError
+        d = only(err.diagnostics)
+        @test d isa RatesViolation && d.reason === :unknown_child && d.key === key &&
+              d.candidates == ["c"]
+    end
 
     # A key on a continuous child is the Δt-on-continuous error at declaration
     # time: keys name discrete or scope children (§8.7).
     err = failure(() -> build(Group((; c = Gain(1.0)); inputs = ("in" => "c/e",),
                                     rates = (; c = Relative(2)))))
-    @test err isa BuildError && occursin("continuous", err.msg)
+    @test err isa BuildError
+    d = only(err.diagnostics)
+    @test d isa RatesViolation && d.reason === :continuous_child && d.key === :c
 
     # A bare container field name applies one declaration to every element.
     sim = Simulation(Group((; c1 = TickCounter(), c2 = TickCounter());
@@ -160,20 +169,26 @@ end
     @test port(s1, "fcs/inner", :out) ≈ 1.02
     @test port(s2, "fcs/inner", :out) == 1.0
 
-    # Cross-validation, collected as plain BuildErrors here (§13.2 is absent):
-    @test occursin("h", failure(() -> Simulation(b)).msg)
-    @test occursin("float", failure(() -> Simulation(b; h = 1e-3)).msg)
-    @test occursin("disagrees", failure(() -> Simulation(b; h = 1//500, Δt_base = 1//250,
-                                                         n = 3)).msg)
-    @test occursin("harmonic", failure(() -> Simulation(b; h = 1//300,
-                                                        Δt_base = 1//500)).msg)
-    @test occursin("n must be", failure(() -> Simulation(b; h = 1//500, n = 0)).msg)
+    # Cross-validation: one `DeploymentInvalid` per refused deployment, the
+    # parameter and the failed relation on the payload.
+    for (f, param, reason) in
+        ((() -> Simulation(b),                                        :h, :missing),
+         (() -> Simulation(b; h = 1e-3),                              :h, :inexact),
+         (() -> Simulation(b; h = 1//500, Δt_base = 1//250, n = 3), :Δt_base,
+                                                                      :disagrees_with_n),
+         (() -> Simulation(b; h = 1//300, Δt_base = 1//500),        :Δt_base, :not_harmonic),
+         (() -> Simulation(b; h = 1//500, n = 0),                     :n, :range))
+        d = only(failure(f).diagnostics)
+        @test d isa DeploymentInvalid && d.parameter === param && d.reason === reason
+    end
 
     # A non-dividing anchor is refused with its declaring scope and key, and the
     # admissible set is named off the pool.
     err = failure(() -> Simulation(b; h = 1//500, Δt_base = 3//250))
     @test err isa BuildError
-    @test occursin("key `gnss`", err.msg) && occursin("gcd(pool)", err.msg)
+    d = only(err.diagnostics)
+    @test d isa DeploymentInvalid && d.reason === :anchor_period
+    @test occursin("key `gnss`", d.provenance) && d.admissible == 1//50
 end
 
 @testset "Δt_base derivation demands an all-anchored model (§9.1)" begin
@@ -181,7 +196,9 @@ end
     # refused constructively, naming the components whose periods would rescale.
     err = failure(() -> Simulation(build(MultiRate()); h = 1//500, Δt_base = :derive))
     @test err isa BuildError
-    @test occursin("fcs/inner", err.msg) && occursin("Δt_base", err.msg)
+    d = only(err.diagnostics)
+    @test d isa DeploymentInvalid && d.parameter === :Δt_base && d.reason === :unanchored
+    @test "fcs/inner" in d.paths
 
     # All anchored: the pool is every period and every nonzero offset, and the
     # derived value is its GCD — the offset drives the grid 2× finer here.

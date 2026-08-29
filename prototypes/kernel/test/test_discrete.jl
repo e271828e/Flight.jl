@@ -117,7 +117,9 @@ h_s(::WidenedUpdate, (; s)) = (n = s.n,)
 g(::WidenedUpdate, (; s)) = (n = s.n + 0.5,)
 
 @testset "a discrete successor is the store's own type (§7.3)" begin
-    @test_throws BuildError build(single(WidenedUpdate()))
+    d = only(failure(() -> build(single(WidenedUpdate()))).diagnostics)
+    @test d isa ConformanceFailure && d.what == "g" && d.reason === :field_set &&
+          d.shape === :init_s && d.observed === @NamedTuple{n::Float64}
 end
 
 @testset "the discrete tier is frozen at a non-nominal activation (§7.2)" begin

@@ -69,25 +69,39 @@ f(::BadProjectShape, (; x)) = (q = 0.0,)
 project(::BadProjectShape, x) = (v = x.q,)
 
 @testset "the declaration layer and probe reject malformed events (§8.2, §9.3)" begin
-    @test occursin("both halves", failure(() -> build(single(HalfEvent()))).msg)
-    @test occursin("Event(guard, handler)", failure(() -> build(single(NotAnEvent()))).msg)
+    d = only(failure(() -> build(single(HalfEvent()))).diagnostics)
+    @test d isa EventHalfMissing && d.event === :go && d.reason === :handler
+    d = only(failure(() -> build(single(NotAnEvent()))).diagnostics)
+    @test d isa EventHalfMissing && d.event === :go && d.reason === :not_an_event &&
+          d.found === Int
 
     err = failure(() -> build(single(BadGuardForm())))
     @test err isa BuildError
-    @test occursin("Bool", err.msg) && occursin("sign value", err.msg)
+    d = only(err.diagnostics)
+    @test d isa GuardForm && d.event === :go && d.observed === String
 
     err = failure(() -> build(single(BadHandlerKey())))
-    @test occursin("stores it writes", err.msg) && occursin("`m`", err.msg)
+    d = only(err.diagnostics)
+    @test d isa HandlerReturnKey && d.key === :x && d.stores == [:m]
 
-    @test occursin("complete", failure(() -> build(single(PartialX()))).msg)
+    d = only(failure(() -> build(single(PartialX()))).diagnostics)
+    @test d isa ConformanceFailure && d.reason === :field_set && d.shape === :state &&
+          d.observed_fields == [:a] && d.declared_fields == [:a, :b]
 
     # `events` is continuous-only, beside `init_m` in the tier-agreement check.
     err = failure(() -> classify_tier("c", EventsOnDiscrete()))
-    @test err isa BuildError && occursin("events", err.msg)
+    @test err isa BuildError
+    @test :events in [d.declaration for d in err.diagnostics]
+    @test all(d -> d isa DeclarationOnWrongTier, err.diagnostics)
 
-    @test occursin("continuous-only", failure(() -> build(single(ProjectOnDiscrete()))).msg)
-    @test occursin("init_x", failure(() -> build(single(ProjectNoState()))).msg)
-    @test occursin("fields", failure(() -> build(single(BadProjectShape()))).msg)
+    d = only(failure(() -> build(single(ProjectOnDiscrete()))).diagnostics)
+    @test d isa DeclarationOnWrongTier && d.declaration === :project &&
+          d.reason === :continuous_only
+    d = only(failure(() -> build(single(ProjectNoState()))).diagnostics)
+    @test d isa DeclarationOnWrongTier && d.reason === :no_manifold
+    d = only(failure(() -> build(single(BadProjectShape()))).diagnostics)
+    @test d isa ConformanceFailure && d.what == "project" && d.reason === :field_set &&
+          d.observed_fields == [:v] && d.declared_fields == [:q]
 end
 
 @testset "the guard's form is the declared policy (§2.1, §10.4, D-179)" begin

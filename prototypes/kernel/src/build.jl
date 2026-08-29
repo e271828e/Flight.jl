@@ -76,22 +76,26 @@ function classify_tier(path::String, c)
     if state !== nothing
         i = findfirst(v -> first(v) === :f || first(v) === :g, votes)
         i === nothing &&
-            throw(BuildError("`$path` declares `$state` but defines neither `f` nor `g` — " *
-                             "a store needs its update (§8.2)"))
+            throw(BuildError(StoreWithoutUpdate(path = path, store = state)))
     else
         i = findfirst(v -> first(v) === :output_types, votes)
         i === nothing &&
-            throw(BuildError("`$path` declares no `output_types` and owns no state — there is " *
-                             "nothing for the tier to be read off (§8.2)"))
+            throw(BuildError(TierUnreadable(path = path,
+                                            declarations = Symbol[first(v) for v in votes])))
     end
 
+    # The vote loop collects (§13.1): a leaf written half in each tier's spelling
+    # names every declaration that disagrees, not the first one found.
     t = last(votes[i])
+    viol = Diagnostic[]
     for (name, vt) in votes
         vt === t ||
-            throw(BuildError("`$path`: `$name` is declared in the $(tier_word(vt))-tier " *
-                             "form, but this component's other declarations announce the " *
-                             "$(tier_word(t)) tier (§8.2)"))
+            push!(viol, DeclarationOnWrongTier(path = path, declaration = name,
+                                               reason = :tier_form,
+                                               found = Symbol(tier_word(vt)),
+                                               announced = Symbol(tier_word(t))))
     end
+    isempty(viol) || throw(BuildError(viol))
     t
 end
 
@@ -121,7 +125,9 @@ function probe_stage1(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
         y = h1(c, _bundle_values(bn, d, NamedTuple(), NamedTuple(), T;
                                  ws = wss[ci], m = mstores[ci], Δt = 1.0))
         y isa NamedTuple ||
-            throw(BuildError("`$path`: $stage must return a NamedTuple of port values, got $(typeof(y))"))
+            throw(BuildError(ConformanceFailure(path = path, what = stage,
+                                                reason = :return_type, shape = :ports,
+                                                observed = typeof(y))))
         _check_ports(path, stage, y, d.outs, T)
         _embed_ports(y, d.outs, T)
     end
@@ -139,19 +145,29 @@ function _bundle_values(bn, d::Decls, u, y1, ::Type{T}; y = NamedTuple(), ws = n
         n === :y   ? y :
         n === :ws  ? ws :
         n === :t   ? zero(T) :
-        n === :Δt  ? Δt : error("no probe source for $n")
+        n === :Δt  ? Δt : throw(InternalInvariant("no probe source for $n"))
     end
     NamedTuple{bn}(vals)
 end
 
+# The per-port loop collects (§13.1): a stage returning three wrong types names
+# all three.
 function _check_ports(path, stage, y::NamedTuple, outs::NamedTuple, ::Type{T}) where {T}
+    viol = Diagnostic[]
     for (name, v) in pairs(y)
-        haskey(outs, name) ||
-            throw(BuildError("`$path`: $stage returns `$name`, which `output_types` does not declare"))
+        if !haskey(outs, name)
+            push!(viol, UndeclaredReturnField(path = path, stage = stage, name = name,
+                                              candidates = collect(keys(outs))))
+            continue                               # nothing declared to compare against
+        end
         _accepts(outs[name], typeof(v), T) ||
-            throw(BuildError("`$path`: $stage returns `$name`::$(typeof(v)), declared $(outs[name])" *
-                             _pin_hint(outs[name], typeof(v), T)))
+            push!(viol, ConformanceFailure(path = path, what = stage, reason = :field_type,
+                                           shape = :ports, field = name,
+                                           observed = typeof(v), declared = outs[name],
+                                           activation = T))
     end
+    isempty(viol) || throw(BuildError(viol))
+    nothing
 end
 
 # --- embed-accept (D-166) -----------------------------------------------------
@@ -230,10 +246,7 @@ function schedule_stage2(flat::Flat, tiers::Vector{Tier}, stage1::Vector)
 
     if !isempty(remaining)
         cycle = sort!(collect(remaining))
-        names = join((flat.paths[ci] for ci in cycle), " → ")
-        throw(BuildError("algebraic loop through stage-2 ports: $names — break it with a " *
-                         "stage-1 (`h_x`/`h_s`) port, which carries no input dependence " *
-                         "(§5.4/§5.5)"))
+        throw(BuildError(AlgebraicCycle(members = String[flat.paths[ci] for ci in cycle])))
     end
     order
 end
@@ -258,26 +271,34 @@ function cell_layout(flat::Flat, decls::Vector{Decls}, ::Type{T}) where {T}
     addr = Dict{Tuple{String,Symbol},Any}()
     root_inputs = Tuple{Symbol,Any}[]
     offs = Dict{DataType,Int}()
-    function place!(path, kind, name, ::Type{P}) where {P}
+    # Placement collects (§13.1): every leafless declaration in the model is
+    # named, and the barrier throws before the alias pass, which would otherwise
+    # look up an address placement never made.
+    viol = Diagnostic[]
+    function place!(path, site::Symbol, name, ::Type{P}) where {P}
         lts = leaf_types(P)
-        isempty(lts) &&
-            throw(BuildError("$(_at(path)): $kind `$name` declares $P, which has no leaves"))
+        if isempty(lts)
+            push!(viol, IllegalPortType(path = path, site = site, name = name, declared = P))
+            return false
+        end
         Ls = leaf_eltypes(P)
         addr[(path, name)] = CellAddr{P,length(Ls)}(Tuple(get(offs, L, 0) for L in Ls))
         for L in Ls
             offs[L] = get(offs, L, 0) + count(==(L), lts)
         end
+        true
     end
     for (path, d) in zip(flat.paths, decls)
         for (port, P) in pairs(d.outs)
-            place!(path, "port", port, P)
+            place!(path, :port, port, P)
         end
     end
     for face in flat.root_inputs
         P = _root_input_type(flat, decls, face)
-        place!("", "root input", face, P)
+        place!("", :root_input, face, P) || continue
         push!(root_inputs, (face, probe_value(P)))
     end
+    isempty(viol) || throw(BuildError(viol))
     for (alias, target) in flat.out_faces
         addr[alias] = addr[target]
     end
@@ -292,7 +313,7 @@ function _root_input_type(flat::Flat, decls::Vector{Decls}, face::Symbol)
     for (ci, conns) in enumerate(flat.conns), (f, producer) in conns
         producer === ("", face) && return decls[ci].ins[f]
     end
-    throw(BuildError("root input face `$face` routes to no input"))
+    throw(InternalInvariant("root input face `$face` routes to no input"))
 end
 
 """Address of the cell feeding `face`: its resolved producer's port, or a root input."""
@@ -360,18 +381,24 @@ end
 # than as a `MethodError` at the first firing — an event firing only in a corner
 # of the envelope would otherwise hide the omission indefinitely.
 function _check_event_declarations(flat::Flat)
+    # One barrier for the whole pass (§13.1): every malformed entry in the model
+    # is named, not the first one the walk reaches.
+    viol = Diagnostic[]
     for (path, c) in zip(flat.paths, flat.comps)
         for (name, ev) in pairs(events(c))
-            ev isa Event ||
-                throw(BuildError("`$path`: events entry `$name` is $(typeof(ev)) — an entry " *
-                                 "is `Event(guard, handler)`, with no detection keyword (§8.2)"))
-            for (half, fn) in (("guard", ev.guard), ("handler", ev.handler))
+            if !(ev isa Event)
+                push!(viol, EventHalfMissing(path = path, event = name,
+                                             reason = :not_an_event, found = typeof(ev)))
+                continue                           # neither half exists to look up
+            end
+            for (half, fn) in ((:guard, ev.guard), (:handler, ev.handler))
                 hasmethod(fn, Tuple{typeof(c),NamedTuple}) ||
-                    throw(BuildError("`$path`: event `$name`'s $half has no method for " *
-                                     "$(typeof(c)) — an event needs both halves (§8.2)"))
+                    push!(viol, EventHalfMissing(path = path, event = name, reason = half,
+                                                 found = typeof(c)))
             end
         end
     end
+    isempty(viol) || throw(BuildError(viol))
     nothing
 end
 
@@ -468,26 +495,36 @@ function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
         y2 = h2(c, _bundle_values(bn, d, u, s1, T; ws = wss[ci], m = mstores[ci],
                                   Δt = 1.0))
         y2 isa NamedTuple ||
-            throw(BuildError("`$path`: $stage must return a NamedTuple, got $(typeof(y2))"))
+            throw(BuildError(ConformanceFailure(path = path, what = stage,
+                                                reason = :return_type, shape = :namedtuple,
+                                                observed = typeof(y2))))
         _check_ports(path, stage, y2, d.outs, T)
         isempty(intersect(keys(s1), keys(y2))) ||
-            throw(BuildError("`$path`: $(join(intersect(keys(s1), keys(y2)), ", ")) produced by two stages"))
+            throw(BuildError(ProducedByTwoStages(path = path,
+                                                 ports = collect(intersect(keys(s1),
+                                                                           keys(y2))))))
         products[ci] = merge(s1, _embed_ports(y2, d.outs, T))
     end
 
     # Completeness of the declaration set (§8.2), for every component and not
     # only the stateful ones: an unproduced port would otherwise own a cell that
-    # no stage ever writes, and read as a silent zero forever.
+    # no stage ever writes, and read as a silent zero forever. The pass collects
+    # (§13.1): every component with an unproduced port is named, and the barrier
+    # throws once for the whole model — as the two below it do.
+    viol = Diagnostic[]
     for ci in eachindex(flat.comps)
         missing_ports = setdiff(keys(decls[ci].outs), keys(products[ci]))
         isempty(missing_ports) ||
-            throw(BuildError("`$(flat.paths[ci])`: declared port(s) " *
-                             "$(join(missing_ports, ", ")) produced by no stage"))
+            push!(viol, DeclaredNotProduced(path = flat.paths[ci],
+                                            ports = collect(missing_ports),
+                                            products = collect(keys(products[ci]))))
     end
+    isempty(viol) || throw(BuildError(viol))
 
     # The update laws, probed against the now-complete table: `f` for shape,
     # `g` for the store's own type. A frozen component's `g` is outside the
     # executable set like its output stages (§9.4).
+    empty!(viol)
     for (ci, c) in enumerate(flat.comps)
         path, d, t = flat.paths[ci], decls[ci], tiers[ci]
         (isempty(state_decls(d, t)) || _frozen(tiers, ci, T)) && continue
@@ -495,41 +532,60 @@ function probe_stage2(flat::Flat, decls::Vector{Decls}, tiers::Vector{Tier},
         bn = bundle_names(update, c, t, tuple(keys(stage1[ci])...))
         vals = _bundle_values(bn, d, in_values(ci, d), stage1[ci], T; y = products[ci],
                               ws = wss[ci], m = mstores[ci], Δt = 1.0)
-        t === CONTINUOUS ? _check_derivative(path, f(c, vals), d.x) :
-                           _check_update(path, g(c, vals), d.s)
+        append!(viol, t === CONTINUOUS ? _check_derivative(path, f(c, vals), d.x) :
+                                         _check_update(path, g(c, vals), d.s))
     end
+    isempty(viol) || throw(BuildError(viol))
 
     # `project`, probed at every activation it runs at — its result is written
     # back to the buffer wholesale at both schedule positions (§5.3), so the
     # check holds it *complete* against `X`'s own shape at `T` (§9.3).
+    empty!(viol)
     for (ci, c) in enumerate(flat.comps)
         has_stage(project, c) || continue
         path, d = flat.paths[ci], decls[ci]
-        tiers[ci] === CONTINUOUS ||
-            throw(BuildError("`$path` declares `project`, which is continuous-only — " *
-                             "projection normalizes continuous state (§5.2)"))
-        isempty(d.x) &&
-            throw(BuildError("`$path` declares `project` but no `init_x` — there is no " *
-                             "state manifold to project onto (§5.2)"))
-        _check_state_write(path, "project", project(c, d.x), d.x)
+        if tiers[ci] !== CONTINUOUS
+            push!(viol, DeclarationOnWrongTier(path = path, declaration = :project,
+                                               reason = :continuous_only))
+            continue                               # no manifold to run it against
+        end
+        if isempty(d.x)
+            push!(viol, DeclarationOnWrongTier(path = path, declaration = :project,
+                                               reason = :no_manifold))
+            continue
+        end
+        append!(viol, _check_state_write(path, "project", project(c, d.x), d.x))
     end
+    isempty(viol) || throw(BuildError(viol))
     products
 end
 
 # The complete state write-back (§9.3): the same predicate for `project`'s
 # return and a handler's `x` key, both written to the flat buffer wholesale.
+#
+# It returns its violation list rather than throwing, so its two callers — the
+# `project` pass and the handler check — can put it under their own barrier
+# (§13.1). The two shape checks are sequential: neither later one is meaningful
+# once an earlier one fails.
 function _check_state_write(path, what, x⁺, x::NamedTuple)
     x⁺ isa NamedTuple ||
-        throw(BuildError("`$path`: $what must return a NamedTuple shaped like the state, " *
-                         "got $(typeof(x⁺))"))
+        return Diagnostic[ConformanceFailure(path = path, what = what,
+                                             reason = :return_type, shape = :state,
+                                             observed = typeof(x⁺))]
     keys(x⁺) === keys(x) ||
-        throw(BuildError("`$path`: $what returns fields $(keys(x⁺)), state has $(keys(x)) — " *
-                         "a state write-back is complete against the field set (§9.3, §9.5)"))
+        return Diagnostic[ConformanceFailure(path = path, what = what, reason = :field_set,
+                                             shape = :state,
+                                             observed_fields = collect(keys(x⁺)),
+                                             declared_fields = collect(keys(x)))]
+    viol = Diagnostic[]
     for k in keys(x)
         nleaves(typeof(x⁺[k])) == nleaves(typeof(x[k])) ||
-            throw(BuildError("`$path`: $what field `$k` is $(typeof(x⁺[k])), state field is " *
-                             "$(typeof(x[k]))"))
+            push!(viol, ConformanceFailure(path = path, what = what, reason = :field_type,
+                                           shape = :state, field = k,
+                                           observed = typeof(x⁺[k]),
+                                           declared = typeof(x[k])))
     end
+    viol
 end
 
 """
@@ -559,9 +615,8 @@ function probe_events(flat::Flat, tiers::Vector{Tier}, act::Activation{Float64})
             σ = evs[name].guard(c, vals)
             policy = σ isa Bool ? :boundary :
                      σ isa Float64 ? :localized :
-                     throw(BuildError("`$path`: event `$name`'s guard returns $(typeof(σ)) — " *
-                                      "a guard is `Bool`-valued (boundary-detected) or returns " *
-                                      "the continuous sign value (localized) (§2.1, §10.4)"))
+                     throw(BuildError(GuardForm(path = path, event = name,
+                                                observed = typeof(σ))))
             _check_handler(path, name, evs[name].handler(c, vals), d, c)
             policy
         end)
@@ -573,36 +628,50 @@ end
 # key naming a store the component does not declare, names the stores that
 # exist. Then per key: `x` complete (the flat buffer is written back wholesale),
 # `m` a names-subset with matching types (per-field stores merge naturally).
+#
+# The key loops collect under one barrier per handler (§13.1): a handler naming
+# three stores it does not own names all three.
 function _check_handler(path, name, ret, d::Decls, c)
+    what = "event `$name`'s handler"
     ret isa NamedTuple ||
-        throw(BuildError("`$path`: event `$name`'s handler must return a NamedTuple of the " *
-                         "stores it writes, got $(typeof(ret)) (§5.2)"))
+        throw(BuildError(ConformanceFailure(path = path, what = what, reason = :return_type,
+                                            shape = :stores, observed = typeof(ret))))
     m₀ = init_m(c)
     stores = Symbol[]
     isempty(d.x) || push!(stores, :x)
     isempty(m₀) || push!(stores, :m)
+    viol = Diagnostic[]
     for k in keys(ret)
         k in stores ||
-            throw(BuildError("`$path`: event `$name`'s handler returns `$k` — a handler's " *
-                             "keys name the stores it writes, and this component's are " *
-                             (isempty(stores) ? "none" :
-                              join(("`$s`" for s in stores), ", ")) * " (§5.2)"))
+            push!(viol, HandlerReturnKey(path = path, event = name, key = k, stores = stores))
     end
-    haskey(ret, :x) && _check_state_write(path, "event `$name`'s handler `x`", ret.x, d.x)
-    if haskey(ret, :m)
-        ret.m isa NamedTuple ||
-            throw(BuildError("`$path`: event `$name`'s handler `m` must be a NamedTuple, " *
-                             "got $(typeof(ret.m)) (§5.2)"))
-        for k in keys(ret.m)
-            haskey(m₀, k) ||
-                throw(BuildError("`$path`: event `$name`'s handler writes mode `$k`, and " *
-                                 "`init_m` declares $(keys(m₀)) — `m` is a names-subset " *
-                                 "write (§5.2)"))
-            typeof(ret.m[k]) === typeof(m₀[k]) ||
-                throw(BuildError("`$path`: event `$name`'s handler mode `$k` is " *
-                                 "$(typeof(ret.m[k])), declared $(typeof(m₀[k])) (§5.2)"))
+    # Per key, but only for a store the component actually declares: the key set
+    # is the outer fact, and holding a write to `x` against an empty state would
+    # report the same omission twice in different words.
+    haskey(ret, :x) && :x in stores &&
+        append!(viol, _check_state_write(path, "$what `x`", ret.x, d.x))
+    if haskey(ret, :m) && :m in stores
+        if !(ret.m isa NamedTuple)
+            push!(viol, ConformanceFailure(path = path, what = "$what `m`",
+                                           reason = :return_type, shape = :mode,
+                                           observed = typeof(ret.m)))
+        else
+            for k in keys(ret.m)
+                if !haskey(m₀, k)
+                    push!(viol, ConformanceFailure(path = path, what = what,
+                                                   reason = :field_set, shape = :mode,
+                                                   field = k,
+                                                   declared_fields = collect(keys(m₀))))
+                elseif typeof(ret.m[k]) !== typeof(m₀[k])
+                    push!(viol, ConformanceFailure(path = path, what = what,
+                                                   reason = :field_type, shape = :mode,
+                                                   field = k, observed = typeof(ret.m[k]),
+                                                   declared = typeof(m₀[k])))
+                end
+            end
         end
     end
+    isempty(viol) || throw(BuildError(viol))
     nothing
 end
 
@@ -611,15 +680,14 @@ end
 # `Build`. Grid arithmetic is exact — GCD over `Rational{Int}` — and floats are
 # refused at the door.
 
-_exact(name, v::Rational{Int}) = v
-_exact(name, v::Integer) = Rational{Int}(v)
-_exact(name, v::Period) = v.T
-_exact(name, v::AbstractFloat) =
-    throw(BuildError("`$name` must be exact — a Rational (`$name = 1//100`) or a " *
-                     "`Period`/`Hz` value: grid derivation is GCD arithmetic, ill-defined " *
-                     "over floats (§9.1, §10.5)"))
-_exact(name, v) =
-    throw(BuildError("`$name` must be a Rational or a `Period`/`Hz` value, got $(typeof(v))"))
+_exact(name::Symbol, v::Rational{Int}) = v
+_exact(name::Symbol, v::Integer) = Rational{Int}(v)
+_exact(name::Symbol, v::Period) = v.T
+_exact(name::Symbol, v::AbstractFloat) =
+    throw(BuildError(DeploymentInvalid(parameter = name, reason = :inexact, value = v)))
+_exact(name::Symbol, v) =
+    throw(BuildError(DeploymentInvalid(parameter = name, reason = :not_a_quantity,
+                                       value = typeof(v))))
 
 _as_int(r::Rational) = denominator(r) == 1 ? Int(numerator(r)) : nothing
 
@@ -634,11 +702,12 @@ schedule (§9.2's printable artifact, as plain data).
 """
 function bind_schedule(b::Build, h, n, Δt_base)
     h === nothing &&
-        throw(BuildError("deployment needs the continuous step: `Simulation(…; h = 1//100)` " *
-                         "— a domain rate is not a framework default (§9.1)"))
-    h_r = _exact("h", h)
-    h_r > 0 || throw(BuildError("h must be positive, got $h_r"))
-    n === nothing || n ≥ 1 || throw(BuildError("n must be an integer ≥ 1, got $n (§9.1)"))
+        throw(BuildError(DeploymentInvalid(parameter = :h, reason = :missing)))
+    h_r = _exact(:h, h)
+    h_r > 0 ||
+        throw(BuildError(DeploymentInvalid(parameter = :h, reason = :range, value = h_r)))
+    n === nothing || n ≥ 1 ||
+        throw(BuildError(DeploymentInvalid(parameter = :n, reason = :range, value = n)))
 
     anchors, prov, triples = b.flat.anchors, b.flat.aprov, b.flat.triples
     # The constraint pool: every anchor's period and every nonzero offset (§9.1).
@@ -648,41 +717,46 @@ function bind_schedule(b::Build, h, n, Δt_base)
         unanchored = [b.flat.paths[ci] for ci in eachindex(b.tiers)
                       if b.tiers[ci] === DISCRETE && triples[ci][1] == 0]
         isempty(unanchored) ||
-            throw(BuildError("Δt_base cannot be derived: `$(join(unanchored, "`, `"))` " *
-                             "is/are unanchored, with period `m·Δt_base` — an anchor edit " *
-                             "anywhere in the tree would silently rescale it. Declare the " *
-                             "base tick period instead: `Δt_base = …`, or `n = …` (§9.1)"))
+            throw(BuildError(DeploymentInvalid(parameter = :Δt_base, reason = :unanchored,
+                                               paths = unanchored)))
         isempty(pool) &&
-            throw(BuildError("Δt_base cannot be derived: no anchor declares a constraint " *
-                             "to derive it from (§9.1)"))
+            throw(BuildError(DeploymentInvalid(parameter = :Δt_base,
+                                               reason = :no_constraint)))
         Δt_r = reduce(gcd, pool)                     # the coarsest admissible value
     elseif Δt_base !== nothing
-        Δt_r = _exact("Δt_base", Δt_base)
+        Δt_r = _exact(:Δt_base, Δt_base)
     else
         Δt_r = something(n, 1) * h_r                 # the default path (§15.4)
     end
 
     n_i = _as_int(Δt_r / h_r)
     (n_i === nothing || n_i < 1) &&
-        throw(BuildError("harmonic grid: Δt_base = $Δt_r is not an integer multiple of " *
-                         "h = $h_r (Δt_base = n·h, n ≥ 1, §10.5)"))
+        throw(BuildError(DeploymentInvalid(parameter = :Δt_base, reason = :not_harmonic,
+                                           value = Δt_r, related = h_r)))
     n === nothing || n == n_i ||
-        throw(BuildError("Δt_base = $Δt_r disagrees with n = $n: Δt_base/h = $n_i (§9.1)"))
+        throw(BuildError(DeploymentInvalid(parameter = :Δt_base, reason = :disagrees_with_n,
+                                           value = Δt_r, related = n, quotient = n_i)))
 
-    # Per anchor, one exact division pair; anchor 0 is the base grid itself.
-    admissible() = "an admissible Δt_base divides gcd(pool) = $(reduce(gcd, pool))"
+    # Per anchor, one exact division pair; anchor 0 is the base grid itself. The
+    # loop collects (§13.1): every anchor the chosen base grid cannot express is
+    # named, so the coarsest admissible value is chosen against the whole list.
+    adm = isempty(pool) ? nothing : reduce(gcd, pool)
+    viol = Diagnostic[]
     Dk, Φk = [1], [0]
     for (k, (Tk, τk)) in enumerate(anchors)
         D = _as_int(Tk / Δt_r)
         D === nothing &&
-            throw(BuildError("$(prov[k]): period $Tk is not an integer multiple of " *
-                             "Δt_base = $Δt_r — $(admissible()) (§9.1)"))
+            push!(viol, DeploymentInvalid(parameter = :Δt_base, reason = :anchor_period,
+                                          value = Tk, related = Δt_r, provenance = prov[k],
+                                          admissible = adm))
         Φ = _as_int(τk / Δt_r)
         Φ === nothing &&
-            throw(BuildError("$(prov[k]): offset $τk does not land on the base grid at " *
-                             "Δt_base = $Δt_r — $(admissible()) (§9.1)"))
-        push!(Dk, D); push!(Φk, Φ)
+            push!(viol, DeploymentInvalid(parameter = :Δt_base, reason = :anchor_offset,
+                                          value = τk, related = Δt_r, provenance = prov[k],
+                                          admissible = adm))
+        push!(Dk, something(D, 1)); push!(Φk, something(Φ, 0))
     end
+    isempty(viol) || throw(BuildError(viol))
 
     # Per component, one multiply-add; the canonical residue 0 ≤ Φ < D survives
     # composition (§10.5), which is what the gate's truncated rem relies on.
@@ -771,8 +845,8 @@ the pairing a framework invariant the services uphold, neither plans nor
 readers being user values, so reaching here is an internal assertion firing.
 """
 @noinline _activation_mismatch(what::String, ::Type{T}, ::Type{S}) where {T,S} =
-    throw(BuildError(
-        "internal invariant violated: this $what was compiled at $T and the executor " *
+    throw(InternalInvariant(
+        "this $what was compiled at $T and the executor " *
         "handed to it runs at $S — a service paired its products wrongly (§14.4). The " *
         "offsets, store types and cell addresses it bakes belong to one activation (§9.4), " *
         "and against another's buffer set they would read and write the wrong slot in " *
@@ -935,9 +1009,9 @@ function _probe_input(flat::Flat, layout::Layout, products, ci, face, P, ::Type{
         products[index_of(flat, ppath)][pport]
     end
     _accepts(P, typeof(v), T) ||
-        throw(BuildError("`$path`.$face declared $P, fed from " *
-                         "$(isempty(ppath) ? "root input `$pport`" : "`$ppath`.$pport")" *
-                         "::$(typeof(v))" * _pin_hint(P, typeof(v), T)))
+        throw(BuildError(WireTypeMismatch(path = path, face = face, declared = P,
+                                          producer_path = ppath, producer_port = pport,
+                                          observed = typeof(v), activation = T)))
     v
 end
 
@@ -945,14 +1019,21 @@ end
 # structurally here so the runtime `flatten!` into the derivative block is safe.
 function _check_derivative(path, ẋ, x::NamedTuple)
     ẋ isa NamedTuple ||
-        throw(BuildError("`$path`: f must return a NamedTuple shaped like `init_x`, got $(typeof(ẋ))"))
+        return Diagnostic[ConformanceFailure(path = path, what = "f", reason = :return_type,
+                                             shape = :init_x, observed = typeof(ẋ))]
     keys(ẋ) === keys(x) ||
-        throw(BuildError("`$path`: f returns fields $(keys(ẋ)), state has $(keys(x)) — " *
-                         "derivative completeness is structural (§7.1)"))
+        return Diagnostic[ConformanceFailure(path = path, what = "f", reason = :field_set,
+                                             shape = :init_x,
+                                             observed_fields = collect(keys(ẋ)),
+                                             declared_fields = collect(keys(x)))]
+    viol = Diagnostic[]
     for k in keys(x)
         nleaves(typeof(ẋ[k])) == nleaves(typeof(x[k])) ||
-            throw(BuildError("`$path`: derivative field `$k` is $(typeof(ẋ[k])), state field is $(typeof(x[k]))"))
+            push!(viol, ConformanceFailure(path = path, what = "f", reason = :field_type,
+                                           shape = :init_x, field = k,
+                                           observed = typeof(ẋ[k]), declared = typeof(x[k])))
     end
+    viol
 end
 
 # §7.3: a discrete store is overwritten wholesale with what `g` returns, so the
@@ -961,8 +1042,11 @@ end
 # ban on arithmetic over stores enforceable by construction.
 function _check_update(path, s⁺, s::NamedTuple)
     s⁺ isa NamedTuple ||
-        throw(BuildError("`$path`: g must return a NamedTuple shaped like `init_s`, got $(typeof(s⁺))"))
+        return Diagnostic[ConformanceFailure(path = path, what = "g", reason = :return_type,
+                                             shape = :init_s, observed = typeof(s⁺))]
     typeof(s⁺) === typeof(s) ||
-        throw(BuildError("`$path`: g returns $(typeof(s⁺)), state store is $(typeof(s)) — a " *
-                         "discrete successor is the store's own type exactly (§7.3)"))
+        return Diagnostic[ConformanceFailure(path = path, what = "g", reason = :field_set,
+                                             shape = :init_s, observed = typeof(s⁺),
+                                             declared = typeof(s))]
+    Diagnostic[]
 end

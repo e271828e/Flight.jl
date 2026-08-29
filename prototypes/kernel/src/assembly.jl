@@ -39,16 +39,12 @@ function classify(path::String, c)
     leaves = leaf_declarations(c)
     if _declares(child_connections, c)
         isempty(leaves) ||
-            throw(BuildError("$(_at(path)) declares `child_connections` and the leaf " *
-                             "declaration(s) $(join(leaves, ", ")) — an assembly owns no state " *
-                             "and no contract of its own (§8.5)"))
+            throw(BuildError(ClassMixed(path = path, declarations = leaves)))
         return ASSEMBLY
     end
     isempty(leaves) || return PRIMITIVE
-    throw(BuildError("$(_at(path)) declares neither family: `child_connections` would make it " *
-                     "an assembly, any of $LEAF_FAMILY a primitive (§8.5)" *
-                     (_holds_components(c) ?
-                      " — it holds components but declares no `child_connections`" : "")))
+    throw(BuildError(ClassUnreadable(path = path, families = LEAF_FAMILY,
+                                     holds_components = _holds_components(c))))
 end
 
 _at(path::String) = isempty(path) ? "the root component" : "`$path`"
@@ -95,6 +91,10 @@ function _children(path::String, c)
     kids = Pair{String,Any}[]
     fields = Symbol[]
     prov = String[]                            # per child, who contributed it
+    # The child-naming pass collects (§13.1): every field is walked, and the
+    # whole violation list leaves through one throw at the end. A component with
+    # three mixed containers reports three, not the first.
+    viol = Diagnostic[]
     # The sibling fields a bare key could shadow: those that currently contribute
     # children, because the grammar a key shadows is the one that currently
     # reaches something. An empty field reserves nothing, and it has to be that
@@ -118,37 +118,40 @@ function _children(path::String, c)
         elseif v isa NamedTuple || v isa Tuple
             n = count(e -> e isa AbstractComponent, v)
             n == 0 && continue                     # inert data; an empty container too
-            n == length(v) ||
-                throw(BuildError("$(_at(path)): container field `$name` mixes components with " *
-                                 "$(join(unique(typeof(e) for e in v
-                                                if !(e isa AbstractComponent)), ", ")) " *
-                                 "— a container holds components only (§8.5)"))
+            if n != length(v)
+                push!(viol, ContainerMixed(path = path, field = name,
+                                           types = unique(Any[typeof(e) for e in v
+                                                              if !(e isa AbstractComponent)])))
+                continue
+            end
             bare = name === tf
             for k in keys(v)
                 p = "$(bare ? "name-transparent " : "")container field `$name`, element `$k`"
                 # The collision family's other two arms, both reachable only by a
                 # bare key and neither of them a duplicate *child* name, so
                 # `_check_child_names` below can see neither (§8.5, D-211, D-212).
-                bare && string(k) == string(name) &&
-                    throw(BuildError("$(_at(path)): the bare key `$k` — $p — collides with " *
-                                     "`sample_times`' field-name sugar, which spells one " *
-                                     "declaration for every element of `$name` under that " *
-                                     "same name (§8.5, §8.7, D-211)"))
-                bare && string(k) in shadowable &&
-                    throw(BuildError("$(_at(path)): the bare key `$k` — $p — collides with " *
-                                     "container field `$k`, whose own children are named " *
-                                     "`$k/<key>`: no child bears the bare name, but the " *
-                                     "segment grammar that reaches those children does, and " *
-                                     "the key shadows it — leaving them unreachable behind a " *
-                                     "diagnostic naming the wrong child (§8.5, §6.1, D-212)"))
+                hit = false
+                if bare && string(k) == string(name)
+                    push!(viol, ChildNameCollision(path = path, name = string(k),
+                                                   reason = :sample_times_sugar,
+                                                   provenance = [p], field = name))
+                    hit = true
+                end
+                if bare && string(k) in shadowable
+                    push!(viol, ChildNameCollision(path = path, name = string(k),
+                                                   reason = :sibling_field, provenance = [p]))
+                    hit = true
+                end
+                hit && continue                    # a shadowed key names no child
                 push!(kids, (bare ? string(k) : string(name, "/", k)) => v[k])
                 push!(fields, name)
                 push!(prov, p)
             end
         end
     end
-    _check_transparent(path, c, tf)
-    _check_child_names(path, kids, prov)
+    _check_transparent(path, c, tf, viol)
+    _check_child_names(path, kids, prov, viol)
+    isempty(viol) || throw(BuildError(viol))
     kids, fields
 end
 
@@ -158,13 +161,11 @@ _is_container(v) = (v isa NamedTuple || v isa Tuple) && all(e -> e isa AbstractC
 
 # The declaration is checked after the walk, so a mixed container reports as one
 # rather than as a bad transparency declaration.
-function _check_transparent(path::String, c, tf)
+function _check_transparent(path::String, c, tf, viol::Vector{Diagnostic})
     tf === nothing && return nothing
     ok = tf in fieldnames(typeof(c)) && _is_container(getfield(c, tf))
-    ok || throw(BuildError("$(_at(path)): `transparent_container` returns `:$tf`, which names " *
-                           "no container field of `$(typeof(c))` — a name-transparent " *
-                           "declaration names a `Tuple` or `NamedTuple` field whose elements " *
-                           "are all components, the empty one included (§8.5, D-211)"))
+    ok || push!(viol, TransparentContainerUnknown(path = path, field = tf,
+                                                  component = string(typeof(c))))
     nothing
 end
 
@@ -172,12 +173,12 @@ end
 # produced them, two children may not share a name. Bare keys make the case
 # reachable, but the rule is the older one — a child name is a path segment, and
 # a path segment addresses one component.
-function _check_child_names(path::String, kids, prov)
+function _check_child_names(path::String, kids, prov, viol::Vector{Diagnostic})
     for i in eachindex(kids), j in 1:(i - 1)
         first(kids[i]) == first(kids[j]) &&
-            throw(BuildError("$(_at(path)): two children are named `$(first(kids[i]))` — " *
-                             "$(prov[j]) and $(prov[i]); a child name is a path segment, and " *
-                             "a path segment addresses one component (§8.5, D-211)"))
+            push!(viol, ChildNameCollision(path = path, name = first(kids[i]),
+                                           reason = :two_children,
+                                           provenance = [prov[j], prov[i]]))
     end
     nothing
 end
@@ -207,8 +208,8 @@ function resolve_terminal(entry::String, base::String, asm, path::AbstractString
                           owner::String = _at(base))
     segs = String.(split(path, '/'))
     length(segs) > 1 ||
-        throw(BuildError("$entry: `$path` is not an endpoint — a terminal path names a child " *
-                         "and one of its ports or faces (§8.6)"))
+        throw(BuildError(PathResolution(entry = entry, spelling = String(path),
+                                        reason = :not_a_terminal, owner = owner)))
     kid, seg = _one_level(entry, base, asm, path, segs, 1; owner)
     kid, _join(base, seg), Symbol(segs[end])
 end
@@ -226,21 +227,15 @@ function _one_level(entry::String, base::String, asm, path::AbstractString,
     j === nothing && length(segs) > 1 + tail &&
         (j = findfirst(kid -> first(kid) == segs[1] * "/" * segs[2], kids))
     j === nothing &&
-        throw(BuildError("$entry: `$path` names no child `$(segs[1])` of $owner" *
-                         (isempty(kids) ? " — it has no children" :
-                          " — its children are $(join((first(k) for k in kids), ", "))")))
+        throw(BuildError(PathResolution(entry = entry, spelling = String(path),
+                                        reason = :unknown_child, owner = owner,
+                                        segment = segs[1],
+                                        candidates = String[first(k) for k in kids])))
     seg, kid = kids[j]
     count(==('/'), seg) + 1 + tail == length(segs) ||
-        throw(BuildError("$entry: `$path` reaches past `$(_join(base, seg))` — " *
-                         (tail == 1 ?
-                          "a connection endpoint names an immediate child and one of its " *
-                          "faces, so an endpoint path is one child segment (plus the key " *
-                          "segment where the child is a container element) and one face " *
-                          "name; route through `$seg`'s own face instead, declared level by " *
-                          "level (§6.1)" :
-                          "a path in this register names an immediate child: one child " *
-                          "segment, plus the key segment where the child is a container " *
-                          "element, and nothing further (§6.1, §13.3)")))
+        throw(BuildError(PathResolution(entry = entry, spelling = String(path),
+                                        reason = :reaches_past, owner = owner,
+                                        segment = seg, level = _join(base, seg), tail = tail)))
     kid, seg
 end
 
@@ -263,8 +258,8 @@ build error naming the child it reaches past.
 function resolve(asm, path::AbstractString)
     who = "`resolve` on `$(nameof(typeof(asm)))`"
     isempty(path) &&
-        throw(BuildError("$who: the empty path names no child — a path in this register " *
-                         "names an immediate child of the component in hand (§13.3)"))
+        throw(BuildError(PathResolution(entry = who, spelling = "", reason = :empty_path,
+                                        owner = "the component in hand")))
     first(_one_level(who, "", asm, path, String.(split(path, '/')), 0;
                      owner = "the component in hand"))
 end
@@ -373,19 +368,16 @@ _labelled(prefix, sep, n) = isempty(prefix) ? String(n) : string(prefix, sep, n)
 function _passthrough_faces(who::String, child_path::AbstractString,
                             names::Vector{String}, except::Tuple, only::Tuple)
     isempty(except) || isempty(only) ||
-        throw(BuildError("`$who` at `$child_path`: `except` and `only` were both given — one " *
-                         "names the faces to drop, the other the faces to keep, and they are " *
-                         "mutually exclusive (§8.8)"))
+        throw(BuildError(UnknownFaceSelection(who = who, path = String(child_path),
+                                              reason = :both_given)))
     unknown = [String(n) for n in (except..., only...) if !(String(n) in names)]
     isempty(unknown) ||
-        throw(BuildError("`$who` at `$child_path`: $(_facenames(unknown)) " *
-                         "$(length(unknown) == 1 ? "names" : "name") no face of that child " *
-                         "— its faces are $(_facenames(names)) (§8.8)"))
+        throw(BuildError(UnknownFaceSelection(who = who, path = String(child_path),
+                                              reason = :unknown_names, names = unknown,
+                                              candidates = names)))
     isempty(only) ? setdiff(names, String[String(n) for n in except]) :
                     String[String(n) for n in only]
 end
-
-_facenames(ns) = isempty(ns) ? "none" : join(("`$n`" for n in ns), ", ")
 
 # --- endpoint resolution (§8.6) -----------------------------------------------
 # Faces are kind-blind (D-172): an endpoint's final segment resolves to a
@@ -438,10 +430,14 @@ function _wrong_direction(entry, path, cpath, name, comp, wanted)
     ins, outs = input_faces(comp), output_faces(comp)
     found = String(name) in ins ? "an input" : String(name) in outs ? "an output" : nothing
     found === nothing &&
-        throw(BuildError("$entry: `$path` names no `$name` on $(_at(cpath)) — its faces are " *
-                         "$(join(vcat(ins, outs), ", "))"))
-    throw(BuildError("$entry: `$path` resolves to $found of $(_at(cpath)), but this entry's " *
-                     "endpoint is a $wanted — direction is declared by the method (§8.6)"))
+        throw(BuildError(UnknownPort(entry = entry,
+                                     end_ = wanted == "producer" ? :source : :destination,
+                                     path = cpath, spelling = String(path), port = name,
+                                     candidates = Symbol.(vcat(ins, outs)))))
+    throw(BuildError(FaceDirectionConflict(entry = entry, path = cpath,
+                                           spelling = String(path),
+                                           found = found == "an input" ? :input : :output,
+                                           wanted = Symbol(wanted))))
 end
 
 # --- the flatten pass ---------------------------------------------------------
@@ -469,7 +465,7 @@ end
 
 function index_of(flat::Flat, path::String)
     i = findfirst(==(path), flat.paths)
-    i === nothing && throw(BuildError("no component at path `$path`"))
+    i === nothing && throw(InternalInvariant("no component at path `$path`"))
     i
 end
 
@@ -484,6 +480,7 @@ struct _Walk
     triples::Vector{NTuple{3,Int}}
     anchors::Vector{NTuple{2,Rational{Int}}}
     aprov::Vector{String}
+    viol::Vector{Diagnostic}            # the walk's collected violations (§13.1)
 end
 
 # --- the sample-time fold (§8.7, §9.1, §10.5) -----------------------------------
@@ -501,30 +498,30 @@ Validate a scope's `sample_times` against §10.5's constraints, with path
 attribution (§9.1, §13.1): wrapper-typed values only, `K ≥ 1`, `0 ≤ φ < K`,
 `T > 0`, `0 ≤ τ < T`, and every key naming an immediate child.
 """
-function _check_sample_times(path::String, st, kids, fields)
-    st isa NamedTuple ||
-        throw(BuildError("$(_at(path)): `sample_times` must return a NamedTuple of child " *
-                         "name => `Relative`/`Absolute` entries (§8.7)"))
+function _check_sample_times(path::String, st, kids, fields, viol::Vector{Diagnostic})
+    _rv(reason; kw...) = push!(viol, RatesViolation(; path = path, reason = reason, kw...))
+    if !(st isa NamedTuple)
+        _rv(:declaration_shape)                    # nothing further is iterable
+        return nothing
+    end
     for (k, v) in pairs(st)
-        entry = "`sample_times` at $(_at(path)), key `$k`"
-        v isa Relative || v isa Absolute ||
-            throw(BuildError("$entry: $(repr(v)) — the wrappers are the whole value " *
-                             "vocabulary; a bare integer or bare quantity is a declaration " *
-                             "error (§8.7)"))
+        if !(v isa Relative || v isa Absolute)
+            _rv(:value_vocabulary; key = k, value = v)
+            continue                               # neither residue arm applies
+        end
+        # The residue bound is stated against the multiplier, so an invalid `K`
+        # (or `T`) leaves `φ` (or `τ`) with nothing to be measured against: the
+        # dependent check is skipped, not doubled up.
         if v isa Relative
-            v.K ≥ 1 || throw(BuildError("$entry: K = $(v.K), and K ≥ 1 (§10.5)"))
-            0 ≤ v.φ < v.K || throw(BuildError("$entry: φ = $(v.φ), and 0 ≤ φ < K (§10.5)"))
+            v.K ≥ 1 ? (0 ≤ v.φ < v.K || _rv(:phase; key = k, value = v.φ)) :
+                      _rv(:multiplier; key = k, value = v.K)
         else
-            v.T > 0 || throw(BuildError("$entry: period $(v.T), and T > 0 (§10.5)"))
-            0 ≤ v.τ < v.T || throw(BuildError("$entry: offset $(v.τ), and 0 ≤ τ < T (§10.5)"))
+            v.T > 0 ? (0 ≤ v.τ < v.T || _rv(:offset; key = k, value = v.τ)) :
+                      _rv(:period; key = k, value = v.T)
         end
         any(seg == String(k) for (seg, _) in kids) ||
             any(String(fld) == String(k) for fld in fields) ||
-            throw(BuildError("$entry: names no immediate child of $(_at(path)) — keys are " *
-                             "immediate child names only; a deep key would edit another " *
-                             "type's design from outside (§8.7)" *
-                             (isempty(kids) ? "" :
-                              "; its children are $(join((first(p) for p in kids), ", "))")))
+            _rv(:unknown_child; key = k, candidates = String[first(p) for p in kids])
     end
     nothing
 end
@@ -535,6 +532,7 @@ end
 # sugar keys on the *field*, so a name-transparent container keeps it unchanged:
 # `(children = Relative(2),)` is the uniform spelling for a `Group` (D-211).
 function _rate_entry(st, seg::String, fld::Symbol)
+    st isa NamedTuple || return nothing         # the shape refusal is already collected
     for (k, v) in pairs(st)
         String(k) == seg && return (k, v)
     end
@@ -554,6 +552,11 @@ function _child_scope(w::_Walk, path::String, st, seg::String, fld::Symbol,
     hit = _rate_entry(st, seg, fld)
     hit === nothing && return scope, false
     (k, v) = hit
+    # `_check_sample_times` collects rather than throwing (§13.1), so the fold
+    # runs on past a value outside the wrapper vocabulary — which has no affine
+    # law to apply. The violation is already recorded; the child continues at the
+    # enclosing scope, as an unlisted one would.
+    (v isa Relative || v isa Absolute) || return scope, false
     if v isa Relative
         (a, m, c) = scope
         (a, v.K * m, c + v.φ * m), true
@@ -579,7 +582,7 @@ function flatten(root)
               Dict{Tuple{String,Symbol},String}(), Symbol[],
               Tuple{String,Symbol,Vector{Tuple{String,Symbol}}}[],
               Pair{Tuple{String,Symbol},Tuple{String,Symbol}}[],
-              NTuple{3,Int}[], NTuple{2,Rational{Int}}[], String[])
+              NTuple{3,Int}[], NTuple{2,Rational{Int}}[], String[], Diagnostic[])
     _walk!(w, "", root, (0, 1, 0))          # the root scope: anchor 0, the base grid itself
 
     # The obligation model (§6.1): an input is fed by a wire in some ancestor's
@@ -591,13 +594,18 @@ function flatten(root)
         cs = Pair{Symbol,Tuple{String,Symbol}}[]
         for face in keys(_contract(input_types, c))
             haskey(w.feeds, (path, face)) ||
-                throw(BuildError("`$path`.$face is fed by nothing — every input is fed exactly " *
-                                 "once, by a wire or by an `input_connections` chain ending at a " *
-                                 "root input face (§6.1)"))
+                (push!(w.viol, UnconnectedInput(path = path, face = face)); continue)
             push!(cs, face => w.feeds[(path, face)])
         end
         push!(conns, cs)
     end
+
+    # Stratum A's barrier (§13.1): the walk's own refusals — face names, sample
+    # times, rate keys, empty routes, two-producer claims — and this pass's
+    # unfed inputs leave together, in one throw, before anything derived from
+    # the wiring is computed. No cascade suppression: a typo'd wire reports its
+    # unknown port *and* the input it left unfed.
+    isempty(w.viol) || throw(BuildError(w.viol))
 
     # §9.2's input side, derived once the obligation pass has proved every input
     # fed exactly once: an assembly's face and the leaf entries behind it are
@@ -625,7 +633,7 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         # inputs, each face its own consuming entry (§8.6, §11.3, D-208), fed by
         # the same pseudo-producer an assembly root's faces get.
         if isempty(path)
-            _check_root_faces(comp)
+            _check_root_faces(comp, w.viol)
             for face in keys(_contract(input_types, comp))
                 push!(w.root_inputs, face)
                 _claim!(w, (path, face), ("", face),
@@ -634,10 +642,10 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         end
         return nothing
     end
-    _check_face_names(path, comp)
+    _check_face_names(path, comp, w.viol)
     st = sample_times(comp)
     kids, fields = _children(path, comp)
-    _check_sample_times(path, st, kids, fields)
+    _check_sample_times(path, st, kids, fields, w.viol)
     for ((seg, kid), fld) in zip(kids, fields)
         kidpath = _join(path, seg)
         kscope, keyed = _child_scope(w, path, st, seg, fld, scope)
@@ -645,9 +653,8 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         # declaration time (§8.7): keys name discrete or scope children only.
         keyed && classify(kidpath, kid) === PRIMITIVE &&
             classify_tier(kidpath, kid) === CONTINUOUS &&
-            throw(BuildError("`sample_times` at $(_at(path)) schedules `$seg`, a continuous " *
-                             "component — a sample time is a discrete-tier fact; keys name " *
-                             "discrete or scope children (§8.7, §10.5)"))
+            push!(w.viol, RatesViolation(path = path, reason = :continuous_child,
+                                         key = Symbol(seg)))
         _walk!(w, kidpath, kid, kscope)
     end
 
@@ -669,10 +676,11 @@ function _walk!(w::_Walk, path::String, comp, scope::NTuple{3,Int})
         # (D-210): a face feeding nothing declares nothing, and the empty tuple
         # would otherwise reach no consumer, leave no row in §9.2's face graph,
         # and let a condition addressing it misdiagnose as a bare typo.
-        isempty(consumers) &&
-            throw(BuildError("$entry: the entry routes to no internal endpoint — every " *
-                             "`input_connections` entry routes to at least one, a face " *
-                             "feeding nothing declaring nothing (§8.6)"))
+        if isempty(consumers)
+            push!(w.viol, UnknownPort(entry = entry, end_ = :connection, path = path,
+                                      port = Symbol(face)))
+            continue                       # a route with no consumer registers nothing
+        end
         push!(w.routes, (path, Symbol(face), consumers))
         isempty(path) || continue
         push!(w.root_inputs, Symbol(face))
@@ -695,9 +703,9 @@ _entry(method::String, path::String, pair::Pair) =
 # also wired — meets its second claim here.
 function _claim!(w::_Walk, consumer, producer, entry::String)
     if haskey(w.feeds, consumer)
-        throw(BuildError("`$(consumer[1])`.$(consumer[2]) is fed twice: by " *
-                         "$(w.claims[consumer]), and by $entry — every input takes exactly one " *
-                         "connection, across levels included (§6.1)"))
+        push!(w.viol, TwoProducers(path = consumer[1], port = consumer[2],
+                                   incumbent = w.claims[consumer], entry = entry))
+        return nothing                     # the incumbent keeps the claim
     end
     w.feeds[consumer] = producer
     w.claims[consumer] = entry
@@ -705,19 +713,16 @@ function _claim!(w::_Walk, consumer, producer, entry::String)
 end
 
 # §8.6's two face-name invariants. Every other naming choice is author convention.
-function _check_face_names(path::String, comp)
+function _check_face_names(path::String, comp, viol::Vector{Diagnostic})
     names = vcat(String[String(face) for (face, _) in input_connections(comp)],
                  String[String(face) for (_, face) in output_connections(comp)])
     for n in names
-        occursin('/', n) &&
-            throw(BuildError("$(_at(path)): face name `$n` contains `/`, which is reserved for " *
-                             "structural paths (§8.6)"))
+        occursin('/', n) && push!(viol, FaceNameIllegal(path = path, face = n))
     end
     allunique(names) ||
-        throw(BuildError("$(_at(path)): face name(s) " *
-                         "$(join(unique(n for n in names if count(==(n), names) > 1), ", ")) " *
-                         "appear twice — face names are unique across `input_connections` and " *
-                         "`output_connections` together (§8.6)"))
+        push!(viol, FaceNameCollision(path = path, site = :assembly,
+                                      faces = unique(n for n in names
+                                                     if count(==(n), names) > 1)))
     nothing
 end
 
@@ -728,13 +733,9 @@ end
 # would silently overwrite the port's. Below the root nothing collides — a
 # primitive's input faces alias their producers' cells and place nothing — and
 # non-root leaves are left alone.
-function _check_root_faces(comp)
+function _check_root_faces(comp, viol::Vector{Diagnostic})
     outs = String.(keys(_contract(output_types, comp)))
     dup = [n for n in String.(keys(_contract(input_types, comp))) if n in outs]
-    isempty(dup) ||
-        throw(BuildError("$(_at("")): face name(s) $(join(dup, ", ")) appear twice — at the " *
-                         "root a primitive's faces are its `input_types` and `output_types` " *
-                         "keys together, and a key declared in both is the same build error a " *
-                         "duplicate assembly face name is (§8.6)"))
+    isempty(dup) || push!(viol, FaceNameCollision(path = "", faces = dup, site = :root))
     nothing
 end

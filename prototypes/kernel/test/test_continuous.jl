@@ -31,8 +31,8 @@ end
     # `build` alone: rejection needs no deployment, which is the strata split.
     err = failure(() -> build(feedback_model(feedback_port = "power")))
     @test err isa BuildError
-    @test occursin("algebraic loop", err.msg)
-    @test occursin("plant", err.msg) && occursin("ctl", err.msg) && occursin("sum", err.msg)
+    d = only(err.diagnostics)
+    @test d isa AlgebraicCycle && sort(d.members) == ["ctl", "plant", "sum"]
 end
 
 @testset "the loop integrates the right trajectory" begin
@@ -167,8 +167,13 @@ init_x(::NoFlow) = (q = 1.0,)
 struct Inert <: AbstractComponent end
 
 @testset "the probe rejects malformed components (§9.3)" begin
-    @test_throws BuildError build(single(Undeclared()))
-    @test_throws BuildError build(single(Unproduced()))
-    @test_throws BuildError build(single(BadDerivative()))
-    @test_throws BuildError build(single(NoFlow()))
+    d = only(failure(() -> build(single(Undeclared()))).diagnostics)
+    @test d isa UndeclaredReturnField && d.name === :b && d.candidates == [:a]
+    d = only(failure(() -> build(single(Unproduced()))).diagnostics)
+    @test d isa DeclaredNotProduced && d.ports == [:b] && d.products == [:a]
+    d = only(failure(() -> build(single(BadDerivative()))).diagnostics)
+    @test d isa ConformanceFailure && d.what == "f" && d.reason === :field_type &&
+          d.field === :q && d.observed === Float64
+    d = only(failure(() -> build(single(NoFlow()))).diagnostics)
+    @test d isa StoreWithoutUpdate && d.store === :init_x
 end

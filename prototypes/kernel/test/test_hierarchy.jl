@@ -72,7 +72,9 @@ h_x(::PinnedGetsDual, (; t)) = (frozen = t,)
     b = build(single(PinnedGetsDual()))
     err = failure(() -> activation(b, D8))
     @test err isa BuildError
-    @test occursin("participates in differentiation", err.msg)
+    d = only(err.diagnostics)
+    @test d isa ConformanceFailure && d.shape === :ports && d.reason === :field_type
+    @test d.declared === Float64 && d.observed === D8 && d.activation === D8
 end
 
 # The activation seam (§9.1, §9.4): the nominal activation runs at build, any
@@ -118,7 +120,9 @@ h_s(::ClockStamp, (; t)) = (stamp = t,)
     # §9.4's opt-in exhaustive mode: the listed activations materialize at
     # build time, which is where CI catches a lurking pinned leaf.
     err = failure(() -> build(single(PinnedGetsDual()); activations = (Float64, D8)))
-    @test err isa BuildError && occursin("participates in differentiation", err.msg)
+    @test err isa BuildError
+    d = only(err.diagnostics)
+    @test d isa ConformanceFailure && d.declared === Float64 && d.activation === D8
 end
 
 # A deliberately pinned leaf (D-166): `frozen` is declared `Float64` rather than

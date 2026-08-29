@@ -131,14 +131,14 @@ end
     before = world(seeded)
 
     e = failure(() -> gather(_compile_reads(readable_reads(), nominal.build), seeded.exec))
-    @test e isa BuildError && occursin("internal invariant violated", e.msg)
+    @test e isa InternalInvariant           # not a diagnostic kind, and not a BuildError
     @test occursin("compiled at Float64", e.msg) && occursin("Dual{Nothing, Float64, 8}", e.msg)
 
     c = readable_condition()
     e2 = failure(() -> apply!(seeded.exec, resolve_condition(c, nominal.build)))
-    @test e2 isa BuildError && occursin("internal invariant violated", e2.msg)
+    @test e2 isa InternalInvariant
     e3 = failure(() -> apply!(seeded.exec, compile_plan(c, nominal.build), c))
-    @test e3 isa BuildError && occursin("internal invariant violated", e3.msg)
+    @test e3 isa InternalInvariant
 
     @test world(seeded) == before                # every refusal left the executor alone
 end

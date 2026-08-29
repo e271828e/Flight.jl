@@ -80,7 +80,7 @@ function _bundle_expr(BN, XT)
         n === :ws  ? :(e.ws) :
         n === :t   ? :(e.clock.t) :
         n === :Δt  ? :(e.Δt) :
-        error("no source for bundle field $n")
+        throw(InternalInvariant("no source for bundle field $n"))
     end
     :(NamedTuple{$BN}(($(args...),)))
 end
