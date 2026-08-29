@@ -818,9 +818,8 @@ recorded, the positions are the index into a schema), so the rule is: every
 capture and every roster change *appends* the current writer set whole, and
 every drain thunk is recompiled against its new index. `live_writers` names the
 current entries, a run's `schemas` may carry superseded ones, and a consumer
-resolves a record only ever through `schemas[batch.writer]`. This is the
-prototype running ahead of §11.5's letter, and the spec pass should decide
-whether the section says so.
+resolves a record only ever through `schemas[batch.writer]`. §11.5 states
+the rule since D-217.
 
 The rule bought one structural decision. `_install_writers!` is the **one**
 site a drain thunk is compiled at — the capture calls it, and `reclaim!` calls
@@ -866,11 +865,8 @@ single record is read, because a record resolved through a schema this model
 has already contradicted reports noise rather than a fault; the records are
 then collected in turn, so a trace with three bad entries reports three.
 §12.7's "validation is loud and up front" is that shape. Appendix C's policy
-column names only the second stage correctly — `ReplayUnknownFace` is
-`collected` — while `ReplayHeaderMismatch` and `ReplaySchemaMismatch` read
-`fail-fast` there and collect here. The behavior is the better one and stands;
-the column is flagged for the spec pass, and the README's absence list carries
-the deviation.
+column read `fail-fast` for the two header kinds when this was built; it reads
+`collected` for all three since D-217.
 
 *Two payload questions the spec leaves open, decided here.* A recorded value
 the target's declared type will not take is **not** a `ReplayUnknownFace` — the
@@ -882,9 +878,8 @@ outside the header's schema list is `ReplayUnknownFace` per entry, `face` the
 bare position and `writer` rendered `"writer #i"`: the failure is exactly "this
 position resolves to no face", which is the kind's whole subject, and
 `ReplaySchemaMismatch` would have to carry an empty schema and an empty
-`unknown` list to say it. The `Union{Symbol,Int}` `face` field is the prototype
-running ahead of Appendix C's "face name" payload, flagged with `frames` for
-the spec pass.
+`unknown` list to say it. Appendix C's payload column names the bare position
+since D-217.
 
 `_compile_feed`'s scalar gate is dispatch rather than a comparison — the typed
 `(Simulation{T}, Trace{T})` method beside the fallback a `Trace{Float64}`
@@ -932,15 +927,19 @@ strand the cursor, and it is the right key rather than merely a safe one: under
 `≤` a `to_boundary` truncation would sweep every record past the cut into the
 last replayed frame, which is a different trajectory.
 
-Four places the prototype runs ahead of §11.5/§12.7's letter, collected here
-for the spec pass: the `frames` field on the trace, which the spec's "header
-plus batches" does not name and which replay needs as its budget; the
-**only-growing** schema list, where §11.5 says "the run's frozen surface
+Four places the prototype ran ahead of §11.5/§12.7's letter went back to the
+spec as D-217, docs-commit-first: the `frames` field on the trace, which
+"header plus batches" did not name and which replay needs as its budget; the
+**only-growing** schema list, where §11.5 said "the run's frozen surface
 partition" and a trajectory spanning roster changes cannot have one;
 `ReplayUnknownFace`'s `face::Union{Symbol,Int}`, the bare position where no
-schema resolves it against Appendix C's "face name"; and the header's
-`t_end`/`stop_on` pair being the *constructor's*, since `init!` predates
-`run!`'s per-run overrides and §11.5 says only "the effective pair".
+schema resolves it; and the header's `t_end`/`stop_on` pair being the
+*constructor's*. The last one exposed a contradiction rather than a gap: §11.5
+captured "the effective pair" at `init!`, while §13.5 binds a `run!` override
+after `init!`, for that run only. D-217 settles it the way the prototype had
+it: the header records what `init!` knows, and a run's effective bound is
+reported by its termination record when it fires. The frame-ordinal check and
+the two header kinds' `collected` policy went with them.
 
 
 ## The properties the tests pin down

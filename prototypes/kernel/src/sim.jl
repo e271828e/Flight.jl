@@ -563,8 +563,7 @@ collects within itself: the header's own disagreements with this build are
 thrown before a single record is looked at, because a record resolved through a
 schema this model has already contradicted would report noise; the records are
 then collected in turn, so a trace with three bad entries reports three.
-(Appendix C's `collected` names the second stage; the first collects too,
-though its two kinds' column reads `fail-fast` — README's absence list.) What
+(Both stages collect, as Appendix C's column reads, D-217.) What
 comes back is the whole recording normalized to compiled scatters against *this*
 layout — the conversion paid once, off the loop (D-101).
 
