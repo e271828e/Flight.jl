@@ -448,6 +448,7 @@ using InteractiveUtils: subtypes    # the coverage check below
         ReplayHeaderMismatch(what = :root_input, expected = [:a], found = [:a, :b]),
         ReplayHeaderMismatch(what = :root_input, name = :a, expected = Float64, found = "x"),
         ReplayHeaderMismatch(what = :deployment, name = :h, expected = 0.1, found = 0.05),
+        ReplayHeaderMismatch(what = :frame, name = :harness, expected = 1:8, found = 99),
         ReplaySchemaMismatch(writer = "harness", schema = [:a, :z], unknown = [:z],
                              faces = [:a, :b]),
         ReplayUnknownFace(face = 7, frame = 1, writer = "harness", faces = [:a, :b]),

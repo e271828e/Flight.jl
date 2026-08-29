@@ -558,11 +558,13 @@ end
 """
 Replay's entry pass (§12.7), called by `replay!` below before any state is
 touched, so every refusal precedes every write. The pass runs in two
-stages, and the split is Appendix C's policy column: the header's own
-disagreements with this build are `fail-fast`, collected among themselves and
+stages, and the split is one of order rather than of policy — each stage
+collects within itself: the header's own disagreements with this build are
 thrown before a single record is looked at, because a record resolved through a
 schema this model has already contradicted would report noise; the records are
-then `collected` in turn, so a trace with three bad entries reports three. What
+then collected in turn, so a trace with three bad entries reports three.
+(Appendix C's `collected` names the second stage; the first collects too,
+though its two kinds' column reads `fail-fast` — README's absence list.) What
 comes back is the whole recording normalized to compiled scatters against *this*
 layout — the conversion paid once, off the loop (D-101).
 
@@ -579,7 +581,7 @@ function _compile_feed(sim::Simulation{T}, trc::Trace{T}) where {T}
     isempty(diags) || throw(BuildError(diags))     # the header before the entries
     records = _compile_records!(diags, sim, trc, faces)
     isempty(diags) || throw(BuildError(diags))
-    ReplayFeed(records, 1, trc.frames)
+    ReplayFeed(records, 1)
 end
 
 _compile_feed(sim::Simulation{Ts}, trc::Trace{Tt}) where {Ts,Tt} =
@@ -663,9 +665,10 @@ function replay!(sim::Simulation{T}, trc::Trace{T}; to_boundary = nothing,
     reg = sim.trace
     _reset!(reg)
     if reg.enabled
-        # the new trace inherits the old header (§12.7), its schema list copied
-        # so the growth below never reaches the `Trace` the caller still holds
-        reg.header = _reschema(h, copy(h.schemas))
+        # the new trace inherits the old header (§12.7), detached — every mutable
+        # field of it copied, so neither the growth below nor a continuation's
+        # writes ever reach the `Trace` the caller still holds
+        reg.header = _detach(h)
         _install_writers!(reg, sim.plane)       # …with this session's writers appended
     end
     boundary_zero!(sim)
@@ -1144,16 +1147,18 @@ function _replay_drain!(sim::Simulation, reg::TraceRegister, feed::ReplayFeed)
     _fold!(plane.harness_acct, plane.harness_diag)
     _fold!(sim.loop_acct, sim.loop_diag)
     i, n = feed.next, length(feed.records)
-    # `≤` rather than `==`: a record whose frame the loop has already passed —
-    # which a hand-built trace can carry, the register's own never — applies at
-    # the first frame that reaches it instead of stranding the cursor, and with
-    # it every later record, behind a frame that will never come round again
-    while i ≤ n && feed.records[i].frame ≤ frame
+    # keyed exactly: the records are stably sorted by `(frame, writer)`, the entry
+    # pass has validated every ordinal into `1:frames`, and the loop visits each
+    # frame in `[1, upto]` once — so `==` cannot strand the cursor, and the
+    # records past a `to_boundary` truncation are correctly left unapplied
+    while i ≤ n && feed.records[i].frame == frame
         r = feed.records[i]
         r.thunk()
-        # the recording's own `TraceBatch`, pushed verbatim: re-recording is
-        # not a re-conversion, and the prefix is bit-identical by construction
-        reg.enabled && push!(reg.batches, r.record)
+        # the recording's own `TraceBatch`, re-recorded as an equal value rather
+        # than shared: re-recording is not a re-conversion — the prefix is
+        # bit-identical by construction — but the two traces are two values
+        reg.enabled && push!(reg.batches,
+                             TraceBatch(r.record.frame, r.record.writer, copy(r.record.entries)))
         i += 1
     end
     feed.next = i

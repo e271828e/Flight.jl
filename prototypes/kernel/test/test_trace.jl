@@ -270,12 +270,33 @@ end
     @test d.name === :a && d.expected === Float64 && d.found == "x"
 end
 
+@testset "a frame ordinal outside the recording's own length is refused (§12.7)" begin
+    h = recorded_session().header
+    # The drain visits each frame of `1:frames` exactly once, so a record stamped
+    # outside that range names a frame that never comes round: under an exactly
+    # keyed cursor it would silently never apply. Both misses collect, named by
+    # the writer whose schema the record was written under.
+    bad = Trace(h, [TraceBatch(0, 1, Pair{Int,Any}[1 => 9.0]),
+                    TraceBatch(99, 1, Pair{Int,Any}[1 => 9.0])], 2)
+    err = failure(() -> _compile_feed(replay_target(), bad))
+    @test err isa BuildError && all(d isa ReplayHeaderMismatch for d in err.diagnostics)
+    @test all(d -> d.what === :frame && d.name === :harness && d.expected == 1:2,
+              err.diagnostics)
+    @test [d.found for d in err.diagnostics] == [0, 99]
+
+    # With no schema to name the writer either, the tag is spelled positionally —
+    # and the frame is the one fault reported, the record being unreachable.
+    d = only(failure(() -> _compile_feed(replay_target(),
+                Trace(h, [TraceBatch(0, 9, Pair{Int,Any}[1 => 9.0])], 2))).diagnostics)
+    @test d isa ReplayHeaderMismatch && d.what === :frame && d.name === Symbol("writer #9")
+end
+
 @testset "a valid trace normalizes to compiled scatters, in drain order (§12.7, D-101)" begin
     trc = recorded_session()
     tgt = replay_target()
     feed = _compile_feed(tgt, trc)
     @test [r.frame for r in feed.records] == [1, 2]
-    @test feed.next == 1 && feed.last_frame == trc.frames == 2
+    @test feed.next == 1 && length(feed.records) == 2
     # The recorded batch rides beside its thunk: a replay re-records, and what it
     # re-records is the recording's own value (§12.7).
     @test [r.record for r in feed.records] == trc.batches
@@ -387,6 +408,16 @@ end
     @test trace(sim2).frames == trc.frames
     @test trace(sim2).batches == trc.batches
 
+    # …as an *equal value*, never the recording's own objects: the two traces are
+    # two values, so a continuation's growth cannot reach the `Trace` in hand.
+    rec = trace(sim2)
+    @test all(rec.batches[i] !== trc.batches[i] for i in eachindex(trc.batches))
+    @test rec.header.x !== trc.header.x && rec.header.x == trc.header.x
+    @test rec.header.s !== trc.header.s && rec.header.m !== trc.header.m
+    @test rec.header.root_inputs !== trc.header.root_inputs
+    @test rec.header.root_inputs == trc.header.root_inputs
+    @test rec.header.schemas !== trc.header.schemas
+
     # §12.7's own register — `Simulation(world)` then `replay!`, no `init!` at
     # all: `replay!` *is* a door into `initialized`, so it owes one to nothing.
     raw = Simulation(replay_model(); h = 1//10)
@@ -487,6 +518,53 @@ discard_reports(sim, logs, who::String) =
     seen = [d for s in logged(sim2) for w in s.status.writers if w.who == who
               for d in w.recent if d isa ReplayDiscardedStaging]
     @test all(d -> d.faces == [:rate] && 1 ≤ d.frame ≤ trc.frames, seen)
+end
+
+# The harness arm of the same discard, with a synchronous route into it: a
+# `needs_calling_task` device runs its loop body *inline* on the calling task
+# while the run body is spawned (§11.1), so its `stage!(sim, …)` — the harness
+# register's own surface, not the device's claim — lands mid-replay, frame after
+# frame, where a spawned device's timing is the scheduler's alone.
+mutable struct HarnessPoker <: AbstractDevice
+    sim::Any
+end
+needs_calling_task(::HarnessPoker) = true
+loop(d::HarnessPoker, h) = (while running(h); stage!(d.sim, "ref" => 99.0); yield(); end;
+                            nothing)
+
+@testset "live staging into the harness is discarded on its own cell (§12.7, §11.8)" begin
+    # A long recording, so the inline body is scheduled against a run with frames
+    # left to give it: the poker's stage is deterministic, its timing never is.
+    sim = Simulation(replay_model(); h = 1//10)
+    init!(sim, fragment(inputs = (ref = 1.0, rate = 0.0)))
+    stage!(sim, "ref" => 2.0)
+    step!(sim; frames = 400)
+    trc = trace(sim)
+
+    sim2 = replay_twin()
+    dev = HarnessPoker(nothing)
+    attach!(sim2, dev, Enumerated("rate"))     # the device claims `rate`; `ref` stays the harness's
+    dev.sim = sim2
+    logs, _ = Test.collect_test_logs() do
+        replay!(sim2, trc)
+    end
+    @test lifecycle(sim2) === :initialized
+
+    # The same property the device arm buys, through the other writer: the
+    # trajectory is the recording's bit for bit, and none of the poker's 99.0 is
+    # recorded — the header's `ref` survives to the end.
+    @test same_trajectory(logged(sim2), logged(sim))
+    @test trace(sim2).batches == trc.batches
+    @test port(sim2, "", :ref) == 2.0
+
+    # …and the drop is loud on the *harness* cell (§11.8's attribution), naming
+    # the faces it cost — the device's own account untouched, it never staged.
+    seen = [d for s in logged(sim2) for w in s.status.writers if w.who == "harness"
+              for d in w.recent if d isa ReplayDiscardedStaging]
+    @test !isempty(discard_reports(sim2, logs, "harness"))
+    @test all(d -> d.faces == [:ref] && 1 ≤ d.frame ≤ trc.frames, seen)
+    @test writer_status(latest(sim2), "harness").totals.replay_discarded ≥ length(seen) ≥ 1
+    @test writer_status(latest(sim2), "device 1 (HarnessPoker)").totals.replay_discarded == 0
 end
 
 @testset "a changed parameter replays deterministically: the what-if register (§12.7)" begin

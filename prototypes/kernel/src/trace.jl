@@ -95,20 +95,17 @@ const ReplayRecord = @NamedTuple{frame::Int, thunk::Function, record::TraceBatch
 """
 What `_compile_feed` hands the loop (§12.7): the whole recording normalized to
 compiled scatters against the *target* layout, in drain order — by frame, then
-by the recording's writer index — with a cursor into it and the recording's
-length as the replay's frame budget.
+by the recording's writer index — with a cursor into it.
 
 The conversion is paid here, once, off the loop: the replay drain applies
 compiled scatters exactly as the live drain does, and no face name is resolved
 per frame under replay either (D-101). `next` is the first record not yet
-applied; `last_frame` is `trc.frames`, the recording's length rather than its
-last batch's frame — a recording whose final frames staged nothing still
-replays them.
+applied. The frame budget is not carried here: it is `trc.frames` or
+`to_boundary · n`, and `replay!` computes it from the `Trace` in hand.
 """
 mutable struct ReplayFeed
     records::Vector{ReplayRecord}
     next::Int
-    last_frame::Int
 end
 
 """
@@ -155,17 +152,23 @@ function _reset!(reg::TraceRegister)
 end
 
 # The conversion at the drain (§11.5, D-176), inside the drain thunk so nothing
-# on the frame path boxes an argument: an O(surface-width) scan of the mask, the
-# touched positions paired with their values. The one allocation per drained
-# batch is the `entries` vector and the values boxed into it — the cost D-176
-# records rather than argues away. A drained batch always carries at least one
-# touched position (`_normalize` returns `nothing` for one that would not), so
-# no record here is empty.
+# on the frame path boxes an argument: two O(surface-width) scans of the mask —
+# one to count the touched positions, one to fill — so the `entries` vector is
+# allocated once at its final length rather than grown. The cost of a drained
+# batch is then that vector and the values boxed into it, and nothing
+# width-dependent beyond them — the cost D-176 records rather than argues away.
+# A drained batch always carries at least one touched position (`_normalize`
+# returns `nothing` for one that would not), so no record here is empty.
 function _record!(reg::TraceRegister, widx::Int, batch::Batch)
     mask = batch.mask
-    entries = Pair{Int,Any}[]
+    k = 0
     for i in 1:length(mask)
-        mask[i] && push!(entries, i => batch.vals[i])
+        mask[i] && (k += 1)
+    end
+    entries = Vector{Pair{Int,Any}}(undef, k)
+    j = 0
+    for i in 1:length(mask)
+        mask[i] && (entries[j += 1] = i => batch.vals[i])
     end
     push!(reg.batches, TraceBatch(reg.frame, widx, entries))
     nothing
@@ -182,6 +185,15 @@ end
 
 _reschema(h::TraceHeader{T}, schemas) where {T} =
     TraceHeader{T}(h.x, h.s, h.m, h.root_inputs, schemas, h.deployment, h.layout)
+
+# The recording's header, detached, for the replay that *inherits* it (§12.7):
+# every mutable field copied — the stores deeply, they are user values — so the
+# trace the replay goes on to build is a value of its own and nothing the caller
+# still holds is reachable from it. `_reschema`'s sharing is the growth rule's,
+# within one register; this crosses between two.
+_detach(h::TraceHeader{T}) where {T} =
+    TraceHeader{T}(copy(h.x), deepcopy(h.s), deepcopy(h.m), copy(h.root_inputs),
+                   copy(h.schemas), h.deployment, h.layout)
 
 """
 The growth rule (§11.5), and the one site a drain thunk is compiled at: append
@@ -380,6 +392,18 @@ function _compile_records!(diags::Vector{Diagnostic}, sim, trc::Trace, faces::Ve
     writers = Dict{Int,Writer}()
     recs = ReplayRecord[]
     for b in trc.batches
+        if !(1 ≤ b.frame ≤ trc.frames)
+            # the batch disagrees with the trace's *own* frame count: the drain
+            # visits every frame in `1:frames` exactly once, so an ordinal outside
+            # it names a frame that never comes round and the record would silently
+            # never apply. Named by the writer's tag where the schema list has one
+            push!(diags, ReplayHeaderMismatch(
+                what = :frame,
+                name = 1 ≤ b.writer ≤ length(schemas) ? Symbol(first(schemas[b.writer])) :
+                                                        Symbol("writer #$(b.writer)"),
+                expected = 1:trc.frames, found = b.frame))
+            continue
+        end
         if !(1 ≤ b.writer ≤ length(schemas))
             # no schema to resolve the positions through, and the writer index is
             # what is missing — the tag §11.8 cannot supply is spelled positionally

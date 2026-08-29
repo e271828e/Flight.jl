@@ -1232,7 +1232,7 @@ message(d::NotAttached) =
 
 "§11.5, §12.7: the trace's header disagrees with the target build, its scalar or its deployment binding."
 Base.@kwdef struct ReplayHeaderMismatch <: Diagnostic
-    what::Symbol                             # :store | :root_input | :deployment | :scalar
+    what::Symbol                             # :store | :root_input | :deployment | :scalar | :frame
     path::String = ""                        # the component path, for the per-component :store arms
     name::Symbol = Symbol("")                # :sizes|:paths|:s|:m, the root-input face, or the parameter
     expected::Any = nothing                  # the trace's value
@@ -1255,6 +1255,10 @@ message(d::ReplayHeaderMismatch) =
     "at $(d.found) — the seven trajectory-determining deployment parameters are compared, " *
     "never taken as a what-if: a deployment change moves the times the frame-ordinal " *
     "batches apply at, which is different inputs rather than a modified model (§12.7)" :
+    d.what === :frame ?
+    "replay: $(d.name)'s record is stamped frame $(d.found), which is outside the " *
+    "recording's own $(d.expected) — a batch replays at the frame ordinal it was drained " *
+    "at, and the trace's `frames` is how long the recording ran (§11.5, §12.7)" :
     d.what === :root_input ?
     (d.name === Symbol("") ?
      "replay: the trace records the root input-face list $(_faceset(d.expected)) and this " *

@@ -859,14 +859,18 @@ field the capture records and the comparison forgets is checked by nobody. So
 `_fingerprint(sim)` is the one computation, and `_capture_header` calls it for
 the field it stores.
 
-*The pass is two-staged, and the split is Appendix C's policy column.*
-`ReplayHeaderMismatch` and `ReplaySchemaMismatch` are `fail-fast`,
-`ReplayUnknownFace` is `collected` — which reads as a contradiction until the
-order is fixed. The header's disagreements are collected among *themselves*
-and thrown before a single record is read, because a record resolved through a
-schema this model has already contradicted reports noise rather than a fault;
-the records are then collected in turn, so a trace with three bad entries
-reports three. §12.7's "validation is loud and up front" is that shape.
+*The pass is two-staged, and the split is one of order, not of policy.* The
+header/schema stage precedes the entry stage, and each collects within itself:
+the header's disagreements are gathered among *themselves* and thrown before a
+single record is read, because a record resolved through a schema this model
+has already contradicted reports noise rather than a fault; the records are
+then collected in turn, so a trace with three bad entries reports three.
+§12.7's "validation is loud and up front" is that shape. Appendix C's policy
+column names only the second stage correctly — `ReplayUnknownFace` is
+`collected` — while `ReplayHeaderMismatch` and `ReplaySchemaMismatch` read
+`fail-fast` there and collect here. The behavior is the better one and stands;
+the column is flagged for the spec pass, and the README's absence list carries
+the deviation.
 
 *Two payload questions the spec leaves open, decided here.* A recorded value
 the target's declared type will not take is **not** a `ReplayUnknownFace` — the
@@ -917,24 +921,16 @@ run's-end sweep, but there is no §13.5 termination record for the residue to be
 filed in, so a device's late report surfaces through the logging backend alone.
 The discard tests read it from both places for that reason.
 
-*The feed cursor advances on `≤`, not `==`.* Every trace this register
-produces is keyed exactly — the loop visits frame `k` once and the records are
-in drain order — but a hand-built trace can carry a record whose frame the loop
-has already passed, and under `==` that record would strand the cursor, and
-with it every record behind it, on a frame that never comes round again. `≤`
-applies it at the first frame that reaches it instead. The frame ordinals a
-trace carries are not validated by the entry pass (they are the register's own
-output), so this is where the robustness belongs.
-
-*The prototype's shortfall here is a test, not the mechanism.*
-`ReplayDiscardedStaging` is emitted on the discarded cell's own writer, the
-harness register included — but the harness arm has no synchronous route to
-exercise: `replay!` blocks its calling task, and the trajectory-opening tail
-clears every cell, so the only way to stage into the harness during a replay is
-the spawned-run race `test_lifecycle.jl` uses for the freeze. The device arm is
-asserted (a rostered device staging from its own task, the discard accounted
-wherever its timing put it, the replayed trajectory still bitwise the
-recording); the harness arm is the same two lines beside it, untested.
+*The frame ordinal is validated, so the feed cursor can be keyed exactly.* The
+entry pass checks `1 ≤ frame ≤ trc.frames` per batch — the batch against the
+trace's *own* frame count, collected as `ReplayHeaderMismatch(what = :frame)`
+and named by the writer whose schema it was written under — because the drain
+visits each frame of `1:frames` exactly once and a record outside that range
+names a frame that never comes round. With the ordinals validated and the
+records stably sorted by `(frame, writer)`, `_replay_drain!`'s `==` cannot
+strand the cursor, and it is the right key rather than merely a safe one: under
+`≤` a `to_boundary` truncation would sweep every record past the cut into the
+last replayed frame, which is a different trajectory.
 
 Four places the prototype runs ahead of §11.5/§12.7's letter, collected here
 for the spec pass: the `frames` field on the trace, which the spec's "header
@@ -1771,6 +1767,12 @@ Each of these is a spec claim rather than a programming convenience:
   spelled `"writer #9"`, the tag §11.8 cannot supply. An unconvertible recorded
   value is not among them: the face is known, so it is a
   `ReplayHeaderMismatch(what = :root_input)`.
+- **A frame ordinal outside the recording's own length is refused.** Frames `0`
+  and `99` against a two-frame trace are two `ReplayHeaderMismatch(what =
+  :frame)`es in one carrier, each naming the writer whose schema the record was
+  written under — positionally where the schema list does not reach that far,
+  and then the frame is the one fault reported, the record being unreachable
+  anyway. It is what lets the replay drain key its cursor on `==`.
 - **A valid trace becomes compiled scatters, in the drain's own order.** The
   feed's thunks applied in order reproduce the recording's writes into the
   target's cells — sparse, so an untouched face keeps what the target's own
@@ -1786,7 +1788,9 @@ Each of these is a spec claim rather than a programming convenience:
   reproduction), the same live stores, and the same two localized boundaries
   the recording never stored — `t*` derives from state, so reproducing the
   state reproduces the timing. It ends `initialized`, with no termination
-  record, and it re-records: the header inherited and the batches identical.
+  record, and it re-records: the header inherited and the batches equal — equal
+  *values*, never the recording's own objects, so the two traces are two values
+  and a continuation's growth cannot reach the `Trace` the caller still holds.
   §12.7's own register runs too — `Simulation(world)` then `replay!`, no
   `init!` anywhere: `replay!` *is* a door into `initialized`, so it owes one to
   nothing, and a `built` target replays to the same trajectory.
@@ -1812,6 +1816,14 @@ Each of these is a spec claim rather than a programming convenience:
   recorded. The drop is loud — one `ReplayDiscardedStaging` on the device's own
   cell, naming the faces it cost, accounted in the run's totals or presented by
   the run's-end sweep, exactly one of the two.
+- **Live staging into the harness is discarded on its own cell.** The same
+  property through the other writer, reached synchronously: a
+  `needs_calling_task` device runs its loop body inline on the calling task
+  while the run body is spawned (§11.1), so its `stage!(sim, …)` — the harness
+  register's surface, not the device's claim — lands mid-replay, frame after
+  frame. The trajectory is still the recording's bit for bit, nothing of it is
+  recorded, and every drop is reported on the *harness* cell with the faces it
+  cost, the device's own account untouched.
 - **A changed parameter replays deterministically, and only that.** Same
   structure, a different gain: the entry pass admits it (parametric difference
   is the what-if register, not a structural mismatch), the replay ends

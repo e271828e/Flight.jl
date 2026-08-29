@@ -32,7 +32,7 @@ alone. On demand:
 | `src/stepper.jl` | the seam's backend side: RK4 and Heun, the retained `startpoint`, dense output | §10.2, D-017 |
 | `src/localize.jl` | the frame loop: arrival sweep, θ = 0 validation, ITP bracketing, `t*` boundaries, the localization budget | §10.4, D-018, D-133 |
 | `src/dataplane.jl` | the compiled writer and staging cells, the drain, snapshots and the log with re-decimation, the typed diagnostic kinds and cells, the framework status | §11.1–§11.4, §11.8, §12.6, D-137 |
-| `src/trace.jl` | the input trace: the header captured at `init!` — resolved stores, root inputs, the writers' schemas and the deployment block — one sparse record per drained batch behind it, the only-growing schema list, `trace(sim)`, and replay's up-front entry pass (`_compile_feed`): the header validated against the target build and its deployment binding, each schema against the target's root faces, and every record normalized to a compiled scatter into the `ReplayFeed` the loop's drain reads | §11.5, §12.7, D-029, D-038, D-101, D-176 |
+| `src/trace.jl` | the input trace: the header captured at `init!` — resolved stores, root inputs, the writers' schemas and the deployment block — one sparse record per drained batch behind it, the three constructs ahead of the spec's letter (the only-growing schema list, `Trace.frames`, and `ReplayUnknownFace.face` carrying a bare position), `trace(sim)`, and replay's up-front entry pass (`_compile_feed`): the header validated against the target build and its deployment binding, each schema against the target's root faces, and every record normalized to a compiled scatter into the `ReplayFeed` the loop's drain reads | §11.5, §12.7, D-029, D-038, D-101, D-176 |
 | `src/roster.jl` | device/binding traits and conformance, the roster, both claim sources, the harness register | §11.3, §11.4, §11.6 |
 | `src/bindings.jl` | `TableBinding`, `map_input` and the conditioning helper, binding reads resolved at attach (`ReadBindingUnresolved`, the source rule) | §11.2, §11.6, §14.4 |
 | `src/devices.jl` | the device contract, the handle, the task wrapper, the init bracket and the tail under `join_timeout` | §11.1, §11.6, §12.1–§12.4, D-198 |
@@ -69,7 +69,12 @@ The long form, with reasons, is in `MAP.md`. In brief:
   component in `build.jl` — reaching `UnknownPort`, `PathResolution`,
   `FaceDirectionConflict`, `ClassUnreadable`, `StoreWithoutUpdate` and
   `TierUnreadable`; retiring it needs a sentinel-returning resolution pass, its
-  own increment. Appendix C's payload column also runs ahead of several kinds'
+  own increment. The converse runs once, and the behavior is the better one:
+  replay's entry pass *collects* `ReplayHeaderMismatch` and
+  `ReplaySchemaMismatch` — the header's disagreements gathered among themselves
+  and thrown together, before a single record is read — though both kinds'
+  policy column reads `fail-fast`; the column is what is flagged for the spec
+  pass. Appendix C's payload column also runs ahead of several kinds'
   fields (D-216): `AlgebraicCycle`'s wires and §5.6 classification,
   `FaceNameCollision`'s per-entry provenance, `ContainerMixed`'s element keys,
   `UnconnectedInput`'s declared type and chain level, the §8.1 shadowing notes
