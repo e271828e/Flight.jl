@@ -333,6 +333,13 @@ function test_contact_geometry()
             @test ldg.y.strut.wow === false
             @test (f_step!(ldg); true) #no contact, no crash
 
+            #excessive damper force: 0.1 m static compression yields 2500 N
+            ldg_weak = LandingGearUnit(;
+                strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, F_max = 2000))) |> Model
+            kin_data = KinInit(; h = h_trn + 0.9) |> KinData
+            f_ode!(ldg_weak, terrain, kin_data)
+            @test_throws LandingGear.GroundCrash f_step!(ldg_weak)
+
         end
 
     end

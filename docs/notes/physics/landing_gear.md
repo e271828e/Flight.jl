@@ -57,7 +57,7 @@ A hit does not by itself imply a physically meaningful contact. If the aircraft 
 
 $$\cos \alpha_{cs} = (k_t^e)^T k_s^e$$
 
-and abort the simulation with a ground crash when $\alpha_{cs}$ exceeds a threshold (60°). Note that the terrain model guarantees $\cos \alpha_{cs} > 0$ for any hit, since a ray parallel to the surface or pointing away from it cannot intersect it.
+and abort the simulation with a ground crash when $\alpha_{cs}$ exceeds a threshold (60° by default). The damper compression rate $-\dot{\xi}$ and the damper force magnitude are bounded in the same way. Note that the terrain model guarantees $\cos \alpha_{cs} > 0$ for any hit, since a ray parallel to the surface or pointing away from it cannot intersect it.
 
 
 ### Contact Frame Construction

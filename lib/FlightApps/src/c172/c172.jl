@@ -995,9 +995,9 @@ end
 ################################################################################
 ############################# Utility Functions ################################
 
-function is_on_gnd(mdl::Model{<:Vehicle}; all::Bool = false)
+function is_on_gnd(mdl::Model{<:Vehicle}; all_wheels::Bool = false)
     wow = SVector{3}(leg.strut.wow for leg in mdl.y.systems.ldg)
-    all ? all(wow) : any(wow)
+    all_wheels ? all(wow) : any(wow)
 end
 
 ################################################################################

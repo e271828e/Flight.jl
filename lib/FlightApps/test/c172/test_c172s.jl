@@ -15,6 +15,7 @@ function test_c172s()
         test_trimming()
         test_linearization()
         test_update_methods()
+        test_ground_start()
 
     end
 end
@@ -74,6 +75,26 @@ function test_update_methods()
     end
 
     return nothing
+
+end
+
+#the aircraft must settle on its landing gear when started on the ground
+function test_ground_start()
+
+    @testset verbose = true "Ground Start" begin
+
+        h_trn = HOrth(0.0)
+        world = SimpleWorld(Cessna172Sv0(), SimpleAtmosphere(), UniformTerrain(h_trn)) |> Model
+        sim = Simulation(world; dt = 0.02, t_end = 10)
+        init!(sim, C172.Init(KinInit(h = h_trn + C172.Δh_to_gnd)))
+        Sim.run!(sim)
+
+        (; kinematics, systems) = world.aircraft.y.vehicle
+        @test all(leg.strut.wow for leg in systems.ldg)
+        @test Float64(kinematics.h_o) ≈ C172.Δh_to_gnd atol = 0.05
+        @test maximum(abs, kinematics.v_eb_n) < 1e-3
+
+    end
 
 end
 

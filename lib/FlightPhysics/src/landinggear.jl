@@ -203,6 +203,8 @@ Base.showerror(io::IO, e::GroundCrash) = print(io, "GroundCrash: ", e.msg)
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
+    α_cs_max::Float64 = deg2rad(60) #maximum contact normal to strut angle
+    ξ_dot_max::Float64 = 10.0 #maximum damper compression rate
 end
 
 @kwdef struct StrutY #defaults should be consistent with wow = 0
@@ -318,16 +320,21 @@ end
 #sanity checks for crash detection
 function Modeling.f_step!(mdl::Model{<:Strut})
 
-    (; wow, α_cs, ξ_dot) = mdl.y
+    (; wow, α_cs, ξ_dot, F_dmp_zs) = mdl.y
+    (; α_cs_max, ξ_dot_max, damper) = mdl.parameters
 
-    #we should not be hitting the ground at an angle larger than some threshold
-    (wow && rad2deg(α_cs) > 60) && throw(GroundCrash(
+    wow || return nothing
+
+    (α_cs > α_cs_max) && throw(GroundCrash(
         "Contact normal to strut angle α_cs = $(rad2deg(α_cs)) deg " *
         "at t = $(mdl.t[]) s"))
 
-    #damper compression rate should not exceed some threshold
-    (-ξ_dot > 10) && throw(GroundCrash(
-        "Damper compression rate ξ_dot = $(-mdl.y.ξ_dot) m/s " *
+    (-ξ_dot > ξ_dot_max) && throw(GroundCrash(
+        "Damper compression rate ξ_dot = $(-ξ_dot) m/s " *
+        "at t = $(mdl.t[]) s"))
+
+    (abs(F_dmp_zs) > damper.F_max) && throw(GroundCrash(
+        "Damper force F_dmp_zs = $F_dmp_zs N " *
         "at t = $(mdl.t[]) s"))
 
     return nothing
