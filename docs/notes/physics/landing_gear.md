@@ -13,7 +13,7 @@
 Strut frame $s$:
 - $O_s$: Strut-airframe attachment point. Its position vector with respect to the vehicle origin $r_{O_bO_s}^b$ is known and constant.
 - $z_s$: Parallel to the landing gear compression line, positive along strut elongation.
-- $y_s$: Parallel to the wheel axle when the steering angle $\psi_{sg}$ is zero.
+- $y_s$: Parallel to the wheel axle when the steering angle $\psi_{sw}$ is zero.
 The attitude of the strut frame axes with respect to the vehicle axes is constant and known.
 
 Wheel frame $w$:
@@ -22,73 +22,42 @@ Wheel frame $w$:
 - $y_w$: Parallel to the wheel axle. The angle from $y_s$ to $y_w$ is the steering angle $\psi_{sw}$.
 
 Contact frame $c$:
-- $O_c$: Intersection of $z_s$ with the local terrain tangent plane. When the wheel is in contact with the ground, $O_c = O_w$.
-- $z_c$: Parallel to the terrain's local surface normal unit vector, defined by its NED components $u_t^n$.
-- $x_c$: Parallel to the projection of the $x_w$ axis onto the terrain tangent plane.
+- $O_c$: Intersection of the strut line (origin $O_s$, direction $z_s$) with the terrain surface. When the wheel is in contact with the ground, $O_c = O_w$.
+- $z_c$: Parallel to the terrain's inward surface normal at $O_c$, given by its ECEF components $k_t^e$.
+- $x_c$: Parallel to the projection of the $x_w$ axis onto the terrain tangent plane at $O_c$.
 
 Distance parameters:
 - $l$: Signed distance from $O_s$ to $O_c$ along $z_s$.
 - $l_0$: Strut natural length.
-- $\Delta l = l - l_0$: Theoretical strut deformation. When $\Delta l > 0$, the wheel is in the air, the strut is at its natural length and $O_w \neq O_c$. When $\Delta l < 0$ the wheel is in contact with the ground, the strut is compressed and $O_w = O_c$.
-- $\xi = \min\{0, \Delta l\}$: Actual strut deformation.
+- $\xi = l - l_0$: Strut deformation. Ground contact requires $\xi \leq 0$. When the wheel is in the air, the strut is at its natural length and $\xi = 0$.
 
 The force exerted by the strut outwards along the positive $z_s$ is a function $F(\xi, \dot{\xi})$. Therefore, $\xi < 0$ does not necessarily mean that the strut is actually pushing on the ground. In particular, if the strut is compressed ($\xi<0$) but expanding ($\dot{\xi} > 0$), the function $F(\xi, \dot{\xi})$ could become negative. Of course, this is not actually possible, because in that case the wheel would lift off the ground momentarily. Therefore, the actual force exerted on the ground is $\max\{0,F(\xi, \dot{\xi})\}$.
 
 We define a maximum force $F_{max}$ such that if $F(\xi, \dot{\xi}) > F_{max}$, we consider the mechanical load has exceeded its admissible limit and we abort the simulation.
 
-### WoW Determination
+### Contact Determination
 
-We start by computing the position of $O_{w0} = O_w(\xi = 0)$, that is, the wheel's endpoint when the strut is at its natural length:
-
-$$r_{O_eO_{w0}}^e = r_{O_eO_b}^e + r_{O_bO_s}^e + r_{O_sO_{w0}}^e$$
-
-Where:
+We start by expressing the strut line in ECEF coordinates:
 
 $$R^e_s = R^e_b R^b_s$$
 
-$$r_{O_bO_s}^e = R^e_b r_{O_bO_s}^b$$
+$$k^e_s = R^e_s e_3$$
 
-$$r_{O_sO_{w0}}^e = R^e_s r_{O_sO_{w0}}^s = R^e_s {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T = R^e_s e_3 l_0 =  k^e_s l_0$$
+$$r_{O_eO_s}^e = r_{O_eO_b}^e + R^e_b r_{O_bO_s}^b$$
 
-Then we construct the local ground tangent plane. We define it as follows:
-- Its origin $O_t$ is the projection of $O_{w0}$ onto the terrain along the local vertical. Therefore, the geographic 2D location of $O_t$, given by its n-Vector $n^e(O_t)$, is simply that of $O_{w0}$. The altitude $h(O_t)$ is obtained by querying the terrain model at $n^e(O_t)$. From $n^e(O_t)$ and $h(O_t)$ we compute the Cartesian position $r_{O_eO_t}^e$.
-- Its normal unit vector $u_t^n$ is obtained by querying the terrain model for its surface normal at $n^e(O_t)$, which we can then transform to $e$ axes.
+Contact determination is delegated to the terrain model through a bounded ray query. Given the ray origin $O_s$, its unit direction $k_s^e$ and the bound $l_{max} = l_0$, the terrain model returns the nearest surface point $O_c$ along the ray with parameter $l \in [0, l_0]$, together with the inward unit surface normal $k_t^e$ at $O_c$ and the surface type. If no such point exists, there is no contact and we are done. Otherwise:
 
-In order to avoid unnecessary computations when the aircraft is too far from the ground for contact to be even potentially possible, we first compute $h(O_{w0})$ and check the condition:
+$$l = (k_s^e)^T (r_{O_eO_c}^e - r_{O_eO_s}^e)$$
 
-$$h(O_{w0}) - h(O_t) < \Delta h_{max}$$
+$$\xi = l - l_0 \leq 0$$
 
-Where $\Delta h_{max}$ is a suitable chosen threshold. If this doesn't hold, we are done. Otherwise, we continue with the exact ground contact test.
+The bound on the ray parameter is what turns the query into a contact test: the natural-length wheel endpoint $O_{w0}$ lies at $l = l_0$ along the strut line, so a hit at $l \leq l_0$ means that $O_{w0}$ is at or below the surface. Any cheap altitude-based pre-test to skip the intersection when the aircraft is far from the ground is also the terrain model's responsibility. How the intersection is computed depends on the terrain model; see [Terrain](terrain.md).
 
-The equation satisfied by a point $P$ contained in the local ground tangent plane is:
+A hit does not by itself imply a physically meaningful contact. If the aircraft is inverted or steeply banked, the strut line may still pierce the surface at $l \leq l_0$, with the strut nearly tangent to it. We therefore compute the angle from the contact normal to the strut axis:
 
-$$(u_t^e)^T r_{O_tP}^e  = (u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = 0$$
+$$\cos \alpha_{cs} = (k_t^e)^T k_s^e$$
 
-Now, we find $l$ by imposing that $O_c$ be contained in this plane:
-
-$$(u_t^e)^T r_{O_tO_c}^e = 0$$
-
-With:
-
-$$r_{O_tO_c}^e = r_{O_tO_s}^e + r_{O_sO_c}^e$$
-
-$$r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T = R^e_s e_3 l=  k^e_s l$$
-
-$$r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e$$
-
-With this:
-
-$$(u_t^e)^T (r_{O_tO_s}^e + k^e_s l) = 0$$
-
-$$l = - \dfrac{(u_t^e)^T r_{O_tO_s}^e}{(u_t^e)^T k^e_s }$$
-
-If $\Delta l = l - l_0 \geq 0$, there is no contact and we are done. Otherwise, $\xi = \Delta l$ and we proceed.
-
-Note that if the aircraft is inverted above the ground, imposing the above constraint will result in a large negative $l$ without physical validity (the wheel would crash through the airframe to attach itself to the ground). In order to avoid such situations, to declare ground contact we also require that the projection of $z_s$ onto the terrain (inward pointing) normal $u_t$ be positive, that is:
-
-$$
-(k_s^e)^T u_t^e > 0
-$$
+and abort the simulation with a ground crash when $\alpha_{cs}$ exceeds a threshold (60°). Note that the terrain model guarantees $\cos \alpha_{cs} > 0$ for any hit, since a ray parallel to the surface or pointing away from it cannot intersect it.
 
 
 ### Contact Frame Construction
@@ -98,27 +67,29 @@ $\psi_{sw}$ (the steering angle) around $z_s$.
 
 $$R^s_w = R_z(\psi_{sw})$$
 
-$$R^n_w = R^n_s R^s_w$$
+$$R^e_w = R^e_s R^s_w$$
 
-$$i^n_w = R^n_w i^w_w = R^n_w e_1$$
+$$i^e_w = R^e_w i^w_w = R^e_w e_1$$
 
 The direction of the $x_c$ axis is given by the projection of the $x_w$ axis onto the terrain
 tangent plane. Thus, $i_c$ can be computed by subtracting from $i_w$ its projection along the terrain
 normal $k_t$, and then normalizing:
 
-$$i_c^n = \dfrac{i_w^n - (i_w^n \cdot k_t^n) k_t^n}{\left|i_w^n - (i_w^n \cdot k_t^n) k_t^n\right|}$$
+$$i_c^e = \dfrac{i_w^e - (i_w^e \cdot k_t^e) k_t^e}{\left|i_w^e - (i_w^e \cdot k_t^e) k_t^e\right|}$$
 
 The $z_c$ axis is parallel to $k_t$, and $y_c$ can be constructed from $z_c$ and $x_c$:
 
-$$k_c^n = k_t^n$$
+$$k_c^e = k_t^e$$
 
-$$j_c^n = k_c^n \times i_c^n$$
+$$j_c^e = k_c^e \times i_c^e$$
 
 Then:
 
-$$R^n_c = {\begin{bmatrix} i_c^n & k_c^n & k_c^n \end{bmatrix}}$$
+$$R^e_c = {\begin{bmatrix} i_c^e & j_c^e & k_c^e \end{bmatrix}}$$
 
-$$R^b_c = (R^n_b)^T R^n_c$$
+$$R^s_c = (R^e_s)^T R^e_c$$
+
+$$R^b_c = R^b_s R^s_c$$
 
 The position of $O_c$ is given by:
 
@@ -169,9 +140,9 @@ The non-penetration constraint requires that:
 
 $$e_3^T {v}_{eO_c}^c = 0 = e_3^T {v}_{eO_c(b)}^c + e_3^T k^c_s \dot{\xi} = {v}_{eO_c(b)}^c[3] + \dot{\xi} k^c_s[3]$$
 
-From which:
+Since $k^c_s[3] = e_3^T R^c_s e_3 = (k_c^e)^T k_s^e = \cos \alpha_{cs}$:
 
-$$\dot{\xi} = \dfrac{-{v}_{eO_c(b)}^c [3]}{k^c_s[3]}$$
+$$\dot{\xi} = \dfrac{-{v}_{eO_c(b)}^c [3]}{k^c_s[3]} = \dfrac{-{v}_{eO_c(b)}^c [3]}{\cos \alpha_{cs}}$$
 
 Once $\dot{\xi}$ is known, we can compute:
 
@@ -184,7 +155,7 @@ We now determine the maximum lateral and longitudinal friction coefficients. The
 velocity is non-zero. When this is not the case, the friction coefficients take values between zero and their maximum
 values as required to keep the contact point velocity at zero.
 
-We start by computing the tire slip angle from the horizontal components of $v_{eO_c}^c = {R^n_c}^T v_{eO_c}^n$ as:
+We start by computing the tire slip angle from the horizontal components of $v_{eO_c}^c = {R^e_c}^T v_{eO_c}^e$ as:
 
 $\psi_{cv} = atan2(v_{eO_c}^{y_c}, v_{eO_c}^{x_c}) \in [-\pi, \pi)$ (assertion here)
 
@@ -250,9 +221,9 @@ As described above, the magnitude and sign of $\mu_x$ and $\mu_y$ must be such t
 
 This behavior can be simulated by defining the friction coefficients as follows:
 
-$$\mu_{x} = \alpha_x \mu_{x(max)} F_N$$
+$$\mu_{x} = \alpha_x \mu_{x(max)}$$
 
-$$\mu_{y} = \alpha_y \mu_{y(max)} F_N$$
+$$\mu_{y} = \alpha_y \mu_{y(max)}$$
 
 Each $\alpha$ is a signed scaling coefficient, whose value is determined by a PI regulator acting on the contact velocity
 along the corresponding axis. The value of $\alpha$ is given by:
@@ -311,9 +282,9 @@ $$a_{eO_s}^s + \ddot{r}_{O_sP}^s = \dfrac{1}{m} F_{ext,P}^s + g^s$$
 
 Now, the position of $P$ can be expressed as:
 
-$$r_{O_sP}^s = r_{O_sO_g}^s + r_{O_gP}^s = {\begin{pmatrix} 0 & 0 & l + d_{O_gP} \end{pmatrix}}^T$$
+$$r_{O_sP}^s = r_{O_sO_w}^s + r_{O_wP}^s = {\begin{pmatrix} 0 & 0 & l + d_{O_wP} \end{pmatrix}}^T$$
 
-Where $d_{O_gP}$ is a constant signed distance that locates $P$ with respect to $O_g$. Then:
+Where $d_{O_wP}$ is a constant signed distance that locates $P$ with respect to $O_w$. Then:
 
 $$\ddot{r}_{O_sP}^s = {\begin{pmatrix} 0 & 0 & \ddot{\xi} \end{pmatrix}}^T$$
 
