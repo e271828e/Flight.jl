@@ -206,17 +206,16 @@ Base.showerror(io::IO, e::GroundCrash) = print(io, "GroundCrash: ", e.msg)
 end
 
 @kwdef struct StrutY #defaults should be consistent with wow = 0
-    Δh::Float64 = 0.0 #height above ground
     wow::Bool = false #weight-on-wheel flag
     ξ::Float64 = 0.0 #damper elongation
     ξ_dot::Float64 = 0.0 #damper elongation rate
     F_dmp_zs::Float64 = 0.0 #axial damper force
     ψ_sw::Float64 = 0.0 #steering angle
-    α_ts::Float64 = 0.0 #angle from terrain normal to strut axis
+    α_cs::Float64 = 0.0 #angle from contact frame z-axis (terrain normal) to strut axis
     t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
     v_ec_xy::SVector{2,Float64} = zeros(SVector{2}) #contact point velocity
-    trn_data::TerrainData = TerrainData()
+    surface::SurfaceType = DryTarmac #terrain surface type at the contact point
 end
 
 Modeling.Y(::Strut) = StrutY()
@@ -229,71 +228,63 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
                         kin_data::KinData)
 
     (; t_bs, l_0, damper) = mdl.parameters
-    (; q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b) = kin_data
+    (; q_eb, r_eb_e, v_eb_b, ω_eb_b) = kin_data
 
     q_bs = t_bs.q #body frame to strut frame rotation
     r_bs_b = t_bs.r #strut frame origin
 
-    #do we have contact?
+    #strut line in ECEF coordinates
     q_es = q_eb ∘ q_bs
-    ks_e = q_es(e3)
-    r_bs_e = q_eb(r_bs_b) #position of strut frame with respect to body frame
-    r_sw0_e = l_0 * ks_e #position of natural-length wheel endpoint with respect to strut frame
-    r_ew0_e = r_eb_e + r_bs_e + r_sw0_e #position of natural length wheel endpoint with respect to ECEF frame
-    Ow0 = r_ew0_e |> Geocentric |> Geographic
-    he_Ow0 = HEllip(Ow0)
+    ks_s = e3
+    ks_e = q_es(ks_s) #strut axis
+    r_bs_e = q_eb(r_bs_b)
+    r_es_e = r_eb_e + r_bs_e #strut frame origin
 
-    loc_Ot = NVector(Ow0)
-    trn_data = TerrainData(terrain, loc_Ot)
-    he_Ot = HEllip(HOrth(trn_data), loc_Ot)
-
-    Δh = he_Ow0 - he_Ot
-    wow = Δh <= 0
+    #do we have contact? cast a ray from the strut frame origin along the strut
+    #axis, bounded by the strut's natural length
+    hit = SurfaceIntersection(terrain, Geocentric(r_es_e), ks_e, l_0)
+    wow = hit.valid
 
     if !wow #no contact
-        mdl.y = StrutY(; Δh, wow) #everything else set to default
+        mdl.y = StrutY(; wow) #everything else set to default
         return
     end
 
-    Ot = Geographic(loc_Ot, he_Ot)
-    r_et_e = Geocentric(Ot)[:]
+    (; P, kt_P_e, surface) = hit.data
+    r_ec_e = Geocentric(P)[:] #contact frame origin
+    kc_e = kt_P_e #contact frame z-axis (inward terrain normal)
 
-    r_es_e = r_eb_e + r_bs_e #position of strut frame with respect to ECEF frame
-    r_st_e = r_et_e - r_es_e #position of terrain frame with respect to strut frame
+    r_sc_e = r_ec_e - r_es_e
+    l = r_sc_e ⋅ ks_e #distance from strut frame origin to contact point
+    ξ = l - l_0 #non-positive, since l ≤ l_max = l_0
 
-    ut_n = trn_data.normal
-    ut_e = q_en(ut_n)
-    ut_ks = ut_e ⋅ ks_e #cosine of angle between strut and terrain normal
-    l = (ut_e ⋅ r_st_e) / ut_ks
-    α_ts = acos(max(min(ut_ks, 1), -1))
+    cos_α = kc_e ⋅ ks_e #cosine of angle between contact z-axis and strut axis
+    α_cs = acos(clamp(cos_α, -1, 1))
 
-    #if we are here, it means that Δh < 0, so in theory we should have l < l_0.
-    #however due to numerical error we might get a small ξ > 0
-    ξ = min(0.0, l - l_0)
-
-    r_sc_s = e3 * (l_0 + ξ) #contact frame position with respect to strut frame
+    r_sc_s = ks_s * l #contact frame position with respect to strut frame
     r_sc_b = q_bs(r_sc_s)
     r_bc_b = r_sc_b + r_bs_b #contact frame position with respect to body frame
 
     #contact frame origin velocity due to rigid body motion
     v_ec_b_body = v_eb_b + ω_eb_b × r_bc_b #body frame
-    v_ec_s_body = q_bs'(v_ec_b_body) #strut frame
+    q_sb = q_bs'
+    v_ec_s_body = q_sb(v_ec_b_body) #strut frame
     ψ_v = atan(v_ec_s_body[2], v_ec_s_body[1]) #azimuth
 
     #wheel frame axes
     ψ_sw = get_steering_angle(steering, ψ_v)
-    q_sw = Rz(ψ_sw) #rotate strut axes to get wheel axes
-    q_ns = q_nb ∘ q_bs
-    q_nw = q_ns ∘ q_sw #NED to contact axes rotation
+    q_sw = Rz(ψ_sw) #strut to wheel axes rotation
+    q_ew = q_es ∘ q_sw #ECEF to wheel axes rotation
 
-    #contact frame axes
-    kc_n = trn_data.normal #NED components of contact z-axis
-    iw_n = q_nw(e1) #NED components of wheel x-axis
-    iw_n_trn = iw_n - (iw_n ⋅ kc_n) * kc_n #projection of iw_n onto the terrain tangent plane
-    ic_n = normalize(iw_n_trn) #NED components of contact x-axis
-    jc_n = kc_n × ic_n #NED components of contact y-axis
-    R_nc = RMatrix(SMatrix{3,3}([ic_n jc_n kc_n]), normalization = false)
-    q_sc = q_ns' ∘ R_nc
+    #contact frame axes, ECEF coordinates
+    iw_w = e1
+    iw_e = q_ew(iw_w) #wheel x-axis
+    iw_e_trn = iw_e - (iw_e ⋅ kc_e) * kc_e #projection of iw_e onto the terrain tangent plane
+    ic_e = normalize(iw_e_trn) #contact x-axis
+    jc_e = kc_e × ic_e #contact y-axis
+    q_ec = RMatrix(SMatrix{3,3}([ic_e jc_e kc_e]), normalization = false)
+    q_se = q_es'
+    q_sc = q_se ∘ q_ec
     q_bc = q_bs ∘ q_sc
 
     #construct contact frame transforms
@@ -301,37 +292,37 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
     t_bc = FrameTransform(r_bc_b, q_bc)
 
     #contact frame origin velocity due to rigid body motion, contact frame
-    v_ec_c_body = q_bc'(v_ec_b_body)
+    q_cb = q_bc'
+    v_ec_c_body = q_cb(v_ec_b_body)
 
     #compute the damper elongation rate required to cancel the rigid body
-    #contribution to the contact point velocity along the contact frame z axis
-    ks_c = q_sc'(e3)
-    ξ_dot = -v_ec_c_body[3] / ks_c[3]
+    #contribution to the contact point velocity along the contact frame z axis.
+    #the strut axis projected on the contact frame z-axis is ks_c[3] = cos_α
+    ξ_dot = -v_ec_c_body[3] / cos_α
 
     #force exerted by the damper along the strut frame's z axis
     F_dmp_zs = get_force(damper, ξ, ξ_dot)
 
-    #total contact point velocity, contact frame. its z-component must have been
-    #cancelled out by the computed damper elongation rate
+    #total contact point velocity, contact frame. its z-component is cancelled
+    #out by the damper elongation rate, so only the in-plane components remain
+    q_cs = q_sc'
+    ks_c = q_cs(ks_s)
     v_ec_dmp_c = ks_c * ξ_dot #contact point velocity due to elongation rate
     v_ec_c = v_ec_c_body + v_ec_dmp_c
-    @assert abs(v_ec_c[3]) < 1e-8
-
-    #extract in-plane components
     v_ec_xy = v_ec_c[SVector(1,2)]
 
-    mdl.y = StrutY(; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_ts, t_sc, t_bc, v_ec_xy, trn_data)
+    mdl.y = StrutY(; wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_cs, t_sc, t_bc, v_ec_xy, surface)
 
 end
 
 #sanity checks for crash detection
 function Modeling.f_step!(mdl::Model{<:Strut})
 
-    (; wow, α_ts, ξ_dot) = mdl.y
+    (; wow, α_cs, ξ_dot) = mdl.y
 
     #we should not be hitting the ground at an angle larger than some threshold
-    (wow && rad2deg(α_ts) > 60) && throw(GroundCrash(
-        "Terrain normal to strut angle α_ts = $(rad2deg(α_ts)) deg " *
+    (wow && rad2deg(α_cs) > 60) && throw(GroundCrash(
+        "Contact normal to strut angle α_cs = $(rad2deg(α_cs)) deg " *
         "at t = $(mdl.t[]) s"))
 
     #damper compression rate should not exceed some threshold
@@ -349,25 +340,16 @@ end
 
 function GUI.draw(mdl::Model{<:Strut}, window_label::String = "Strut")
 
-    (; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data) = mdl.y
+    (; wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_cs, v_ec_xy, surface) = mdl.y
 
-        TextFormatted(@sprintf("Height Above Ground: %.7f m", Δh))
         TextFormatted("Weight on Wheel: $wow")
         TextFormatted(@sprintf("Damper Elongation: %.7f m", ξ))
         TextFormatted(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
         TextFormatted(@sprintf("Axial Damper Force: %.7f N", F_dmp_zs))
         TextFormatted(@sprintf("Wheel Steering Angle: %.7f deg", rad2deg(ψ_sw)))
+        TextFormatted(@sprintf("Contact Normal to Strut Angle: %.7f deg", rad2deg(α_cs)))
         GUI.draw(v_ec_xy, "Contact Point Velocity (Oc / ECEF) [Contact]", "m/s")
-
-        if TreeNode("Terrain Data")
-
-            (; elevation, normal, surface) = trn_data
-            TextFormatted(@sprintf("Elevation (Orthometric): %.7f m", Float64(elevation)))
-            TextFormatted("Surface Type: $surface")
-            GUI.draw(normal, "Surface Normal [NED]")
-
-            TreePop()
-        end
+        TextFormatted("Surface Type: $surface")
 
 end
 
@@ -409,7 +391,7 @@ function Modeling.f_ode!(mdl::Model{Contact},
                         strut::Model{<:Strut},
                         braking::Model{<:AbstractBraking})
 
-    (; wow, F_dmp_zs, t_sc, t_bc, v_ec_xy, trn_data) = strut.y
+    (; wow, F_dmp_zs, t_sc, t_bc, v_ec_xy, surface) = strut.y
 
     frc = mdl.frc
     frc.u.input .= -v_ec_xy #if !wow, v_ec_xy = [0,0]
@@ -422,8 +404,8 @@ function Modeling.f_ode!(mdl::Model{Contact},
 
     norm_v = norm(v_ec_xy)
 
-    μ_roll = get_μ(FrictionCoefficients(Rolling(), trn_data.surface), norm_v)
-    μ_skid = get_μ(FrictionCoefficients(Skidding(), trn_data.surface), norm_v)
+    μ_roll = get_μ(FrictionCoefficients(Rolling(), surface), norm_v)
+    μ_skid = get_μ(FrictionCoefficients(Skidding(), surface), norm_v)
 
     #longitudinal friction coefficient
     κ_br = get_braking_factor(braking)
