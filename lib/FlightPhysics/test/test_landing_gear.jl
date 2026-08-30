@@ -28,7 +28,6 @@ function test_braking()
         nb_mdl = Model(NoBraking())
         @test isnothing(nb_mdl.x)
         @test isnothing(nb_mdl.u)
-        # @test isnothing(nb_mdl.y)
         @test LandingGear.get_braking_factor(nb_mdl) == 0
         @test @ballocated(f_ode!($nb_mdl)) == 0
         @test @ballocated(f_step!($nb_mdl)) == 0
@@ -55,7 +54,6 @@ function test_steering()
         ns_mdl = Model(NoSteering())
         @test isnothing(ns_mdl.x)
         @test isnothing(ns_mdl.u)
-        # @test isnothing(ns_mdl.y)
         @test LandingGear.get_steering_angle(ns_mdl) == 0
         @test @ballocated(f_ode!($ns_mdl)) == 0
         @test @ballocated(f_step!($ns_mdl)) == 0
@@ -85,7 +83,6 @@ function test_simple_damper()
         damper = LandingGear.SimpleDamper()
         @test LandingGear.get_force(damper, -0.1, 0) > 0
         @test LandingGear.get_force(damper, 0, -1) > 0
-        # @test_throws AssertionError LandingGear.get_force(damper, -5, 0)
     end
 
 end
@@ -209,35 +206,6 @@ function test_landing_gear_unit()
         @test @ballocated(f_step!($ldg)) == 0
 
     end
-
-end
-
-
-function test_harness()
-
-    terrain = UniformTerrain()
-    location = LatLon()
-    h_trn = HOrth(TerrainData(terrain, location))
-
-    damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
-    strut = Strut(l_0 = 1.0, damper = damper)
-    ldg = LandingGearUnit(; strut) |> Model
-
-    #by default LandingGearUnit is initialized with r_bs_b = [0,0,0], so
-    #h_s=h_b
-    h = h_trn + 0.8
-    θ = deg2rad(0)
-    φ = deg2rad(0)
-    q_nb = REuler(; θ, φ)
-    v_eb_n = [0,0,0]
-    ω_wb_b = [0,0,0]
-    kin_data = KinInit(; h, v_eb_n, ω_wb_b, q_nb) |> KinData
-    f_ode!(ldg, terrain, kin_data)
-    f_step!(ldg)
-    @show ldg.strut.y.wow
-    @show ldg.contact.y.wr_b.F
-    @show ldg.contact.y.wr_b.τ
-    return
 
 end
 
