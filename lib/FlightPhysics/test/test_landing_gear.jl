@@ -18,7 +18,42 @@ function test_landing_gear()
         test_braking()
         test_simple_damper()
         test_landing_gear_unit()
+        test_contact_geometry()
     end
+end
+
+#terrain surface modelled as a plane through the point at the default 2D
+#location and zero orthometric altitude. its inward normal is tilted from the
+#local vertical by the slope angle γ about the local north axis, towards the
+#east, so the surface rises eastwards
+struct SlopedTerrain <: AbstractTerrain
+    γ::Float64
+end
+
+@no_updates SlopedTerrain
+
+function FlightPhysics.Terrain.SurfaceIntersection(terrain::Model{<:SlopedTerrain},
+                            O::Abstract3DPosition,
+                            u_e::AbstractVector{<:Real},
+                            l_max::Real)
+
+    r_eO_e = Geocentric(O)
+    u_e = SVector{3,Float64}(u_e)
+
+    #plane anchor point P0 and inward surface normal
+    n_P0_e = NVector()
+    r_eP0_e = Geocentric(Geographic(n_P0_e, HOrth(0)))
+    kt_P0_e = ltf(n_P0_e)(SVector{3,Float64}(0, sin(terrain.γ), cos(terrain.γ)))
+
+    #ray-plane intersection
+    cos_α = kt_P0_e ⋅ u_e
+    cos_α > 0 || return SurfaceIntersection() #parallel to or pointing away from the surface
+    l = kt_P0_e ⋅ (r_eP0_e - r_eO_e) / cos_α
+    0 <= l <= l_max || return SurfaceIntersection() #behind the origin or beyond l_max
+
+    data = TerrainData(P = r_eO_e + l * u_e, kt_P_e = kt_P0_e, surface = DryTarmac)
+    SurfaceIntersection(; valid = true, data)
+
 end
 
 function test_braking()
@@ -204,6 +239,101 @@ function test_landing_gear_unit()
         @test ldg.y.strut.wow == true
         @test @ballocated(f_ode!($ldg, $terrain, $kin_data)) == 0
         @test @ballocated(f_step!($ldg)) == 0
+
+    end
+
+end
+
+function test_contact_geometry()
+
+    @testset verbose = true "Contact Geometry" begin
+
+        e1 = SVector(1.0, 0, 0)
+        e3 = SVector(0.0, 0, 1)
+
+        ldg = LandingGearUnit(;
+            strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)),
+            contact = Contact()) |> Model
+
+        @testset verbose = true "Tilted Strut" begin
+
+            terrain = UniformTerrain() |> Model
+            h_trn = HOrth(TerrainData(terrain, NVector()))
+
+            #pitched body, strut origin 0.9 m above the surface
+            θ = deg2rad(20)
+            kin_data = KinInit(; h = h_trn + 0.9, q_nb = REuler(0, θ, 0)) |> KinData
+            f_ode!(ldg, terrain, kin_data)
+
+            (; wow, ξ, α_cs, t_bc) = ldg.y.strut
+            @test wow === true
+            @test ξ ≈ 0.9/cos(θ) - 1 atol = 1e-9 #the ray is longer than the drop
+            @test α_cs ≈ θ atol = 1e-9
+
+            #the contact frame z-axis is the terrain normal, that is, NED down
+            @test t_bc.q(e3) ≈ kin_data.q_nb'(e3) atol = 1e-9
+
+            #the contact frame x-axis is orthogonal to it and unit-norm
+            @test norm(t_bc.q(e1)) ≈ 1 atol = 1e-9
+            @test t_bc.q(e1) ⋅ t_bc.q(e3) ≈ 0 atol = 1e-9
+
+        end
+
+        @testset verbose = true "Sloped Terrain" begin
+
+            γ = deg2rad(15)
+            terrain = SlopedTerrain(γ) |> Model
+
+            #level body, strut origin 0.9 m vertically above the plane anchor
+            #point, which is therefore the contact point itself
+            kin_data = KinInit(; h = HOrth(0.9)) |> KinData
+            f_ode!(ldg, terrain, kin_data)
+
+            (; wow, ξ, α_cs, t_bc) = ldg.y.strut
+            @test wow === true
+            @test ξ ≈ -0.1 atol = 1e-9
+            @test α_cs ≈ γ atol = 1e-9
+
+            #body axes are NED axes here, so the contact frame z-axis is the
+            #tilted terrain normal
+            @test t_bc.q(e3) ≈ SVector(0.0, sin(γ), cos(γ)) atol = 1e-9
+
+            #with the vehicle at rest the ground reaction is purely normal, so
+            #it tilts eastwards with the surface
+            @test ldg.y.contact.f_c[3] < 0 #reaction along the contact z-axis
+            @test ldg.y.contact.F_c[3] < 0 #positive normal force magnitude
+            @test ldg.y.contact.wr_b.F[2] < 0
+
+            @test @ballocated(f_ode!($ldg, $terrain, $kin_data)) == 0
+
+        end
+
+        @testset verbose = true "GroundCrash" begin
+
+            terrain = UniformTerrain() |> Model
+            h_trn = HOrth(TerrainData(terrain, NVector()))
+
+            #oblique hit: the ray still reaches the surface within l_0, but the
+            #strut is nearly tangent to it
+            φ = deg2rad(70)
+            kin_data = KinInit(; h = h_trn + 0.2, q_nb = REuler(φ = φ)) |> KinData
+            f_ode!(ldg, terrain, kin_data)
+            @test ldg.y.strut.wow === true
+            @test ldg.y.strut.α_cs ≈ φ atol = 1e-9
+            @test_throws LandingGear.GroundCrash f_step!(ldg)
+
+            #excessive compression rate
+            kin_data = KinInit(; h = h_trn + 0.9, v_eb_n = [0, 0, 11]) |> KinData
+            f_ode!(ldg, terrain, kin_data)
+            @test_throws LandingGear.GroundCrash f_step!(ldg)
+
+            #inverted attitude: the ray points away from the surface
+            kin_data = KinInit(; h = h_trn + 0.5, q_nb = REuler(φ = π)) |> KinData
+            f_ode!(ldg, terrain, kin_data)
+            @test ldg.y.strut.wow === false
+            @test (f_step!(ldg); true) #no contact, no crash
+
+        end
 
     end
 
