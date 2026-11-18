@@ -24,7 +24,7 @@ $$
 $$
 
 $$
-z_{trim}  \approx \left. \frac{\partial h}{\partial x} \right \rvert_{trim}(x-x_{trim}) + \left. \frac{\partial h}{\partial u} \right \rvert_{trim}(u-u_{trim})
+z - z_{trim}  \approx \left. \frac{\partial h}{\partial x} \right \rvert_{trim}(x-x_{trim}) + \left. \frac{\partial h}{\partial u} \right \rvert_{trim}(u-u_{trim})
 $$
 
 $$
@@ -80,7 +80,7 @@ M_{11} = A^{-1}(-BM_{21} + I)
 $$
 
 $$
-M_{12} = A^{-1}BM_{22}
+M_{12} = -A^{-1}BM_{22}
 $$
 
 For $L$ to be invertible and $M$ to exist, both $A$ and $(-C A^{-1}B + D)$ must be invertible. If this is so:
@@ -117,7 +117,7 @@ $$
 \Delta \tilde{z} \triangleq \Delta z - \Delta z^{\ast}
 $$
 
-Then we have:
+For a constant reference $z^{\ast}$, $\Delta x^{\ast}$ is also constant, so $\Delta \dot{\tilde{x}} = \Delta \dot{x}$. Then we have:
 
 $$
 \Delta \dot{\tilde{x}} = A \Delta \tilde{x} + B \Delta \tilde{u}
@@ -241,13 +241,13 @@ $$
 Now, if we design a LQR for the augmented system, we have the control law:
 
 $$
-\Delta \tilde{u} = -K_{aug} \Delta{\tilde{x}}_{aug} = \begin{pmatrix} K_x & K_{\xi}\end{pmatrix} \Delta{\tilde{x}}_{aug}
+\Delta \tilde{u} = -K_{aug} \Delta{\tilde{x}}_{aug} = -\begin{pmatrix} K_x & K_{\xi}\end{pmatrix} \Delta{\tilde{x}}_{aug}
 $$
 
 And the resulting closed-loop system is:
 
 $$
-\Delta \dot{\tilde{x}}_{aug} = (A_{aug} - B_{aug}K)\Delta{\tilde{x}}_{aug}
+\Delta \dot{\tilde{x}}_{aug} = (A_{aug} - B_{aug}K_{aug})\Delta{\tilde{x}}_{aug}
 $$
 
 This system is guaranteed to be stable by the LQR, so in the steady-state we have:
@@ -269,18 +269,18 @@ $$
 Let's suppose we have an external disturbance such that the actual system dynamics are instead:
 
 $$
-\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} A & 0\\ C_{i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} B \\ D_{i} \end{pmatrix} \Delta \tilde{u} + \begin{pmatrix} L w \\ 0 \end{pmatrix}
+\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} A & 0\\ C_{i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} B \\ D_{i} \end{pmatrix} \Delta \tilde{u} + \begin{pmatrix} G w \\ 0 \end{pmatrix}
 $$
 
 The closed-loop system is now:
 
 $$
-\Delta \dot{\tilde{x}}_{aug} = (A_{aug} - B_{aug}K_{aug}) \Delta \tilde{x}_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}
+\Delta \dot{\tilde{x}}_{aug} = (A_{aug} - B_{aug}K_{aug}) \Delta \tilde{x}_{aug} + \begin{pmatrix} G w \\ 0 \end{pmatrix}
 $$
 
 Stability depends only on the dynamics matrix $A_{aug} - B_{aug}K_{aug}$, so this system will still
 be asymptotically stable. This means that in the steady state $\Delta \dot{\tilde{x}}_{aug} = 0$, so $\dot{\xi} =
-0$, and therefore necessarily $z_i = z_i^{\ast$. Because the system is no longer homogeneous, in general we
+0$, and therefore necessarily $z_i = z_i^{\ast}$. Because the system is no longer homogeneous, in general we
 will have $\Delta \tilde{x}_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta
 \tilde{z}_i = 0$.
 
